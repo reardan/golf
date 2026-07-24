@@ -23,12 +23,20 @@ def rec(key, data):
     assert 1 <= len(data) <= 255, (key, len(data))
     return bytes([key, len(data)]) + bytes(data)
 
+def header_pairs():
+    """The ELF header's non-zero bytes as (offset, value) pairs.  Offsets are
+    0..119 so they fit in one byte; word H writes each over the zeroed buffer."""
+    return bytes(x for off, v in enumerate(golf0.HEADER) if v for x in (off, v))
+
 def build_blob():
     b = bytearray()
     b += rec(1, golf0.PROLOGUE)
     b += rec(2, COND)
     b += rec(3, golf0.STARTUP)
-    b += rec(4, golf0.HEADER)
+    # The 120-byte ELF header is ~80% zero bytes.  The output buffer is BSS
+    # (zero-filled), so we store only the NON-zero header bytes as (offset,
+    # value) pairs; word H writes them and leaves the rest zero.
+    b += rec(4, header_pairs())
     b += rec(5, golf0.AUTOEXIT)
     # table ops, keyed by ASCII code of the op char
     for ch, tpl in golf0.TEMPLATES.items():
@@ -61,31 +69,43 @@ WORDS = (
     '"59-[_94Ek^]'                                       # ';' end def
     '"91-[_2E133o m4+@0w^]'                              # '[' if
     '"93-[_k^]'                                          # ']' end if
-    '"123-[_m4+@^]'                                      # '{' loop start
-    '"125-[_2E132o m4+@4+-w^]'                           # '}' loop end
+    "\"'{-[_m4+@^]"                                      # '{' loop start ('{ = 123)
+    '"\'}-[_2E132o m4+@4+-w^]'                           # '}' loop end  ('} = 125)
     '"96-[_D233o"w m4+@69632-m12+!{(o1-"1<}_104o m12+@w^]'  # '`' blob
     "e;"                                                 # default: e
+    # H: write the ELF header from (offset,value) pairs (record key 4) over the
+    # zeroed output buffer.  end kept in S; store each value byte at B+offset.
+    ':H4f"1+?\\2+\\&+m12+!{"?m4096++&1+?\\,2+"m12+@<1+}_;'
 )
-INIT = "m4096+m4+!"                                      # P = B
-TAIL = "m8+!4E3E{g\"m!t m@1<}5E" 'm4096+{"?)1+"m4+@<1+}_'  # after blob
+INIT = ""                                                # P is set after H
+# main: store blob addr, write header, set P=B+120, startup, token loop, exit, flush
+TAIL = 'm8+!Hm4096+120+m4+!3E{g"m!t m@1<}5E' 'm4096+{"?)1+"m4+@<1+}_'
 
 def golf(s):
     """Apply verified size-reducing rewrites: replace common byte sequences
     with 1-char accessor words.  Correctness is guaranteed by the self-hosting
     fixpoint test, which fails loudly if any rewrite changes behaviour.
       P = m4+@       fetch output pointer
+      S = m12+       scratch var S address
+      Q = m16+       pushed-back-char var Q address
+      U = 48-10<     is-digit test core (value-48 < 10)
       Y = m2048+\\4*+  dict slot address for key-on-top
       Z = 48-\\10*+    fold a decimal digit into an accumulator
       L = 104o       emit the push-imm32 opcode (0x68)
     All replacements run before any definition is injected, so the injected
-    defs keep their literal byte sequences."""
+    defs keep their literal byte sequences.  Every accessor depends only on `m`
+    or primitives, so all are defined right after `m` (except L, which calls o)."""
     s = s.replace("m4+@", "P")
     s = s.replace("m2048+\\4*+", "Y")
     s = s.replace("48-\\10*+", "Z")
+    s = s.replace("48-10<", "U")
+    s = s.replace("m4096+", "B")
+    s = s.replace("m12+", "S")
+    s = s.replace("m16+", "Q")
     s = s.replace("104o", "L")
-    s = s.replace(":m4259840;", ":m4259840;:Pm4+@;")
+    s = s.replace(":m4259840;",
+                  ":m4259840;:Pm4+@;:Bm4096+;:Sm12+;:Qm16+;:U48-10<;:Ym2048+\\4*+;:Z48-\\10*+;")
     s = s.replace(":oP!1a;", ":oP!1a;:L104o;")
-    s = s.replace(":EfC;", ":EfC;:Ym2048+\\4*+;:Z48-\\10*+;")
     return s
 
 def build_source():

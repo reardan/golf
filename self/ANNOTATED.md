@@ -25,6 +25,10 @@ to stdout at the end. A target virtual address equals `bufaddr - 69632`
 | word | expands to | meaning |
 |------|-----------|---------|
 | `P` | `m4+@` | fetch the output pointer |
+| `B` | `m4096+` | output-buffer base address |
+| `S` | `m12+` | scratch var S address |
+| `Q` | `m16+` | pushed-back-char var Q address |
+| `U` | `48-10<` | is-digit test core (`value-48 < 10`) |
 | `Y` | `m2048+\4*+` | dictionary slot address for the key on top |
 | `Z` | `48-\10*+` | fold one decimal digit into an accumulator |
 | `L` | `104o` | emit the `push imm32` opcode byte (`0x68`) |
@@ -56,6 +60,10 @@ to stdout at the end. A target virtual address equals `bufaddr - 69632`
                         #     otherwise read one byte from stdin.
 :h {("10-[_^]"[_^]_0};  # h : skip a comment — read until newline (10) or EOF (0)
 :t ...                  # t : dispatch one token (the current char). See below.
+:H 4f"1+?\2+\&+m12+!{"?m4096++&1+?\,2+"m12+@<1+}_;
+                        # H : write the ELF header.  Record key 4 holds its
+                        #     non-zero bytes as (offset,value) pairs; store each
+                        #     value byte at B+offset over the zeroed buffer.
 ```
 
 ### `:t` — the token dispatcher
@@ -101,9 +109,10 @@ data stack *is* the backpatch stack.
 ### Main program (runs first; the definitions above are jumped over)
 
 ```
-`303 <303 raw template bytes>   # push the blob address ...
+`229 <229 raw template bytes>   # push the blob address ...
 m8+!                            # ... store it in T (D+8)
-4E                              # emit the 120-byte ELF header (blob record key 4)
+H                               # write the ELF header into the zeroed buffer
+m4096+120+m4+!                  # P = B + 120 (code begins after the header)
 3E                              # emit startup: mov ebp, 0xC00000 (record key 3)
 { g "m! t  m@1< }               # token loop: get char, save in C, dispatch;
                                 #   continue while C != 0 (m@1< is 0 when C>=1)
@@ -114,7 +123,7 @@ m4096+{"?)1+"m4+@<1+}_          # flush the output buffer B..P to stdout, one by
 
 ## The template blob
 
-`` `303 … `` embeds 303 raw bytes: length-prefixed records `[key][len][len bytes]`
+`` `229 … `` embeds 229 raw bytes: length-prefixed records `[key][len][len bytes]`
 ending in a `0` sentinel. `f` scans it by key.
 
 | key | contents |
@@ -122,7 +131,7 @@ ending in a `0` sentinel. `f` scans it by key.
 | 1 | word **prologue** (`sub rbp,8; pop [rbp]`) |
 | 2 | shared **cond-prefix** `58 48 85 C0 0F` (used by both `[` and `}`) |
 | 3 | **startup** `mov ebp,0xC00000` |
-| 4 | the 120-byte **ELF header** |
+| 4 | the ELF header's **non-zero bytes** as (offset, value) pairs (written by `H`) |
 | 5 | **exit(0)** |
 | ASCII code of each dumb op | that op's machine-code template |
 

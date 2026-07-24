@@ -5,7 +5,7 @@ written in itself and emits standalone **ELF64 x86-64 Linux** executables — no
 assembler, no linker, no libc. Every token is a single ASCII byte. The whole
 design exists to make one number small: the size of the self-hosted compiler.
 
-**Self-hosted compiler: `self/golf.golf` — 809 bytes.** It compiles itself to a
+**Self-hosted compiler: `self/golf.golf` — 760 bytes.** It compiles itself to a
 byte-identical binary (strict fixpoint).
 
 Inspiration: [Jelly](https://github.com/DennisMitchell/jellylanguage) (one byte =
@@ -118,6 +118,10 @@ the bottom of the stack across iterations. No separate stack structure exists.
   is `0x800000`, so nothing in the header is ever backpatched. Pages past the real
   end of file are never touched. The BSS tail (file end → `p_memsz`) provides
   zeroed memory for the data region and the return stack.
+- The header is ~80% zero bytes. Because the output buffer lives in that zeroed
+  BSS, the self-hosted compiler stores only the header's **non-zero bytes** as
+  `(offset, value)` pairs and writes just those (word `H`); the rest stay zero.
+  That alone cut the embedded template blob from 303 to 229 bytes.
 - **Data region** `D = 0x410000` (BSS): a few scalar variables at `D+0…D+16`, the
   dictionary at `D+2048` (256 × 4 bytes), and the compiler's output buffer at
   `B = D+4096`.
