@@ -1,0 +1,3 @@
+# Hello, world!  Blob pushes the string address; print all 13 bytes.
+# Stack invariant inside the loop: [addr, count].
+`13 Hello, world!13{\"?)1+\1-"1<}__10)

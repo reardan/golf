@@ -1,0 +1,10 @@
+# FizzBuzz 1..100 in GOLF.
+# n : print unsigned decimal (recursive).
+:n"10<1+[48+)^]"10/n10%48+);
+# F : print "Fizz"    B : print "Buzz"
+:F`4 Fizz"?)1+"?)1+"?)1+?);
+:B`4 Buzz"?)1+"?)1+"?)1+?);
+# g : classify one number i (consumes i).
+:g"15%[_FB^]"3%[_F^]"5%[_B^]n;
+# main: i = 1..100, newline after each.
+1{"g10)1+"101<1+}_
