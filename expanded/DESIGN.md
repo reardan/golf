@@ -46,15 +46,25 @@ compile with `golf2`. The round-trip is exact. First atoms: `± neg`, `⊕ inc`,
 ## The bootstrap ladder (how v2 gets built)
 
 We keep the property that makes this project worth doing: **there is always a
-compiler that can build the current source, and the three-stage bootstrap is
-byte-identical.** The chain is:
+compiler that can build the current source, and the bootstrap reaches a
+byte-identical fixpoint.** The chain is:
 
 ```
 golf0.py  --compiles-->  v1c        # the frozen minimal compiler (../minimal)
-v1c       --compiles-->  golf2      # self/golf2.golf, written in v1 GOLF
-golf2     --compiles-->  golf2'     # require golf2 == golf2'  (fixpoint)
-golf2     --compiles-->  your v2 programs
+v1c       --compiles-->  stage1     # self/golf2.golf, written in v1 GOLF
+stage1    --compiles-->  stage2     # same source, compiled by golf2 itself
+stage2    --compiles-->  stage3     # require stage2 == stage3  (fixpoint)
+stage3    --compiles-->  your v2 programs
 ```
+
+The gate is **stage2 == stage3**, not stage1 == stage2. stage2 and stage3 are
+both produced by a compiler built from `self/golf2.golf`, so they embed the same
+template blob and emit the same code for the same source: iterate 2 has
+converged. stage1 is emitted by `v1c`, which carries *v1's* blob, so it only
+matches stage2 while golf2 overrides none of v1's op templates — the day golf2
+ships its own `+` (say, a vectorized one), stage1 diverges permanently while the
+fixpoint above is untouched. `test/run2.sh` therefore asserts stage2 == stage3
+and merely reports stage1 == stage2 as an informational `seed-stable:` line.
 
 `self/golf2.golf` is the v2 compiler. Its **source must always be compilable by
 the current toolchain.** Today that toolchain is `v1c`, so golf2's code is still

@@ -30,8 +30,17 @@ bootstrap ladder: the frozen minimal compiler (v1) compiles the expanded
 compiler's seed, which then self-hosts.
 
 ```
-golf0.py --> v1c --> golf2 --> golf2  (fixpoint) --> your v2 programs
+golf0.py --> v1c --> stage1 --> stage2 --> stage3 --> your v2 programs
+                                ^^^^^^^^^^^^^^^^^^
+                                fixpoint: stage2 == stage3
 ```
+
+Every compiler built from `self/golf2.golf` embeds the same template blob, so the
+chain converges after two iterations and **stage2 == stage3** is the fixpoint that
+gates the build. `stage1 == stage2` holds as well today, but only because golf2's
+blob overrides none of v1's op templates; the moment it overrides one, v1c and
+golf2 emit different code for the same source and only the stage2/stage3 rung
+stays byte-identical.
 
 A **Jelly-style** language: operators are single bytes from the full 0..255
 space, shown as glyphs; `tools/codepage.py` converts glyph/mnemonic source ⇄ raw
