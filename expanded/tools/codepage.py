@@ -36,12 +36,23 @@ LIB = [
     ("E", "nl",    "␤", "print newline"),
 ]
 
+# Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
+# (byte, mnemonic, glyph, doc)
+COMPILER = [
+    (mkblob2.REF_BYTE, "ref", "′", "prefix: ′name pushes that word's address"),
+]
+
 # byte <-> glyph / mnemonic for the named atoms (ASCII bytes map to themselves)
 BYTE2GLYPH = {b: gl for b, _mn, gl, _t, _d in mkblob2.ATOMS}
 BYTE2MNEM  = {b: mn for b, mn, _gl, _t, _d in mkblob2.ATOMS}
 GLYPH2BYTE = {gl: b for b, _mn, gl, _t, _d in mkblob2.ATOMS}
 MNEM2BYTE  = {mn: b for b, mn, _gl, _t, _d in mkblob2.ATOMS}
-# add the library aliases (encode-only: glyph/mnemonic -> the word's letter byte)
+# compiler ops: real single-byte tokens, shown on decode like atoms
+BYTE2GLYPH.update({b: gl for b, _mn, gl, _d in COMPILER})
+BYTE2MNEM.update({b: mn for b, mn, _gl, _d in COMPILER})
+GLYPH2BYTE.update({gl: b for b, _mn, gl, _d in COMPILER})
+MNEM2BYTE.update({mn: b for b, mn, _gl, _d in COMPILER})
+# library aliases (encode-only: glyph/mnemonic -> the word's letter byte)
 GLYPH2BYTE.update({gl: ord(ltr) for ltr, _mn, gl, _d in LIB})
 MNEM2BYTE.update({mn: ord(ltr) for ltr, mn, _gl, _d in LIB})
 
@@ -57,6 +68,8 @@ def encode(text: str) -> bytes:
                 i += 1
             continue
         if c == "\\":                              # \name mnemonic escape
+            if i + 1 < n and text[i + 1] == "\\":  # \\ -> literal backslash (swap)
+                out.append(0x5C); i += 2; continue
             j = i + 1
             run = ""
             while j < n and text[j].isalpha():
@@ -92,6 +105,10 @@ def print_table():
     print("ATOMS (single-byte machine-code ops)")
     print("byte  glyph  mnemonic  meaning")
     for b, mn, gl, _t, doc in mkblob2.ATOMS:
+        print(f"0x{b:02X}   {gl:>2}     \\{mn:<7}  {doc}")
+    print("\nCOMPILER OPS (single-byte tokens handled by the compiler)")
+    print("byte  glyph  mnemonic  meaning")
+    for b, mn, gl, doc in COMPILER:
         print(f"0x{b:02X}   {gl:>2}     \\{mn:<7}  {doc}")
     print("\nLIBRARY (prelude words — glyph/mnemonic are input aliases for a letter)")
     print("byte  glyph  mnemonic  word  meaning")

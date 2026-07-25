@@ -1,0 +1,23 @@
+# GOLF/2 prelude — list runtime, higher-order ops, printing.
+# Authored in code-page mnemonic form (\exec = the indirect-call op, byte 0x8D).
+# It is encoded to raw bytes and prepended to programs by tools/golfc.
+#
+# A list is a heap block [ len, e0, e1, ... ] of 32-bit cells; a list value is
+# its address.  Reserved runtime memory (do not use in your program): heap
+# pointer 0x4F0000, scratch 0x4F0010..0x4F0024, heap from 0x500000.
+#
+# Words (single-byte names — avoid reusing H A L I R S N E M F Q):
+#   A cells->addr alloc   L list->n len     I list i->x index   R n->list range
+#   S list->n sum         M list fn->list map (fn = a word address, via 'ref)
+#   F list init fn->x fold N n-> print uint  Q list-> print list  E -> newline
+:H5177344;                                          # H: heap-pointer address
+:A4*5177380!H@5242880+H@5177380@+H!;                # A: alloc(cells) -> addr
+:L@;                                                # L: len(list)
+:I4*+4+@;                                           # I: index(list,i)
+:R"1+A"5177360!!0 5177364!{5177364@"4*5177360@+4+!5177364@1+5177364!5177364@5177360@@<1+}5177360@;
+:S5177360!0 5177368!0 5177364!{5177360@5177364@I5177368@+5177368!5177364@1+5177364!5177364@5177360@@<1+}5177368@;
+:N"10<1+[48+)^]"10/N10%48+);                        # N: print unsigned decimal
+:E10);                                              # E: newline
+:M5177372!"5177360!@"1+A"5177376!!0 5177364!{5177360@5177364@I5177372@\exec5177376@5177364@4*+4+!5177364@1+5177364!5177364@5177360@@<1+}5177376@;
+:F5177372!5177376!5177360!0 5177364!{5177376@5177360@5177364@I5177372@\exec5177376!5177364@1+5177364!5177364@5177360@@<1+}5177376@;
+:Q5177360!0 5177364!{5177360@5177364@I N 32)5177364@1+5177364!5177364@5177360@@<1+};

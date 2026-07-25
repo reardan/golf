@@ -51,7 +51,25 @@ ATOMS = [
                                                           "a b -> a/b signed"),
     (0x8B, "smd", "∣", [0x59, 0x58, 0x48, 0x99, 0x48, 0xF7, 0xF9, 0x52],
                                                           "a b -> a%b signed"),
+    # Quotations: exec is an indirect call (pop a word address, call it).  Its
+    # partner `ref` (push a word's address) is a compiler prefix, added to `t`
+    # below — together they give higher-order functions (map/fold).
+    (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
 ]
+
+# `ref` (byte 0x8C, glyph ′): a compiler *prefix* — read the next byte (a word
+# name) and emit `push <that word's runtime address>` instead of a call.  This
+# is the first change to golf2's compiler logic vs v1.  Written in pure v1 GOLF
+# so v1 still compiles golf2.golf; golf2's own source never uses it, so the
+# strict fixpoint (stage1 == stage2) still holds.
+REF_BYTE = 0x8C
+REF_CASE = '"140-[_(m2048+\\4*+@69632-104o w^]'     # dup ch; ch==140? read name;
+#                                                     push dict[name]-69632 (= its VA)
+# Insert the case into `t` just before its `e;` fallthrough.  `w^]e;` is the
+# unique junction between t's last case (the blob handler) and `e;` (t only
+# occurrence of `e;`; other words follow t in WORDS).
+assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
+WORDS2 = mkblob.WORDS.replace("w^]e;", "w^]" + REF_CASE + "e;")
 
 def build_blob2():
     b = bytearray()
@@ -70,7 +88,7 @@ def build_blob2():
 def build_source2():
     blob = build_blob2()
     code = lambda s: mkblob.golf(s.replace(" ", "")).encode()
-    parts = [code(mkblob.WORDS), code(mkblob.INIT),
+    parts = [code(WORDS2), code(mkblob.INIT),
              b"`" + str(len(blob)).encode() + b" " + blob,
              code(mkblob.TAIL)]
     return b"".join(parts)

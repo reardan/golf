@@ -1,5 +1,6 @@
-# List demo, authored in code-page glyph form.
-# ⍳ = range, ∑ = sum, Ṅ = print number, ␤ = newline.
-100⍳∑Ṅ␤          # sum of range(100) = 4950
-10⍳4⊇Ṅ␤          # index 4 of range(10) = 4  (⊇ = index, needs list then i)
-7⍳≢Ṅ␤            # length of range(7) = 7    (≢ = len)
+# List demo with higher-order functions (code-page glyph form).
+#   ⍳ range  ∑ sum  Ṅ print-number  ␤ newline  ′ push-word-address  ⍎ execute
+#   ⊗ double  ⌈ max   M map (list fn->list)   F fold (list init fn->x)
+100⍳∑Ṅ␤              # sum of range(100)                     -> 4950
+:d⊗;5⍳′dM∑Ṅ␤         # sum of doubled range(5) [0 2 4 6 8]   -> 20
+:x⌈;6⍳0′xFṄ␤         # fold max over range(6), seed 0        -> 5

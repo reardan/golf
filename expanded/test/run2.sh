@@ -61,15 +61,22 @@ echo "Grown atom set: » gt ≡ eq ⌈ max ⌊ min ÷ sdv ∣ smd"
 [ "$(printf '%s' '17 5\sdv48+)' | atom)" = "3" ] && ok "sdv" || no "sdv"
 [ "$(printf '%s' '17 5\smd48+)' | atom)" = "2" ] && ok "smd" || no "smd"
 
-echo "List type (prelude library): A alloc, R range, L len, I index, S sum, N num"
-gc(){ cat lib/prelude.golf - | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p"; }
-[ "$(printf '%s' '5R L N E'    | gc)" = "5" ]    && ok "range + len"      || no "range/len"
-[ "$(printf '%s' '10R 4 I N E' | gc)" = "4" ]    && ok "index"            || no "index"
-[ "$(printf '%s' '100R S N E'  | gc)" = "4950" ] && ok "sum of range(100)" || no "sum range"
-[ "$(printf '%s' '12345N E'    | gc)" = "12345" ]&& ok "decimal printer"  || no "printer"
-python3 tools/codepage.py encode < examples/lists.golfj > "$TMP/lists.gb"
-cat lib/prelude.golf "$TMP/lists.gb" | "$TMP/golf2" > "$TMP/lists" 2>/dev/null && chmod +x "$TMP/lists"
-[ "$("$TMP/lists" 2>/dev/null)" = "$(printf '4950\n4\n7')" ] && ok "glyph-form examples/lists.golfj" || no "lists.golfj"
+echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
+[ "$(printf '%s' ':d\dbl;3\refd\exec48+)' | atom)" = "6" ] && ok "ref + exec" || no "ref/exec"
+
+echo "List type (prelude library): A alloc R range L len I index S sum N num M map F fold Q print"
+python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"    # encoded prelude
+gc(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+        && chmod +x "$TMP/p" && "$TMP/p"; }
+[ "$(printf '%s' '5R L N E'    | gc)" = "5" ]    && ok "range + len"       || no "range/len"
+[ "$(printf '%s' '10R 4 I N E' | gc)" = "4" ]    && ok "index"             || no "index"
+[ "$(printf '%s' '100R S N E'  | gc)" = "4950" ] && ok "sum of range(100)"  || no "sum range"
+[ "$(printf '%s' '12345N E'    | gc)" = "12345" ]&& ok "decimal printer"   || no "printer"
+[ "$(printf '%s' ':d\dbl;5R\refdMSNE'  | gc)" = "20" ] && ok "map (double, sum)" || no "map"
+[ "$(printf '%s' ':x\max;6R 0\refxFNE' | gc)" = "5" ]  && ok "fold (max)"        || no "fold"
+[ "$(printf '%s' ':q\sqr;4R\refqMQE'   | gc)" = "0 1 4 9 " ] && ok "map + print list" || no "map/print"
+tools/golfc -j examples/lists.golfj "$TMP/lists" 2>/dev/null
+[ "$("$TMP/lists" 2>/dev/null)" = "$(printf '4950\n20\n5')" ] && ok "golfc examples/lists.golfj" || no "lists.golfj"
 
 echo
 echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"
