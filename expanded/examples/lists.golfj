@@ -1,6 +1,5 @@
 # List demo with higher-order functions (code-page glyph form).
-#   ⍳ range  ∑ sum  Ṅ print-number  ␤ newline  ′ push-word-address  ⍎ execute
-#   ⊗ double  ⌈ max   M map (list fn->list)   F fold (list init fn->x)
+#   ⍳ range  ∑ sum  € map  ⇤ fold  ′ push-word/atom addr  ⊗ double  ⌈ max  Ṅ ␤ print
 100⍳∑Ṅ␤              # sum of range(100)                     -> 4950
-:d⊗;5⍳′dM∑Ṅ␤         # sum of doubled range(5) [0 2 4 6 8]   -> 20
-:x⌈;6⍳0′xFṄ␤         # fold max over range(6), seed 0        -> 5
+5⍳′⊗€∑Ṅ␤            # sum of doubled range(5) [0 2 4 6 8]   -> 20
+6⍳0′⌈⇤Ṅ␤            # fold max over range(6), seed 0        -> 5

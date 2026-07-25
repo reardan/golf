@@ -63,8 +63,12 @@ ATOMS = [
 # so v1 still compiles golf2.golf; golf2's own source never uses it, so the
 # strict fixpoint (stage1 == stage2) still holds.
 REF_BYTE = 0x8C
-REF_CASE = '"140-[_(m2048+\\4*+@69632-104o w^]'     # dup ch; ch==140? read name;
-#                                                     push dict[name]-69632 (= its VA)
+# ′name pushes name's address.  If name is a defined word, push its VA.  If it is
+# an ATOM (a template in the blob, not a word), emit a thunk [prologue][template]
+# [epilogue] inline (jumped over) and push the thunk's VA — so ′+ works without
+# wrapping.  Compiler scratch m20 (jmp-site), m24 (thunk addr).
+REF_CASE = ('"140-[_("m2048+\\4*+@"[_233o m4+@m20+!0w m4+@m24+! 1E"E94E '
+            'm4+@m20+@4+-m20+@!104o m24+@69632-w_^]\\_69632-104o w^]')
 # Insert the case into `t` just before its `e;` fallthrough.  `w^]e;` is the
 # unique junction between t's last case (the blob handler) and `e;` (t only
 # occurrence of `e;`; other words follow t in WORDS).

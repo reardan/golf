@@ -2,4 +2,4 @@
 # list op works on strings; O prints a byte block, J prints a code list.
 “Hello, world!“O10)      # puts a literal                 -> Hello, world!
 “stressed“UVJ10)          # reverse, via chars->rev->join  -> desserts
-:k⊕;“Hello“U′kMJ10)       # map (+1) over the characters   -> Ifmmp
+“Hello“U′⊕€J10)           # map (+1) over the characters   -> Ifmmp

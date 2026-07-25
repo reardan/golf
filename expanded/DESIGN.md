@@ -137,8 +137,8 @@ Each milestone is independently testable and must keep `test/run2.sh` green
   broadcasting — which needs runtime **type tags** (int vs list) so one atom
   dispatches on shape. With tags, `′`/`⍎`, `M`/`F`, and `Z` become the machinery
   that Jelly **chains** (tacit monadic/dyadic link threading) are built from.
-  Two known warts to fix along the way: `′` can't reference an atom (wrap it in a
-  word), and lengths/shapes aren't checked.
+  (Fixed: `′atom` is now auto-wrapped, so `′+`/`′*`/`′⌈` pass straight to
+  `map`/`fold`/`zip`/`exec`. Remaining wart: no length/shape checks.)
 
 - **M3 — named variables (done, lite).** `→x` stores TOS, `←x` loads it — compiler
   prefix ops over a name-indexed **global** register bank at 0x4E0000. Kills most

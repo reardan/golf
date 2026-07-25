@@ -62,7 +62,8 @@ echo "Grown atom set: » gt ≡ eq ⌈ max ⌊ min ÷ sdv ∣ smd"
 [ "$(printf '%s' '17 5\smd48+)' | atom)" = "2" ] && ok "smd" || no "smd"
 
 echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
-[ "$(printf '%s' ':d\dbl;3\refd\exec48+)' | atom)" = "6" ] && ok "ref + exec" || no "ref/exec"
+[ "$(printf '%s' ':d\dbl;3\refd\exec48+)' | atom)" = "6" ] && ok "ref + exec (′word)" || no "ref/exec"
+[ "$(printf '%s' '3 4\ref+\exec48+)' | atom)" = "7" ] && ok "ref + exec (′atom, auto-wrapped)" || no "ref atom"
 
 echo "List type (prelude library): A alloc R range L len I index S sum N num M map F fold Q print"
 python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"    # encoded prelude
@@ -72,9 +73,9 @@ gc(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$T
 [ "$(printf '%s' '10R 4 I N E' | gc)" = "4" ]    && ok "index"             || no "index"
 [ "$(printf '%s' '100R S N E'  | gc)" = "4950" ] && ok "sum of range(100)"  || no "sum range"
 [ "$(printf '%s' '12345N E'    | gc)" = "12345" ]&& ok "decimal printer"   || no "printer"
-[ "$(printf '%s' ':d\dbl;5R\refdMSNE'  | gc)" = "20" ] && ok "map (double, sum)" || no "map"
-[ "$(printf '%s' ':x\max;6R 0\refxFNE' | gc)" = "5" ]  && ok "fold (max)"        || no "fold"
-[ "$(printf '%s' ':q\sqr;4R\refqMQE'   | gc)" = "0 1 4 9 " ] && ok "map + print list" || no "map/print"
+[ "$(printf '%s' '5R\ref\dblMSNE'      | gc)" = "20" ] && ok "map (′atom double, sum)" || no "map"
+[ "$(printf '%s' '6R 0\ref\maxFNE'     | gc)" = "5" ]  && ok "fold (′atom max)"  || no "fold"
+[ "$(printf '%s' ':d\dbl;5R\refdMQE'   | gc)" = "0 2 4 6 8 " ] && ok "map (′word) + print" || no "map/print"
 [ "$(printf '%s' ':i\inc;4R\refiMPNE'  | gc)" = "24" ]  && ok "product"  || no "product"
 [ "$(printf '%s' '5RVQE'               | gc)" = "4 3 2 1 0 " ] && ok "reverse" || no "reverse"
 [ "$(printf '%s' ':e2%;10R\refeWSNE'   | gc)" = "20" ]  && ok "filter (even, sum)" || no "filter"
@@ -97,8 +98,8 @@ tools/golfc -j examples/vars.golfj "$TMP/vars" 2>/dev/null
 [ "$("$TMP/vars" 2>/dev/null)" = "40" ] && ok "golfc examples/vars.golfj" || no "vars.golfj"
 
 echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closures"
-[ "$(printf '%s' ':p+;5R5R′pZSNE'    | gc)" = "20" ] && ok "zip (+) then sum" || no "zip"
-[ "$(printf '%s' ':m*;4R4R′mZSNE'    | gc)" = "14" ] && ok "dot product"      || no "dot"
+[ "$(printf '%s' '5R5R\ref+ZSNE'      | gc)" = "20" ] && ok "zip (′atom +) then sum" || no "zip"
+[ "$(printf '%s' '4R4R\ref*ZSNE'      | gc)" = "14" ] && ok "dot product (′atom *)" || no "dot"
 [ "$(printf '%s' '10→k:f←k+;5R′fMQE' | gc)" = "10 11 12 13 14 " ] && ok "broadcast (closure)" || no "broadcast"
 tools/golfc -j examples/vectorize.golfj "$TMP/vec" 2>/dev/null
 [ "$("$TMP/vec" 2>/dev/null)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
