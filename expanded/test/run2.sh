@@ -97,6 +97,20 @@ echo "Named variables (M3): →x store, ←x load (global name-indexed bank)"
 tools/golfc -j examples/vars.golfj "$TMP/vars" 2>/dev/null
 [ "$("$TMP/vars" 2>/dev/null)" = "40" ] && ok "golfc examples/vars.golfj" || no "vars.golfj"
 
+echo "Reference oracle (boot/golfref.py): Python v2 compiler, differential check"
+oracle(){ cat <(python3 tools/codepage.py encode < lib/prelude.golfj) \
+              <(python3 tools/codepage.py encode < "examples/$1.golfj") \
+            | python3 boot/golfref.py > "$TMP/o$1" 2>/dev/null \
+            && chmod +x "$TMP/o$1" && "$TMP/o$1" 2>/dev/null; }
+[ "$(oracle lists)" = "$(printf '4950\n20\n5')" ] \
+  && ok "oracle: lists.golfj behaves identically"     || no "oracle lists.golfj"
+[ "$(oracle vars)"  = "40" ] \
+  && ok "oracle: vars.golfj behaves identically"      || no "oracle vars.golfj"
+[ "$(oracle strings)" = "$(printf 'Hello, world!\ndesserts\nIfmmp')" ] \
+  && ok "oracle: strings.golfj behaves identically"   || no "oracle strings.golfj"
+[ "$(oracle vectorize)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] \
+  && ok "oracle: vectorize.golfj behaves identically" || no "oracle vectorize.golfj"
+
 echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closures"
 [ "$(printf '%s' '5R5R\ref+ZSNE'      | gc)" = "20" ] && ok "zip (′atom +) then sum" || no "zip"
 [ "$(printf '%s' '4R4R\ref*ZSNE'      | gc)" = "14" ] && ok "dot product (′atom *)" || no "dot"
