@@ -211,6 +211,41 @@ tools/golfc -j examples/polymorphic.golfj "$TMP/poly" 2>/dev/null
   && ok "oracle: polymorphic.golfj behaves identically" || no "oracle polymorphic.golfj"
 
 # @@ W2-CHAIN @@
+echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotations built at runtime"
+# ∘ writes a 39-byte thunk [prologue][mov rax,f; call rax][mov rax,g; call rax]
+# [epilogue] into the code arena and returns its address, so ⍎ calls it like any
+# compiled word.  d = ⊗ double, i = ⊕ increment; (d ∘ i)(5) = i(d 5) = 11.
+[ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\exec N E' | gc)" = "11" ] \
+  && ok "compose (′d ∘ ′i applied to 5)" || no "compose"
+# The thunk must NOT come from the list heap (>= 0x500000, where it would be
+# indistinguishable from a list): the arena is 0x4D0000 = 5046272, an int.
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp N E' | gc)" = "5046272" ] \
+  && ok "a composed quotation is an int in the code arena at 0x4D0000" || no "compose arena address"
+# Two composes, second minus first (±negated because Ṅ prints unsigned).
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp\refi\refd\comp\rsub\neg N E' | gc)" = "39" ] \
+  && ok "composing twice bumps the arena by exactly one 39-byte thunk" || no "compose twice"
+[ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\refd\comp\exec N E' | gc)" = "22" ] \
+  && ok "compose of a composed quotation: d(i(d 5))" || no "compose of compose"
+[ "$(printf '%s' ':d\dbl;:i\inc;:c\refd\refi\comp\exec;5R\refcMQE' | gc)" = "1 3 5 7 9 " ] \
+  && ok "compose inside map (a fresh thunk per element, 2x+1)" || no "compose in map"
+# ⑂ fork: the APL/J train.  mean = ÷(∑, ≢); ∑(0..4)=10, ≢=5, 10÷5=2.
+[ "$(printf '%s' '5R\refS\refL\ref\sdv\fork N E' | gc)" = "2" ] \
+  && ok "fork: mean of range(5) = ÷(∑, ≢)" || no "fork mean"
+[ "$(printf '%s' ':e\refS\refL\ref\sdv\fork;5R\refe\exec N E' | gc)" = "2" ] \
+  && ok "fork reached through an extra ⍎ indirection" || no "fork via exec"
+# fork inside map: f and g are looping words, so this only works if every frame
+# nests.  means of [0,1] and [0,1,2,3] are 1÷2=0 and 6÷4=1.
+[ "$(printf '%s' ':m\refS\refL\ref\sdv\fork;3A 2&!2R&4\radd!4R&8\radd!\refmMQE' | gc)" = "0 1 " ] \
+  && ok "fork inside map (nested scratch frames)" || no "fork in map"
+# ⇉ pipeline over a hand-built quotation list [′d, ′i]: 3 cells = len + 2 addrs.
+[ "$(printf '%s' ':d\dbl;:i\inc;5 3A 2&!\refd&4\radd!\refi&8\radd!\pipe N E' | gc)" = "11" ] \
+  && ok "pipeline: 5 threaded through [′d, ′i]" || no "pipeline"
+[ "$(printf '%s' '5 1A 0&!\pipe N E' | gc)" = "5" ] \
+  && ok "pipeline over an empty quotation list is the identity" || no "empty pipeline"
+tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
+[ "$("$TMP/chain" 2>/dev/null)" = "$(printf '11\n2\n11')" ] && ok "golfc examples/chain.golfj" || no "chain.golfj"
+[ "$(oracle chain)" = "$(printf '11\n2\n11')" ] \
+  && ok "oracle: chain.golfj behaves identically" || no "oracle chain.golfj"
 # @@ W3-VEC @@
 # @@ W4-CELLS @@
 # @@ W6-LIT @@

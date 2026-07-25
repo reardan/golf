@@ -59,6 +59,9 @@ LIB = [
     (0xC2, "vmul", "⨰", "polymorphic mul (int/list, elementwise, broadcast)"),
     (0xC3, "vmin", "⩍", "polymorphic min (int/list, elementwise, broadcast)"),
     (0xC4, "vmax", "⩌", "polymorphic max (int/list, elementwise, broadcast)"),
+    (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
+    (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
+    (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

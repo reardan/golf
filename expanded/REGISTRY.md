@@ -110,9 +110,9 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xC2` | `\vmul` | `⨰` | polymorphic mul | shipped |
 | `0xC3` | `\vmin` | `⩍` | polymorphic min | shipped |
 | `0xC4` | `\vmax` | `⩌` | polymorphic max | shipped |
-| `0xC5` | `\comp` | `∘` | compose two quotations | reserved |
-| `0xC6` | `\pipe` | `⇉` | pipeline (thread a value through a list of quotations) | reserved |
-| `0xC7` | `\fork` | `⑂` | fork: `x ′f ′g ′h -> h(f x, g x)` | reserved |
+| `0xC5` | `\comp` | `∘` | compose two quotations (writes a 39-byte thunk into the code arena) | shipped |
+| `0xC6` | `\pipe` | `⇉` | pipeline (thread a value through a list of quotations) | shipped |
+| `0xC7` | `\fork` | `⑂` | fork: `x ′f ′g ′h -> h(f x, g x)` | shipped |
 
 `0x91`–`0x96` are the raw scalar atoms M-VEC needs (see NEXT_STEPS.md §3): they
 keep the non-polymorphic behavior of `+ - * ⌊ ⌈ <` so the prelude's own pointer
@@ -168,14 +168,14 @@ both forms are given here and the decimal is the one you type.
 | `m+20`, `m+24`, `m+28` | | golf2 compiler scratch: `′` jmp-site / thunk addr, `“` len-site / count | shipped |
 | `m+32` | | **first free compiler scratch** | free |
 | `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
-| `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena (compose/fork write code here) | reserved (W2) |
+| `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000` | 5111808 | user variable bank (`→x`/`←x`), 4 bytes per name — **user space** | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | prelude scratch `s0`–`s7` — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list) | shipped |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
 | `0x4F0034` | 5177396 | heap base cell | shipped |
 | `0x4F0038` | 5177400 | heap span cell | shipped |
-| `0x4F003C` | 5177404 | code-arena pointer (into `0x4D0000`) | reserved (W2) |
+| `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F00FF` | 5177408–5177599 | reserved for future scratch | free |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte | reserved (W3) |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 56 frames of 32 bytes | shipped |
