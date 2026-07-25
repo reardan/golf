@@ -1,0 +1,5 @@
+# List demo, authored in code-page glyph form.
+# ⍳ = range, ∑ = sum, Ṅ = print number, ␤ = newline.
+100⍳∑Ṅ␤          # sum of range(100) = 4950
+10⍳4⊇Ṅ␤          # index 4 of range(10) = 4  (⊇ = index, needs list then i)
+7⍳≢Ṅ␤            # length of range(7) = 7    (≢ = len)

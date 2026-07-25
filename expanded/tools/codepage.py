@@ -22,11 +22,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import mkblob2
 
+# Prelude library words (see lib/prelude.golf).  These are ordinary single-byte
+# word *calls* (ASCII letters), so their glyphs/mnemonics are input aliases only:
+# encode maps ⍳/\range -> byte 'R'; decode shows the letter (a byte could be any
+# user word).  (letter, mnemonic, glyph, doc)
+LIB = [
+    ("R", "range", "⍳", "range(n) -> [0..n-1]"),
+    ("S", "sum",   "∑", "sum(list)"),
+    ("L", "len",   "≢", "len(list)"),
+    ("I", "index", "⊇", "index(list, i)"),
+    ("A", "alloc", "⍶", "alloc(cells) -> addr"),
+    ("N", "num",   "Ṅ", "print unsigned decimal"),
+    ("E", "nl",    "␤", "print newline"),
+]
+
 # byte <-> glyph / mnemonic for the named atoms (ASCII bytes map to themselves)
 BYTE2GLYPH = {b: gl for b, _mn, gl, _t, _d in mkblob2.ATOMS}
 BYTE2MNEM  = {b: mn for b, mn, _gl, _t, _d in mkblob2.ATOMS}
 GLYPH2BYTE = {gl: b for b, _mn, gl, _t, _d in mkblob2.ATOMS}
 MNEM2BYTE  = {mn: b for b, mn, _gl, _t, _d in mkblob2.ATOMS}
+# add the library aliases (encode-only: glyph/mnemonic -> the word's letter byte)
+GLYPH2BYTE.update({gl: ord(ltr) for ltr, _mn, gl, _d in LIB})
+MNEM2BYTE.update({mn: ord(ltr) for ltr, mn, _gl, _d in LIB})
 
 
 def encode(text: str) -> bytes:
@@ -72,9 +89,14 @@ def decode(data: bytes, mnemonic: bool = False) -> str:
 
 
 def print_table():
+    print("ATOMS (single-byte machine-code ops)")
     print("byte  glyph  mnemonic  meaning")
     for b, mn, gl, _t, doc in mkblob2.ATOMS:
         print(f"0x{b:02X}   {gl:>2}     \\{mn:<7}  {doc}")
+    print("\nLIBRARY (prelude words — glyph/mnemonic are input aliases for a letter)")
+    print("byte  glyph  mnemonic  word  meaning")
+    for ltr, mn, gl, doc in LIB:
+        print(f"0x{ord(ltr):02X}   {gl:>2}     \\{mn:<7}  {ltr}     {doc}")
 
 
 def main(argv):

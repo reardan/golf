@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 import golf0
 import mkblob2
 
-golf0.TEMPLATES.update({k: list(v) for k, v in mkblob2.NEW_OPS.items()})
+golf0.TEMPLATES.update({chr(b): list(tpl) for b, _mn, _gl, tpl, _d in mkblob2.ATOMS})
 
 def main():
     sys.stdout.buffer.write(golf0.compile_bytes(sys.stdin.buffer.read()))

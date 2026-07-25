@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# golfc — compile a GOLF/2 program to an executable, with the list prelude.
+#
+#   golfc PROG.g2  OUT      # PROG is raw code-page bytes
+#   golfc -j PROG.golfj OUT # PROG is glyph/\mnemonic source (encoded first)
+#   golfc -n PROG OUT       # no prelude (bare program)
+#
+# Builds the toolchain (v1c -> golf2) once into expanded/build/ and reuses it.
+set -eu
+HERE=$(cd "$(dirname "$0")/.." && pwd)          # expanded/
+MIN="$HERE/../minimal"
+BUILD="$HERE/build"; mkdir -p "$BUILD"
+GOLF2="$BUILD/golf2"
+
+# (re)build golf2 if missing or stale
+if [ ! -x "$GOLF2" ] || [ "$HERE/self/golf2.golf" -nt "$GOLF2" ]; then
+  python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$BUILD/v1c"; chmod +x "$BUILD/v1c"
+  "$BUILD/v1c" < "$HERE/self/golf2.golf" > "$GOLF2"; chmod +x "$GOLF2"
+fi
+
+prelude="$HERE/lib/prelude.golf"; encode=""; noprelude=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -j) encode=1; shift;;
+    -n) noprelude=1; shift;;
+    *) break;;
+  esac
+done
+prog=$1; out=$2
+src=$(mktemp)
+[ -z "$noprelude" ] && cat "$prelude" >> "$src"
+if [ -n "$encode" ]; then python3 "$HERE/tools/codepage.py" encode < "$prog" >> "$src"
+else cat "$prog" >> "$src"; fi
+"$GOLF2" < "$src" > "$out"; chmod +x "$out"
+rm -f "$src"

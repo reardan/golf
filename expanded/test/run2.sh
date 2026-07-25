@@ -53,6 +53,24 @@ python3 tools/codepage.py encode < examples/atoms.golfj > "$TMP/atoms.gb" 2>/dev
 python3 tools/codepage.py decode -m < "$TMP/atoms.gb" | python3 tools/codepage.py encode \
   | cmp -s - "$TMP/atoms.gb" && ok "code page round-trips exactly" || no "code page round-trip"
 
+echo "Grown atom set: » gt ≡ eq ⌈ max ⌊ min ÷ sdv ∣ smd"
+[ "$(printf '%s' '7 3\gt1+48+)' | atom)" = "0" ] && ok "gt"  || no "gt"
+[ "$(printf '%s' '5 5\eq1+48+)' | atom)" = "0" ] && ok "eq"  || no "eq"
+[ "$(printf '%s' '4 9\max48+)'  | atom)" = "9" ] && ok "max" || no "max"
+[ "$(printf '%s' '4 9\min48+)'  | atom)" = "4" ] && ok "min" || no "min"
+[ "$(printf '%s' '17 5\sdv48+)' | atom)" = "3" ] && ok "sdv" || no "sdv"
+[ "$(printf '%s' '17 5\smd48+)' | atom)" = "2" ] && ok "smd" || no "smd"
+
+echo "List type (prelude library): A alloc, R range, L len, I index, S sum, N num"
+gc(){ cat lib/prelude.golf - | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p"; }
+[ "$(printf '%s' '5R L N E'    | gc)" = "5" ]    && ok "range + len"      || no "range/len"
+[ "$(printf '%s' '10R 4 I N E' | gc)" = "4" ]    && ok "index"            || no "index"
+[ "$(printf '%s' '100R S N E'  | gc)" = "4950" ] && ok "sum of range(100)" || no "sum range"
+[ "$(printf '%s' '12345N E'    | gc)" = "12345" ]&& ok "decimal printer"  || no "printer"
+python3 tools/codepage.py encode < examples/lists.golfj > "$TMP/lists.gb"
+cat lib/prelude.golf "$TMP/lists.gb" | "$TMP/golf2" > "$TMP/lists" 2>/dev/null && chmod +x "$TMP/lists"
+[ "$("$TMP/lists" 2>/dev/null)" = "$(printf '4950\n4\n7')" ] && ok "glyph-form examples/lists.golfj" || no "lists.golfj"
+
 echo
 echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"
 echo "Result: $pass passed, $fail failed"
