@@ -131,14 +131,14 @@ Uppercase letters are the pool.
 **In use (shipped):** `A` alloc · `E` newline · `F` fold · `H` heap-pointer
 address · `I` index · `J` join · `L` len · `M` map · `N` print uint · `O` puts ·
 `P` product · `Q` show · `R` range · `S` sum · `U` chars · `V` reverse ·
-`W` filter · `Z` zip.
+`W` filter · `X` push spill frame · `Y` pop spill frame · `Z` zip.
 
 **Assigned (do not use for anything else):**
 
 | Letter | Meaning | Wave | Status |
 |--------|---------|------|--------|
-| `X` | push scratch spill frame | W1 | reserved |
-| `Y` | pop spill frame | W1 | reserved |
+| `X` | push scratch spill frame | W1 | shipped |
+| `Y` | pop spill frame | W1 | shipped |
 | `T` | shape test (is this value a list?) | W2 | reserved |
 | `D` | binary shape dispatcher | W2 | reserved |
 | `K` | broadcast `list ⊙ int` | W2 | reserved |
@@ -171,13 +171,13 @@ both forms are given here and the decimal is the one you type.
 | `0x4E0000` | 5111808 | user variable bank (`→x`/`←x`), 4 bytes per name — **user space** | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | prelude scratch `s0`–`s7` — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list) | shipped |
-| `0x4F0030` | 5177392 | spill-stack pointer | reserved (W1) |
+| `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
 | `0x4F0034` | 5177396 | heap base cell | reserved (W2) |
 | `0x4F0038` | 5177400 | heap span cell | reserved (W2) |
 | `0x4F003C` | 5177404 | code-arena pointer (into `0x4D0000`) | reserved (W2) |
 | `0x4F0040`–`0x4F00FF` | 5177408–5177599 | reserved for future scratch | free |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte | reserved (W3) |
-| `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) | reserved (W1) |
+| `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 56 frames of 32 bytes | shipped |
 | `0x500000` | 5242880 | heap base today (bump allocator) | shipped |
 | `0xC00000` | 12582912 | return stack top (grows **down** into the heap) | shipped |
 
@@ -185,11 +185,14 @@ Notes:
 
 - **Scratch is exhausted.** All eight of `s0`–`s7` are live in `lib/prelude.golfj`
   today. A new prelude word that needs a temporary must either use one of the
-  cells above or push a spill frame (`X`/`Y`, W1) — it may not invent an address.
-- **Stale doc, superseded:** `lib/prelude.golfj:7` says reserved scratch is
-  `0x4F0010..0x4F0024`, but `0x4F0028` (filter's count) and `0x4F002C` (zip's
-  second list) are used too. **This registry is authoritative**; fix that comment
-  when the file is next touched.
+  cells above or push a spill frame (`X`/`Y`) — it may not invent an address.
+- **Scratch is callee-saved, not caller-saved.** Every scratch-using looping
+  word in the prelude opens with `X` and closes with `Y` (lifting its result
+  onto the data stack first, since `Y` is stack-neutral), so higher-order words
+  nest: a mapped function may itself call `R`/`S`/`M`/… . `X` and `Y` touch no
+  scratch themselves — only the data stack and absolute addresses. `A` is the
+  one exception: `s5` is A-only and never held across a call, so `A` needs no
+  frame, and `I` is scratch-free.
 - **Heap/return-stack collision** is real: the bump heap at `0x500000` grows up
   and the return stack grows down from `0xC00000` in the same 8 MB segment.
   W6/M-MEM moves the heap above `0xC00000` and sizes it with `brk` (`0xA6`),
