@@ -85,6 +85,21 @@ echo "Raw scalar atoms (prelude-internal, never polymorphic): ﹢ ﹣ ﹡ ⊓ �
 [ "$(printf '%s' '4 9\rmax48+)'   | atom)" = "9" ] && ok "rmax" || no "rmax"
 [ "$(printf '%s' '3 4\rlt1+48+)'  | atom)" = "0" ] && ok "rlt"  || no "rlt"
 
+# @@ W1-M4ATOMS @@
+echo "M4 atoms: ≺ slt ≻ sgt (signed compare), ≪ shl ≫ sar, ⊙ fetch ⊛ store (64-bit)"
+# slt/sgt are where signed differs from unsigned: -5 <s 3 is true, but as u64
+# -5 is huge so v1's `<` would say false (and print 1 instead of 0).
+[ "$(printf '%s' '0 5-3\slt1+48+)'   | atom)" = "0" ] && ok "slt (-5 <s 3)"  || no "slt"
+[ "$(printf '%s' '3 0 5-\sgt1+48+)'  | atom)" = "0" ] && ok "sgt (3 >s -5)"  || no "sgt"
+[ "$(printf '%s' '1 3\shl48+)'       | atom)" = "8" ] && ok "shl (1<<3)"     || no "shl"
+[ "$(printf '%s' '16 2\sar48+)'      | atom)" = "4" ] && ok "sar (16>>2)"    || no "sar"
+[ "$(printf '%s' '0 8-1\sar 6+48+)'  | atom)" = "2" ] && ok "sar (-8>>1=-4)" || no "sar negative"
+# -1 >>a 63 is -1; an unsigned shr would give 1 and print 2 instead of 0.
+[ "$(printf '%s' '0 1-63\sar1+48+)'  | atom)" = "0" ] && ok "sar keeps the sign bit" || no "sar sign"
+# 64-bit cell round-trip through free scratch 0x4F0040 (REGISTRY.md §3).
+[ "$(printf '%s' '7 5177408\store 5177408\fetch48+)' | atom)" = "7" ] \
+  && ok "store + fetch (64-bit cell round-trip)" || no "store/fetch"
+
 echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
 [ "$(printf '%s' ':d\dbl;3\refd\exec48+)' | atom)" = "6" ] && ok "ref + exec (′word)" || no "ref/exec"
 [ "$(printf '%s' '3 4\ref+\exec48+)' | atom)" = "7" ] && ok "ref + exec (′atom, auto-wrapped)" || no "ref atom"
