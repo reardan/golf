@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Bootstrap ladders + test suites
+    runs-on: ubuntu-latest   # x86-64 Linux: the compilers emit and run ELF64 binaries
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Minimal (v1) — self-hosting fixpoint + tests
+        run: bash minimal/test/run.sh
+
+      - name: Expanded (v2) — bootstrap ladder + tests
+        run: bash expanded/test/run2.sh
+
+      # run2.sh regenerates expanded/self/golf2.golf from tools/mkblob2.py;
+      # the checked-in seed must not drift from what the generator produces.
+      - name: Checked-in seed matches the generator
+        run: git diff --exit-code -- expanded/self/golf2.golf
