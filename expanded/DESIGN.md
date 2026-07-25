@@ -129,14 +129,16 @@ Each milestone is independently testable and must keep `test/run2.sh` green
   so mutual recursion needs no pending-char hack. Pursue if/when programs get big
   enough that single-byte word names hurt.
 
-- **M-JELLY — deeper Jelly semantics (Path-A frontier).** The list type, code
-  page, and higher-order ops are the surface; the real Jelly power is the model
-  underneath: atoms that *vectorize* over lists automatically, and chains
-  (implicit argument threading with monadic/dyadic links). Both need runtime
-  type tags (int vs list) so a single atom can dispatch on shape — with tags,
-  `′`/`⍎` and `M`/`F` become the machinery chains are built from. This is the
-  large remaining effort between "GOLF with lists and glyphs" and "an actual golf
-  language".
+- **M-JELLY — vectorization (explicit done; implicit is the frontier).** Done:
+  **explicit** vectorization — `Z` zip (`⊞`, elementwise binary op over two
+  lists), so `4⍳4⍳′m⊞∑` is a dot product; and **broadcast** via a named-variable
+  closure (`10→k:f←k+;5⍳′f€` = +10 over a list). Still the frontier: **implicit**
+  auto-vectorization — a bare `+` on two lists working elementwise, and int+list
+  broadcasting — which needs runtime **type tags** (int vs list) so one atom
+  dispatches on shape. With tags, `′`/`⍎`, `M`/`F`, and `Z` become the machinery
+  that Jelly **chains** (tacit monadic/dyadic link threading) are built from.
+  Two known warts to fix along the way: `′` can't reference an atom (wrap it in a
+  word), and lengths/shapes aren't checked.
 
 - **M3 — named variables (done, lite).** `→x` stores TOS, `←x` loads it — compiler
   prefix ops over a name-indexed **global** register bank at 0x4E0000. Kills most
@@ -159,10 +161,13 @@ Each milestone is independently testable and must keep `test/run2.sh` green
   (A R L I), sum/product (S P), map/fold/filter (M F W), reverse (V), print
   (N Q E). Still to grow: number parse, string ops (needs M5), buffered I/O.
 
-- **M7 — compiler quality.** A peephole optimizer (fold `push;pop`, dead moves),
-  and keeping the top-of-stack in a register instead of always spilling to memory.
-  Large output-size and speed win; the first place golf2 stops being a naive
-  template concatenator.
+- **M7 — compiler quality (deferred).** A peephole optimizer doesn't fit the
+  current single-pass backpatch model: any *size-reducing* fold shifts every
+  later rel32 offset (needs a relocation/second pass), and a *size-preserving*
+  fold (`push imm;pop rax` → `mov;nop`) is perf-only — negligible for tiny golf
+  programs — and can't distinguish code from embedded string/blob bytes without
+  instruction-boundary tracking. Revisit once there's a relocation pass or a
+  register-based (top-of-stack-in-a-register) codegen, which is the real win.
 
 - **M9 — reach (optional).** `include`/modules; an object-file emitter so output
   can be linked with `cc`; a small IR to retarget (arm64) or emit C.

@@ -1,0 +1,6 @@
+# Explicit vectorization (M-JELLY slice).
+#   ⊞ zip = elementwise binary op over two lists;  broadcast = map + a →closure.
+# (Atoms like + * must be wrapped in a word to be passed by ′; see :p+; below.)
+:p+;5⍳5⍳′p⊞⍕␤        # elementwise sum of two range(5)s -> 0 2 4 6 8
+:m*;4⍳4⍳′m⊞∑Ṅ␤       # dot product  range(4)·range(4)   -> 14
+10→k:f←k+;5⍳′f€⍕␤     # broadcast +10 over range(5)      -> 10 11 12 13 14

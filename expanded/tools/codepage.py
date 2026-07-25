@@ -43,6 +43,7 @@ LIB = [
     ("O", "puts",  "🗲", "print a “...” byte string"),
     ("U", "chars", "⊃", "byte string -> list of char codes"),
     ("J", "join",  "⊐", "print a code list as text (cell -> byte)"),
+    ("Z", "zip",   "⊞", "zip(l1, l2, fn) -> list (elementwise)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

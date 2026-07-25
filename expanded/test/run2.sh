@@ -96,6 +96,13 @@ echo "Named variables (M3): →x store, ←x load (global name-indexed bank)"
 tools/golfc -j examples/vars.golfj "$TMP/vars" 2>/dev/null
 [ "$("$TMP/vars" 2>/dev/null)" = "40" ] && ok "golfc examples/vars.golfj" || no "vars.golfj"
 
+echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closures"
+[ "$(printf '%s' ':p+;5R5R′pZSNE'    | gc)" = "20" ] && ok "zip (+) then sum" || no "zip"
+[ "$(printf '%s' ':m*;4R4R′mZSNE'    | gc)" = "14" ] && ok "dot product"      || no "dot"
+[ "$(printf '%s' '10→k:f←k+;5R′fMQE' | gc)" = "10 11 12 13 14 " ] && ok "broadcast (closure)" || no "broadcast"
+tools/golfc -j examples/vectorize.golfj "$TMP/vec" 2>/dev/null
+[ "$("$TMP/vec" 2>/dev/null)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
+
 echo
 echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"
 echo "Result: $pass passed, $fail failed"
