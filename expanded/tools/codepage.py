@@ -51,6 +51,9 @@ LIB = [
     ("J", "join",  "⊐", "print a code list as text (cell -> byte)"),
     ("Z", "zip",   "⊞", "zip(l1, l2, fn) -> list (elementwise)"),
     # --- W2 LIB rows ---
+    (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
+    (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
+    (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

@@ -101,6 +101,45 @@
 :Z X5177372!5177388!5177360!5177360@@5177388@@\rmin"5177368!"1\radd A"5177376!!0 5177364!5177368@0\eq[{5177360@5177364@I5177388@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177368@\rlt1\radd}]5177376@ Y;
 # --- W2-TAG words ---
 # --- W2-CHAIN words ---
+# Tacit combinators (M-CHAIN).  ∘ compose · ⇉ pipeline · ⑂ fork.  A quotation is
+# just a code address (what ′ pushes), and the whole load segment is RWX, so ∘
+# BUILDS ONE AT RUNTIME with the byte-store op `,`: it assembles a 39-byte thunk
+#   [PROLOGUE][48 B8 f:u64][FF D0][48 B8 g:u64][FF D0][EPILOGUE]
+#     sub rbp,8; pop [rbp]  |  mov rax,f; call rax  |  mov rax,g; call rax
+#     |  push [rbp]; add rbp,8; ret
+# — the exact prologue/epilogue a compiled word gets, so ⍎ calls it like any
+# other word: the PROLOGUE parks ⍎'s return address (`call` pushes it on the
+# DATA stack) on the return stack at rbp, f and g then run as plain words over
+# the data stack, and the EPILOGUE hands the address back and rets.  The two
+# imm64 operands are written with `!` (4 bytes: the address, all < 2^31) then a
+# second `!` for the four zero high bytes; every opcode byte goes out with `,`.
+#
+# Thunks come from a dedicated CODE ARENA at 0x4D0000 (bump pointer 0x4F003C),
+# never from the list heap: a heap address (>= 0x500000) would be
+# indistinguishable from a list to the shape test, whereas 0x4D0000 sits below
+# the variable bank and above the compiler's ceiling, so a composed quotation
+# classifies as an int like every other ′ address.  ∘ is X/Y-wrapped (it parks f,
+# g and the thunk's start address in s1/s2/s3) so it may be called from inside a
+# map or a fold; each call bumps the arena by 39 bytes.
+:∘X5177368!5177364!5046272 5177404@\radd"5177372!
+ 72&,1\radd131&,1\radd237&,1\radd8&,1\radd143&,1\radd69&,1\radd0&,1\radd
+ 72&,1\radd184&,1\radd5177364@&!4\radd0&!4\radd255&,1\radd208&,1\radd
+ 72&,1\radd184&,1\radd5177368@&!4\radd0&!4\radd255&,1\radd208&,1\radd
+ 255&,1\radd117&,1\radd0&,1\radd72&,1\radd131&,1\radd197&,1\radd8&,1\radd195&,1\radd
+ _5177404@39\radd5177404!5177372@Y;              # ∘: ′f ′g -> ′(x -> g(f x))
+# ⇉ pipeline(x, qlist) -> y : thread x through every quotation, left to right.
+# That is exactly a fold whose fn is ⍎ itself — F pushes (acc, elem) and elem IS
+# the quotation, so ′⍎ applies it to acc.  F wants (list init fn) and we are
+# handed (x qlist); the reorder goes through s0/s1 rather than the swap op,
+# because the byte for swap is 0x5C and `decode` renders it as a bare `\`, which
+# `encode` then reads as the escape for the mnemonic that follows it — ′⍎ here.
+# Encoding is one-way-safe but the round trip is not, so the prelude stays free
+# of 0x5C.  X/Y-wrapped: s0/s1 must not leak to a caller that is mid-fold.
+:⇉X5177364!5177360!5177364@5177360@\ref\execFY;  # ⇉: x qlist -> y
+# ⑂ fork(x, ′f, ′g, ′h) -> h(f x, g x) — the classic APL/J train, e.g. mean is
+# ⑂ over sum, len and divide.  s0 x · s1 f · s2 g · s3 h; f/g/h may themselves be
+# looping words (they save their own frame), so this nests.
+:⑂X5177372!5177368!5177364!5177360!5177360@5177364@\exec5177360@5177368@\exec5177372@\execY;
 # --- W4 cells: list cells are 4 bytes; W4 widens to 8 ---
 # --- W6 allocator ---
 # --- W3 hook installation (top-level init; must stay LAST) ---
