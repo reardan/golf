@@ -70,6 +70,20 @@ ATOMS = [
                                                           "raw unsigned max (never polymorphic)"),
     (0x96, "rlt",  "﹤", [0x59, 0x58, 0x48, 0x29, 0xC8, 0x48, 0x19, 0xC0, 0x50],
                                                           "raw unsigned less -1/0 (never polymorphic)"),
+    # M4 atoms: signed compare, shifts, 64-bit cells.  v1's `<` `»` are UNSIGNED
+    # and its `@` `!` are 32-bit; these are the signed/64-bit counterparts at new
+    # bytes.  Widening `!` in place would corrupt the compiler's own 4-byte-strided
+    # dictionary, so `⊙`/`⊛` are additions and the swap is deferred to M4 proper.
+    (0xA0, "slt", "≺", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x0F, 0x9C, 0xC0,
+                        0x0F, 0xB6, 0xC0, 0x48, 0xF7, 0xD8, 0x50],
+                                                          "a b -> (a<b signed ? -1 : 0)"),
+    (0xA1, "sgt", "≻", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x0F, 0x9F, 0xC0,
+                        0x0F, 0xB6, 0xC0, 0x48, 0xF7, 0xD8, 0x50],
+                                                          "a b -> (a>b signed ? -1 : 0)"),
+    (0xA2, "shl", "≪", [0x59, 0x48, 0xD3, 0x24, 0x24],    "shift left (by TOS)"),
+    (0xA3, "sar", "≫", [0x59, 0x48, 0xD3, 0x3C, 0x24],    "arithmetic shift right (by TOS)"),
+    (0xA4, "fetch", "⊙", [0x58, 0x48, 0x8B, 0x00, 0x50],  "addr -> v, full 64-bit cell"),
+    (0xA5, "store", "⊛", [0x58, 0x59, 0x48, 0x89, 0x08],  "v addr -> ; full 64-bit cell"),
 ]
 
 # `ref` (byte 0x8C, glyph ′): a compiler *prefix* — read the next byte (a word

@@ -98,12 +98,12 @@ for the range immediately above them; do not fill them opportunistically.
 | `0x95` | `\rmax` | `⊔` | raw unsigned max | shipping in wave 0 |
 | `0x96` | `\rlt` | `﹤` | raw unsigned less | shipping in wave 0 |
 | `0x97` | — | — | spare (raw-atom range) | reserved |
-| `0xA0` | `\slt` | `≺` | signed less | reserved |
-| `0xA1` | `\sgt` | `≻` | signed greater | reserved |
-| `0xA2` | `\shl` | `≪` | shift left | reserved |
-| `0xA3` | `\sar` | `≫` | arithmetic shift right | reserved |
-| `0xA4` | `\fetch` | `⊙` | 64-bit fetch | reserved |
-| `0xA5` | `\store` | `⊛` | 64-bit store | reserved |
+| `0xA0` | `\slt` | `≺` | signed less | shipped |
+| `0xA1` | `\sgt` | `≻` | signed greater | shipped |
+| `0xA2` | `\shl` | `≪` | shift left | shipped |
+| `0xA3` | `\sar` | `≫` | arithmetic shift right | shipped |
+| `0xA4` | `\fetch` | `⊙` | 64-bit fetch | shipped |
+| `0xA5` | `\store` | `⊛` | 64-bit store | shipped |
 | `0xA6` | `\brk` | `⌸` | `brk` syscall (wave 6) | reserved |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | reserved |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | reserved |
