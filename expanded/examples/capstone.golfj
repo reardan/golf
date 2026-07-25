@@ -1,0 +1,5 @@
+# A tour of expanded GOLF: lists, higher-order, vectorization, strings, variables.
+5⍳′²€∑Ṅ␤                # sum of squares 0..4  (map ², sum)      -> 30
+4⍳4⍳′*⊞∑Ṅ␤              # dot product range(4)·range(4)  (zip *)  -> 14
+10⍳:e2%;′e⌿≢Ṅ␤          # count evens in 0..9  (filter, len)      -> 5
+3→k:f←k+;“Hello“U′f€J␤   # Caesar +3 of "Hello"  (var + map)       -> Khoor

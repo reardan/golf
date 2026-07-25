@@ -104,6 +104,10 @@ echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closur
 tools/golfc -j examples/vectorize.golfj "$TMP/vec" 2>/dev/null
 [ "$("$TMP/vec" 2>/dev/null)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
 
+echo "Capstone: lists + higher-order + vectorization + strings + variables together"
+tools/golfc -j examples/capstone.golfj "$TMP/cap" 2>/dev/null
+[ "$("$TMP/cap" 2>/dev/null)" = "$(printf '30\n14\n5\nKhoor')" ] && ok "golfc examples/capstone.golfj" || no "capstone.golfj"
+
 echo
 echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"
 echo "Result: $pass passed, $fail failed"
