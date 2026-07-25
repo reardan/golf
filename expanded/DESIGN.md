@@ -140,16 +140,29 @@ plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   so mutual recursion needs no pending-char hack. Pursue if/when programs get big
   enough that single-byte word names hurt.
 
-- **M-JELLY — vectorization (explicit done; implicit is the frontier).** Done:
-  **explicit** vectorization — `Z` zip (`⊞`, elementwise binary op over two
-  lists), so `4⍳4⍳′m⊞∑` is a dot product; and **broadcast** via a named-variable
-  closure (`10→k:f←k+;5⍳′f€` = +10 over a list). Still the frontier: **implicit**
-  auto-vectorization — a bare `+` on two lists working elementwise, and int+list
-  broadcasting — which needs runtime **type tags** (int vs list) so one atom
-  dispatches on shape. With tags, `′`/`⍎`, `M`/`F`, and `Z` become the machinery
-  that Jelly **chains** (tacit monadic/dyadic link threading) are built from.
-  (Fixed: `′atom` is now auto-wrapped, so `′+`/`′*`/`′⌈` pass straight to
-  `map`/`fold`/`zip`/`exec`. Remaining wart: no length/shape checks.)
+- **M-JELLY — vectorization (done, implicit included).** **Explicit:** `Z` zip
+  (`⊞`, elementwise binary op over two lists), so `4⍳4⍳′*⊞∑` is a dot product,
+  plus broadcast via a named-variable closure. **Implicit (M-VEC):** the *bare*
+  `+ - * ⌈ ⌊` now vectorize — `4⍳3+` is `3 4 5 6`, `10 4⍳-` is `10 9 8 7`,
+  `4⍳4⍳*∑` is a dot product — with no type tag on the value and no change to the
+  compiler's logic. Each of the five keeps its old scalar body and gains a
+  38-byte preamble: `cmp qword [hook],0; je scalar` (the hook table is 256 cells
+  of 8 bytes at `0x4F0100`, indexed by op byte — REGISTRY.md §3), then a
+  conservative `(a|b) <u heap-base` filter that sends anything that cannot be an
+  address to the scalar path, then `call qword [hook]`. **The prelude is
+  authoritative, not the filter:** the hooks point at `∔ ∸ ⨰ ⩌ ⩍`, whose
+  dispatcher `D` re-tests both operands exactly (`T`) and falls back to the raw
+  scalar op — so a `-1` flag from `<`, which the cheap filter cannot reject, is
+  still added, not indexed. The prelude's own pointer and index math uses the
+  never-polymorphic raw atoms `﹢ ﹣ ﹡ ⊓ ⊔` (0x91–0x96), so nothing recurses.
+  **Why the bootstrap survives it:** the hook cells are BSS, and every compiler
+  binary on the ladder is a program that never runs `lib/prelude.golfj`, so its
+  cells stay zero and it always takes the check-then-scalar path. golf2 now
+  overrides five v1 templates, so `stage1 != stage2` is **permanent by design**
+  (the `seed-stable:` line in `test/run2.sh` prints `no`); the real gate,
+  `stage2 == stage3`, is still byte-identical, because both are built from
+  `self/golf2.golf` and embed the same blob. Remaining wart: no length/shape
+  checks (`Z` truncates to the shorter list).
 
 - **M3 — named variables (done, lite).** `→x` stores TOS, `←x` loads it — compiler
   prefix ops over a name-indexed **global** register bank at 0x4E0000. Kills most

@@ -177,7 +177,7 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0038` | 5177400 | heap span cell | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F00FF` | 5177408–5177599 | reserved for future scratch | free |
-| `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte | reserved (W3) |
+| `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 56 frames of 32 bytes | shipped |
 | `0x500000` | 5242880 | heap base today (bump allocator) | shipped |
 | `0xC00000` | 12582912 | return stack top (grows **down** into the heap) | shipped |

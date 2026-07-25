@@ -39,6 +39,12 @@ FILESZ = golf0.FILESZ      # fixed p_filesz (binary must stay under this)
 # from, never written to.
 TEMPLATES = dict(golf0.TEMPLATES)
 TEMPLATES.update({chr(b): list(tpl) for b, _mn, _gl, tpl, _d in mkblob2.ATOMS})
+# M-VEC: the bare + - * ⌈ ⌊ are polymorphic — a hook-cell shape dispatch in front
+# of the unchanged scalar body (see mkblob2._poly).  Applied LAST: dict update
+# keeps the last write, while the blob's `f` returns the FIRST record for a key
+# and therefore emits the override instead of the original — same result, so the
+# oracle and the self-hosted compiler stay in agreement.
+TEMPLATES.update({chr(b): list(tpl) for b, tpl in mkblob2.OVERRIDES.items()})
 
 # Compiler-logic ops (prefixes / delimiters, not templates).
 REF_BYTE = mkblob2.REF_BYTE   # ′  push a word's or atom's runtime address
