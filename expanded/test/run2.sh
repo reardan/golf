@@ -75,6 +75,9 @@ gc(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$T
 [ "$(printf '%s' ':d\dbl;5R\refdMSNE'  | gc)" = "20" ] && ok "map (double, sum)" || no "map"
 [ "$(printf '%s' ':x\max;6R 0\refxFNE' | gc)" = "5" ]  && ok "fold (max)"        || no "fold"
 [ "$(printf '%s' ':q\sqr;4R\refqMQE'   | gc)" = "0 1 4 9 " ] && ok "map + print list" || no "map/print"
+[ "$(printf '%s' ':i\inc;4R\refiMPNE'  | gc)" = "24" ]  && ok "product"  || no "product"
+[ "$(printf '%s' '5RVQE'               | gc)" = "4 3 2 1 0 " ] && ok "reverse" || no "reverse"
+[ "$(printf '%s' ':e2%;10R\refeWSNE'   | gc)" = "20" ]  && ok "filter (even, sum)" || no "filter"
 tools/golfc -j examples/lists.golfj "$TMP/lists" 2>/dev/null
 [ "$("$TMP/lists" 2>/dev/null)" = "$(printf '4950\n20\n5')" ] && ok "golfc examples/lists.golfj" || no "lists.golfj"
 

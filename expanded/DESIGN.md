@@ -149,10 +149,9 @@ Each milestone is independently testable and must keep `test/run2.sh` green
 - **M5 — data & strings.** First-class string literals, a data section for named
   globals (not hardcoded addresses), and a small allocator (`brk`/`mmap`).
 
-- **M6 — standard library (in GOLF/2).** Started by `lib/prelude.golf`. Grow it:
-  number parse, string ops, more list ops (reverse, map/fold once quotations
-  exist), buffered I/O — written in the expanded language, not baked into
-  templates.
+- **M6 — standard library (in progress).** In `lib/prelude.golfj`: list runtime
+  (A R L I), sum/product (S P), map/fold/filter (M F W), reverse (V), print
+  (N Q E). Still to grow: number parse, string ops (needs M5), buffered I/O.
 
 - **M7 — compiler quality.** A peephole optimizer (fold `push;pop`, dead moves),
   and keeping the top-of-stack in a register instead of always spilling to memory.

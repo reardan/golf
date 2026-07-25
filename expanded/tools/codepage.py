@@ -34,6 +34,12 @@ LIB = [
     ("A", "alloc", "⍶", "alloc(cells) -> addr"),
     ("N", "num",   "Ṅ", "print unsigned decimal"),
     ("E", "nl",    "␤", "print newline"),
+    ("M", "map",   "€", "map(list, fn) -> list"),
+    ("F", "fold",  "⇤", "fold(list, init, fn) -> x"),
+    ("Q", "show",  "⍕", "print a list, space-separated"),
+    ("P", "prod",  "∏", "product(list)"),
+    ("V", "rev",   "⌽", "reverse(list) -> list"),
+    ("W", "filter","⌿", "filter(list, pred) -> list (keep where pred==0)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
