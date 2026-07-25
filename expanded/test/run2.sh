@@ -81,6 +81,14 @@ gc(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$T
 tools/golfc -j examples/lists.golfj "$TMP/lists" 2>/dev/null
 [ "$("$TMP/lists" 2>/dev/null)" = "$(printf '4950\n20\n5')" ] && ok "golfc examples/lists.golfj" || no "lists.golfj"
 
+echo "Strings (M5): “...“ literal, O puts, U chars->list, J join; list ops reuse"
+[ "$(printf '%s' '“Hello, world!“O'    | gc)" = "Hello, world!" ] && ok "string literal + puts" || no "puts"
+[ "$(printf '%s' '“abcde“@N'           | gc)" = "5" ]        && ok "string length via @"  || no "str len"
+[ "$(printf '%s' '“stressed“UVJ'       | gc)" = "desserts" ] && ok "reverse via list ops"  || no "str reverse"
+[ "$(printf '%s' ':k\inc;“abc“U\refkMJ'| gc)" = "bcd" ]      && ok "map over a string"     || no "map str"
+tools/golfc -j examples/strings.golfj "$TMP/str" 2>/dev/null
+[ "$("$TMP/str" 2>/dev/null)" = "$(printf 'Hello, world!\ndesserts\nIfmmp')" ] && ok "golfc examples/strings.golfj" || no "strings.golfj"
+
 echo
 echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"
 echo "Result: $pass passed, $fail failed"

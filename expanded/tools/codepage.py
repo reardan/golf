@@ -40,12 +40,16 @@ LIB = [
     ("P", "prod",  "∏", "product(list)"),
     ("V", "rev",   "⌽", "reverse(list) -> list"),
     ("W", "filter","⌿", "filter(list, pred) -> list (keep where pred==0)"),
+    ("O", "puts",  "🗲", "print a “...” byte string"),
+    ("U", "chars", "⊃", "byte string -> list of char codes"),
+    ("J", "join",  "⊐", "print a code list as text (cell -> byte)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
 # (byte, mnemonic, glyph, doc)
 COMPILER = [
     (mkblob2.REF_BYTE, "ref", "′", "prefix: ′name pushes that word's address"),
+    (mkblob2.STR_BYTE, "str", "“", "string literal delimiter: “text“ -> byte block"),
 ]
 
 # byte <-> glyph / mnemonic for the named atoms (ASCII bytes map to themselves)

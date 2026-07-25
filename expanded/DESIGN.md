@@ -146,8 +146,12 @@ Each milestone is independently testable and must keep `test/run2.sh` green
   add signed division/modulo (`cqo; idiv`), signed comparison, and shift-left.
   Update the memory cell ops (`@`/`!`) and literals accordingly.
 
-- **M5 — data & strings.** First-class string literals, a data section for named
-  globals (not hardcoded addresses), and a small allocator (`brk`/`mmap`).
+- **M5 — strings (done).** String literals `“...“` (compiler op, byte 0x8E) emit
+  a length-prefixed byte block and push its address. `O` prints one; `U` converts
+  it to a **list of char codes**, so every list op (map/filter/reverse/fold)
+  works on strings — `:k⊕;“Hello“U′kMJ` = `Ifmmp`. `J` prints a code list as
+  text. Still open (was also M5): a real data section for named globals and a
+  `brk`/`mmap` allocator instead of the fixed bump heap.
 
 - **M6 — standard library (in progress).** In `lib/prelude.golfj`: list runtime
   (A R L I), sum/product (S P), map/fold/filter (M F W), reverse (V), print

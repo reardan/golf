@@ -68,8 +68,17 @@ REF_CASE = '"140-[_(m2048+\\4*+@69632-104o w^]'     # dup ch; ch==140? read name
 # Insert the case into `t` just before its `e;` fallthrough.  `w^]e;` is the
 # unique junction between t's last case (the blob handler) and `e;` (t only
 # occurrence of `e;`; other words follow t in WORDS).
+# `str` (byte 0x8E, glyph “): a compiler op for string literals.  “...” emits a
+# length-prefixed byte block [len(4)][bytes] (jumped over) and pushes its
+# address.  A string is thus a byte block; `chars` converts it to a list of
+# codes so all list ops apply.  Compiler scratch: m20 jmp-site, m24 len-site,
+# m12 push-VA, m28 count.  Pure v1 GOLF; golf2's own source never uses it.
+STR_BYTE = 0x8E
+STR_CASE = ('"142-[_233o m4+@m20+!0w m4+@m24+! m4+@69632-m12+!0w 0 m28+!'
+            '{("142-[_m28+@m24+@!m4+@m20+@4+-m20+@!104o m12+@w^]o m28+@1+m28+!0}]')
+
 assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
-WORDS2 = mkblob.WORDS.replace("w^]e;", "w^]" + REF_CASE + "e;")
+WORDS2 = mkblob.WORDS.replace("w^]e;", "w^]" + REF_CASE + STR_CASE + "e;")
 
 def build_blob2():
     b = bytearray()
