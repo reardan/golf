@@ -108,6 +108,10 @@ echo "Capstone: lists + higher-order + vectorization + strings + variables toget
 tools/golfc -j examples/capstone.golfj "$TMP/cap" 2>/dev/null
 [ "$("$TMP/cap" 2>/dev/null)" = "$(printf '30\n14\n5\nKhoor')" ] && ok "golfc examples/capstone.golfj" || no "capstone.golfj"
 
+echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
+python3 tools/codepage.py check \
+  && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
+
 echo
 echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"
 echo "Result: $pass passed, $fail failed"

@@ -95,6 +95,18 @@ assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
 WORDS2 = mkblob.WORDS.replace(
     "w^]e;", "w^]" + REF_CASE + STR_CASE + SET_CASE + GET_CASE + "e;")
 
+def _check_atoms():
+    """Op-byte namespace (see ../REGISTRY.md §1): an ATOMS byte must be unique
+    and must not shadow a compiler prefix or a v1 template byte."""
+    bs = [b for b, _mn, _gl, _tpl, _doc in ATOMS]
+    dup = sorted({b for b in bs if bs.count(b) > 1})
+    assert not dup, "duplicate ATOMS byte: " + ", ".join(f"0x{b:02X}" for b in dup)
+    taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE}
+    taken |= {ord(ch) for ch in golf0.TEMPLATES}
+    clash = sorted(set(bs) & taken)
+    assert not clash, ("ATOMS byte already allocated: "
+                       + ", ".join(f"0x{b:02X}" for b in clash))
+
 def build_blob2():
     b = bytearray()
     b += mkblob.rec(1, golf0.PROLOGUE)
@@ -118,6 +130,7 @@ def build_source2():
     return b"".join(parts)
 
 def main():
+    _check_atoms()
     src = build_source2()
     out = os.path.join(HERE, "..", "self", "golf2.golf")
     with open(out, "wb") as f:
