@@ -50,6 +50,8 @@ LIB = [
 COMPILER = [
     (mkblob2.REF_BYTE, "ref", "′", "prefix: ′name pushes that word's address"),
     (mkblob2.STR_BYTE, "str", "“", "string literal delimiter: “text“ -> byte block"),
+    (mkblob2.SET_BYTE, "set", "→", "prefix: →x pops TOS into variable x"),
+    (mkblob2.GET_BYTE, "get", "←", "prefix: ←x pushes variable x"),
 ]
 
 # byte <-> glyph / mnemonic for the named atoms (ASCII bytes map to themselves)

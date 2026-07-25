@@ -138,9 +138,11 @@ Each milestone is independently testable and must keep `test/run2.sh` green
   large remaining effort between "GOLF with lists and glyphs" and "an actual golf
   language".
 
-- **M3 — locals & parameters.** Named function arguments and local variables via a
-  call frame on the return stack. Removes ~90% of the stack-juggling that makes
-  v1 programs hard to write, and shrinks the compiler's own source dramatically.
+- **M3 — named variables (done, lite).** `→x` stores TOS, `←x` loads it — compiler
+  prefix ops over a name-indexed **global** register bank at 0x4E0000. Kills most
+  stack-juggling: `(a+b)*(a-b)` is `←a←b+←a←b-*`. NOTE: global, not per-call
+  frames, so recursion doesn't get fresh copies. Full frame-based locals (with
+  scoping) remain a future step — lower priority under the tacit Jelly direction.
 
 - **M4 — 64-bit + signed + full arithmetic.** Widen cells from 32 to 64 bits;
   add signed division/modulo (`cqo; idiv`), signed comparison, and shift-left.

@@ -77,8 +77,19 @@ STR_BYTE = 0x8E
 STR_CASE = ('"142-[_233o m4+@m20+!0w m4+@m24+! m4+@69632-m12+!0w 0 m28+!'
             '{("142-[_m28+@m24+@!m4+@m20+@4+-m20+@!104o m12+@w^]o m28+@1+m28+!0}]')
 
+# Named variables: →x stores TOS to a name-indexed cell, ←x loads it.  Compiler
+# prefixes (bytes 0x8F/0x90): read the name byte and emit an absolute 32-bit
+# store/load to a per-program variable bank at 0x4E0000 (bank[name] = +4*name).
+# NOTE: these are GLOBAL (one cell per name), not per-call frame — recursion
+# does not get fresh copies.  Frame-based locals remain a later step.
+SET_BYTE = 0x8F   # →   store: pop rax; mov [0x4E0000+4*name], eax
+GET_BYTE = 0x90   # ←   load:  mov eax,[0x4E0000+4*name]; push rax
+SET_CASE = '"143-[_(4*5111808+88o 137o 4o 37o w^]'
+GET_CASE = '"144-[_(4*5111808+139o 4o 37o w 80o^]'
+
 assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
-WORDS2 = mkblob.WORDS.replace("w^]e;", "w^]" + REF_CASE + STR_CASE + "e;")
+WORDS2 = mkblob.WORDS.replace(
+    "w^]e;", "w^]" + REF_CASE + STR_CASE + SET_CASE + GET_CASE + "e;")
 
 def build_blob2():
     b = bytearray()
