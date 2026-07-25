@@ -5,6 +5,7 @@
 :d⊗;:i⊕;5′d′i∘⍎Ṅ␤          # (d then i)(5) = 5*2+1                   -> 11
 5⍳′∑′≢′÷⑂Ṅ␤                # mean of 0..4 = divide(sum 10, len 5)    -> 2
 # ⇉ threads a value through a list of quotations, so it needs one built by hand:
-# ⍶ allocates 3 cells, then the length 2 and the two addresses are stored with !
-# (raw ﹢ for the cell offsets — this is address math, never elementwise).
-5 3⍶2&!′d&4﹢!′i&8﹢!⇉Ṅ␤     # 5 through [d, i] = i(d 5)               -> 11
+# ⍶ allocates 3 cells, then the length 2 and the two addresses are stored with ⊛
+# (the 64-bit store — a list cell is 8 bytes since M4, hence the 8/16 offsets;
+# raw ﹢ for the cell offsets — this is address math, never elementwise).
+5 3⍶2&⊛′d&8﹢⊛′i&16﹢⊛⇉Ṅ␤   # 5 through [d, i] = i(d 5)               -> 11

@@ -235,12 +235,14 @@ echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotati
   && ok "fork reached through an extra ⍎ indirection" || no "fork via exec"
 # fork inside map: f and g are looping words, so this only works if every frame
 # nests.  means of [0,1] and [0,1,2,3] are 1÷2=0 and 6÷4=1.
-[ "$(printf '%s' ':m\refS\refL\ref\sdv\fork;3A 2&!2R&4\radd!4R&8\radd!\refmMQE' | gc)" = "0 1 " ] \
+# The three hand-built lists below spell out the cell layout, so W4A restrided
+# them: cells are 8 bytes and are written with ⊛ (\store), not 4 and !.
+[ "$(printf '%s' ':m\refS\refL\ref\sdv\fork;3A 2&\store2R&8\radd\store4R&16\radd\store\refmMQE' | gc)" = "0 1 " ] \
   && ok "fork inside map (nested scratch frames)" || no "fork in map"
 # ⇉ pipeline over a hand-built quotation list [′d, ′i]: 3 cells = len + 2 addrs.
-[ "$(printf '%s' ':d\dbl;:i\inc;5 3A 2&!\refd&4\radd!\refi&8\radd!\pipe N E' | gc)" = "11" ] \
+[ "$(printf '%s' ':d\dbl;:i\inc;5 3A 2&\store\refd&8\radd\store\refi&16\radd\store\pipe N E' | gc)" = "11" ] \
   && ok "pipeline: 5 threaded through [′d, ′i]" || no "pipeline"
-[ "$(printf '%s' '5 1A 0&!\pipe N E' | gc)" = "5" ] \
+[ "$(printf '%s' '5 1A 0&\store\pipe N E' | gc)" = "5" ] \
   && ok "pipeline over an empty quotation list is the identity" || no "empty pipeline"
 tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
 [ "$("$TMP/chain" 2>/dev/null)" = "$(printf '11\n2\n11')" ] && ok "golfc examples/chain.golfj" || no "chain.golfj"
@@ -283,6 +285,31 @@ gref(){ cat <(python3 tools/codepage.py encode < lib/prelude.golfj) \
   && ok "oracle: the bare ops vectorize identically" || no "oracle vec"
 
 # @@ W4-CELLS @@
+echo "64-bit list cells (M4): negatives survive storage; N prints signed"
+# N grew a sign check, so a negative prints as -n instead of its u64 image.
+# Before W4A this printed 18446744073709551611.
+[ "$(printf '%s' '0 5-NE' | gc)" = "-5" ] && ok "N prints a negative signed" || no "signed print"
+# THE core proof of the widening: m x = x-2 maps ⍳5 to [-2 -1 0 1 2], and every
+# one of those goes through a heap cell.  With 4-byte cells the two negatives
+# came back as 4294967294 / 4294967295.
+[ "$(printf '%s' ':m2\rsub;5R\refmMQE' | gc)" = "-2 -1 0 1 2 " ] \
+  && ok "negative elements survive a list round trip (8-byte cells)" || no "negative elements"
+# The parked-broadcast-scalar fix: K/G stash the scalar in s7, which used to be a
+# 32-bit cell, so -3 came back as 4294967293 (and the last sum wrapped to 0).
+[ "$(printf '%s' '0 3-4R+QE' | gc)" = "-3 -2 -1 0 " ] \
+  && ok "a negative broadcast scalar keeps 64 bits through K/G" || no "broadcast scalar width"
+# S's accumulator is a 64-bit scratch cell now, so a sum that crosses zero works.
+[ "$(printf '%s' ':m2\rsub;5R\refmMSNE' | gc)" = "0" ] \
+  && ok "sum crossing zero (-2-1+0+1+2)" || no "sum crossing zero"
+# Regressions through the widened cells: M-VEC broadcast, an M-CHAIN fork, and a
+# mapped word that itself loops (spill frames are 64 bytes now, 28 deep).
+[ "$(printf '%s' '4R3+QE' | gc)" = "3 4 5 6 " ] \
+  && ok "regression: M-VEC broadcast through widened cells" || no "widened vec broadcast"
+[ "$(printf '%s' '5R\refS\refL\ref\sdv\fork NE' | gc)" = "2" ] \
+  && ok "regression: fork mean through widened cells" || no "widened fork"
+[ "$(printf '%s' ':g3RS;5R\refgMQE' | gc)" = "3 3 3 3 3 " ] \
+  && ok "regression: nested HOF at 64-byte spill frames" || no "widened nested HOF"
+
 # @@ W6-LIT @@
 # @@ W6-MEM @@
 # @@ W7-DOCS @@
