@@ -1,0 +1,7 @@
+# Shape polymorphism (M-TAG).  ∔ ∸ ⨰ ⩍ ⩌ look at what they were handed: a value
+# that is an address inside the heap is a list, anything else is an int, and the
+# pair of shapes picks elementwise / broadcast / plain scalar automatically.
+4⍳4⍳⨰∑Ṅ␤        # list ⨰ list — elementwise, then ∑: dot product ⍳4·⍳4  -> 14
+3 5⍳∔∑Ṅ␤        # int  ∔ list — broadcast: ∑(3+[0 1 2 3 4]) = 15+10     -> 25
+10 3⍳∸⍕␤        # int  ∸ list — order matters: 10-0 10-1 10-2           -> 10 9 8
+3 4∔Ṅ␤          # int  ∔ int  — still just addition                     -> 7

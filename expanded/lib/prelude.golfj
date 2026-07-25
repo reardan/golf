@@ -100,6 +100,48 @@
 # length min(≢l1, ≢l2) at 0x4F0018.
 :Z X5177372!5177388!5177360!5177360@@5177388@@\rmin"5177368!"1\radd A"5177376!!0 5177364!5177368@0\eq[{5177360@5177364@I5177388@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177368@\rlt1\radd}]5177376@ Y;
 # --- W2-TAG words ---
+# M-TAG — shape polymorphism.  A GOLF value is a LIST iff it is an address inside
+# the heap; everything else is an INT, including the -1/0 flags \eq/\rlt produce
+# (0xFFFF… is far above the heap) and every small literal (far below it).  The
+# two bounds live in runtime cells — heap base 0x4F0034, span 0x4F0038 — so W6
+# can move or grow the heap by rewriting two stores and nothing else.
+# Top-level init: the prelude is prepended source, so these plain tokens run at
+# program start, before any user code.  Stack-neutral.  32-bit `!` is enough —
+# both values are < 2^31 and BSS leaves the high half of the cell zero, so a
+# future 64-bit reader still sees the right number.
+5242880 5177396!7340032 5177400!    # base 0x500000, span 0xC00000-0x500000
+# T  v -> 0 (list) / 1 (int).  Zero-is-true, so `T[…]` runs the LIST path.
+# (v-base) <u span is -1 exactly for a heap address and 0 otherwise; 1\radd maps
+# that to 0/1.  A leaf: no scratch, hence no spill frame, hence callable anywhere
+# — including from inside D's own dispatch, where scratch is live.
+:T5177396@\rsub 5177400@\rlt 1\radd;
+# K  list s fn -> list   new[i] = fn(list[i], s)      broadcast list ⊙ scalar
+# G  s list fn -> list   new[i] = fn(s, list[i])      broadcast scalar ⊙ list
+# Two words rather than one plus an argument swap, because fn need not commute —
+# ∸ and its order are exactly the point.  Structure is M's: X/Y frame, s0 list,
+# s1 index, s3 fn, s4 result, s7 the parked scalar; the length header is written
+# outside the `0\eq[…]` guard so the empty list yields an empty list; every
+# pointer/index/flag step is a raw op.  fn sees user data and so stays \exec'd.
+:K X5177372!5177388!5177360!5177360@@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@5177364@I5177388@5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
+:G X5177372!5177360!5177388!5177360@@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177388@5177360@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
+# D  a b fn -> c   the binary shape dispatcher, and the calling convention M-VEC
+# will route the bare + - * ⌈ ⌊ templates through: fn is a quotation address.
+# a and b are NEVER parked in scratch — they stay on the data stack, so the
+# int,int path hands fn its operands at full 64-bit width and the list paths hand
+# Z/K/G the very words they want.  `&` reaches under the flag being built, so the
+# only state is s3 (fn) and s2 (the shape code 2*T(a)+T(b): 0 ll · 1 li · 2 il ·
+# 3 ii), both covered by X/Y.  Guards are `code k\rsub[…]` — zero, so true, only
+# for its own k — and exactly one fires; Z/K/G restore s2 as they leave, so the
+# guards after the one that ran still read the code and not someone's garbage.
+:D X5177372!&T2\rmul&T\radd5177368!5177368@[5177372@Z]5177368@1\rsub[5177372@K]5177368@2\rsub[5177372@G]5177368@3\rsub[5177372@\exec]Y;
+# The user-facing polymorphic operators, bytes 0xC0..0xC4 (REGISTRY.md §1.2).
+# Three tokens each: ′atom auto-wraps the raw scalar op in a thunk and D picks
+# the shape.  The definition name is the high byte itself — `:\vadd` is `: 0xC0`.
+:\vadd \ref\radd D;
+:\vsub \ref\rsub D;
+:\vmul \ref\rmul D;
+:\vmin \ref\rmin D;
+:\vmax \ref\rmax D;
 # --- W2-CHAIN words ---
 # --- W4 cells: list cells are 4 bytes; W4 widens to 8 ---
 # --- W6 allocator ---

@@ -105,11 +105,11 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA4` | `\fetch` | `⊙` | 64-bit fetch | shipped |
 | `0xA5` | `\store` | `⊛` | 64-bit store | shipped |
 | `0xA6` | `\brk` | `⌸` | `brk` syscall (wave 6) | reserved |
-| `0xC0` | `\vadd` | `∔` | polymorphic add | reserved |
-| `0xC1` | `\vsub` | `∸` | polymorphic sub | reserved |
-| `0xC2` | `\vmul` | `⨰` | polymorphic mul | reserved |
-| `0xC3` | `\vmin` | `⩍` | polymorphic min | reserved |
-| `0xC4` | `\vmax` | `⩌` | polymorphic max | reserved |
+| `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
+| `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
+| `0xC2` | `\vmul` | `⨰` | polymorphic mul | shipped |
+| `0xC3` | `\vmin` | `⩍` | polymorphic min | shipped |
+| `0xC4` | `\vmax` | `⩌` | polymorphic max | shipped |
 | `0xC5` | `\comp` | `∘` | compose two quotations | reserved |
 | `0xC6` | `\pipe` | `⇉` | pipeline (thread a value through a list of quotations) | reserved |
 | `0xC7` | `\fork` | `⑂` | fork: `x ′f ′g ′h -> h(f x, g x)` | reserved |
@@ -128,10 +128,11 @@ have no entry in `mkblob2.ATOMS`; they get `codepage.LIB` rows (which, being
 A prelude word is a single byte, so every word costs one ASCII letter forever.
 Uppercase letters are the pool.
 
-**In use (shipped):** `A` alloc · `E` newline · `F` fold · `H` heap-pointer
-address · `I` index · `J` join · `L` len · `M` map · `N` print uint · `O` puts ·
-`P` product · `Q` show · `R` range · `S` sum · `U` chars · `V` reverse ·
-`W` filter · `X` push spill frame · `Y` pop spill frame · `Z` zip.
+**In use (shipped):** `A` alloc · `D` shape dispatch · `E` newline · `F` fold ·
+`G` broadcast int⊙list · `H` heap-pointer address · `I` index · `J` join ·
+`K` broadcast list⊙int · `L` len · `M` map · `N` print uint · `O` puts ·
+`P` product · `Q` show · `R` range · `S` sum · `T` shape test · `U` chars ·
+`V` reverse · `W` filter · `X` push spill frame · `Y` pop spill frame · `Z` zip.
 
 **Assigned (do not use for anything else):**
 
@@ -139,10 +140,10 @@ address · `I` index · `J` join · `L` len · `M` map · `N` print uint · `O` 
 |--------|---------|------|--------|
 | `X` | push scratch spill frame | W1 | shipped |
 | `Y` | pop spill frame | W1 | shipped |
-| `T` | shape test (is this value a list?) | W2 | reserved |
-| `D` | binary shape dispatcher | W2 | reserved |
-| `K` | broadcast `list ⊙ int` | W2 | reserved |
-| `G` | broadcast `int ⊙ list` | W2 | reserved |
+| `T` | shape test (is this value a list?) | W2 | shipped |
+| `D` | binary shape dispatcher | W2 | shipped |
+| `K` | broadcast `list ⊙ int` | W2 | shipped |
+| `G` | broadcast `int ⊙ list` | W2 | shipped |
 
 **Free:** `B`, `C` — reserved, unassigned. That is the *entire* remaining
 uppercase pool. Anything after them needs a high byte from `0xC0`–`0xCF` (§1.2)
@@ -172,8 +173,8 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | prelude scratch `s0`–`s7` — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list) | shipped |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
-| `0x4F0034` | 5177396 | heap base cell | reserved (W2) |
-| `0x4F0038` | 5177400 | heap span cell | reserved (W2) |
+| `0x4F0034` | 5177396 | heap base cell | shipped |
+| `0x4F0038` | 5177400 | heap span cell | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (into `0x4D0000`) | reserved (W2) |
 | `0x4F0040`–`0x4F00FF` | 5177408–5177599 | reserved for future scratch | free |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte | reserved (W3) |
