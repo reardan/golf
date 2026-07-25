@@ -13,9 +13,35 @@ Two useful languages hide inside GOLF, and we build them in order:
 1. **A usable minimal language first** (Forth/C-flavored): multi-character names,
    locals & parameters, signed 64-bit values, a small standard library. The core
    you can write programs — and the rest of the compiler — in.
-2. **A terse golf surface later** (Jelly-flavored), layered on top of that core as
-   sugar: single-glyph aliases, implicit iteration, list ops. The minimal
-   language stays available underneath; the golf surface just compiles down to it.
+2. **A terse golf surface** (Jelly-flavored), via a **code page**: operators are
+   single bytes from the full 0..255 space, each shown as a glyph. The minimal
+   ASCII language stays valid underneath (bytes 0..127); the golf atoms live at
+   0x80+. This is now the active direction — see "Code page" below.
+
+Bytes 128..255 were entirely unused and the compiler's `e` word already
+dispatches *any* byte it finds in the template blob, so the code page costs
+almost nothing on the compiler side. It is a better answer to "GOLF ran out of
+single-byte op slots" than multi-character identifiers, and it leans into the
+golf heritage. Multi-char identifiers (M2, below) are now *optional* — useful for
+readable user-defined names, but no longer required to grow the built-in op set.
+
+## Code page (Jelly-style)
+
+Like Jelly, the canonical program form is raw bytes, one byte per operation, and
+humans read/write them through a code page. `tools/mkblob2.py` is the single
+source of truth: each atom has a byte, a display glyph, an ASCII mnemonic, and a
+machine-code template. `tools/codepage.py` converts between forms:
+
+```
+codepage.py encode <prog.golfj >prog.gb   # \sqr / glyph / ASCII  ->  raw bytes
+codepage.py decode <prog.gb               # raw bytes  ->  glyphs (3² 4⊕ …)
+codepage.py decode -m <prog.gb            # raw bytes  ->  ASCII \mnemonic form
+codepage.py table                         # the atom reference
+```
+
+Author in ASCII with `\`-mnemonics (`3\sqr` = "3 squared"), store as raw bytes,
+compile with `golf2`. The round-trip is exact. First atoms: `± neg`, `⊕ inc`,
+`⊖ dec`, `² sqr`, `⊗ dbl`, `⊘ hlv`, plus the M1 bitwise/shift ops.
 
 ## The bootstrap ladder (how v2 gets built)
 
@@ -57,9 +83,11 @@ why this was the cheapest possible first feature and why it exercises the whole
 ladder without touching golf2's code.
 
 It also hits a wall on purpose: those five chars were the **last** free printable
-ASCII single-byte slots. GOLF has now spent its entire one-glyph namespace. The
-only way to add more operations, and the only way to have readable names, is
-**multi-character identifiers** — which is exactly Milestone 2.
+ASCII single-byte slots. GOLF has now spent its entire *printable* one-glyph
+namespace — which is what pushed us to the **code page**: use the whole 0..255
+byte space for single-byte ops (bytes 0x80+ for the new atoms) and render them
+through glyphs. That keeps GOLF terse and Jelly-like instead of forcing
+multi-character identifiers.
 
 ## Milestones
 
@@ -69,12 +97,24 @@ Each milestone is independently testable and must keep `test/run2.sh` green
 - **M1 — new operators (done).** `$ | = ~ >` bitwise/shift ops as templates.
   Backward compatible; golf2 still compiles every v1 program.
 
-- **M2 — multi-character identifiers.** The big one. A real tokenizer (identifiers
-  vs numbers vs op glyphs), a symbol table keyed by name (a name arena + linear
-  or hashed lookup instead of the 256-slot array), and two-pass or
-  forward-declaration handling so mutual recursion needs no pending-char hack.
-  This is where golf2's source starts using names and begins self-hosting on the
-  richer language.
+- **M-CP — code page (in progress).** All-256-byte op space + code-page tooling
+  (`tools/codepage.py`) + first high-byte atoms (`± ⊕ ⊖ ² ⊗ ⊘`). Done so far;
+  next: grow the atom set (comparisons, min/max, more constants), give every byte
+  a glyph for exact display, and add a print-number / print-string atom that
+  emits a call to a runtime library word (see M6).
+
+- **M2 — multi-character identifiers (optional / parallel).** No longer required
+  for op growth, but still valuable for readable *user-defined* names: a real
+  tokenizer, a name-arena symbol table, and two-pass/forward-declaration handling
+  so mutual recursion needs no pending-char hack. Pursue if/when programs get big
+  enough that single-byte word names hurt.
+
+- **M-JELLY — deeper Jelly semantics (Path-A frontier).** The code page is the
+  surface; the real Jelly power is the model underneath: a list/array datatype,
+  atoms that *vectorize* over lists, and chains (implicit argument threading with
+  monadic/dyadic links). This is a large, separate effort and the main thing
+  standing between "GOLF with glyphs" and "an actual golf language". Sequence it
+  after the data model exists (M5).
 
 - **M3 — locals & parameters.** Named function arguments and local variables via a
   call frame on the return stack. Removes ~90% of the stack-juggling that makes
@@ -95,10 +135,6 @@ Each milestone is independently testable and must keep `test/run2.sh` green
   Large output-size and speed win; the first place golf2 stops being a naive
   template concatenator.
 
-- **M8 — golf surface (the hybrid payoff).** A terse alias/sugar layer that
-  compiles down to the M2–M6 core: single-glyph names, implicit iteration, list
-  ops. The minimal language remains the substrate.
-
 - **M9 — reach (optional).** `include`/modules; an object-file emitter so output
   can be linked with `cc`; a small IR to retarget (arm64) or emit C.
 
@@ -116,7 +152,8 @@ Each milestone is independently testable and must keep `test/run2.sh` green
 | Path | What |
 |------|------|
 | `self/golf2.golf` | the v2 compiler (generated by `tools/mkblob2.py`) |
-| `tools/mkblob2.py` | builds golf2.golf: v1 code + extended template table |
+| `tools/mkblob2.py` | builds golf2.golf: v1 code + atom table (source of truth for atoms) |
+| `tools/codepage.py` | code page: encode/decode between glyph/mnemonic form and raw bytes |
 | `boot/golfref.py` | Python reference/oracle for v2 (debugging only) |
-| `examples/` | v2 programs (`bitwise.g2`, …) |
-| `test/run2.sh` | bootstrap ladder + feature tests |
+| `examples/` | v2 programs (`bitwise.g2`, `atoms.golfj`, …) |
+| `test/run2.sh` | bootstrap ladder + feature + code-page tests |

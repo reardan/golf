@@ -1,0 +1,9 @@
+# Code-page atoms demo (authored in ASCII \mnemonic form).
+# Each line computes a single digit and prints it; output is "957444".
+3\sqr 48+)            # 3 squared      = 9
+4\inc 48+)            # 4 + 1          = 5
+8\dec 48+)            # 8 - 1          = 7
+2\dbl 48+)            # 2 * 2          = 4
+9\hlv 48+)            # 9 >> 1         = 4
+5\neg\inc\neg 48+)    # -(-5 + 1)      = 4
+10)                   # newline

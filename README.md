@@ -33,13 +33,18 @@ compiler's seed, which then self-hosts.
 golf0.py --> v1c --> golf2 --> golf2  (fixpoint) --> your v2 programs
 ```
 
-Milestone 1 (done) adds bitwise/shift operators — and, by using up the last free
-single-byte op slots, motivates multi-character identifiers next. The plan lives
-in [`expanded/DESIGN.md`](expanded/DESIGN.md).
+It's heading in a **Jelly-style code page** direction: operators are single bytes
+from the full 0..255 space, shown as glyphs, so `3\sqr` (authored in ASCII)
+becomes `3²` and compiles to two raw bytes. `tools/codepage.py` converts between
+the glyph/mnemonic form and raw bytes; the compiler reads the raw bytes and
+already dispatches any byte it finds in its template table. The plan lives in
+[`expanded/DESIGN.md`](expanded/DESIGN.md).
 
 ```sh
 cd expanded
 bash test/run2.sh
+python3 tools/codepage.py table                 # see the atom code page
+python3 tools/codepage.py encode <examples/atoms.golfj >a.gb   # -> raw bytes
 ```
 
 ## The idea, in one paragraph
