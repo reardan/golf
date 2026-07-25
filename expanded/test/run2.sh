@@ -174,6 +174,42 @@ echo "Totality (M-SOUND): every list word is correct on empty input; re-entrant 
 [ "$(printf '%s' '100R S N'        | gc)" = "4950" ] && ok "regression: sum of range(100)" || no "regression sum"
 
 # @@ W2-TAG @@
+echo "Shape polymorphism (M-TAG): T shape test, D dispatcher, ∔ ∸ ⨰ ⩍ ⩌"
+# The heap bounds are runtime cells (0x4F0034 base, 0x4F0038 span), set by the
+# prelude's top-level init; base+span is the return-stack top 0xC00000.
+[ "$(printf '%s' '5177396@ 5177400@\radd N E' | gc)" = "12582912" ] \
+  && ok "heap-bounds cells initialized (base+span = 0xC00000)" || no "heap bounds cells"
+[ "$(printf '%s' '5R T N E'  | gc)" = "0" ] && ok "T: a heap address is a list" || no "T list"
+[ "$(printf '%s' '7 T N E'   | gc)" = "1" ] && ok "T: a small int is an int"    || no "T int"
+# The one that would break a naive signed test: -1 is 0xFFFF… , above the heap.
+[ "$(printf '%s' '0 1-T N E' | gc)" = "1" ] && ok "T: a -1 compare flag is an int" || no "T flag"
+[ "$(printf '%s' '3 4\vadd N E'    | gc)" = "7" ]  && ok "∔ int,int  (fn applied directly)" || no "vadd int,int"
+# D must be TRANSPARENT for scalars — M-VEC routes the bare + through it, so an
+# int,int ∔ has to equal an int,int +, bit for bit.  D never parks a or b in
+# 32-bit scratch, so -1 stays -1: had it, @ would zero-extend to 4294967295 and
+# this would print 4294967300 rather than 4.
+[ "$(printf '%s' '0 1- 5\vadd N E' | gc)" = "$(printf '%s' '0 1- 5+N E' | gc)" ] \
+  && ok "∔ int,int is bit-identical to + (operands keep 64 bits)" || no "vadd width"
+[ "$(printf '%s' '4R4R\vmul S N E' | gc)" = "14" ] && ok "⨰ list,list (via Z: dot product)" || no "vmul list,list"
+[ "$(printf '%s' '5R10\vadd Q E'   | gc)" = "10 11 12 13 14 " ] && ok "∔ list,int (via K)" || no "vadd list,int"
+[ "$(printf '%s' '3 5R\vadd S N E' | gc)" = "25" ] && ok "∔ int,list (via G)" || no "vadd int,list"
+# K and G are separate words because fn need not commute: 10 ∸ ⍳3, not ⍳3 ∸ 10.
+[ "$(printf '%s' '10 3R\vsub Q E'  | gc)" = "10 9 8 " ]   && ok "∸ int,list keeps the operand order" || no "vsub int,list"
+[ "$(printf '%s' '5R2\vmin Q E'    | gc)" = "0 1 2 2 2 " ] && ok "⩍ list,int" || no "vmin list,int"
+[ "$(printf '%s' '1 3R\vmax Q E'   | gc)" = "1 1 2 " ]     && ok "⩌ int,list" || no "vmax int,list"
+[ "$(printf '%s' '0R 5\vadd L N E' | gc)" = "0" ] && ok "∔ over the empty list (K is total)" || no "empty vadd K"
+[ "$(printf '%s' '5 0R\vadd L N E' | gc)" = "0" ] && ok "∔ over the empty list (G is total)" || no "empty vadd G"
+# Nesting: h x = ∑(x ∔ ⍳2) = x + (x+1) = 2x+1, so ⍳3 maps to 1 3 5.  Proves D
+# (and the G it dispatches to) survives being called from inside €'s own loop —
+# every one of D/G/R/S restores the scratch € is holding.
+[ "$(printf '%s' ':h2R\vadd S;3R\refh M Q E' | gc)" = "1 3 5 " ] \
+  && ok "D/K/G re-enter safely inside map (h x = 2x+1)" || no "nested dispatch"
+tools/golfc -j examples/polymorphic.golfj "$TMP/poly" 2>/dev/null
+[ "$("$TMP/poly" 2>/dev/null)" = "$(printf '14\n25\n10 9 8 \n7')" ] \
+  && ok "golfc examples/polymorphic.golfj" || no "polymorphic.golfj"
+[ "$(oracle polymorphic)" = "$(printf '14\n25\n10 9 8 \n7')" ] \
+  && ok "oracle: polymorphic.golfj behaves identically" || no "oracle polymorphic.golfj"
+
 # @@ W2-CHAIN @@
 # @@ W3-VEC @@
 # @@ W4-CELLS @@

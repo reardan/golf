@@ -51,6 +51,14 @@ LIB = [
     ("J", "join",  "⊐", "print a code list as text (cell -> byte)"),
     ("Z", "zip",   "⊞", "zip(l1, l2, fn) -> list (elementwise)"),
     # --- W2 LIB rows ---
+    # M-TAG shape-polymorphic operators (REGISTRY.md §1.2).  High-byte prelude
+    # words: 0xC0-0xC4 are word *names*, not atoms — no mkblob2 template — but
+    # being >= 0x80 they decode as well as encode.
+    (0xC0, "vadd", "∔", "polymorphic add (int/list, elementwise, broadcast)"),
+    (0xC1, "vsub", "∸", "polymorphic sub (int/list, elementwise, broadcast)"),
+    (0xC2, "vmul", "⨰", "polymorphic mul (int/list, elementwise, broadcast)"),
+    (0xC3, "vmin", "⩍", "polymorphic min (int/list, elementwise, broadcast)"),
+    (0xC4, "vmax", "⩌", "polymorphic max (int/list, elementwise, broadcast)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
