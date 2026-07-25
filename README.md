@@ -50,7 +50,8 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
 - **named variables** `→x`/`←x`, so `←a←b+←a←b-*` is `(a+b)*(a-b)` with no juggling.
 
 So `100⍳∑Ṅ` prints `4950`, and `3→k:f←k+;“Hello“U′f€J` is a Caesar cipher. The
-plan and status live in [`expanded/DESIGN.md`](expanded/DESIGN.md).
+plan and status live in [`expanded/DESIGN.md`](expanded/DESIGN.md); the
+prioritized queue of what's next is [`expanded/NEXT_STEPS.md`](expanded/NEXT_STEPS.md).
 
 ```sh
 cd expanded
