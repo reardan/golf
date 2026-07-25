@@ -2,9 +2,15 @@
 # Expanded GOLF (v2) test suite + bootstrap ladder.
 #
 #   golf0.py  --compiles-->  v1c        (the frozen minimal compiler)
-#   v1c       --compiles-->  golf2      (v2 seed, written in v1 GOLF)
-#   golf2     --compiles-->  golf2'     ; require golf2 == golf2'  (fixpoint)
-#   golf2     --compiles-->  examples using the new operators
+#   v1c       --compiles-->  stage1     (v2 seed, written in v1 GOLF)
+#   stage1    --compiles-->  stage2
+#   stage2    --compiles-->  stage3     ; require stage2 == stage3  (fixpoint)
+#   stage3    --compiles-->  examples using the new operators
+#
+# The gate is stage2 == stage3: both are built from self/golf2.golf and therefore
+# embed the same template blob, so iterate 2 has converged. stage1 comes out of
+# v1c (v1's blob) and matches stage2 only while golf2 overrides no v1 template —
+# that extra equality is reported below as informational, not as a test.
 set -u
 cd "$(dirname "$0")/.."
 EXP=$(pwd); MIN="$EXP/../minimal"
@@ -22,7 +28,17 @@ python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$TMP/v1c" 2>/dev/null &&
 "$TMP/v1c" < self/golf2.golf > "$TMP/golf2" 2>/dev/null && chmod +x "$TMP/golf2" \
   && ok "v1c compiles golf2.golf" || no "v1c compiles golf2.golf"
 "$TMP/golf2" < self/golf2.golf > "$TMP/golf2b" 2>/dev/null && chmod +x "$TMP/golf2b"
-cmp -s "$TMP/golf2" "$TMP/golf2b" && ok "golf2 self-hosts (fixpoint)" || no "golf2 fixpoint"
+"$TMP/golf2b" < self/golf2.golf > "$TMP/golf2c" 2>/dev/null && chmod +x "$TMP/golf2c"
+cmp -s "$TMP/golf2b" "$TMP/golf2c" \
+  && ok "golf2 self-hosts (fixpoint: stage2 == stage3)" || no "golf2 fixpoint (stage2 == stage3)"
+# Informational only — never a pass/fail gate: stage1 (emitted by v1c) is
+# byte-identical to stage2 exactly as long as golf2's blob overrides none of v1's
+# op templates. Overriding one (e.g. a vectorized '+') makes this print "no"
+# while the stage2 == stage3 fixpoint above keeps holding.
+if cmp -s "$TMP/golf2" "$TMP/golf2b"; then seedstable=yes; else seedstable=no; fi
+printf '       seed-stable: %s (stage1 == stage2; informational — expected to diverge once a v1 template is overridden)\n' "$seedstable"
+# Everything below this line exercises the converged compiler (stage3).
+cp -f "$TMP/golf2c" "$TMP/golf2"
 
 echo "The v2 compiler still handles all of v1"
 "$TMP/golf2" < "$MIN/examples/hello.golf" > "$TMP/h" 2>/dev/null && chmod +x "$TMP/h"
@@ -125,6 +141,16 @@ echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closur
 [ "$(printf '%s' '10→k:f←k+;5R′fMQE' | gc)" = "10 11 12 13 14 " ] && ok "broadcast (closure)" || no "broadcast"
 tools/golfc -j examples/vectorize.golfj "$TMP/vec" 2>/dev/null
 [ "$("$TMP/vec" 2>/dev/null)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
+
+# Insertion anchors: each wave adds its tests directly under its own anchor, so
+# concurrent waves never touch the same line. Comment-only; keep them in order.
+# @@ W2-TAG @@
+# @@ W2-CHAIN @@
+# @@ W3-VEC @@
+# @@ W4-CELLS @@
+# @@ W6-LIT @@
+# @@ W6-MEM @@
+# @@ W7-DOCS @@
 
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
 tools/golfc -j examples/capstone.golfj "$TMP/cap" 2>/dev/null

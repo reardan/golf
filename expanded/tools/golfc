@@ -12,8 +12,14 @@ MIN="$HERE/../minimal"
 BUILD="$HERE/build"; mkdir -p "$BUILD"
 GOLF2="$BUILD/golf2"
 
-# (re)build golf2 if missing or stale
-if [ ! -x "$GOLF2" ] || [ "$HERE/self/golf2.golf" -nt "$GOLF2" ]; then
+# (re)build golf2 if missing or stale. self/golf2.golf is *generated* by
+# tools/mkblob2.py, so an edit to mkblob2.py is a source change too and has to be
+# part of the staleness test. mkblob2.py rewrites self/golf2.golf unconditionally,
+# so its mtime is only meaningful before we regenerate — hence the check first,
+# the regeneration inside.
+if [ ! -x "$GOLF2" ] || [ "$HERE/self/golf2.golf" -nt "$GOLF2" ] \
+   || [ "$HERE/tools/mkblob2.py" -nt "$GOLF2" ]; then
+  python3 "$HERE/tools/mkblob2.py"                # refresh the generated v2 seed
   python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$BUILD/v1c"; chmod +x "$BUILD/v1c"
   "$BUILD/v1c" < "$HERE/self/golf2.golf" > "$GOLF2"; chmod +x "$GOLF2"
 fi
