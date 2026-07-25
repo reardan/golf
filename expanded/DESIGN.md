@@ -92,7 +92,8 @@ multi-character identifiers.
 ## Milestones
 
 Each milestone is independently testable and must keep `test/run2.sh` green
-(including the golf2 fixpoint).
+(including the golf2 fixpoint). This list records what shipped and the original
+plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 - **M1 — new operators (done).** `$ | = ~ >` bitwise/shift ops as templates.
   Backward compatible; golf2 still compiles every v1 program.
