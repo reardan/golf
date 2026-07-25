@@ -55,6 +55,21 @@ ATOMS = [
     # partner `ref` (push a word's address) is a compiler prefix, added to `t`
     # below — together they give higher-order functions (map/fold).
     (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
+    # Raw scalar ops — byte-for-byte copies of today's scalar templates for
+    # `+ - * ⌊ ⌈ <`.  M-VEC will make those bare ops *polymorphic* (dispatch on
+    # int-vs-list); the prelude's own pointer/flag arithmetic must never pay for
+    # (or be changed by) that dispatch, so it moves to these.  Reserved for
+    # prelude-internal use: they are guaranteed to stay pure scalar forever.
+    (0x91, "radd", "﹢", [0x58, 0x48, 0x01, 0x04, 0x24],   "raw add (never polymorphic)"),
+    (0x92, "rsub", "﹣", [0x58, 0x48, 0x29, 0x04, 0x24],   "raw sub (never polymorphic)"),
+    (0x93, "rmul", "﹡", [0x59, 0x58, 0x48, 0x0F, 0xAF, 0xC1, 0x50],
+                                                          "raw mul (never polymorphic)"),
+    (0x94, "rmin", "⊓", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x47, 0xC1, 0x50],
+                                                          "raw unsigned min (never polymorphic)"),
+    (0x95, "rmax", "⊔", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x42, 0xC1, 0x50],
+                                                          "raw unsigned max (never polymorphic)"),
+    (0x96, "rlt",  "﹤", [0x59, 0x58, 0x48, 0x29, 0xC8, 0x48, 0x19, 0xC0, 0x50],
+                                                          "raw unsigned less -1/0 (never polymorphic)"),
 ]
 
 # `ref` (byte 0x8C, glyph ′): a compiler *prefix* — read the next byte (a word
