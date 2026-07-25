@@ -3,33 +3,104 @@
 # It is encoded to raw bytes and prepended to programs by tools/golfc.
 #
 # A list is a heap block [ len, e0, e1, ... ] of 32-bit cells; a list value is
-# its address.  Reserved runtime memory (do not use in your program): heap
-# pointer 0x4F0000, scratch 0x4F0010..0x4F0024, heap from 0x500000.
+# its address.  Reserved runtime memory — ../REGISTRY.md §3 is authoritative:
+#   0x4F0000             heap pointer (the address word H pushes)
+#   0x4F0010..0x4F002C   scratch s0..s7, all eight in use:
+#                        s0 list · s1 index · s2 accumulator · s3 fn addr ·
+#                        s4 result · s5 alloc temp · s6 filter count · s7 zip l2
+#   0x4F0030             spill-stack pointer (a byte OFFSET; BSS-zero at start)
+#   0x4F0040             first free scratch
+#   0x4F0900..0x4F0FFF   scratch spill stack — 56 frames of 32 bytes (X/Y)
+#   0x500000             heap base (bump allocator)
+# Do not touch any of it from your program.
 #
-# Words (single-byte names — avoid reusing H A L I R S N E M F Q):
-#   A cells->addr alloc   L list->n len     I list i->x index   R n->list range
-#   S list->n sum         M list fn->list map (fn = a word address, via 'ref)
-#   F list init fn->x fold N n-> print uint  Q list-> print list  E -> newline
+# Re-entrancy.  Scratch is global, so a looping word cannot nest inside itself
+# (map inside map would clobber s0/s1/s3/s4).  Every scratch-using looping word
+# is therefore bracketed by X (push a callee-save frame: copy s0..s7 to the
+# spill stack, bump the pointer) and Y (pop it back).  The word's result is
+# lifted onto the data stack *before* Y, which is stack-neutral.  X and Y use no
+# scratch themselves — only the data stack and absolute addresses — so they are
+# trivially re-entrant.  This is what lets a mapped function call map/sum/range.
+# s5 is A-only and is never held across a call, so A needs no frame of its own
+# (X's save set covers it anyway).  I is scratch-free and stays unwrapped — it
+# is the hot path.
+#
+# Totality.  `{…}` is a DO-while, so an unguarded loop body runs once even on an
+# empty list.  Every looping word guards its loop with `<len> 0\eq [ {…} ]`:
+# \eq yields -1 when len==0, so `[` (which runs on TOS==0) skips the loop, and 0
+# when len!=0, so it runs.  Initialization that must survive the empty path —
+# S's 0, P's 1, F's init, the length header of M/V/W/U/Z's freshly allocated
+# result — stays outside the guard.  Z iterates over \rmin of the two lengths.
+#
+# Raw arithmetic.  All prelude-internal pointer, index and flag arithmetic uses
+# the raw atoms \radd \rsub \rmul \rmin \rmax \rlt (0x91..0x96), never the bare
+# ASCII + - * ⌈ ⌊: M-VEC makes those polymorphic (int/list dispatch) and the
+# dispatcher would recurse through the prelude's own address math.  The raw
+# atoms are the same machine code today and are guaranteed never-polymorphic.
+# Two deliberate exceptions stay bare because they combine USER data and are
+# exactly where polymorphism is wanted later: S's accumulator `+` and P's
+# accumulator `*`.  (F/M/W/Z apply the user's fn via \exec — no arithmetic of
+# their own.)
+#
+# The prelude must NEVER use \set / \get (→x / ←x).  The variable bank at
+# 0x4E0000 is user space — one global cell per name — so a prelude word that
+# stored to →i would silently clobber a user's i.  Prelude state goes in the
+# fixed scratch cells above.
+#
+# Words (single-byte names).  In use: H X Y A L I R S N E M F Q P V W O U J Z.
+# Reserved by ../REGISTRY.md §2 for wave 2: T D K G.  Free: B and C — that is
+# the entire remaining uppercase pool.
+#   H  -> addr             address of the heap pointer
+#   X  ->                  push a scratch spill frame (callee-save s0..s7)
+#   Y  ->                  pop a scratch spill frame
+#   A  cells -> addr       bump-allocate cells*4 bytes
+#   L  list -> n           length
+#   I  list i -> x         index
+#   R  n -> list           range [0..n-1]
+#   S  list -> n           sum
+#   N  n ->                print unsigned decimal
+#   E  ->                  print newline
+#   M  list fn -> list     map (fn is a word address, via \ref)
+#   F  list init fn -> x   fold
+#   Q  list ->             print a list, space-separated (each elem then ' ')
+#   P  list -> n           product
+#   V  list -> list        reverse
+#   W  list pred -> list   filter (keep where pred == 0)
+#   O  str ->              puts: print a “…“ byte block
+#   U  str -> list         chars: byte block -> list of char codes
+#   J  list ->             join: print a code list as text (cell -> byte)
+#   Z  l1 l2 fn -> list    zip elementwise over min(len l1, len l2)
 :H5177344;                                          # H: heap-pointer address
-:A4*5177380!H@5242880+H@5177380@+H!;                # A: alloc(cells) -> addr
+# X/Y: callee-save spill of s0..s7 (32-byte frames at 0x4F0900, pointer at
+# 0x4F0030).  Data stack only: `&` (over) re-supplies the frame base for each
+# store, `"` (dup) for each load, so neither word needs a temporary.
+:X5177392@5179648\radd 5177360@&!5177364@&4\radd!5177368@&8\radd!5177372@&12\radd!5177376@&16\radd!5177380@&20\radd!5177384@&24\radd!5177388@&28\radd!_5177392@32\radd5177392!;
+:Y5177392@32\rsub"5177392!5179648\radd"@5177360!"4\radd@5177364!"8\radd@5177368!"12\radd@5177372!"16\radd@5177376!"20\radd@5177380!"24\radd@5177384!"28\radd@5177388!_;
+:A4\rmul5177380! H@5242880\radd H@5177380@\radd H!;  # A: alloc(cells) -> addr
 :L@;                                                # L: len(list)
-:I4*+4+@;                                           # I: index(list,i)
-:R"1+A"5177360!!0 5177364!{5177364@"4*5177360@+4+!5177364@1+5177364!5177364@5177360@@<1+}5177360@;
-:S5177360!0 5177368!0 5177364!{5177360@5177364@I5177368@+5177368!5177364@1+5177364!5177364@5177360@@<1+}5177368@;
-:N"10<1+[48+)^]"10/N10%48+);                        # N: print unsigned decimal
+:I4\rmul\radd4\radd@;                               # I: index(list,i)
+:R X"1\radd A"5177360!!0 5177364!5177360@@0\eq[{5177364@"4\rmul5177360@\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177360@ Y;
+:S X5177360!0 5177368!0 5177364!5177360@@0\eq[{5177360@5177364@I5177368@+5177368!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177368@ Y;
+:N"10\rlt1\radd[48\radd)^]"10/N10%48\radd);         # N: print unsigned decimal
 :E10);                                              # E: newline
-:M5177372!"5177360!@"1+A"5177376!!0 5177364!{5177360@5177364@I5177372@\exec5177376@5177364@4*+4+!5177364@1+5177364!5177364@5177360@@<1+}5177376@;
-:F5177372!5177376!5177360!0 5177364!{5177376@5177360@5177364@I5177372@\exec5177376!5177364@1+5177364!5177364@5177360@@<1+}5177376@;
-:Q5177360!0 5177364!{5177360@5177364@I N 32)5177364@1+5177364!5177364@5177360@@<1+};
+:M X5177372!"5177360!@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
+:F X5177372!5177376!5177360!0 5177364!5177360@@0\eq[{5177376@5177360@5177364@I5177372@\exec5177376!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
+:Q X5177360!0 5177364!5177360@@0\eq[{5177360@5177364@I N 32)5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]Y;
 # P product(list)   V reverse(list)->list   W filter(list pred)->list  (keep where pred==0)
-:P5177360!1 5177368!0 5177364!{5177360@5177364@I5177368@*5177368!5177364@1+5177364!5177364@5177360@@<1+}5177368@;
-:V"5177360!@"1+A"5177376!!0 5177364!{5177360@5177364@I5177376@5177360@@5177364@-4*+!5177364@1+5177364!5177364@5177360@@<1+}5177376@;
-:W5177372!"5177360!@"1+A"5177376!__0 5177384!0 5177364!{5177360@5177364@I"5177368!5177372@\exec[5177384@1+5177384!5177368@5177376@5177384@4*+!]5177364@1+5177364!5177364@5177360@@<1+}5177384@5177376@!5177376@;
-# O puts(str): print a “...” byte block.  U chars(str)->list: byte block to code
+:P X5177360!1 5177368!0 5177364!5177360@@0\eq[{5177360@5177364@I5177368@*5177368!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177368@ Y;
+:V X"5177360!@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@5177364@I5177376@5177360@@5177364@\rsub4\rmul\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
+:W X5177372!"5177360!@"1\radd A"5177376!__0 5177384!0 5177364!5177360@@0\eq[{5177360@5177364@I"5177368!5177372@\exec[5177384@1\radd5177384!5177368@5177376@5177384@4\rmul\radd!]5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177384@5177376@!5177376@ Y;
+# O puts(str): print a “...“ byte block.  U chars(str)->list: byte block to code
 # list (so list ops apply).  J join(list): print a code list as text (cell->byte).
-:O5177360!0 5177364!{5177360@4+5177364@+?)5177364@1+5177364!5177364@5177360@@<1+};
-:U5177360!5177360@@"1+A"5177376!!0 5177364!{5177360@4+5177364@+?5177376@5177364@4*+4+!5177364@1+5177364!5177364@5177360@@<1+}5177376@;
-:J5177360!0 5177364!{5177360@5177364@I)5177364@1+5177364!5177364@5177360@@<1+};
-# Z zip(l1 l2 fn)->list : elementwise fn over two equal-length lists (explicit
-# vectorization).  new[i] = fn(l1[i], l2[i]).  (Second list saved at 0x4F002C.)
-:Z5177372!5177388!5177360!5177360@@"1+A"5177376!!0 5177364!{5177360@5177364@I5177388@5177364@I5177372@\exec5177376@5177364@4*+4+!5177364@1+5177364!5177364@5177360@@<1+}5177376@;
+:O X5177360!0 5177364!5177360@@0\eq[{5177360@4\radd5177364@\radd?)5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]Y;
+:U X5177360!5177360@@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@4\radd5177364@\radd?5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
+:J X5177360!0 5177364!5177360@@0\eq[{5177360@5177364@I)5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]Y;
+# Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
+# shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved at 0x4F002C, the common
+# length min(≢l1, ≢l2) at 0x4F0018.
+:Z X5177372!5177388!5177360!5177360@@5177388@@\rmin"5177368!"1\radd A"5177376!!0 5177364!5177368@0\eq[{5177360@5177364@I5177388@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177368@\rlt1\radd}]5177376@ Y;
+# --- W2-TAG words ---
+# --- W2-CHAIN words ---
+# --- W4 cells: list cells are 4 bytes; W4 widens to 8 ---
+# --- W6 allocator ---
+# --- W3 hook installation (top-level init; must stay LAST) ---
