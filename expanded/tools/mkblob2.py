@@ -86,6 +86,81 @@ ATOMS = [
     (0xA5, "store", "⊛", [0x58, 0x59, 0x48, 0x89, 0x08],  "v addr -> ; full 64-bit cell"),
 ]
 
+# --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
+# These five op bytes keep their v1/atom scalar body but get a shape-dispatch
+# preamble in front of it.  Layout (38 bytes + the untouched scalar body):
+#
+#     48 83 3C 25 <hook> 00     cmp qword [hook], 0     ; per-op hook cell
+#     74 1B                     je  .scalar             ; no dispatcher -> scalar
+#     48 8B 04 24               mov rax, [rsp]          ; b  (TOS)
+#     48 0B 44 24 08            or  rax, [rsp+8]        ; | a
+#     3B 04 25 <heapbase>       cmp eax, [heap base]
+#     72 09                     jb  .scalar             ; both below the heap
+#     FF 14 25 <hook>           call qword [hook]       ; (a b) still on the stack
+#     EB <len(scalar)>          jmp .done
+#   .scalar:  <the original scalar template, byte for byte>
+#   .done:
+#
+# Three properties make this safe:
+#
+#   * **Off by default.**  The hook table (../REGISTRY.md §3: 256 cells of 8
+#     bytes at 0x4F0100, indexed by op byte) is BSS, so a program that does not
+#     install a dispatcher — every compiler binary on the bootstrap ladder, which
+#     never runs lib/prelude.golfj — takes the 9-byte check and then exactly the
+#     old scalar path.  That is why golf2's stage2 == stage3 fixpoint survives:
+#     stage2 and stage3 embed the same blob and emit the same bytes.  (stage1
+#     comes from v1's blob and now diverges permanently — informational only.)
+#   * **The filter is conservative, never authoritative.**  `or` only sets bits,
+#     so (a|b) >= a: if EITHER operand is a heap address the compare cannot send
+#     us to the scalar path.  False positives are fine and expected (a -1 flag
+#     from `<` looks huge): they reach the PRELUDE's dispatcher D, which re-tests
+#     both operands exactly and applies the raw scalar op when both are ints.
+#   * **Stack-neutral.**  `call` pushes its return address on the DATA stack and
+#     the hooked word's PROLOGUE parks it on the return stack, so the word sees
+#     exactly (a b) and leaves one result — the scalar path's net effect.
+#
+# The heap-base compare is 32-bit on purpose.  0x4F0034 is a 4-byte cell whose
+# neighbour 0x4F0038 (the heap span) is non-zero, so a 64-bit read there would
+# yield span<<32 | base and put the bound above every real address, disabling
+# dispatch entirely.  Heap addresses are < 2^32 and low32(a|b) >= low32(a) = a,
+# so the 32-bit test keeps the same one-sided guarantee.
+HOOK_BASE = 0x4F0100       # hook table (REGISTRY.md §3), 256 entries
+HOOK_STRIDE = 8            # 8, not 4: `call qword [disp32]` reads 64 bits
+HEAP_BASE_CELL = 0x4F0034  # runtime heap base, installed by the prelude's init
+
+def hook_addr(byte):
+    """The hook cell for op `byte`."""
+    assert 0 <= byte <= 0xFF
+    return HOOK_BASE + HOOK_STRIDE * byte
+
+def _u32(v):
+    return list(v.to_bytes(4, "little"))
+
+def _poly(byte, scalar):
+    """Wrap a scalar template in the hook-cell shape dispatch shown above."""
+    hook, base, scalar = _u32(hook_addr(byte)), _u32(HEAP_BASE_CELL), list(scalar)
+    assert len(scalar) < 128, "scalar body too long to jump over with a rel8"
+    fast = ([0x48, 0x8B, 0x04, 0x24]                  # mov rax, [rsp]
+            + [0x48, 0x0B, 0x44, 0x24, 0x08]          # or  rax, [rsp+8]
+            + [0x3B, 0x04, 0x25] + base               # cmp eax, [heap base]
+            + [0x72, 9]                               # jb  .scalar  (7+2 ahead)
+            + [0xFF, 0x14, 0x25] + hook               # call qword [hook]
+            + [0xEB, len(scalar)])                    # jmp .done
+    assert fast[17] == 9 and len(fast) - 18 == 9, "jb displacement"
+    tpl = ([0x48, 0x83, 0x3C, 0x25] + hook + [0x00]   # cmp qword [hook], 0
+           + [0x74, len(fast)]                        # je  .scalar
+           + fast + scalar)
+    assert len(tpl) == 38 + len(scalar) <= 255, (byte, len(tpl))
+    return tpl
+
+_ATOM_TPL = {b: tpl for b, _mn, _gl, tpl, _d in ATOMS}
+# byte -> replacement template.  build_blob2 emits the override INSTEAD of the
+# original record (the compiler's `f` returns the FIRST record for a key, so
+# emitting both would be a silent no-op); boot/golfref.py applies the same dict
+# LAST over its TEMPLATES (dict update = last wins), so the two agree.
+OVERRIDES = {b: _poly(b, golf0.TEMPLATES[chr(b)]) for b in map(ord, "+-*")}
+OVERRIDES.update({b: _poly(b, _ATOM_TPL[b]) for b in (0x88, 0x89)})  # ⌈ max ⌊ min
+
 # `ref` (byte 0x8C, glyph ′): a compiler *prefix* — read the next byte (a word
 # name) and emit `push <that word's runtime address>` instead of a call.  This
 # is the first change to golf2's compiler logic vs v1.  Written in pure v1 GOLF
@@ -143,10 +218,18 @@ def build_blob2():
     b += mkblob.rec(3, golf0.STARTUP)
     b += mkblob.rec(4, mkblob.header_pairs())
     b += mkblob.rec(5, golf0.AUTOEXIT)
+    used = set()
+    def emit(key, tpl):
+        """One record per op byte — the M-VEC override REPLACES the scalar one."""
+        if key in OVERRIDES:
+            tpl = OVERRIDES[key]; used.add(key)
+        assert len(tpl) <= 255, (key, len(tpl))
+        return mkblob.rec(key, tpl)
     for ch, tpl in golf0.TEMPLATES.items():          # v1 op templates
-        b += mkblob.rec(ord(ch), tpl)
+        b += emit(ord(ch), tpl)
     for byte, _mn, _gl, tpl, _doc in ATOMS:          # v2 atom templates
-        b += mkblob.rec(byte, tpl)
+        b += emit(byte, tpl)
+    assert used == set(OVERRIDES), "override with no record to replace"
     b += bytes([0])                                  # sentinel
     return bytes(b)
 

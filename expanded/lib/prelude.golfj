@@ -185,3 +185,18 @@
 # --- W4 cells: list cells are 4 bytes; W4 widens to 8 ---
 # --- W6 allocator ---
 # --- W3 hook installation (top-level init; must stay LAST) ---
+# M-VEC — implicit vectorization.  The bare + - * ⌈ ⌊ now compile to a
+# polymorphic template: it calls through a per-op HOOK CELL when that cell is
+# non-zero, and runs the plain scalar op when it is zero (tools/mkblob2._poly).
+# The cells are BSS, so installing the five dispatchers below is exactly what
+# switches implicit vectorization ON — and why every compiler binary, which
+# never runs this prelude, stays byte-for-byte scalar and keeps its fixpoint.
+# Cell = 0x4F0100 + 8*op byte (REGISTRY.md §3, stride 8 because the call reads a
+# full 64-bit cell):  '+' 0x2B -> 5177944 · '-' 0x2D -> 5177960 ·
+# '*' 0x2A -> 5177936 · ⌈ max 0x88 -> 5178688 · ⌊ min 0x89 -> 5178696.
+# Each hook is the address of the matching ∔ ∸ ⨰ ⩌ ⩍ word, so the template's
+# cheap `(a|b) <u heap base` filter only has to be CONSERVATIVE: a false
+# positive (a -1 flag looks like a big address) lands in D, which re-tests both
+# operands exactly and falls back to the raw scalar op.  32-bit `!` is enough —
+# BSS leaves each cell's high half zero.  Must stay last: ′ needs the words.
+\ref\vadd 5177944!\ref\vsub 5177960!\ref\vmul 5177936!\ref\vmax 5178688!\ref\vmin 5178696!

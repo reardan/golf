@@ -247,6 +247,41 @@ tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
 [ "$(oracle chain)" = "$(printf '11\n2\n11')" ] \
   && ok "oracle: chain.golfj behaves identically" || no "oracle chain.golfj"
 # @@ W3-VEC @@
+echo "Implicit vectorization (M-VEC): the bare + - * ⌈ ⌊ dispatch on shape"
+# Each of the five now compiles to [cmp qword [hook],0; je scalar; (a|b) <u heap
+# base ? scalar : call [hook]; scalar]. The hook cells (0x4F0100 + 8*op byte) are
+# BSS, and the prelude's last line installs ∔ ∸ ⨰ ⩌ ⩍ into them — so a program
+# with the prelude vectorizes, and the compiler binary (which never runs one)
+# keeps its cells zero and stays byte-for-byte scalar. Hence the fixpoint above.
+[ "$(printf '%s' '4R3+QE'      | gc)" = "3 4 5 6 " ]   && ok "+ list,int  (broadcast via K)"     || no "vec + list,int"
+[ "$(printf '%s' '10 4R-QE'    | gc)" = "10 9 8 7 " ]  && ok "- int,list  (broadcast via G, order kept)" || no "vec - int,list"
+[ "$(printf '%s' '4R4R*SNE'    | gc)" = "14" ]         && ok "* list,list (dot product via Z)"   || no "vec * list,list"
+[ "$(printf '%s' '4R4R+SNE'    | gc)" = "12" ]         && ok "+ list,list (elementwise via Z)"   || no "vec + list,list"
+[ "$(printf '%s' '5R 2\max QE' | gc)" = "2 2 2 3 4 " ] && ok "⌈ list,int  (broadcast max)"       || no "vec max list,int"
+[ "$(printf '%s' '5R 2\min QE' | gc)" = "0 1 2 2 2 " ] && ok "⌊ list,int  (broadcast min)"       || no "vec min list,int"
+[ "$(printf '%s' '3 4+NE'      | gc)" = "7" ]          && ok "+ int,int   (unchanged)"           || no "vec + int,int"
+[ "$(printf '%s' '0R3+LNE'     | gc)" = "0" ]          && ok "+ over the empty list"             || no "vec + empty"
+# Filter safety. The template's (a|b) <u heap-base test is CONSERVATIVE, never
+# authoritative: `<` yields -1, which looks like a huge address and does reach
+# the hook — D then re-tests both operands exactly and applies the raw scalar
+# add, so -1 + 1 is 0 and not a wild memory access.
+[ "$(printf '%s' ':c3 4<1+;cNE' | gc)" = "0" ] \
+  && ok "a -1 flag reaches the hook and falls back to the scalar op" || no "vec flag safety"
+# Without the prelude nothing installs a hook, so the check falls straight
+# through to the untouched v1 template.
+[ "$(printf '%s' '4 3+48+)' | atom)" = "7" ] \
+  && ok "no prelude: bare + is still exactly the scalar op" || no "vec scalar preservation"
+# h x = ∑(x + ⍳2) = 2x+1: the dispatch happens inside a mapped word, so D/G/R/S
+# all have to nest (each saves its own scratch frame).
+[ "$(printf '%s' ':h2R+S;3R\refhMQE' | gc)" = "1 3 5 " ] \
+  && ok "bare + broadcasting inside a mapped word (h x = 2x+1)" || no "vec inside map"
+# Differential: boot/golfref.py emits the same polymorphic templates as golf2.
+gref(){ cat <(python3 tools/codepage.py encode < lib/prelude.golfj) \
+            <(python3 tools/codepage.py encode) | python3 boot/golfref.py > "$TMP/ovec" 2>/dev/null \
+          && chmod +x "$TMP/ovec" && "$TMP/ovec" 2>/dev/null; }
+[ "$(printf '%s' '4R3+QE 4R4R*SNE' | gref)" = "$(printf '%s' '4R3+QE 4R4R*SNE' | gc)" ] \
+  && ok "oracle: the bare ops vectorize identically" || no "oracle vec"
+
 # @@ W4-CELLS @@
 # @@ W6-LIT @@
 # @@ W6-MEM @@
