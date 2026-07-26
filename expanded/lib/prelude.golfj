@@ -2,17 +2,35 @@
 # Authored in code-page mnemonic form (\exec = the indirect-call op, byte 0x8D).
 # It is encoded to raw bytes and prepended to programs by tools/golfc.
 #
-# A list is a heap block [ len, e0, e1, ... ] of 32-bit cells; a list value is
-# its address.  Reserved runtime memory — ../REGISTRY.md §3 is authoritative:
+# A list is a heap block [ len, e0, e1, ... ] of **64-bit cells** (M4/W4A; they
+# were 4 bytes through W3, which truncated every negative or >= 2^32 element);
+# a list value is its address.  Header and elements alike are read with \fetch
+# and written with \store, so element i of `l` lives at l + 8 + 8*i and A hands
+# out cells*8 bytes.  Reserved runtime memory — ../REGISTRY.md §3 is
+# authoritative:
 #   0x4F0000             heap pointer (the address word H pushes)
-#   0x4F0010..0x4F002C   scratch s0..s7, all eight in use:
+#   0x4F0010..0x4F002C   RETIRED — the old 4-byte scratch bank, now free
+#   0x4F0030             spill-stack pointer (a byte OFFSET; BSS-zero at start)
+#   0x4F0034 / 0x4F0038  heap base / span cells (the M-TAG bounds)
+#   0x4F003C             code-arena bump pointer (M-CHAIN's ∘)
+#   0x4F0040..0x4F005F   free scratch
+#   0x4F0060..0x4F0098   scratch s0..s7 — stride EIGHT, all eight in use:
 #                        s0 list · s1 index · s2 accumulator · s3 fn addr ·
 #                        s4 result · s5 alloc temp · s6 filter count · s7 zip l2
-#   0x4F0030             spill-stack pointer (a byte OFFSET; BSS-zero at start)
-#   0x4F0040             first free scratch
-#   0x4F0900..0x4F0FFF   scratch spill stack — 56 frames of 32 bytes (X/Y)
+#                        5177440 5177448 5177456 5177464 5177472 5177480
+#                        5177488 5177496
+#   0x4F00A0             first free scratch
+#   0x4F0900..0x4F0FFF   scratch spill stack — 28 frames of 64 bytes (X/Y)
 #   0x500000             heap base (bump allocator)
 # Do not touch any of it from your program.
+#
+# The four cells at 0x4F0030..0x4F003C did NOT move and did NOT widen: they are
+# forever pointer-valued (all < 2^31), the heap-base cell is BAKED INTO the
+# M-VEC templates as a 32-bit compare operand, and their 4-byte stride is what
+# makes the plain `@`/`!` on them correct.  Widening the scratch bank in place
+# was impossible for the same reason its cells were 4 apart — s0's 64-bit value
+# would land on top of s1 — so W4A RELOCATED the bank to an 8-byte stride
+# instead of moving anything that other code hard-codes.
 #
 # Re-entrancy.  Scratch is global, so a looping word cannot nest inside itself
 # (map inside map would clobber s0/s1/s3/s4).  Every scratch-using looping word
@@ -53,12 +71,12 @@
 #   H  -> addr             address of the heap pointer
 #   X  ->                  push a scratch spill frame (callee-save s0..s7)
 #   Y  ->                  pop a scratch spill frame
-#   A  cells -> addr       bump-allocate cells*4 bytes
+#   A  cells -> addr       bump-allocate cells*8 bytes
 #   L  list -> n           length
 #   I  list i -> x         index
 #   R  n -> list           range [0..n-1]
 #   S  list -> n           sum
-#   N  n ->                print unsigned decimal
+#   N  n ->                print signed decimal ('-' then the magnitude)
 #   E  ->                  print newline
 #   M  list fn -> list     map (fn is a word address, via \ref)
 #   F  list init fn -> x   fold
@@ -71,34 +89,44 @@
 #   J  list ->             join: print a code list as text (cell -> byte)
 #   Z  l1 l2 fn -> list    zip elementwise over min(len l1, len l2)
 :H5177344;                                          # H: heap-pointer address
-# X/Y: callee-save spill of s0..s7 (32-byte frames at 0x4F0900, pointer at
-# 0x4F0030).  Data stack only: `&` (over) re-supplies the frame base for each
-# store, `"` (dup) for each load, so neither word needs a temporary.
-:X5177392@5179648\radd 5177360@&!5177364@&4\radd!5177368@&8\radd!5177372@&12\radd!5177376@&16\radd!5177380@&20\radd!5177384@&24\radd!5177388@&28\radd!_5177392@32\radd5177392!;
-:Y5177392@32\rsub"5177392!5179648\radd"@5177360!"4\radd@5177364!"8\radd@5177368!"12\radd@5177372!"16\radd@5177376!"20\radd@5177380!"24\radd@5177384!"28\radd@5177388!_;
-:A4\rmul5177380! H@5242880\radd H@5177380@\radd H!;  # A: alloc(cells) -> addr
-:L@;                                                # L: len(list)
-:I4\rmul\radd4\radd@;                               # I: index(list,i)
-:R X"1\radd A"5177360!!0 5177364!5177360@@0\eq[{5177364@"4\rmul5177360@\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177360@ Y;
-:S X5177360!0 5177368!0 5177364!5177360@@0\eq[{5177360@5177364@I5177368@+5177368!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177368@ Y;
-:N"10\rlt1\radd[48\radd)^]"10/N10%48\radd);         # N: print unsigned decimal
+# X/Y: callee-save spill of s0..s7 (64-byte frames at 0x4F0900, pointer at
+# 0x4F0030 — still a 32-bit cell, still a byte offset, now stepped by 64).  Data
+# stack only: `&` (over) re-supplies the frame base for each store, `"` (dup) for
+# each load, so neither word needs a temporary.  Every slot is a full 64-bit
+# \fetch/\store, which is the whole point: a scratch cell may now hold -1.
+:X5177392@5179648\radd 5177440\fetch&\store5177448\fetch&8\radd\store5177456\fetch&16\radd\store5177464\fetch&24\radd\store5177472\fetch&32\radd\store5177480\fetch&40\radd\store5177488\fetch&48\radd\store5177496\fetch&56\radd\store_5177392@64\radd5177392!;
+:Y5177392@64\rsub"5177392!5179648\radd"\fetch5177440\store"8\radd\fetch5177448\store"16\radd\fetch5177456\store"24\radd\fetch5177464\store"32\radd\fetch5177472\store"40\radd\fetch5177480\store"48\radd\fetch5177488\store"56\radd\fetch5177496\store_;
+:A8\rmul5177480\store H@5242880\radd H@5177480\fetch\radd H!;  # A: alloc(cells) -> addr
+:L\fetch;                                           # L: len(list)
+:I8\rmul\radd8\radd\fetch;                          # I: index(list,i)
+:R X"1\radd A"5177440\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177448\fetch"8\rmul5177440\fetch\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177440\fetch Y;
+:S X5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch+5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
+# N: print signed decimal.  W4A added the sign check — cells hold negatives now,
+# so `-5 N` must print -5 and not 2^64-5.  `"0\slt1\radd[…]` runs the block only
+# when n <s 0: emit '-' (45) and \neg, then fall into the unsigned recursion.
+# The recursive call sees n/10 >= 0, so the check costs one compare per digit.
+:N"0\slt1\radd[45)\neg]"10\rlt1\radd[48\radd)^]"10/N10%48\radd);
 :E10);                                              # E: newline
-:M X5177372!"5177360!@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
-:F X5177372!5177376!5177360!0 5177364!5177360@@0\eq[{5177376@5177360@5177364@I5177372@\exec5177376!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
-:Q X5177360!0 5177364!5177360@@0\eq[{5177360@5177364@I N 32)5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]Y;
+:M X5177464\store"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
+:F X5177464\store5177472\store5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177472\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
+:Q X5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I N 32)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
 # P product(list)   V reverse(list)->list   W filter(list pred)->list  (keep where pred==0)
-:P X5177360!1 5177368!0 5177364!5177360@@0\eq[{5177360@5177364@I5177368@*5177368!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177368@ Y;
-:V X"5177360!@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@5177364@I5177376@5177360@@5177364@\rsub4\rmul\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
-:W X5177372!"5177360!@"1\radd A"5177376!__0 5177384!0 5177364!5177360@@0\eq[{5177360@5177364@I"5177368!5177372@\exec[5177384@1\radd5177384!5177368@5177376@5177384@4\rmul\radd!]5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177384@5177376@!5177376@ Y;
+:P X5177440\store1 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch*5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
+:V X"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177472\fetch5177440\fetch\fetch5177448\fetch\rsub8\rmul\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
+:W X5177464\store"5177440\store\fetch"1\radd A"5177472\store__0 5177488\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I"5177456\store5177464\fetch\exec[5177488\fetch1\radd5177488\store5177456\fetch5177472\fetch5177488\fetch8\rmul\radd\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177488\fetch5177472\fetch\store5177472\fetch Y;
 # O puts(str): print a “...“ byte block.  U chars(str)->list: byte block to code
 # list (so list ops apply).  J join(list): print a code list as text (cell->byte).
-:O X5177360!0 5177364!5177360@@0\eq[{5177360@4\radd5177364@\radd?)5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]Y;
-:U X5177360!5177360@@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@4\radd5177364@\radd?5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
-:J X5177360!0 5177364!5177360@@0\eq[{5177360@5177364@I)5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]Y;
+# A STRING IS NOT A LIST: STR_CASE emits [len:4][bytes], a 4-byte length prefix
+# followed by raw bytes, and W4A left that alone — so O and U read the length
+# with the 32-bit `@` and the bytes with `?` at str+4+i.  Only U's OUTPUT is a
+# list, and it is an ordinary 8-byte-cell one.  J's input is a real list.
+:O X5177440\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]Y;
+:U X5177440\store5177440\fetch@"1\radd A"5177472\store\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]5177472\fetch Y;
+:J X5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
 # Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
-# shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved at 0x4F002C, the common
-# length min(≢l1, ≢l2) at 0x4F0018.
-:Z X5177372!5177388!5177360!5177360@@5177388@@\rmin"5177368!"1\radd A"5177376!!0 5177364!5177368@0\eq[{5177360@5177364@I5177388@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177368@\rlt1\radd}]5177376@ Y;
+# shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved in s7, the common length
+# min(≢l1, ≢l2) in s2.
+:Z X5177464\store5177496\store5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"5177456\store"1\radd A"5177472\store\store0 5177448\store5177456\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177456\fetch\rlt1\radd}]5177472\fetch Y;
 # --- W2-TAG words ---
 # M-TAG — shape polymorphism.  A GOLF value is a LIST iff it is an address inside
 # the heap; everything else is an INT, including the -1/0 flags \eq/\rlt produce
@@ -122,8 +150,11 @@
 # s1 index, s3 fn, s4 result, s7 the parked scalar; the length header is written
 # outside the `0\eq[…]` guard so the empty list yields an empty list; every
 # pointer/index/flag step is a raw op.  fn sees user data and so stays \exec'd.
-:K X5177372!5177388!5177360!5177360@@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177360@5177364@I5177388@5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
-:G X5177372!5177360!5177388!5177360@@"1\radd A"5177376!!0 5177364!5177360@@0\eq[{5177388@5177360@5177364@I5177372@\exec5177376@5177364@4\rmul\radd4\radd!5177364@1\radd5177364!5177364@5177360@@\rlt1\radd}]5177376@ Y;
+# W4A: s7 is a 64-bit cell now, so the parked scalar keeps its full width — the
+# old wart where `-3 ⍳4 +` broadcast 4294967293 (a 32-bit round trip through
+# scratch) is GONE, and a negative or >= 2^32 broadcast scalar survives intact.
+:K X5177464\store5177496\store5177440\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
+:G X5177464\store5177440\store5177496\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177496\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
 # D  a b fn -> c   the binary shape dispatcher, and the calling convention M-VEC
 # will route the bare + - * ⌈ ⌊ templates through: fn is a quotation address.
 # a and b are NEVER parked in scratch — they stay on the data stack, so the
@@ -133,7 +164,7 @@
 # 3 ii), both covered by X/Y.  Guards are `code k\rsub[…]` — zero, so true, only
 # for its own k — and exactly one fires; Z/K/G restore s2 as they leave, so the
 # guards after the one that ran still read the code and not someone's garbage.
-:D X5177372!&T2\rmul&T\radd5177368!5177368@[5177372@Z]5177368@1\rsub[5177372@K]5177368@2\rsub[5177372@G]5177368@3\rsub[5177372@\exec]Y;
+:D X5177464\store&T2\rmul&T\radd5177456\store5177456\fetch[5177464\fetch Z]5177456\fetch1\rsub[5177464\fetch K]5177456\fetch2\rsub[5177464\fetch G]5177456\fetch3\rsub[5177464\fetch\exec]Y;
 # The user-facing polymorphic operators, bytes 0xC0..0xC4 (REGISTRY.md §1.2).
 # Three tokens each: ′atom auto-wraps the raw scalar op in a thunk and D picks
 # the shape.  The definition name is the high byte itself — `:\vadd` is `: 0xC0`.
@@ -155,6 +186,9 @@
 # the data stack, and the EPILOGUE hands the address back and rets.  The two
 # imm64 operands are written with `!` (4 bytes: the address, all < 2^31) then a
 # second `!` for the four zero high bytes; every opcode byte goes out with `,`.
+# Those are MACHINE-CODE writes at their own natural widths and have nothing to
+# do with list cells, so W4A left every `,` and `!` in the body alone — only ∘'s
+# three scratch slots moved to the new bank.
 #
 # Thunks come from a dedicated CODE ARENA at 0x4D0000 (bump pointer 0x4F003C),
 # never from the list heap: a heap address (>= 0x500000) would be
@@ -163,12 +197,12 @@
 # classifies as an int like every other ′ address.  ∘ is X/Y-wrapped (it parks f,
 # g and the thunk's start address in s1/s2/s3) so it may be called from inside a
 # map or a fold; each call bumps the arena by 39 bytes.
-:∘X5177368!5177364!5046272 5177404@\radd"5177372!
+:∘X5177456\store5177448\store5046272 5177404@\radd"5177464\store
  72&,1\radd131&,1\radd237&,1\radd8&,1\radd143&,1\radd69&,1\radd0&,1\radd
- 72&,1\radd184&,1\radd5177364@&!4\radd0&!4\radd255&,1\radd208&,1\radd
- 72&,1\radd184&,1\radd5177368@&!4\radd0&!4\radd255&,1\radd208&,1\radd
+ 72&,1\radd184&,1\radd5177448\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
+ 72&,1\radd184&,1\radd5177456\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
  255&,1\radd117&,1\radd0&,1\radd72&,1\radd131&,1\radd197&,1\radd8&,1\radd195&,1\radd
- _5177404@39\radd5177404!5177372@Y;              # ∘: ′f ′g -> ′(x -> g(f x))
+ _5177404@39\radd5177404!5177464\fetch Y;        # ∘: ′f ′g -> ′(x -> g(f x))
 # ⇉ pipeline(x, qlist) -> y : thread x through every quotation, left to right.
 # That is exactly a fold whose fn is ⍎ itself — F pushes (acc, elem) and elem IS
 # the quotation, so ′⍎ applies it to acc.  F wants (list init fn) and we are
@@ -177,12 +211,21 @@
 # `encode` then reads as the escape for the mnemonic that follows it — ′⍎ here.
 # Encoding is one-way-safe but the round trip is not, so the prelude stays free
 # of 0x5C.  X/Y-wrapped: s0/s1 must not leak to a caller that is mid-fold.
-:⇉X5177364!5177360!5177364@5177360@\ref\execFY;  # ⇉: x qlist -> y
+:⇉X5177448\store5177440\store5177448\fetch5177440\fetch\ref\exec F Y;  # ⇉: x qlist -> y
 # ⑂ fork(x, ′f, ′g, ′h) -> h(f x, g x) — the classic APL/J train, e.g. mean is
 # ⑂ over sum, len and divide.  s0 x · s1 f · s2 g · s3 h; f/g/h may themselves be
 # looping words (they save their own frame), so this nests.
-:⑂X5177372!5177368!5177364!5177360!5177360@5177364@\exec5177360@5177368@\exec5177372@\execY;
-# --- W4 cells: list cells are 4 bytes; W4 widens to 8 ---
+:⑂X5177464\store5177456\store5177448\store5177440\store5177440\fetch5177448\fetch\exec5177440\fetch5177456\fetch\exec5177464\fetch\exec Y;
+# --- W4 cells: list cells are 8 bytes (M4, shipped by W4A) ---
+# The widening is library-only — no compiler change, no template change, so the
+# seed and the fixpoint are untouched.  Three rules cover the whole prelude:
+#   * every list cell (the length header included) is \fetch / \store, and every
+#     element/index step is 8\rmul / 8\radd, so l[i] is at l + 8 + 8*i;
+#   * every scratch slot is \fetch / \store against the 8-byte-stride bank at
+#     0x4F0060 (X/Y therefore spill 64-byte frames);
+#   * the FIXED cells — heap pointer, spill pointer, heap base/span, code arena,
+#     the M-VEC hook cells, and a string's 4-byte length prefix — keep 32-bit
+#     `@`/`!`, because their addresses and strides are hard-coded elsewhere.
 # --- W6 allocator ---
 # --- W3 hook installation (top-level init; must stay LAST) ---
 # M-VEC — implicit vectorization.  The bare + - * ⌈ ⌊ now compile to a

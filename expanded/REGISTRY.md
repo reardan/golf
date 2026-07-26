@@ -171,14 +171,16 @@ both forms are given here and the decimal is the one you type.
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000` | 5111808 | user variable bank (`→x`/`←x`), 4 bytes per name — **user space** | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
-| `0x4F0010`–`0x4F002C` | 5177360–5177388 | prelude scratch `s0`–`s7` — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list) | shipped |
+| `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
 | `0x4F0034` | 5177396 | heap base cell | shipped |
 | `0x4F0038` | 5177400 | heap span cell | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
-| `0x4F0040`–`0x4F00FF` | 5177408–5177599 | reserved for future scratch | free |
+| `0x4F0040`–`0x4F005F` | 5177408–5177439 | reserved for future scratch | free |
+| `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
+| `0x4F00A0`–`0x4F00FF` | 5177504–5177599 | reserved for future scratch | free |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
-| `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 56 frames of 32 bytes | shipped |
+| `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
 | `0x500000` | 5242880 | heap base today (bump allocator) | shipped |
 | `0xC00000` | 12582912 | return stack top (grows **down** into the heap) | shipped |
 
@@ -187,6 +189,16 @@ Notes:
 - **Scratch is exhausted.** All eight of `s0`–`s7` are live in `lib/prelude.golfj`
   today. A new prelude word that needs a temporary must either use one of the
   cells above or push a spill frame (`X`/`Y`) — it may not invent an address.
+- **Scratch is 64-bit and 8-strided; the four fixed cells are not.** A list cell
+  has been 8 bytes since M4/W4A, so every scratch slot has to hold a full 64-bit
+  value — which is why the bank was *relocated* to `0x4F0060` rather than
+  widened in place (at a 4-byte stride `s0`'s high half is `s1`). All scratch
+  access is `⊙`/`⊛` (`\fetch`/`\store`). The four cells at `0x4F0030`–`0x4F003C`
+  deliberately did **not** move or widen: they are forever pointer-valued
+  (< 2^31), plain `@`/`!` on them is therefore exact, and `0x4F0034` in
+  particular is baked into every M-VEC template as a 32-bit compare operand.
+  A string is likewise still `[len:4][bytes]`, so `O`/`U` read its length with
+  the 32-bit `@`; only `U`'s *output* is an 8-byte-cell list.
 - **Scratch is callee-saved, not caller-saved.** Every scratch-using looping
   word in the prelude opens with `X` and closes with `Y` (lifting its result
   onto the data stack first, since `Y` is stack-neutral), so higher-order words
@@ -198,8 +210,9 @@ Notes:
   and the return stack grows down from `0xC00000` in the same 8 MB segment.
   W6/M-MEM moves the heap above `0xC00000` and sizes it with `brk` (`0xA6`),
   which is why `0x4F0034`/`0x4F0038` exist.
-- The M-VEC hook table is at stride 8 (not 4) so it stays correct after M4
-  widens cells to 64 bits.
+- The M-VEC hook table is at stride 8 (not 4) so it stayed correct when M4
+  widened list cells to 64 bits — which W4A has now done, with no change to the
+  templates, the hook cells or the seed.
 
 ---
 
