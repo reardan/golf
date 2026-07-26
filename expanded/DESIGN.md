@@ -46,15 +46,25 @@ compile with `golf2`. The round-trip is exact. First atoms: `± neg`, `⊕ inc`,
 ## The bootstrap ladder (how v2 gets built)
 
 We keep the property that makes this project worth doing: **there is always a
-compiler that can build the current source, and the three-stage bootstrap is
-byte-identical.** The chain is:
+compiler that can build the current source, and the bootstrap reaches a
+byte-identical fixpoint.** The chain is:
 
 ```
 golf0.py  --compiles-->  v1c        # the frozen minimal compiler (../minimal)
-v1c       --compiles-->  golf2      # self/golf2.golf, written in v1 GOLF
-golf2     --compiles-->  golf2'     # require golf2 == golf2'  (fixpoint)
-golf2     --compiles-->  your v2 programs
+v1c       --compiles-->  stage1     # self/golf2.golf, written in v1 GOLF
+stage1    --compiles-->  stage2     # same source, compiled by golf2 itself
+stage2    --compiles-->  stage3     # require stage2 == stage3  (fixpoint)
+stage3    --compiles-->  your v2 programs
 ```
+
+The gate is **stage2 == stage3**, not stage1 == stage2. stage2 and stage3 are
+both produced by a compiler built from `self/golf2.golf`, so they embed the same
+template blob and emit the same code for the same source: iterate 2 has
+converged. stage1 is emitted by `v1c`, which carries *v1's* blob, so it only
+matches stage2 while golf2 overrides none of v1's op templates — the day golf2
+ships its own `+` (say, a vectorized one), stage1 diverges permanently while the
+fixpoint above is untouched. `test/run2.sh` therefore asserts stage2 == stage3
+and merely reports stage1 == stage2 as an informational `seed-stable:` line.
 
 `self/golf2.golf` is the v2 compiler. Its **source must always be compilable by
 the current toolchain.** Today that toolchain is `v1c`, so golf2's code is still
@@ -130,16 +140,29 @@ plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   so mutual recursion needs no pending-char hack. Pursue if/when programs get big
   enough that single-byte word names hurt.
 
-- **M-JELLY — vectorization (explicit done; implicit is the frontier).** Done:
-  **explicit** vectorization — `Z` zip (`⊞`, elementwise binary op over two
-  lists), so `4⍳4⍳′m⊞∑` is a dot product; and **broadcast** via a named-variable
-  closure (`10→k:f←k+;5⍳′f€` = +10 over a list). Still the frontier: **implicit**
-  auto-vectorization — a bare `+` on two lists working elementwise, and int+list
-  broadcasting — which needs runtime **type tags** (int vs list) so one atom
-  dispatches on shape. With tags, `′`/`⍎`, `M`/`F`, and `Z` become the machinery
-  that Jelly **chains** (tacit monadic/dyadic link threading) are built from.
-  (Fixed: `′atom` is now auto-wrapped, so `′+`/`′*`/`′⌈` pass straight to
-  `map`/`fold`/`zip`/`exec`. Remaining wart: no length/shape checks.)
+- **M-JELLY — vectorization (done, implicit included).** **Explicit:** `Z` zip
+  (`⊞`, elementwise binary op over two lists), so `4⍳4⍳′*⊞∑` is a dot product,
+  plus broadcast via a named-variable closure. **Implicit (M-VEC):** the *bare*
+  `+ - * ⌈ ⌊` now vectorize — `4⍳3+` is `3 4 5 6`, `10 4⍳-` is `10 9 8 7`,
+  `4⍳4⍳*∑` is a dot product — with no type tag on the value and no change to the
+  compiler's logic. Each of the five keeps its old scalar body and gains a
+  38-byte preamble: `cmp qword [hook],0; je scalar` (the hook table is 256 cells
+  of 8 bytes at `0x4F0100`, indexed by op byte — REGISTRY.md §3), then a
+  conservative `(a|b) <u heap-base` filter that sends anything that cannot be an
+  address to the scalar path, then `call qword [hook]`. **The prelude is
+  authoritative, not the filter:** the hooks point at `∔ ∸ ⨰ ⩌ ⩍`, whose
+  dispatcher `D` re-tests both operands exactly (`T`) and falls back to the raw
+  scalar op — so a `-1` flag from `<`, which the cheap filter cannot reject, is
+  still added, not indexed. The prelude's own pointer and index math uses the
+  never-polymorphic raw atoms `﹢ ﹣ ﹡ ⊓ ⊔` (0x91–0x96), so nothing recurses.
+  **Why the bootstrap survives it:** the hook cells are BSS, and every compiler
+  binary on the ladder is a program that never runs `lib/prelude.golfj`, so its
+  cells stay zero and it always takes the check-then-scalar path. golf2 now
+  overrides five v1 templates, so `stage1 != stage2` is **permanent by design**
+  (the `seed-stable:` line in `test/run2.sh` prints `no`); the real gate,
+  `stage2 == stage3`, is still byte-identical, because both are built from
+  `self/golf2.golf` and embed the same blob. Remaining wart: no length/shape
+  checks (`Z` truncates to the shorter list).
 
 - **M3 — named variables (done, lite).** `→x` stores TOS, `←x` loads it — compiler
   prefix ops over a name-indexed **global** register bank at 0x4E0000. Kills most

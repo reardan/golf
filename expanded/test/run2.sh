@@ -2,9 +2,15 @@
 # Expanded GOLF (v2) test suite + bootstrap ladder.
 #
 #   golf0.py  --compiles-->  v1c        (the frozen minimal compiler)
-#   v1c       --compiles-->  golf2      (v2 seed, written in v1 GOLF)
-#   golf2     --compiles-->  golf2'     ; require golf2 == golf2'  (fixpoint)
-#   golf2     --compiles-->  examples using the new operators
+#   v1c       --compiles-->  stage1     (v2 seed, written in v1 GOLF)
+#   stage1    --compiles-->  stage2
+#   stage2    --compiles-->  stage3     ; require stage2 == stage3  (fixpoint)
+#   stage3    --compiles-->  examples using the new operators
+#
+# The gate is stage2 == stage3: both are built from self/golf2.golf and therefore
+# embed the same template blob, so iterate 2 has converged. stage1 comes out of
+# v1c (v1's blob) and matches stage2 only while golf2 overrides no v1 template —
+# that extra equality is reported below as informational, not as a test.
 set -u
 cd "$(dirname "$0")/.."
 EXP=$(pwd); MIN="$EXP/../minimal"
@@ -22,7 +28,17 @@ python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$TMP/v1c" 2>/dev/null &&
 "$TMP/v1c" < self/golf2.golf > "$TMP/golf2" 2>/dev/null && chmod +x "$TMP/golf2" \
   && ok "v1c compiles golf2.golf" || no "v1c compiles golf2.golf"
 "$TMP/golf2" < self/golf2.golf > "$TMP/golf2b" 2>/dev/null && chmod +x "$TMP/golf2b"
-cmp -s "$TMP/golf2" "$TMP/golf2b" && ok "golf2 self-hosts (fixpoint)" || no "golf2 fixpoint"
+"$TMP/golf2b" < self/golf2.golf > "$TMP/golf2c" 2>/dev/null && chmod +x "$TMP/golf2c"
+cmp -s "$TMP/golf2b" "$TMP/golf2c" \
+  && ok "golf2 self-hosts (fixpoint: stage2 == stage3)" || no "golf2 fixpoint (stage2 == stage3)"
+# Informational only — never a pass/fail gate: stage1 (emitted by v1c) is
+# byte-identical to stage2 exactly as long as golf2's blob overrides none of v1's
+# op templates. Overriding one (e.g. a vectorized '+') makes this print "no"
+# while the stage2 == stage3 fixpoint above keeps holding.
+if cmp -s "$TMP/golf2" "$TMP/golf2b"; then seedstable=yes; else seedstable=no; fi
+printf '       seed-stable: %s (stage1 == stage2; informational — expected to diverge once a v1 template is overridden)\n' "$seedstable"
+# Everything below this line exercises the converged compiler (stage3).
+cp -f "$TMP/golf2c" "$TMP/golf2"
 
 echo "The v2 compiler still handles all of v1"
 "$TMP/golf2" < "$MIN/examples/hello.golf" > "$TMP/h" 2>/dev/null && chmod +x "$TMP/h"
@@ -61,6 +77,29 @@ echo "Grown atom set: » gt ≡ eq ⌈ max ⌊ min ÷ sdv ∣ smd"
 [ "$(printf '%s' '17 5\sdv48+)' | atom)" = "3" ] && ok "sdv" || no "sdv"
 [ "$(printf '%s' '17 5\smd48+)' | atom)" = "2" ] && ok "smd" || no "smd"
 
+echo "Raw scalar atoms (prelude-internal, never polymorphic): ﹢ ﹣ ﹡ ⊓ ⊔ ﹤"
+[ "$(printf '%s' '3 4\radd48+)'   | atom)" = "7" ] && ok "radd" || no "radd"
+[ "$(printf '%s' '9 4\rsub48+)'   | atom)" = "5" ] && ok "rsub" || no "rsub"
+[ "$(printf '%s' '2 3\rmul48+)'   | atom)" = "6" ] && ok "rmul" || no "rmul"
+[ "$(printf '%s' '4 9\rmin48+)'   | atom)" = "4" ] && ok "rmin" || no "rmin"
+[ "$(printf '%s' '4 9\rmax48+)'   | atom)" = "9" ] && ok "rmax" || no "rmax"
+[ "$(printf '%s' '3 4\rlt1+48+)'  | atom)" = "0" ] && ok "rlt"  || no "rlt"
+
+# @@ W1-M4ATOMS @@
+echo "M4 atoms: ≺ slt ≻ sgt (signed compare), ≪ shl ≫ sar, ⊙ fetch ⊛ store (64-bit)"
+# slt/sgt are where signed differs from unsigned: -5 <s 3 is true, but as u64
+# -5 is huge so v1's `<` would say false (and print 1 instead of 0).
+[ "$(printf '%s' '0 5-3\slt1+48+)'   | atom)" = "0" ] && ok "slt (-5 <s 3)"  || no "slt"
+[ "$(printf '%s' '3 0 5-\sgt1+48+)'  | atom)" = "0" ] && ok "sgt (3 >s -5)"  || no "sgt"
+[ "$(printf '%s' '1 3\shl48+)'       | atom)" = "8" ] && ok "shl (1<<3)"     || no "shl"
+[ "$(printf '%s' '16 2\sar48+)'      | atom)" = "4" ] && ok "sar (16>>2)"    || no "sar"
+[ "$(printf '%s' '0 8-1\sar 6+48+)'  | atom)" = "2" ] && ok "sar (-8>>1=-4)" || no "sar negative"
+# -1 >>a 63 is -1; an unsigned shr would give 1 and print 2 instead of 0.
+[ "$(printf '%s' '0 1-63\sar1+48+)'  | atom)" = "0" ] && ok "sar keeps the sign bit" || no "sar sign"
+# 64-bit cell round-trip through free scratch 0x4F0040 (REGISTRY.md §3).
+[ "$(printf '%s' '7 5177408\store 5177408\fetch48+)' | atom)" = "7" ] \
+  && ok "store + fetch (64-bit cell round-trip)" || no "store/fetch"
+
 echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
 [ "$(printf '%s' ':d\dbl;3\refd\exec48+)' | atom)" = "6" ] && ok "ref + exec (′word)" || no "ref/exec"
 [ "$(printf '%s' '3 4\ref+\exec48+)' | atom)" = "7" ] && ok "ref + exec (′atom, auto-wrapped)" || no "ref atom"
@@ -97,6 +136,20 @@ echo "Named variables (M3): →x store, ←x load (global name-indexed bank)"
 tools/golfc -j examples/vars.golfj "$TMP/vars" 2>/dev/null
 [ "$("$TMP/vars" 2>/dev/null)" = "40" ] && ok "golfc examples/vars.golfj" || no "vars.golfj"
 
+echo "Reference oracle (boot/golfref.py): Python v2 compiler, differential check"
+oracle(){ cat <(python3 tools/codepage.py encode < lib/prelude.golfj) \
+              <(python3 tools/codepage.py encode < "examples/$1.golfj") \
+            | python3 boot/golfref.py > "$TMP/o$1" 2>/dev/null \
+            && chmod +x "$TMP/o$1" && "$TMP/o$1" 2>/dev/null; }
+[ "$(oracle lists)" = "$(printf '4950\n20\n5')" ] \
+  && ok "oracle: lists.golfj behaves identically"     || no "oracle lists.golfj"
+[ "$(oracle vars)"  = "40" ] \
+  && ok "oracle: vars.golfj behaves identically"      || no "oracle vars.golfj"
+[ "$(oracle strings)" = "$(printf 'Hello, world!\ndesserts\nIfmmp')" ] \
+  && ok "oracle: strings.golfj behaves identically"   || no "oracle strings.golfj"
+[ "$(oracle vectorize)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] \
+  && ok "oracle: vectorize.golfj behaves identically" || no "oracle vectorize.golfj"
+
 echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closures"
 [ "$(printf '%s' '5R5R\ref+ZSNE'      | gc)" = "20" ] && ok "zip (′atom +) then sum" || no "zip"
 [ "$(printf '%s' '4R4R\ref*ZSNE'      | gc)" = "14" ] && ok "dot product (′atom *)" || no "dot"
@@ -104,9 +157,170 @@ echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closur
 tools/golfc -j examples/vectorize.golfj "$TMP/vec" 2>/dev/null
 [ "$("$TMP/vec" 2>/dev/null)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
 
+# Insertion anchors: each wave adds its tests directly under its own anchor, so
+# concurrent waves never touch the same line. Comment-only; keep them in order.
+
+# @@ W1-SOUND @@
+echo "Totality (M-SOUND): every list word is correct on empty input; re-entrant scratch"
+[ "$(printf '%s' '0R S N'          | gc)" = "0" ]    && ok "sum of the empty list"        || no "empty sum"
+[ "$(printf '%s' '0R L N'          | gc)" = "0" ]    && ok "len of the empty list"        || no "empty len"
+[ "$(printf '%s' '0R\ref\dblML N'  | gc)" = "0" ]    && ok "map over the empty list"      || no "empty map"
+[ "$(printf '%s' ':e2%;0R\refeWL N'| gc)" = "0" ]    && ok "filter over the empty list"   || no "empty filter"
+[ "$(printf '%s' '0RVL N'          | gc)" = "0" ]    && ok "reverse of the empty list"    || no "empty reverse"
+[ "$(printf '%s' '\str\str UL N'   | gc)" = "0" ]    && ok "chars of the empty string"    || no "empty chars"
+[ "$(printf '%s' '3R5R\ref+ZL N'   | gc)" = "3" ]    && ok "zip truncates to the shorter list" || no "zip min length"
+[ "$(printf '%s' '5R3R\ref+ZQ'     | gc)" = "0 2 4 " ] && ok "zip never reads past the shorter list" || no "zip overread"
+[ "$(printf '%s' ':g3RS;5R\refgMQE'| gc)" = "3 3 3 3 3 " ] && ok "re-entrant scratch (mapped fn calls range+sum)" || no "nested HOF"
+[ "$(printf '%s' '100R S N'        | gc)" = "4950" ] && ok "regression: sum of range(100)" || no "regression sum"
+
+# @@ W2-TAG @@
+echo "Shape polymorphism (M-TAG): T shape test, D dispatcher, ∔ ∸ ⨰ ⩍ ⩌"
+# The heap bounds are runtime cells (0x4F0034 base, 0x4F0038 span), set by the
+# prelude's top-level init; base+span is the return-stack top 0xC00000.
+[ "$(printf '%s' '5177396@ 5177400@\radd N E' | gc)" = "12582912" ] \
+  && ok "heap-bounds cells initialized (base+span = 0xC00000)" || no "heap bounds cells"
+[ "$(printf '%s' '5R T N E'  | gc)" = "0" ] && ok "T: a heap address is a list" || no "T list"
+[ "$(printf '%s' '7 T N E'   | gc)" = "1" ] && ok "T: a small int is an int"    || no "T int"
+# The one that would break a naive signed test: -1 is 0xFFFF… , above the heap.
+[ "$(printf '%s' '0 1-T N E' | gc)" = "1" ] && ok "T: a -1 compare flag is an int" || no "T flag"
+[ "$(printf '%s' '3 4\vadd N E'    | gc)" = "7" ]  && ok "∔ int,int  (fn applied directly)" || no "vadd int,int"
+# D must be TRANSPARENT for scalars — M-VEC routes the bare + through it, so an
+# int,int ∔ has to equal an int,int +, bit for bit.  D never parks a or b in
+# 32-bit scratch, so -1 stays -1: had it, @ would zero-extend to 4294967295 and
+# this would print 4294967300 rather than 4.
+[ "$(printf '%s' '0 1- 5\vadd N E' | gc)" = "$(printf '%s' '0 1- 5+N E' | gc)" ] \
+  && ok "∔ int,int is bit-identical to + (operands keep 64 bits)" || no "vadd width"
+[ "$(printf '%s' '4R4R\vmul S N E' | gc)" = "14" ] && ok "⨰ list,list (via Z: dot product)" || no "vmul list,list"
+[ "$(printf '%s' '5R10\vadd Q E'   | gc)" = "10 11 12 13 14 " ] && ok "∔ list,int (via K)" || no "vadd list,int"
+[ "$(printf '%s' '3 5R\vadd S N E' | gc)" = "25" ] && ok "∔ int,list (via G)" || no "vadd int,list"
+# K and G are separate words because fn need not commute: 10 ∸ ⍳3, not ⍳3 ∸ 10.
+[ "$(printf '%s' '10 3R\vsub Q E'  | gc)" = "10 9 8 " ]   && ok "∸ int,list keeps the operand order" || no "vsub int,list"
+[ "$(printf '%s' '5R2\vmin Q E'    | gc)" = "0 1 2 2 2 " ] && ok "⩍ list,int" || no "vmin list,int"
+[ "$(printf '%s' '1 3R\vmax Q E'   | gc)" = "1 1 2 " ]     && ok "⩌ int,list" || no "vmax int,list"
+[ "$(printf '%s' '0R 5\vadd L N E' | gc)" = "0" ] && ok "∔ over the empty list (K is total)" || no "empty vadd K"
+[ "$(printf '%s' '5 0R\vadd L N E' | gc)" = "0" ] && ok "∔ over the empty list (G is total)" || no "empty vadd G"
+# Nesting: h x = ∑(x ∔ ⍳2) = x + (x+1) = 2x+1, so ⍳3 maps to 1 3 5.  Proves D
+# (and the G it dispatches to) survives being called from inside €'s own loop —
+# every one of D/G/R/S restores the scratch € is holding.
+[ "$(printf '%s' ':h2R\vadd S;3R\refh M Q E' | gc)" = "1 3 5 " ] \
+  && ok "D/K/G re-enter safely inside map (h x = 2x+1)" || no "nested dispatch"
+tools/golfc -j examples/polymorphic.golfj "$TMP/poly" 2>/dev/null
+[ "$("$TMP/poly" 2>/dev/null)" = "$(printf '14\n25\n10 9 8 \n7')" ] \
+  && ok "golfc examples/polymorphic.golfj" || no "polymorphic.golfj"
+[ "$(oracle polymorphic)" = "$(printf '14\n25\n10 9 8 \n7')" ] \
+  && ok "oracle: polymorphic.golfj behaves identically" || no "oracle polymorphic.golfj"
+
+# @@ W2-CHAIN @@
+echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotations built at runtime"
+# ∘ writes a 39-byte thunk [prologue][mov rax,f; call rax][mov rax,g; call rax]
+# [epilogue] into the code arena and returns its address, so ⍎ calls it like any
+# compiled word.  d = ⊗ double, i = ⊕ increment; (d ∘ i)(5) = i(d 5) = 11.
+[ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\exec N E' | gc)" = "11" ] \
+  && ok "compose (′d ∘ ′i applied to 5)" || no "compose"
+# The thunk must NOT come from the list heap (>= 0x500000, where it would be
+# indistinguishable from a list): the arena is 0x4D0000 = 5046272, an int.
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp N E' | gc)" = "5046272" ] \
+  && ok "a composed quotation is an int in the code arena at 0x4D0000" || no "compose arena address"
+# Two composes, second minus first (±negated because Ṅ prints unsigned).
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp\refi\refd\comp\rsub\neg N E' | gc)" = "39" ] \
+  && ok "composing twice bumps the arena by exactly one 39-byte thunk" || no "compose twice"
+[ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\refd\comp\exec N E' | gc)" = "22" ] \
+  && ok "compose of a composed quotation: d(i(d 5))" || no "compose of compose"
+[ "$(printf '%s' ':d\dbl;:i\inc;:c\refd\refi\comp\exec;5R\refcMQE' | gc)" = "1 3 5 7 9 " ] \
+  && ok "compose inside map (a fresh thunk per element, 2x+1)" || no "compose in map"
+# ⑂ fork: the APL/J train.  mean = ÷(∑, ≢); ∑(0..4)=10, ≢=5, 10÷5=2.
+[ "$(printf '%s' '5R\refS\refL\ref\sdv\fork N E' | gc)" = "2" ] \
+  && ok "fork: mean of range(5) = ÷(∑, ≢)" || no "fork mean"
+[ "$(printf '%s' ':e\refS\refL\ref\sdv\fork;5R\refe\exec N E' | gc)" = "2" ] \
+  && ok "fork reached through an extra ⍎ indirection" || no "fork via exec"
+# fork inside map: f and g are looping words, so this only works if every frame
+# nests.  means of [0,1] and [0,1,2,3] are 1÷2=0 and 6÷4=1.
+# The three hand-built lists below spell out the cell layout, so W4A restrided
+# them: cells are 8 bytes and are written with ⊛ (\store), not 4 and !.
+[ "$(printf '%s' ':m\refS\refL\ref\sdv\fork;3A 2&\store2R&8\radd\store4R&16\radd\store\refmMQE' | gc)" = "0 1 " ] \
+  && ok "fork inside map (nested scratch frames)" || no "fork in map"
+# ⇉ pipeline over a hand-built quotation list [′d, ′i]: 3 cells = len + 2 addrs.
+[ "$(printf '%s' ':d\dbl;:i\inc;5 3A 2&\store\refd&8\radd\store\refi&16\radd\store\pipe N E' | gc)" = "11" ] \
+  && ok "pipeline: 5 threaded through [′d, ′i]" || no "pipeline"
+[ "$(printf '%s' '5 1A 0&\store\pipe N E' | gc)" = "5" ] \
+  && ok "pipeline over an empty quotation list is the identity" || no "empty pipeline"
+tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
+[ "$("$TMP/chain" 2>/dev/null)" = "$(printf '11\n2\n11')" ] && ok "golfc examples/chain.golfj" || no "chain.golfj"
+[ "$(oracle chain)" = "$(printf '11\n2\n11')" ] \
+  && ok "oracle: chain.golfj behaves identically" || no "oracle chain.golfj"
+# @@ W3-VEC @@
+echo "Implicit vectorization (M-VEC): the bare + - * ⌈ ⌊ dispatch on shape"
+# Each of the five now compiles to [cmp qword [hook],0; je scalar; (a|b) <u heap
+# base ? scalar : call [hook]; scalar]. The hook cells (0x4F0100 + 8*op byte) are
+# BSS, and the prelude's last line installs ∔ ∸ ⨰ ⩌ ⩍ into them — so a program
+# with the prelude vectorizes, and the compiler binary (which never runs one)
+# keeps its cells zero and stays byte-for-byte scalar. Hence the fixpoint above.
+[ "$(printf '%s' '4R3+QE'      | gc)" = "3 4 5 6 " ]   && ok "+ list,int  (broadcast via K)"     || no "vec + list,int"
+[ "$(printf '%s' '10 4R-QE'    | gc)" = "10 9 8 7 " ]  && ok "- int,list  (broadcast via G, order kept)" || no "vec - int,list"
+[ "$(printf '%s' '4R4R*SNE'    | gc)" = "14" ]         && ok "* list,list (dot product via Z)"   || no "vec * list,list"
+[ "$(printf '%s' '4R4R+SNE'    | gc)" = "12" ]         && ok "+ list,list (elementwise via Z)"   || no "vec + list,list"
+[ "$(printf '%s' '5R 2\max QE' | gc)" = "2 2 2 3 4 " ] && ok "⌈ list,int  (broadcast max)"       || no "vec max list,int"
+[ "$(printf '%s' '5R 2\min QE' | gc)" = "0 1 2 2 2 " ] && ok "⌊ list,int  (broadcast min)"       || no "vec min list,int"
+[ "$(printf '%s' '3 4+NE'      | gc)" = "7" ]          && ok "+ int,int   (unchanged)"           || no "vec + int,int"
+[ "$(printf '%s' '0R3+LNE'     | gc)" = "0" ]          && ok "+ over the empty list"             || no "vec + empty"
+# Filter safety. The template's (a|b) <u heap-base test is CONSERVATIVE, never
+# authoritative: `<` yields -1, which looks like a huge address and does reach
+# the hook — D then re-tests both operands exactly and applies the raw scalar
+# add, so -1 + 1 is 0 and not a wild memory access.
+[ "$(printf '%s' ':c3 4<1+;cNE' | gc)" = "0" ] \
+  && ok "a -1 flag reaches the hook and falls back to the scalar op" || no "vec flag safety"
+# Without the prelude nothing installs a hook, so the check falls straight
+# through to the untouched v1 template.
+[ "$(printf '%s' '4 3+48+)' | atom)" = "7" ] \
+  && ok "no prelude: bare + is still exactly the scalar op" || no "vec scalar preservation"
+# h x = ∑(x + ⍳2) = 2x+1: the dispatch happens inside a mapped word, so D/G/R/S
+# all have to nest (each saves its own scratch frame).
+[ "$(printf '%s' ':h2R+S;3R\refhMQE' | gc)" = "1 3 5 " ] \
+  && ok "bare + broadcasting inside a mapped word (h x = 2x+1)" || no "vec inside map"
+# Differential: boot/golfref.py emits the same polymorphic templates as golf2.
+gref(){ cat <(python3 tools/codepage.py encode < lib/prelude.golfj) \
+            <(python3 tools/codepage.py encode) | python3 boot/golfref.py > "$TMP/ovec" 2>/dev/null \
+          && chmod +x "$TMP/ovec" && "$TMP/ovec" 2>/dev/null; }
+[ "$(printf '%s' '4R3+QE 4R4R*SNE' | gref)" = "$(printf '%s' '4R3+QE 4R4R*SNE' | gc)" ] \
+  && ok "oracle: the bare ops vectorize identically" || no "oracle vec"
+
+# @@ W4-CELLS @@
+echo "64-bit list cells (M4): negatives survive storage; N prints signed"
+# N grew a sign check, so a negative prints as -n instead of its u64 image.
+# Before W4A this printed 18446744073709551611.
+[ "$(printf '%s' '0 5-NE' | gc)" = "-5" ] && ok "N prints a negative signed" || no "signed print"
+# THE core proof of the widening: m x = x-2 maps ⍳5 to [-2 -1 0 1 2], and every
+# one of those goes through a heap cell.  With 4-byte cells the two negatives
+# came back as 4294967294 / 4294967295.
+[ "$(printf '%s' ':m2\rsub;5R\refmMQE' | gc)" = "-2 -1 0 1 2 " ] \
+  && ok "negative elements survive a list round trip (8-byte cells)" || no "negative elements"
+# The parked-broadcast-scalar fix: K/G stash the scalar in s7, which used to be a
+# 32-bit cell, so -3 came back as 4294967293 (and the last sum wrapped to 0).
+[ "$(printf '%s' '0 3-4R+QE' | gc)" = "-3 -2 -1 0 " ] \
+  && ok "a negative broadcast scalar keeps 64 bits through K/G" || no "broadcast scalar width"
+# S's accumulator is a 64-bit scratch cell now, so a sum that crosses zero works.
+[ "$(printf '%s' ':m2\rsub;5R\refmMSNE' | gc)" = "0" ] \
+  && ok "sum crossing zero (-2-1+0+1+2)" || no "sum crossing zero"
+# Regressions through the widened cells: M-VEC broadcast, an M-CHAIN fork, and a
+# mapped word that itself loops (spill frames are 64 bytes now, 28 deep).
+[ "$(printf '%s' '4R3+QE' | gc)" = "3 4 5 6 " ] \
+  && ok "regression: M-VEC broadcast through widened cells" || no "widened vec broadcast"
+[ "$(printf '%s' '5R\refS\refL\ref\sdv\fork NE' | gc)" = "2" ] \
+  && ok "regression: fork mean through widened cells" || no "widened fork"
+[ "$(printf '%s' ':g3RS;5R\refgMQE' | gc)" = "3 3 3 3 3 " ] \
+  && ok "regression: nested HOF at 64-byte spill frames" || no "widened nested HOF"
+
+# @@ W6-LIT @@
+# @@ W6-MEM @@
+# @@ W7-DOCS @@
+
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
 tools/golfc -j examples/capstone.golfj "$TMP/cap" 2>/dev/null
 [ "$("$TMP/cap" 2>/dev/null)" = "$(printf '30\n14\n5\nKhoor')" ] && ok "golfc examples/capstone.golfj" || no "capstone.golfj"
+
+echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
+python3 tools/codepage.py check \
+  && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
 
 echo
 echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"

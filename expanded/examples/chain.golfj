@@ -1,0 +1,11 @@
+# Tacit combinators (M-CHAIN): ∘ compose · ⑂ fork · ⇉ pipeline.
+# A quotation is just the code address ′ pushes, and the load segment is RWX, so
+# ∘ ASSEMBLES A NEW QUOTATION AT RUNTIME — a 39-byte thunk in the code arena at
+# 0x4D0000 that calls f then g.  No compiler support of any kind is involved.
+:d⊗;:i⊕;5′d′i∘⍎Ṅ␤          # (d then i)(5) = 5*2+1                   -> 11
+5⍳′∑′≢′÷⑂Ṅ␤                # mean of 0..4 = divide(sum 10, len 5)    -> 2
+# ⇉ threads a value through a list of quotations, so it needs one built by hand:
+# ⍶ allocates 3 cells, then the length 2 and the two addresses are stored with ⊛
+# (the 64-bit store — a list cell is 8 bytes since M4, hence the 8/16 offsets;
+# raw ﹢ for the cell offsets — this is address math, never elementwise).
+5 3⍶2&⊛′d&8﹢⊛′i&16﹢⊛⇉Ṅ␤   # 5 through [d, i] = i(d 5)               -> 11

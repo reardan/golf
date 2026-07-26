@@ -15,6 +15,7 @@ Usage:
   codepage.py decode <in.gb                 # raw bytes -> glyphs
   codepage.py decode -m <in.gb              # raw bytes -> ASCII \\mnemonic form
   codepage.py table                         # print the atom code-page reference
+  codepage.py check                         # assert the namespace invariants
 """
 import os, sys
 
@@ -22,10 +23,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import mkblob2
 
-# Prelude library words (see lib/prelude.golf).  These are ordinary single-byte
-# word *calls* (ASCII letters), so their glyphs/mnemonics are input aliases only:
-# encode maps ⍳/\range -> byte 'R'; decode shows the letter (a byte could be any
-# user word).  (letter, mnemonic, glyph, doc)
+# Prelude library words (see lib/prelude.golf).  (key, mnemonic, glyph, doc)
+# The key is the byte the word is called by, in one of two forms:
+#   * a 1-char ASCII letter — an ordinary letter-named word.  Encode-only: ⍳ and
+#     \range both map to byte 'R', but decode shows the plain letter, since a
+#     low byte could equally be a *user* word of the same name.
+#   * an int byte >= 0x80 — a word living in the high-byte word range (see
+#     ../REGISTRY.md §1, 0xC0-0xCF).  Unambiguous, so it decodes like an atom.
+# Byte/mnemonic/glyph allocations come from ../REGISTRY.md; `codepage.py check`
+# enforces them.
 LIB = [
     ("R", "range", "⍳", "range(n) -> [0..n-1]"),
     ("S", "sum",   "∑", "sum(list)"),
@@ -44,6 +50,18 @@ LIB = [
     ("U", "chars", "⊃", "byte string -> list of char codes"),
     ("J", "join",  "⊐", "print a code list as text (cell -> byte)"),
     ("Z", "zip",   "⊞", "zip(l1, l2, fn) -> list (elementwise)"),
+    # --- W2 LIB rows ---
+    # M-TAG shape-polymorphic operators (REGISTRY.md §1.2).  High-byte prelude
+    # words: 0xC0-0xC4 are word *names*, not atoms — no mkblob2 template — but
+    # being >= 0x80 they decode as well as encode.
+    (0xC0, "vadd", "∔", "polymorphic add (int/list, elementwise, broadcast)"),
+    (0xC1, "vsub", "∸", "polymorphic sub (int/list, elementwise, broadcast)"),
+    (0xC2, "vmul", "⨰", "polymorphic mul (int/list, elementwise, broadcast)"),
+    (0xC3, "vmin", "⩍", "polymorphic min (int/list, elementwise, broadcast)"),
+    (0xC4, "vmax", "⩌", "polymorphic max (int/list, elementwise, broadcast)"),
+    (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
+    (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
+    (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
@@ -55,6 +73,14 @@ COMPILER = [
     (mkblob2.GET_BYTE, "get", "←", "prefix: ←x pushes variable x"),
 ]
 
+def lib_byte(key) -> int:
+    """The call byte of a LIB row: an int byte, or a 1-char ASCII letter."""
+    if isinstance(key, int):
+        return key
+    assert len(key) == 1 and ord(key) < 128, f"bad LIB key {key!r}"
+    return ord(key)
+
+
 # byte <-> glyph / mnemonic for the named atoms (ASCII bytes map to themselves)
 BYTE2GLYPH = {b: gl for b, _mn, gl, _t, _d in mkblob2.ATOMS}
 BYTE2MNEM  = {b: mn for b, mn, _gl, _t, _d in mkblob2.ATOMS}
@@ -65,9 +91,16 @@ BYTE2GLYPH.update({b: gl for b, _mn, gl, _d in COMPILER})
 BYTE2MNEM.update({b: mn for b, mn, _gl, _d in COMPILER})
 GLYPH2BYTE.update({gl: b for b, _mn, gl, _d in COMPILER})
 MNEM2BYTE.update({mn: b for b, mn, _gl, _d in COMPILER})
-# library aliases (encode-only: glyph/mnemonic -> the word's letter byte)
-GLYPH2BYTE.update({gl: ord(ltr) for ltr, _mn, gl, _d in LIB})
-MNEM2BYTE.update({mn: ord(ltr) for ltr, mn, _gl, _d in LIB})
+# library words: glyph/mnemonic -> the word's call byte, always.  A high-byte
+# word additionally decodes (nothing else can own that byte); a letter word does
+# not (that byte may be any user word), so it stays encode-only as before.
+for _key, _mn, _gl, _doc in LIB:
+    _b = lib_byte(_key)
+    GLYPH2BYTE[_gl] = _b
+    MNEM2BYTE[_mn] = _b
+    if _b >= 0x80:
+        BYTE2GLYPH[_b] = _gl
+        BYTE2MNEM[_b] = _mn
 
 
 def encode(text: str) -> bytes:
@@ -123,18 +156,78 @@ def print_table():
     print("byte  glyph  mnemonic  meaning")
     for b, mn, gl, doc in COMPILER:
         print(f"0x{b:02X}   {gl:>2}     \\{mn:<7}  {doc}")
-    print("\nLIBRARY (prelude words — glyph/mnemonic are input aliases for a letter)")
+    print("\nLIBRARY (prelude words — a letter word's glyph/mnemonic are input aliases)")
     print("byte  glyph  mnemonic  word  meaning")
-    for ltr, mn, gl, doc in LIB:
-        print(f"0x{ord(ltr):02X}   {gl:>2}     \\{mn:<7}  {ltr}     {doc}")
+    for key, mn, gl, doc in LIB:
+        b = lib_byte(key)
+        word = key if isinstance(key, str) else "-"     # high-byte words: no letter
+        print(f"0x{b:02X}   {gl:>2}     \\{mn:<7}  {word}     {doc}")
+
+
+def all_rows():
+    """Every allocated op byte, as (byte, mnemonic, glyph, table-name)."""
+    rows  = [(b, mn, gl, "ATOMS")    for b, mn, gl, _t, _d in mkblob2.ATOMS]
+    rows += [(b, mn, gl, "COMPILER") for b, mn, gl, _d in COMPILER]
+    rows += [(lib_byte(k), mn, gl, "LIB") for k, mn, gl, _d in LIB]
+    return rows
+
+
+def check():
+    """Enforce the three namespace invariants of ../REGISTRY.md.
+
+    Silent + exit 0 on success; a report on stderr + exit 1 on any violation.
+    """
+    rows, errs = all_rows(), []
+
+    seen = {}                                   # (a) one owner per op byte
+    for b, mn, gl, where in rows:
+        if b in seen:
+            omn, owhere = seen[b]
+            errs.append(f"byte 0x{b:02X} allocated twice: "
+                        f"{owhere} \\{omn} and {where} \\{mn}")
+        seen[b] = (mn, where)
+
+    # (b) the encoder takes the LONGEST KNOWN MNEMONIC PREFIX of the alpha run
+    # after a `\`, so a mnemonic that is a proper prefix of another silently
+    # changes how existing sources parse.  No prefix pairs, ever.
+    for i, (_b, mn, _gl, where) in enumerate(rows):
+        for _b2, mn2, _gl2, where2 in rows[i + 1:]:
+            if mn == mn2:
+                errs.append(f"mnemonic \\{mn} defined twice ({where}, {where2})")
+            elif mn2.startswith(mn):
+                errs.append(f"mnemonic \\{mn} ({where}) is a proper prefix of "
+                            f"\\{mn2} ({where2}) — the encoder would mis-split it")
+            elif mn.startswith(mn2):
+                errs.append(f"mnemonic \\{mn2} ({where2}) is a proper prefix of "
+                            f"\\{mn} ({where}) — the encoder would mis-split it")
+
+    glyphs = {}                                 # (c) one meaning per glyph
+    for b, mn, gl, where in rows:
+        if gl in glyphs:
+            omn, owhere = glyphs[gl]
+            errs.append(f"glyph {gl} used twice: {owhere} \\{omn} and {where} \\{mn}")
+        glyphs[gl] = (mn, where)
+
+    for b, mn, gl, where in rows:               # (d) high bytes are decodable
+        if b >= 0x80 and BYTE2GLYPH.get(b) != gl:
+            errs.append(f"byte 0x{b:02X} ({where} \\{mn}) has no glyph in "
+                        f"BYTE2GLYPH — decode could not round-trip it")
+
+    if errs:
+        sys.stderr.write("codepage: REGISTRY.md invariants violated\n")
+        for e in errs:
+            sys.stderr.write(f"  - {e}\n")
+        sys.exit(1)
 
 
 def main(argv):
-    if len(argv) < 2 or argv[1] not in ("encode", "decode", "table"):
+    if len(argv) < 2 or argv[1] not in ("encode", "decode", "table", "check"):
         sys.exit(__doc__)
     cmd = argv[1]
     if cmd == "table":
         print_table(); return
+    if cmd == "check":
+        check(); return
     if cmd == "encode":
         sys.stdout.buffer.write(encode(sys.stdin.buffer.read().decode("utf-8")))
     else:
