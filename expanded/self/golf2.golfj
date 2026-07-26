@@ -1,18 +1,28 @@
 # The GOLF/2 compiler, written in expanded GOLF (M-SELF).
 #
-# This is a semantically IDENTICAL rewrite of the compiler that tools/mkblob2.py
-# assembles today (v1's mkblob.WORDS + the four spliced compiler cases REF_CASE /
-# STR_CASE / SET_CASE / GET_CASE).  Same token dispatch order, same backpatch
-# discipline, same emitted bytes for every input — but written in the language
-# the compiler itself grew: named variables (→x / ←x) instead of stack juggling,
-# one op per line, every op explained.
+# THIS IS THE COMPILER'S SOURCE.  Since M-SELF, compiler logic is written here,
+# in the language the compiler itself grew: named variables (→x / ←x) instead of
+# stack juggling, one op per line, every op explained.
 #
-# Build (wave 5 wires this into the toolchain; test/selfcheck.sh proves it now):
+# Build: tools/mkblob2.py code-page encodes this file and splices the template
+# blob in at the @BLOB@ marker below (a backtick, the byte count, one space, the
+# raw bytes), producing the GENERATED self/golf2.golf.  Never hand-edit that
+# file; run `python3 tools/mkblob2.py` from expanded/.  The ladder in
+# test/run2.sh then closes the loop:
 #
-#     python3 tools/codepage.py encode < self/golf2.golfj  > candidate
-#     ... replace the blob marker below with the escape mkblob2.build_blob2()
-#         produces: a backtick, the byte count, one space, the raw bytes
-#     golf2 < candidate > golf2new
+#     golf0.py -> v1c -> seed (self/seed.golf) -> golf2 -> golf2'
+#                                                 ^^^^^^^^^^^^^^^
+#                                                 fixpoint: golf2 == golf2'
+#
+# self/seed.golf carries a semantically IDENTICAL copy of this compiler written
+# in v1 GOLF (v1's mkblob.WORDS + the four spliced compiler cases REF_CASE /
+# STR_CASE / SET_CASE / GET_CASE), purely so v1c — which has never heard of v2 —
+# can bootstrap this one.  Same token dispatch order, same backpatch discipline,
+# same emitted bytes for every input; test/selfcheck.sh gates that byte for
+# byte, so a change to compiler logic must land in BOTH or selfcheck goes red.
+#
+# Only ops the SEED can compile may appear below: ASCII, the four compiler
+# prefixes (′ “ → ←) and the atom bytes.  selfcheck.sh enforces it.
 #
 # The blob is still a raw-byte template table and still must be spliced in by
 # the build.  Splice it AFTER encoding, into the raw byte stream: the blob is

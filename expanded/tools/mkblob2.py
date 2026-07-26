@@ -1,12 +1,33 @@
 #!/usr/bin/env python3
-"""Assemble expanded/self/golf2.golf — the seed of the expanded GOLF compiler.
+"""Assemble the two generated compiler sources in expanded/self/ (M-SELF).
 
-Bootstrap strategy: the v2 compiler is written in **minimal GOLF (v1)** and is
-compiled by the v1 toolchain (../minimal). golf2.golf's *code* is, for now,
-byte-identical to v1's self-hosted compiler; only the embedded template table
-grows. New "dumb" operators cost nothing but a template — the compiler's `e`
-word already dispatches ANY byte it finds in the blob, including bytes 128-255 —
-so this file adds them by extending v1's template set. See ../DESIGN.md.
+Both are built here, and both embed the **identical** template blob from
+`build_blob2()`.  They differ only in the language the compiler's *logic* is
+written in:
+
+    self/seed.golf    compiler logic in **v1 GOLF** — minimal's `mkblob.WORDS`
+                      with the four v2 compiler cases (′ “ → ←) spliced in by
+                      `WORDS2` below.  This is the bootstrap rung: v1c (the
+                      frozen ../minimal compiler) can compile it, and that is
+                      its only job — to produce a compiler able to build
+                      golf2.golf.  The WORDS2-splice mechanism lives ONLY here.
+
+    self/golf2.golf   compiler logic in **v2 GOLF** — hand-written in
+                      `self/golf2.golfj` (named variables, one op per line, the
+                      language the compiler grew), code-page encoded by
+                      `build_golf2()` with the blob spliced in at its `@BLOB@`
+                      marker.  This is the compiler proper, and the one the
+                      ladder converges on: golf2 compiles golf2.golf back to
+                      itself, byte for byte.
+
+Since M-SELF, compiler logic is authored in `self/golf2.golfj`.  `seed.golf`
+exists only to bootstrap it out of v1 and is frozen in shape: it is not where
+new compiler features go.  Both outputs are GENERATED — never hand-edit them;
+run `python3 tools/mkblob2.py` from `expanded/` and commit the result.
+
+New "dumb" operators still cost nothing but a template — the compiler's `e` word
+dispatches ANY byte it finds in the blob, including bytes 128-255 — so adding
+one means adding a row to ATOMS below.  See ../DESIGN.md.
 
 The move toward a Jelly-style code page: operators are single bytes drawn from
 the full 0..255 space, each shown via a code page glyph (../tools/codepage.py).
@@ -54,6 +75,8 @@ ATOMS = [
     # Quotations: exec is an indirect call (pop a word address, call it).  Its
     # partner `ref` (push a word's address) is a compiler prefix, added to `t`
     # below — together they give higher-order functions (map/fold).
+# NOTE: `ref` and its three companion prefixes are the first compiler-logic
+# changes over v1.  Written in pure v1 GOLF so v1c can build seed.golf.
     (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
     # Raw scalar ops — byte-for-byte copies of today's scalar templates for
     # `+ - * ⌊ ⌈ <`.  M-VEC will make those bare ops *polymorphic* (dispatch on
@@ -107,9 +130,11 @@ ATOMS = [
 #     bytes at 0x4F0100, indexed by op byte) is BSS, so a program that does not
 #     install a dispatcher — every compiler binary on the bootstrap ladder, which
 #     never runs lib/prelude.golfj — takes the 9-byte check and then exactly the
-#     old scalar path.  That is why golf2's stage2 == stage3 fixpoint survives:
-#     stage2 and stage3 embed the same blob and emit the same bytes.  (stage1
-#     comes from v1's blob and now diverges permanently — informational only.)
+#     old scalar path.  That is why the ladder's `golf2 == golf2'` fixpoint
+#     survives: both are built from self/golf2.golf, embed the same blob, and
+#     emit the same bytes.  (v1c carries v1's blob and so emits different code —
+#     that divergence is absorbed at the v1c -> seed rung, which is never
+#     compared against anything.)
 #   * **The filter is conservative, never authoritative.**  `or` only sets bits,
 #     so (a|b) >= a: if EITHER operand is a heap address the compare cannot send
 #     us to the scalar path.  False positives are fine and expected (a -1 flag
@@ -164,13 +189,15 @@ OVERRIDES.update({b: _poly(b, _ATOM_TPL[b]) for b in (0x88, 0x89)})  # ⌈ max �
 # `ref` (byte 0x8C, glyph ′): a compiler *prefix* — read the next byte (a word
 # name) and emit `push <that word's runtime address>` instead of a call.  This
 # is the first change to golf2's compiler logic vs v1.  Written in pure v1 GOLF
-# so v1 still compiles golf2.golf; golf2's own source never uses it, so the
-# strict fixpoint (stage1 == stage2) still holds.
+# so v1c can still compile seed.golf — seed.golf's whole job is to be buildable
+# by a compiler that has never heard of v2.
 REF_BYTE = 0x8C
 # ′name pushes name's address.  If name is a defined word, push its VA.  If it is
 # an ATOM (a template in the blob, not a word), emit a thunk [prologue][template]
 # [epilogue] inline (jumped over) and push the thunk's VA — so ′+ works without
 # wrapping.  Compiler scratch m20 (jmp-site), m24 (thunk addr).
+# (Since M-SELF this case — like the three below — is seed.golf's copy of logic
+# that self/golf2.golfj states directly; the two must stay in step.)
 REF_CASE = ('"140-[_("m2048+\\4*+@"[_233o m4+@m20+!0w m4+@m24+! 1E"E94E '
             'm4+@m20+@4+-m20+@!104o m24+@69632-w_^]\\_69632-104o w^]')
 # Insert the case into `t` just before its `e;` fallthrough.  `w^]e;` is the
@@ -233,22 +260,62 @@ def build_blob2():
     b += bytes([0])                                  # sentinel
     return bytes(b)
 
-def build_source2():
+def blob_escape():
+    """The blob as GOLF source: the raw escape `<len> <that many raw bytes>.
+
+    Both generated sources splice in exactly these bytes, so the two compilers
+    are guaranteed to carry the same template table.  Byte-exact: no trailing
+    newline, and the single space after the count is the escape's delimiter.
+    """
     blob = build_blob2()
+    return b"`" + str(len(blob)).encode() + b" " + blob
+
+def build_seed():
+    """self/seed.golf — the bootstrap rung, compiler logic in v1 GOLF.
+
+    v1's own compiler source (mkblob.WORDS) with the four v2 compiler cases
+    spliced in (WORDS2), so `v1c` — which knows nothing of v2 — can compile it.
+    """
     code = lambda s: mkblob.golf(s.replace(" ", "")).encode()
-    parts = [code(WORDS2), code(mkblob.INIT),
-             b"`" + str(len(blob)).encode() + b" " + blob,
-             code(mkblob.TAIL)]
-    return b"".join(parts)
+    return b"".join([code(WORDS2), code(mkblob.INIT),
+                     blob_escape(), code(mkblob.TAIL)])
+
+BLOB_MARKER = b"@BLOB@"          # where golf2.golfj wants the blob spliced in
+GOLFJ = os.path.join(HERE, "..", "self", "golf2.golfj")
+
+def build_golf2():
+    """self/golf2.golf — the compiler proper, logic in v2 GOLF.
+
+    Code-page encode self/golf2.golfj, then splice the blob escape in at the
+    @BLOB@ marker.  The splice happens AFTER encoding, on the raw byte stream:
+    the blob is arbitrary bytes and a `#` inside it would make the encoder eat
+    the rest of a "line".
+    """
+    # Imported late, not at module scope: codepage.py imports US (ATOMS is the
+    # source of truth for the code page), so a top-level import would cycle.
+    import codepage
+    with open(GOLFJ, encoding="utf-8") as f:
+        enc = codepage.encode(f.read())
+    n = enc.count(BLOB_MARKER)
+    if n != 1:
+        raise SystemExit(f"mkblob2: expected exactly one {BLOB_MARKER.decode()} "
+                         f"marker in self/golf2.golfj, found {n}")
+    return enc.replace(BLOB_MARKER, blob_escape())
+
+# name -> generator.  main() writes every one; test/selfcheck.sh re-derives them
+# and compares against what is committed.
+OUTPUTS = [("seed.golf", build_seed), ("golf2.golf", build_golf2)]
 
 def main():
     _check_atoms()
-    src = build_source2()
-    out = os.path.join(HERE, "..", "self", "golf2.golf")
-    with open(out, "wb") as f:
-        f.write(src)
-    sys.stderr.write(f"wrote {out}: {len(src)} bytes "
-                     f"(blob {len(build_blob2())}, {len(ATOMS)} atoms)\n")
+    blob = len(build_blob2())
+    for name, build in OUTPUTS:
+        src = build()
+        out = os.path.join(HERE, "..", "self", name)
+        with open(out, "wb") as f:
+            f.write(src)
+        sys.stderr.write(f"wrote {out}: {len(src)} bytes "
+                         f"(blob {blob}, {len(ATOMS)} atoms)\n")
 
 if __name__ == "__main__":
     main()

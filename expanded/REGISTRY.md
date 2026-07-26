@@ -8,8 +8,8 @@ and only find out when the fixpoint broke.
 
 **Rule: no one picks a byte, glyph, mnemonic, prelude letter, or scratch address
 on their own. It is assigned here first, then implemented.** Adding a row here
-is cheap and reversible; discovering a collision after `self/golf2.golf` has
-been regenerated is not.
+is cheap and reversible; discovering a collision after `self/seed.golf` and
+`self/golf2.golf` have been regenerated is not.
 
 `Status` is `reserved` (allocated here, not implemented yet — do not use the
 byte/glyph/mnemonic for anything else) or `shipped` (live in
@@ -50,7 +50,7 @@ space**, partitioned as follows so waves never contend:
 |---------------|------------------------------------------------------------|
 | `0x91`–`0x97` | Raw scalar atoms (wave 0) — the non-polymorphic arithmetic the prelude's own pointer math uses, so M-VEC can make the ASCII bytes polymorphic without the dispatcher recursing |
 | `0xA0`–`0xA7` | M4 atoms (wave 1) — signed compare, shifts, 64-bit fetch/store, `brk` |
-| `0xB0`–`0xBF` | Future compiler-logic ops (prefixes/tokens handled in golf2's `t`, like `ref`/`str`/`→`/`←`) |
+| `0xB0`–`0xBF` | Future compiler-logic ops (prefixes/tokens handled in golf2's `t`, like `ref`/`str`/`→`/`←`) — since M-SELF written in `self/golf2.golfj`, and mirrored into `mkblob2.py`'s v1-GOLF seed |
 | `0xC0`–`0xCF` | High-byte prelude words (wave 2) — words that need a byte of their own instead of a scarce ASCII letter |
 | `0xD0`–`0xEF` | Reserved: chain syntax / M4c                               |
 | `0xF0`–`0xFF` | User extension space — never allocated by the language      |
@@ -224,4 +224,10 @@ Notes:
 3. Implement: `tools/mkblob2.py` (`ATOMS` template, for a real op) **and**
    `boot/golfref.py` (oracle parity), a `tools/codepage.py` `LIB`/`COMPILER`
    row, a `lib/prelude.golfj` definition for a word, and a `test/run2.sh` case.
+   For a **compiler-logic** op (a prefix/token, not a template): write it in
+   `self/golf2.golfj` — the compiler's source since M-SELF — *and* mirror it
+   into `tools/mkblob2.py`'s v1-GOLF seed cases, or `test/selfcheck.sh`'s
+   byte-for-byte `seed == golf2` comparison will catch the drift.
 4. Flip `reserved` → `shipped` in the same commit.
+5. Regenerate: `cd expanded && python3 tools/mkblob2.py`, then commit both
+   `self/seed.golf` and `self/golf2.golf` — they are generated, never edited.

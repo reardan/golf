@@ -50,32 +50,44 @@ compiler that can build the current source, and the bootstrap reaches a
 byte-identical fixpoint.** The chain is:
 
 ```
-golf0.py  --compiles-->  v1c        # the frozen minimal compiler (../minimal)
-v1c       --compiles-->  stage1     # self/golf2.golf, written in v1 GOLF
-stage1    --compiles-->  stage2     # same source, compiled by golf2 itself
-stage2    --compiles-->  stage3     # require stage2 == stage3  (fixpoint)
-stage3    --compiles-->  your v2 programs
+golf0.py  --compiles-->  v1c      # the frozen minimal compiler (../minimal)
+v1c       --compiles-->  seed     # self/seed.golf,  compiler logic in v1 GOLF
+seed      --compiles-->  golf2    # self/golf2.golf, compiler logic in v2 GOLF
+golf2     --compiles-->  golf2'   # same source — require golf2 == golf2'
+golf2'    --compiles-->  your v2 programs
 ```
 
-The gate is **stage2 == stage3**, not stage1 == stage2. stage2 and stage3 are
-both produced by a compiler built from `self/golf2.golf`, so they embed the same
-template blob and emit the same code for the same source: iterate 2 has
-converged. stage1 is emitted by `v1c`, which carries *v1's* blob, so it only
-matches stage2 while golf2 overrides none of v1's op templates — the day golf2
-ships its own `+` (say, a vectorized one), stage1 diverges permanently while the
-fixpoint above is untouched. `test/run2.sh` therefore asserts stage2 == stage3
-and merely reports stage1 == stage2 as an informational `seed-stable:` line.
+**Since M-SELF the compiler's logic is written in v2 GOLF.** The source a human
+edits is `self/golf2.golfj` — named variables (`→x` / `←x`), one op per line,
+every op explained — instead of v1's single-char stack juggling. The last rung is
+therefore a *true* self-hosting fixpoint: golf2 compiles its own source back to
+itself, byte for byte, in the richer language it grew.
 
-`self/golf2.golf` is the v2 compiler. Its **source must always be compilable by
-the current toolchain.** Today that toolchain is `v1c`, so golf2's code is still
-plain v1 GOLF and is, in fact, byte-identical to v1's compiler — only the
-embedded template table has grown. As soon as golf2 gains a feature that makes it
-easier to write (multi-char names, locals), we migrate golf2's *own* source to
-use that feature; from then on golf2 compiles itself and the ladder's last rung
-becomes a true self-hosting fixpoint on the richer language.
+The gate is **golf2 == golf2'**. Both are built from `self/golf2.golf`, so they
+embed the same template blob and emit the same code for the same source: the
+self-hosted compiler has already converged at iterate 1.
 
-So only the *seed* is written in painful single-char GOLF, and we keep that seed
-as small as possible: just enough to make the real compiler pleasant to write.
+`self/seed.golf` is the **bootstrap rung and nothing more**. It carries the same
+compiler written in v1 GOLF (v1's `mkblob.WORDS` plus the four spliced compiler
+cases `′ “ → ←`), purely so `v1c` — which has never heard of v2 — can build
+something able to compile `golf2.golf`. Because v1c embeds *v1's* blob it emits
+different bytes than golf2 would, but **that divergence is absorbed at the
+v1c→seed rung**: `seed` is only ever used to produce golf2 and is never compared
+against anything. (Before M-SELF this showed up as the `seed-stable:`
+informational line; there is nothing left to report, so it is retired.)
+
+Two sources for one compiler is a real risk of drift, so `test/selfcheck.sh`
+gates what the ladder cannot see: that `seed` and `golf2` emit **byte-identical
+binaries for every input** — they are the same compiler written twice, in two
+languages — and that the generated `self/*.golf` are exactly what
+`tools/mkblob2.py` emits from `self/golf2.golfj`.
+
+The standing rule is unchanged: golf2's **source must always be compilable by
+the current toolchain.** That toolchain is now `seed`, so `golf2.golfj` may use
+only ASCII plus the ops the seed implements (the four compiler prefixes and the
+atom bytes) — `selfcheck.sh` enforces exactly that. The seed stays as small as
+possible: just enough to make the real compiler pleasant to write. New compiler
+features go in `golf2.golfj`; `seed.golf` is frozen in shape.
 
 **Reference oracle.** `boot/golfref.py` is v1's Python reference plus v2's new
 op templates. It is not on the bootstrap path — it's a debugging oracle to
@@ -157,12 +169,12 @@ plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   never-polymorphic raw atoms `﹢ ﹣ ﹡ ⊓ ⊔` (0x91–0x96), so nothing recurses.
   **Why the bootstrap survives it:** the hook cells are BSS, and every compiler
   binary on the ladder is a program that never runs `lib/prelude.golfj`, so its
-  cells stay zero and it always takes the check-then-scalar path. golf2 now
-  overrides five v1 templates, so `stage1 != stage2` is **permanent by design**
-  (the `seed-stable:` line in `test/run2.sh` prints `no`); the real gate,
-  `stage2 == stage3`, is still byte-identical, because both are built from
-  `self/golf2.golf` and embed the same blob. Remaining wart: no length/shape
-  checks (`Z` truncates to the shorter list).
+  cells stay zero and it always takes the check-then-scalar path. golf2 overrides
+  five v1 templates, so `v1c` and `golf2` emit different code for the same
+  source — permanent by design, and absorbed at the `v1c→seed` rung, which is
+  never compared against anything. The gate, `golf2 == golf2'`, is untouched:
+  both are built from `self/golf2.golf` and embed the same blob. Remaining wart:
+  no length/shape checks (`Z` truncates to the shorter list).
 
 - **M3 — named variables (done, lite).** `→x` stores TOS, `←x` loads it — compiler
   prefix ops over a name-indexed **global** register bank at 0x4E0000. Kills most
@@ -198,9 +210,15 @@ plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 ## Invariants we do not break
 
-- `test/run2.sh` stays green, **including the golf2 self-hosting fixpoint**, at
-  every commit.
+- `test/run2.sh` stays green, **including the golf2 self-hosting fixpoint**
+  (`golf2 == golf2'`), at every commit.
 - `../minimal/` is never touched; it remains the ground-truth bootstrap root.
+- `self/golf2.golf` and `self/seed.golf` are **generated** — never hand-edited.
+  Run `python3 tools/mkblob2.py` from `expanded/` and commit the result;
+  `test/selfcheck.sh` fails if what is committed is not what it emits.
+- A change to the compiler's logic goes in `self/golf2.golfj` **and** in
+  `tools/mkblob2.py`'s v1-GOLF seed, or `test/selfcheck.sh`'s byte-for-byte
+  `seed == golf2` comparison catches the drift.
 - Every new "dumb" op is added as a template in `tools/mkblob2.py` (and mirrored
   in `boot/golfref.py`), so the reference oracle and the self-hosted compiler
   always agree.
@@ -209,11 +227,14 @@ plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 | Path | What |
 |------|------|
-| `self/golf2.golf` | the v2 compiler (generated by `tools/mkblob2.py`) |
-| `tools/mkblob2.py` | builds golf2.golf: v1 code + atom table (source of truth for atoms) |
+| `self/golf2.golfj` | **the v2 compiler's source** — its logic, written in v2 GOLF (edit this) |
+| `self/golf2.golf` | GENERATED: `golf2.golfj` code-page encoded + the template blob |
+| `self/seed.golf` | GENERATED: the same compiler in v1 GOLF — the bootstrap rung only |
+| `tools/mkblob2.py` | builds both `self/*.golf`; source of truth for the atom table + the v1 seed |
 | `tools/codepage.py` | code page: encode/decode glyph/mnemonic ⇄ raw bytes; `table` reference |
 | `tools/golfc` | compile a program (prepends the prelude; `-j` to encode glyph source) |
 | `lib/prelude.golfj` | the standard library: list runtime, map/fold, number/list printing |
 | `boot/golfref.py` | Python reference/oracle for v2 (debugging only) |
 | `examples/` | v2 programs (`bitwise.g2`, `atoms.golfj`, `lists.golfj`, …) |
 | `test/run2.sh` | bootstrap ladder + atom + code-page + list tests |
+| `test/selfcheck.sh` | M-SELF: `seed` and `golf2` are the same compiler; the generated files are fresh |
