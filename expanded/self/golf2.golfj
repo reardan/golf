@@ -1,0 +1,638 @@
+# The GOLF/2 compiler, written in expanded GOLF (M-SELF).
+#
+# This is a semantically IDENTICAL rewrite of the compiler that tools/mkblob2.py
+# assembles today (v1's mkblob.WORDS + the four spliced compiler cases REF_CASE /
+# STR_CASE / SET_CASE / GET_CASE).  Same token dispatch order, same backpatch
+# discipline, same emitted bytes for every input — but written in the language
+# the compiler itself grew: named variables (→x / ←x) instead of stack juggling,
+# one op per line, every op explained.
+#
+# Build (wave 5 wires this into the toolchain; test/selfcheck.sh proves it now):
+#
+#     python3 tools/codepage.py encode < self/golf2.golfj  > candidate
+#     ... replace the blob marker below with the escape mkblob2.build_blob2()
+#         produces: a backtick, the byte count, one space, the raw bytes
+#     golf2 < candidate > golf2new
+#
+# The blob is still a raw-byte template table and still must be spliced in by
+# the build.  Splice it AFTER encoding, into the raw byte stream: the blob is
+# arbitrary bytes, and a `#` inside it would eat the rest of the line if the
+# encoder ever saw it.  Everything else here is hand-written source.
+#
+# Comments: tools/codepage.py encode DROPS `#` to end of line before the bytes
+# ever reach a compiler, so a comment may contain anything at all — backslashes,
+# glyphs, non-code-page characters.  Only the newline survives, as whitespace.
+#
+# Layout: one op per line, except that a literal shares a line with the op that
+# consumes it (`4+`, `233o`, `1<`) — that pair reads as one idea.
+#
+# ---------------------------------------------------------------------------
+# Runtime memory (the compiler's own process; a compiled program never sees it)
+# ---------------------------------------------------------------------------
+#
+#   0x410800   dictionary: the body address of the word named x is at +4*x
+#   0x411000   output buffer B: the byte at file offset f is stored at B+f
+#   0x4E0000   variable bank: cell for name x is at 0x4E0000+4*x  (→x / ←x)
+#
+# Both fixed addresses are the ones v1 documents as D+2048 and D+4096 with
+# D = 0x410000, so the compiled binary keeps exactly today's memory map.  A
+# target virtual address is bufaddr - 69632 (= file offset + 0x400000).
+#
+# The compiler's scalar state lives in the variable bank instead of v1's D+0..
+# D+28 cells.  It owns its whole process — user programs are *compiled*, never
+# run in-process — so the bank is free real estate here.  (lib/prelude.golfj may
+# never do this: there the bank is user space.)
+#
+#   p  output write cursor (an absolute address inside B)   was D+4
+#   i  current input char                                   was D+0
+#   T  template blob base address                           was D+8
+#   q  pushed-back input char, 0 = none                     was D+16
+#   n  the record key `f` is scanning for                   was D+12
+#   b  the name/op byte the current handler is working on   (new)
+#   s  `k`'s backpatch site                                 (new)
+#   d  `c`'s copy source address                            (new)
+#   m  `c`'s remaining byte count                           (new)
+#   R  a blob record's address (`C`, `H`)                   (new)
+#   A  a walking byte pointer (`H`, the final flush)        (new)
+#   z  one past the last header (offset,value) pair         was D+12
+#   v  the virtual address of an emitted data block         was D+12
+#   j  a pending jmp-over site (′ thunk, “ block)           was D+20
+#   r  the address of a ′ thunk                             was D+24
+#   l  the address of a “ block's length field              was D+24
+#   x  a “ block's byte count                               was D+28
+#   y  `Z`'s digit temporary                                (new)
+#
+# No two of these are ever live at the same time in different roles; the notes
+# above are the whole allocation.  Word names and variable names are separate
+# namespaces (dictionary vs bank), but none is reused across the two here.
+#
+# Words, in definition-before-use order (single-byte names, as the dictionary is
+# byte-indexed): B Y Z U a o L w k c C f E e D g h t H.
+#
+# Values handled by the compiler are all far below 0x500000 and it installs no
+# vectorization hooks (its hook cells stay BSS-zero), so the bare + - * take the
+# scalar path here, byte for byte.  They are used throughout; the raw atoms
+# (﹢ ﹣ ﹡) would compile to the same code and are not needed.
+#
+# Named variables also removed every single stack-juggling op: this source
+# contains no swap, no over, and `"` dup only where a value is genuinely tested
+# and kept.  v1's P/B/S/Q accessor words are gone with them.
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+:B          # B : the output buffer's base address              [ -> addr ]
+4263936     # 0x411000.  File offset f is held at B+f.
+;
+
+:Y          # Y : the dictionary slot of a word name            [ name -> addr ]
+4*          # one 4-byte cell per name ...
+4261888+    # ... in the byte-indexed table at 0x410800
+;
+
+:Z          # Z : fold one decimal digit into an accumulator  [ acc, ch -> acc' ]
+→y          # park the digit character
+10*         # shift the accumulator up one decimal place
+←y+         # add the character ...
+48-         # ... and subtract '0' to get its value
+;
+
+:U          # U : is-digit test core                       [ ch -> -1 if digit ]
+48-         # ch - '0'
+10<         # unsigned < 10, so a non-digit gives 0 (and `[` fires on 0)
+;
+
+
+# ---------------------------------------------------------------------------
+# Emitting bytes into the output buffer
+# ---------------------------------------------------------------------------
+
+:a          # a : advance the write cursor by n                    [ n -> ]
+←p
++
+→p
+;
+
+:o          # o : emit one byte                                    [ b -> ]
+←p          # a 32-bit store of a byte value writes three zeros past the cursor;
+!           # the buffer is zero-filled and the next emit overwrites them, so
+1a          # only one byte is ever claimed
+;
+
+:L          # L : emit the push-imm32 opcode                       [ -> ]
+104o        # 0x68
+;
+
+:w          # w : emit a 32-bit little-endian dword                [ v -> ]
+←p
+!
+4a
+;
+
+:k          # k : backpatch a pending rel32 site to land here      [ site -> ]
+→s          # the site was left on the data stack by ':' '[' or '′'
+←p
+←s
+-
+4-          # rel32 = p - (site + 4)
+←s
+!
+;
+
+
+# ---------------------------------------------------------------------------
+# The template blob: [key][len][len bytes] records, ending in a 0 key sentinel
+# ---------------------------------------------------------------------------
+
+:c          # c : copy n bytes from an address to the output   [ addr, n -> ]
+→m          # remaining count
+→d          # source cursor
+{
+←d
+?           # read one source byte
+o           # and emit it
+←d
+1+
+→d
+←m
+1-
+→m
+←m
+1<          # loop while the count has not reached 0
+}
+;
+
+:C          # C : copy a record's template body                    [ rec -> ]
+→R
+←R
+2+          # the body starts after the [key][len] pair
+←R
+1+
+?           # its length is the record's second byte
+c
+;
+
+:f          # f : the record for a key, or the sentinel     [ key -> rec addr ]
+→n          # remember what we are scanning for
+←T          # start at the first record
+{
+"
+?           # this record's key byte
+"
+[           # 0 -> the sentinel: the key is not in the blob
+_
+^           #   return the sentinel's address
+]
+←n
+-
+[           # keys match ->
+^           #   return this record's address
+]
+"
+1+
+?           # this record's body length
+2+          # plus its [key][len] pair
++           # step to the next record
+0           # and keep scanning
+}
+;
+
+:E          # E : emit the template stored under a key             [ key -> ]
+f
+C
+;
+
+
+# ---------------------------------------------------------------------------
+# Compiling one ordinary token
+# ---------------------------------------------------------------------------
+
+:e          # e : compile a table op, or a call to a defined word  [ ch -> ]
+→b
+←b
+f           # look the byte up in the template blob
+"
+?
+[           # the sentinel: no template, so this is a word call
+_           #   drop the sentinel's address
+232o        #   0xE8 = call rel32
+←b
+Y
+@           #   the word's body address, from the dictionary
+←p
+4+
+-           #   rel32 = body - (p + 4)
+w
+^
+]
+C           # a template: copy its body verbatim
+;
+
+
+# ---------------------------------------------------------------------------
+# Reading input
+# ---------------------------------------------------------------------------
+
+:D          # D : read a decimal number, consuming its terminator  [ -> n ]
+0           # the accumulator
+{
+(           # read one char
+"
+U
+[           # not a digit ->
+_           #   swallow the terminator
+^           #   and return the value
+]
+Z           # fold the digit in
+0           # keep reading
+}
+;
+
+:g          # g : the next input char, honouring the pushback      [ -> ch ]
+←q
+"
+[           # nothing pushed back ->
+_
+(           #   read a fresh byte from stdin (0 at EOF)
+^
+]
+0
+→q          # consume the pushed-back char, leaving it on the stack
+;
+
+:h          # h : skip a comment — read to end of line or EOF      [ -> ]
+{
+(
+"
+10-
+[           # newline ->
+_
+^
+]
+"
+[           # EOF ->
+_
+^
+]
+_           # any other byte: drop it and keep skipping
+0
+}
+;
+
+
+# ---------------------------------------------------------------------------
+# The token dispatcher
+# ---------------------------------------------------------------------------
+#
+# `t` takes the current char and is an if-chain: each case dups the char, tests
+# it, and returns from inside the case.  Every handler is stack-neutral EXCEPT
+# `:` `[` `{`, which each leave one backpatch address behind, and `;` `]` `}`,
+# which each consume one.  The main loop is stack-neutral, so those pending
+# addresses stack up harmlessly below and are consumed in LIFO order: the data
+# stack *is* the compile-time backpatch stack.
+
+:t
+"
+33<
+1+
+[           # char <= 32 : whitespace
+_
+^
+]
+
+"
+35-
+[           # '#' : a comment line
+_
+h
+^
+]
+
+"
+U
+1+
+[           # '0'..'9' : a decimal literal
+48-         #   seed the accumulator with this digit
+{
+(           #   read the next char
+"
+U
+[           #   not a digit: the number ends here
+→q          #     push the terminator back for the main loop
+L
+w           #     emit `push imm32 <value>`
+^
+]
+Z           #   fold the digit in
+0
+}
+]
+
+"
+39-
+[           # 39 is the quote: a char literal, emitted as push imm32 <next byte>
+_
+(
+L
+w
+^
+]
+
+"
+58-
+[           # ':' : define a word
+_
+(           #   its name is the next byte
+→b
+233o        #   0xE9 = jmp over the body about to be compiled
+←p
+4+          #   the body begins after the 4-byte jmp displacement
+←b
+Y
+!           #   dict[name] = body address
+←p          #   the displacement's own address ...
+0
+w           #   ... emitted as a placeholder, and left on the stack for ';'
+1E          #   the word prologue (blob record 1)
+^
+]
+
+"
+59-
+[           # ';' : end a definition
+_
+94E         #   the epilogue: blob record 94, the template of '^'
+k           #   backpatch the ':' jmp to land after it
+^
+]
+
+"
+91-
+[           # '[' : run the body when TOS == 0
+_
+2E          #   blob record 2: pop rax; test rax,rax; 0F
+133o        #   0x85 -> JNZ rel32, skipping the body when TOS != 0
+←p
+0
+w           #   the placeholder site stays on the stack for ']'
+^
+]
+
+"
+93-
+[           # ']' : close a conditional
+_
+k
+^
+]
+
+"
+123-
+[           # '{' : loop start — emits nothing, just marks the target
+_
+←p
+^
+]
+
+"
+125-
+[           # '}' : loop back to the target while TOS == 0
+_
+2E
+132o        #   0x84 -> JZ rel32
+←p
+4+
+-           #   a negative rel32 back to the '{'
+w
+^
+]
+
+"
+96-
+[           # '`' : a raw byte blob
+_
+D           #   its length, in decimal, terminated by one space
+233o        #   0xE9 = jmp over the data
+"
+w           #   the length is exactly the jmp displacement
+←p
+69632-
+→v          #   the data's virtual address, for the push below
+{
+(           #   copy that many bytes straight from stdin to the output
+o
+1-
+"
+1<
+}
+_           #   drop the exhausted counter
+L
+←v
+w           #   emit `push imm32 <the data's address>`
+^
+]
+
+"
+140-
+[           # 0x8C ′ : push the address of the next name
+_
+(
+→b
+←b
+Y
+@           #   dict[name]: a defined word's body address, or 0
+"
+[           #   0 -> not a word but an ATOM, which has no callable body:
+_           #     wrap its template in a thunk and push the thunk instead
+233o        #     0xE9 = jmp over the thunk
+←p
+→j          #     the jmp's placeholder site
+0
+w
+←p
+→r          #     the thunk itself starts here
+1E          #     [prologue]
+←b
+E           #     [the atom's own template]
+94E         #     [epilogue]
+←j
+k           #     backpatch the jmp to land after the thunk
+L
+←r
+69632-
+w           #     emit `push imm32 <the thunk's address>`
+^
+]
+69632-      #   a defined word: push its address directly
+L
+w
+^
+]
+
+"
+142-
+[           # 0x8E “ : a string literal, closed by the same byte
+_
+233o        #   0xE9 = jmp over the block
+←p
+→j          #   the jmp's placeholder site
+0
+w
+←p
+→l          #   the block's 4-byte length field goes here
+←p
+69632-
+→v          #   ... and its address is the string's value
+0
+w           #   the length, as a placeholder for now
+0
+→x          #   no bytes copied yet
+{
+(           #   read one byte of the string
+"
+142-
+[           #   the closing “ :
+_
+←x
+←l
+!           #     store the real length into the block
+←j
+k           #     backpatch the jmp to land after the block
+L
+←v
+w           #     emit `push imm32 <the block's address>`
+^
+]
+o           #   an ordinary byte: copy it into the block
+←x
+1+
+→x          #   and count it
+0
+}
+]
+
+"
+143-
+[           # 0x8F → : pop TOS into the named variable
+_
+(           #   the name is the next byte
+4*
+5111808+    #   its cell in the bank at 0x4E0000
+88o         #   0x58            pop rax
+137o        #   0x89 0x04 0x25  mov [cell], eax
+4o
+37o
+w
+^
+]
+
+"
+144-
+[           # 0x90 ← : push the named variable
+_
+(
+4*
+5111808+
+139o        #   0x8B 0x04 0x25  mov eax, [cell]
+4o
+37o
+w
+80o         #   0x50            push rax
+^
+]
+
+e           # anything else: a table op or a call to a defined word
+;
+
+
+# ---------------------------------------------------------------------------
+# The ELF header
+# ---------------------------------------------------------------------------
+
+# Blob record 4 holds the header's NON-ZERO bytes only, as (offset, value)
+# pairs: the output buffer is BSS, so the ~80% of the header that is zero is
+# already correct and only the pairs have to be painted in.
+
+:H          # H : paint the ELF header over the zeroed output buffer  [ -> ]
+4
+f           # find record 4
+→R
+←R
+1+
+?           # its length ...
+←R
+2+
++           # ... gives the address one past its last pair
+→z
+←R
+2+
+→A          # walk the pairs from the first
+{
+←A
+1+
+?           # the byte's value ...
+←A
+?
+B
++           # ... and where it belongs in the output buffer
+,
+←A
+2+
+→A
+←A
+←z
+<
+1+          # loop while there are pairs left
+}
+;
+
+
+# ---------------------------------------------------------------------------
+# The template blob.  The build replaces the marker line below with the raw
+# blob escape.  That escape compiles to a jmp over the raw data plus a push of
+# the data's address, so the main program that follows starts with the template
+# table's address on the stack — and every definition above, being a jmp-over,
+# is skipped at run time.
+# ---------------------------------------------------------------------------
+
+@BLOB@
+
+
+# ---------------------------------------------------------------------------
+# The main program.  It runs first: every definition above is a jmp-over.
+# ---------------------------------------------------------------------------
+
+→T          # the blob escape just pushed the template table's address
+H           # paint the ELF header into the (zeroed) buffer
+B
+120+
+→p          # code begins right after the 120-byte header
+3E          # blob record 3: the startup stub, mov ebp,0xC00000
+
+{           # the token loop:
+g           #   fetch a char (a pushed-back one first)
+"
+→i          #   remember it as the current char
+t           #   compile it
+←i
+1<          #   loop while it is not 0, i.e. until EOF
+}
+
+5E          # blob record 5: exit(0)
+
+B
+→A          # flush the buffer to stdout, one byte at a time
+{
+←A
+?
+)
+←A
+1+
+→A
+←A
+←p
+<
+1+          # loop while the cursor is below the write pointer
+}
