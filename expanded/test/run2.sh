@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
 # Expanded GOLF (v2) test suite + bootstrap ladder.
 #
-#   golf0.py  --compiles-->  v1c        (the frozen minimal compiler)
-#   v1c       --compiles-->  stage1     (v2 seed, written in v1 GOLF)
-#   stage1    --compiles-->  stage2
-#   stage2    --compiles-->  stage3     ; require stage2 == stage3  (fixpoint)
-#   stage3    --compiles-->  examples using the new operators
+#   golf0.py  --compiles-->  v1c      (the frozen minimal compiler)
+#   v1c       --compiles-->  seed     ; self/seed.golf,  compiler logic in v1 GOLF
+#   seed      --compiles-->  golf2    ; self/golf2.golf, compiler logic in v2 GOLF
+#   golf2     --compiles-->  golf2'   ; same source — require golf2 == golf2'
+#   golf2'    --compiles-->  examples using the new operators
 #
-# The gate is stage2 == stage3: both are built from self/golf2.golf and therefore
-# embed the same template blob, so iterate 2 has converged. stage1 comes out of
-# v1c (v1's blob) and matches stage2 only while golf2 overrides no v1 template —
-# that extra equality is reported below as informational, not as a test.
+# Since M-SELF the compiler's logic is written in v2 GOLF (self/golf2.golfj,
+# encoded into self/golf2.golf), so the last rung is a TRUE self-hosting
+# fixpoint: golf2 compiles its own source back to itself, byte for byte.
+#
+# self/seed.golf is the bootstrap rung and nothing more. It carries the same
+# compiler in v1 GOLF, purely so v1c — which has never heard of v2 — can build
+# something able to compile golf2.golf. Because v1c embeds *v1's* template blob
+# it emits different bytes than golf2 would, but that divergence stops there:
+# `seed` is only ever used to produce golf2, and is never compared against
+# anything. Hence no "seed-stable" line any more — there is nothing to report.
+#
+# The gate is golf2 == golf2': both are built from self/golf2.golf, embed the
+# same blob, and emit the same code for the same source, so iterate 1 of the
+# self-hosted compiler has already converged.
 set -u
 cd "$(dirname "$0")/.."
 EXP=$(pwd); MIN="$EXP/../minimal"
@@ -19,26 +29,23 @@ pass=0; fail=0
 ok(){ printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass+1)); }
 no(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
 
-echo "Regenerate the v2 seed source"
+echo "Regenerate the generated compiler sources (self/seed.golf, self/golf2.golf)"
 python3 tools/mkblob2.py 2>&1 | sed 's/^/  /'
 
 echo "Bootstrap ladder"
 python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$TMP/v1c" 2>/dev/null && chmod +x "$TMP/v1c" \
   && ok "build v1c (minimal compiler)" || no "build v1c"
-"$TMP/v1c" < self/golf2.golf > "$TMP/golf2" 2>/dev/null && chmod +x "$TMP/golf2" \
-  && ok "v1c compiles golf2.golf" || no "v1c compiles golf2.golf"
-"$TMP/golf2" < self/golf2.golf > "$TMP/golf2b" 2>/dev/null && chmod +x "$TMP/golf2b"
-"$TMP/golf2b" < self/golf2.golf > "$TMP/golf2c" 2>/dev/null && chmod +x "$TMP/golf2c"
-cmp -s "$TMP/golf2b" "$TMP/golf2c" \
-  && ok "golf2 self-hosts (fixpoint: stage2 == stage3)" || no "golf2 fixpoint (stage2 == stage3)"
-# Informational only — never a pass/fail gate: stage1 (emitted by v1c) is
-# byte-identical to stage2 exactly as long as golf2's blob overrides none of v1's
-# op templates. Overriding one (e.g. a vectorized '+') makes this print "no"
-# while the stage2 == stage3 fixpoint above keeps holding.
-if cmp -s "$TMP/golf2" "$TMP/golf2b"; then seedstable=yes; else seedstable=no; fi
-printf '       seed-stable: %s (stage1 == stage2; informational — expected to diverge once a v1 template is overridden)\n' "$seedstable"
-# Everything below this line exercises the converged compiler (stage3).
-cp -f "$TMP/golf2c" "$TMP/golf2"
+"$TMP/v1c" < self/seed.golf > "$TMP/seed" 2>/dev/null && chmod +x "$TMP/seed" \
+  && ok "v1c compiles self/seed.golf -> seed" || no "v1c compiles seed.golf"
+# The rung M-SELF bought: the compiler's own logic, written in v2 GOLF, built by
+# the bootstrap seed.
+"$TMP/seed" < self/golf2.golf > "$TMP/golf2" 2>/dev/null && chmod +x "$TMP/golf2" \
+  && [ -s "$TMP/golf2" ] && ok "seed compiles self/golf2.golf -> golf2" || no "seed compiles golf2.golf"
+"$TMP/golf2" < self/golf2.golf > "$TMP/golf2p" 2>/dev/null && chmod +x "$TMP/golf2p"
+cmp -s "$TMP/golf2" "$TMP/golf2p" \
+  && ok "golf2 self-hosts (fixpoint: golf2 == golf2')" || no "golf2 fixpoint (golf2 == golf2')"
+# Everything below this line exercises the converged self-hosted compiler.
+cp -f "$TMP/golf2p" "$TMP/golf2"
 
 echo "The v2 compiler still handles all of v1"
 "$TMP/golf2" < "$MIN/examples/hello.golf" > "$TMP/h" 2>/dev/null && chmod +x "$TMP/h"
@@ -323,6 +330,7 @@ python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
 
 echo
-echo "v2 seed size: $(wc -c < self/golf2.golf) bytes"
+echo "v1 bootstrap seed: $(wc -c < self/seed.golf) bytes (self/seed.golf)"
+echo "v2 compiler:       $(wc -c < self/golf2.golf) bytes (self/golf2.golf, from self/golf2.golfj)"
 echo "Result: $pass passed, $fail failed"
 [ "$fail" = 0 ]
