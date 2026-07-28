@@ -1,0 +1,183 @@
+# GOLF/2 tool library: files, streams and argv (M-TOOL, wave 8).
+#
+# Authored in code-page mnemonic form (\radd, \fetch, \sys …) like
+# lib/prelude.golfj, and prepended to a program by gtools/build — prelude first,
+# then every lib/t*.golfj in glob order, then the program.  The one glyph left
+# as a glyph is the string delimiter “, because `\str` run together with the
+# message text it opens is a great deal harder to read than the mark itself.  It is NOT part of the prelude: an ordinary user
+# program never sees it, only the repo's own build tools under gtools/ do.
+#
+# Everything here rests on two things wave 8 added (../REGISTRY.md §1.2, §3):
+#   ⎈ \sys      a1 a2 a3 num ⎈ -> result — the raw syscall.  open(path,flags,
+#               mode)=2 · read(fd,buf,n)=0 · write(fd,buf,n)=1 · close(fd)=3 ·
+#               exit(code)=60.  Push 0 for an argument the call does not use.
+#               The kernel's return value comes back UNCHANGED: a failure is a
+#               NEGATIVE ERRNO (-2 ENOENT, -9 EBADF, …), not libc's -1.
+#   0x4F0040    the entry rsp, stashed by STARTUP before anything is pushed.
+#               argc is at [cell]; argv[i] at [cell]+8+8*i.
+#
+# ---------------------------------------------------------------------------
+# Words.  Single-byte names, a..h — the range ../REGISTRY.md §2.1 assigns to
+# this file.  (i..r belong to lib/ttext.golfj, s..z to lib/tutf.golfj; a tool
+# program may use any letter neither this file nor its siblings claim.)
+# ---------------------------------------------------------------------------
+#
+#   a  str ->              die: the “…“ block to fd 2, a newline, exit(1)
+#   b  path w -> fd        open: w=0 read-only, w!=0 create/truncate for writing
+#   c  fd buf n -> got     read once; got is 0 at EOF, never negative
+#   d  fd buf n ->         write ALL n bytes, looping over short writes
+#   e  fd -> buf len       slurp: the whole fd into a fresh heap buffer
+#   f  ->                  flush the output buffer
+#   g  byte ->             emit one byte into the output buffer (auto-flushes)
+#   h  i -> ptr            argv[i], or 0 when i >= argc
+#
+# EIGHT letters is the whole budget, and the list a tool wants is longer than
+# eight, so two things that a first draft would have made words are phrases
+# instead.  Both are one line and both are documented here rather than hidden:
+#
+#   argc            5177408 ⊙ ⊙          (the entry rsp cell, then [rsp])
+#   close(fd)       fd 0 0 3 ⎈ _
+#
+# `h` is why argc rarely comes up: it already does the comparison, so a tool
+# asks for the argument it wants and tests the result for 0 — which is also the
+# only spelling that cannot read past the end of the array.  And close is a
+# courtesy, not a correctness requirement: write(2) hands the bytes to the
+# kernel, `exit` closes every descriptor, and a build tool is a short-lived
+# process, so nothing is lost or corrupted by never closing.  A letter spent on
+# either would have cost `a` (the error policy) or `h` (the 64-bit argv math) —
+# the two things a caller most needs to be stopped from writing by hand.
+#
+# ---------------------------------------------------------------------------
+# Error policy: DIE LOUDLY.  These are build scripts.
+# ---------------------------------------------------------------------------
+#
+# Every syscall wrapper here checks the kernel's return value and, on failure,
+# calls `a`: one line on fd 2, then exit(1).  It never returns a status for the
+# caller to forget to test.  A build script that silently wrote a truncated
+# self/golf2.golf because open() returned -2 would poison the next bootstrap;
+# stopping at the first bad syscall, with the shell seeing a non-zero status, is
+# strictly better than any recovery this library could invent.
+#
+# The three checks are exactly:
+#   b  fd  <s 0   ->  die     (a negative errno; a valid fd is >= 0)
+#   c  got <s 0   ->  die     (0 is EOF and is a normal, expected answer)
+#   d  r   <s 1   ->  die     (negative is an error AND a 0-byte write of a
+#                              non-empty buffer would spin the retry loop
+#                              forever, so both are fatal)
+# `a` itself does NOT flush the output buffer.  Half of a tool's output is worse
+# than none of it: the whole point of dying is that the artifact is not written.
+# `a` also does its own raw write rather than going through `d`, so a failure to
+# report a failure cannot recurse.
+#
+# ---------------------------------------------------------------------------
+# Memory (../REGISTRY.md §3 is authoritative).  Four cells, 8-byte stride, all
+# read and written with ⊙/⊛:
+#   0x4F00A0  5177504  output buffer base (a heap address; set by the init line)
+#   0x4F00A8  5177512  bytes pending in that buffer
+#   0x4F00B0  5177520  the fd `f`/`g` write to — 1 (stdout) until a tool stores
+#   0x4F00B8  5177528  `a`'s staging cell: the message address, then its newline
+# 0x4F00C0..0x4F00FF stays free.
+#
+# THIS FILE USES NO →x / ←x.  It may (unlike the prelude — the bank at 0x4E0000
+# is user space there), but it does not: the bank is one global cell per name,
+# shared with the tool program AND with the two sibling libraries loaded after
+# this one, so a name allocated here would be a name none of the three could
+# use.  Fixed cells cost nothing and cannot collide.  The bank is also 4 bytes
+# per cell, which no pointer this file touches would survive — see below.
+#
+# 64-BIT, EVERYWHERE.  The entry rsp and every argv[i] are stack addresses, far
+# above 2^32 on Linux x86-64, and a buffer address handed to ⎈ may be one of
+# them.  So all of it is ⊙/⊛ and the raw atoms, never @/! and never a variable.
+# The one deliberate 32-bit read is `a`'s ←@ of a “…“ block's length field: a
+# string literal is [len:4][bytes], the same layout O and U read.
+#
+# Raw arithmetic.  Every pointer, index, count and flag step below uses the raw
+# atoms ﹢ ﹣ ﹡ ⊓ ⊔ ﹤ (\radd \rsub \rmul \rmin \rmax \rlt).  The bare ASCII
+# + - * ⌈ ⌊ are polymorphic since M-VEC and would send this file's own address
+# math through the shape dispatcher.  Not one of them appears here.
+#
+# Scratch.  `d` and `e` loop and are bracketed by X … Y (the prelude's
+# callee-save spill frame), so they nest inside a map or a fold like any prelude
+# word; they use s0..s4 and s6 under that frame, never s5 (which is A's own
+# temporary and is not safe across the A call each of them makes).  `g` — the
+# hot path, one call per byte of output — touches no scratch at all, so it pays
+# for no frame; `a`, `b`, `c`, `f` and `h` are straight-line and need none.
+#
+# `{…}` is a DO-while, so its body always runs once: every loop below whose trip
+# count can be zero is guarded with `<n> 0\eq [ {…} ]`.  `d`'s write loop is
+# guarded (n may be 0).  `e`'s read loop is deliberately NOT: reading once is
+# how EOF is discovered, and its inner copy loop always has at least one cell.
+#
+# Byte 0x5C (swap) never appears: `decode` renders it as a bare `\`, which
+# `encode` would then read as a mnemonic escape (prelude.golfj:207-213).  Values
+# go through scratch, `&` (over) or a cell instead.
+#
+# ---------------------------------------------------------------------------
+# Two hazards a caller must know
+# ---------------------------------------------------------------------------
+#
+# 1. `b` wants a NUL-TERMINATED path, because open(2) does.  An argv string is
+#    NUL-terminated by the kernel, so `1 h 0 b` is the safe idiom and the one
+#    the tools use.  A “…“ literal is NOT: it is a counted block with arbitrary
+#    code after it, so `“out.txt“4﹢` is a path of unknown length.  A literal
+#    path has to be copied into a heap buffer with a 0 byte appended first.
+# 2. `e` allocates 65536 bytes up front and doubles (allocating a fresh block
+#    and copying, since the heap is a bump allocator that cannot grow in place).
+#    The heap is 0x500000..0xC00000 — 7 MB shared with the return stack — so
+#    slurping a file over ~2 MB is not safe until W6/M-MEM sizes the heap with
+#    brk.  Every file in this repo is orders of magnitude smaller.
+#
+# The output buffer is 8192 bytes.  `g` flushes automatically when it fills, so
+# a tool may emit a megabyte through an 8 KB buffer; what a tool must not forget
+# is the FINAL `f`, since nothing else can know the program is done.  That is
+# one write syscall per 8192 bytes instead of the one per byte that golf2's own
+# `)`-based output pays.
+#
+# `g` and `)` ARE TWO DIFFERENT STREAMS.  `)` — and with it every prelude word
+# that prints, N E O Q J — writes one byte straight to fd 1, so a program that
+# interleaves the two sees the `)` bytes appear first and the buffered ones at
+# the flush.  A tool should pick one: `g` for the artifact it is producing, and
+# `a` (fd 2) for anything it wants to say about it.
+#
+# Init: allocate the buffer (1024 cells = 8192 bytes) and point the output at
+# fd 1.  Top-level tokens in a prepended source run at program start, before any
+# tool code, exactly like the prelude's own init.  The pending count is not
+# initialised because it does not need to be: every cell here is BSS and BSS is
+# zero, which is also why the prelude never initialises the spill pointer.
+1024 A5177504\store 1 5177520\store
+# a  str ->  die.  Park the block address in 0x4F00B8, write [addr+4, len:@addr]
+# to fd 2, reuse the cell as a one-byte buffer holding 10 for the newline, then
+# exit(1).  Both writes are raw and unchecked: there is nowhere left to report.
+:a 5177528\store 2 5177528\fetch4\radd 5177528\fetch@1\sys_ 10 5177528\store 2 5177528 1 1\sys_ 1 0 0 60\sys;
+# b  path w -> fd  open.  w==0 -> O_RDONLY (flags 0, mode 0).  Otherwise
+# O_WRONLY|O_CREAT|O_TRUNC = 1|64|512 = 577, mode 0644 = 420 — create it if it
+# is not there, truncate it if it is.  Two arms with two messages rather than
+# one arm and computed flags: the diagnostic is the reason to have the word.
+:b"[_ 0 0 2\sys"0\slt1\radd[“tio: cannot open file for reading“a]^]_ 577 420 2\sys"0\slt1\radd[“tio: cannot create output file“a];
+# c  fd buf n -> got  read(fd, buf, n).  One call, so got <= n: a short read is
+# legal and 0 means EOF.  Only a negative is fatal.
+:c 0\sys"0\slt1\radd[“tio: read failed“a];
+# d  fd buf n ->  write ALL of it.  s0 fd · s1 buf · s2 remaining.  A short
+# write is a real thing on pipes and large buffers, so the loop advances buf by
+# what the kernel took and retries until nothing is left.  `&` re-supplies the
+# count for the subtraction, so no swap and no extra cell.
+:d X5177456\store5177448\store5177440\store5177456\fetch0\eq[{5177440\fetch5177448\fetch5177456\fetch1\sys"1\slt1\radd[“tio: write failed“a]"5177448\fetch\radd5177448\store5177456\fetch&\rsub5177456\store_5177456\fetch0\eq}]Y;
+# e  fd -> buf len  slurp.  s0 fd · s1 buf · s2 len · s3 capacity · s4 the new
+# block while growing · s6 the copy index.  Read into buf+len for cap-len bytes
+# until read returns 0; when the buffer fills exactly, allocate twice the bytes,
+# copy the old contents across as cap/8 EIGHT-BYTE cells (cap is a multiple of 8
+# and the copy happens only when len==cap, so the cell count is exact), and
+# carry on.  The result is (buffer, length) on the data stack — lifted there
+# before Y, which is stack-neutral.
+:e X5177440\store8192 A5177448\store0 5177456\store65536 5177464\store{5177440\fetch5177448\fetch5177456\fetch\radd5177464\fetch5177456\fetch\rsub c"0\eq["5177456\fetch\radd5177456\store5177456\fetch5177464\fetch\rsub[5177464\fetch2\shr A5177472\store0 5177488\store{5177448\fetch5177488\fetch8\rmul\radd\fetch5177472\fetch5177488\fetch8\rmul\radd\store5177488\fetch1\radd5177488\store5177488\fetch5177464\fetch3\shr\rlt1\radd}5177472\fetch5177448\store5177464\fetch\dbl5177464\store]]0\eq}5177448\fetch5177456\fetch Y;
+# f  ->  flush.  Nothing pending, nothing written — the guard also makes a
+# double flush and a flush before the first g harmless.
+:f 5177512\fetch0\eq[5177520\fetch5177504\fetch5177512\fetch d 0 5177512\store];
+# g  byte ->  emit.  Store the byte at base+count with `,`, bump the count, and
+# flush when it reaches 8192.  `<count> 8192﹣[…]` is the equality test: ﹣
+# yields 0 exactly when they are equal, and `[` runs on 0.
+:g 5177504\fetch5177512\fetch\radd,5177512\fetch1\radd5177512\store5177512\fetch8192\rsub[f];
+# h  i -> ptr  argv[i], or 0 when i >= argc.  ﹤ is unsigned, so a "negative"
+# index is a huge one and also answers 0.  The pointer is a 64-bit stack
+# address and is returned on the data stack, where it can stay one.
+:h"5177408\fetch\fetch\rlt1\radd[8\rmul5177408\fetch\radd8\radd\fetch^]_ 0;
