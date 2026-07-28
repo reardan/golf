@@ -416,6 +416,60 @@ garg(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "
 
 # @@ W8-TOOLLIB @@
 
+echo "Tool library lib/tutf.golfj (M-TOOL): data/codepage.tsv as an in-memory table"
+python3 tools/codepage.py encode < lib/tutf.golfj > "$TMP/tutf.gb" 2>/dev/null \
+  && ok "encode lib/tutf.golfj" || no "encode lib/tutf.golfj"
+# prelude + tutf + program.  The program source arrives on gt's stdin (the
+# process substitution reads it), and the compiled binary is then handed the
+# real data/codepage.tsv -- `t` takes a BUFFER, not a path, so the table library
+# is testable with no file I/O and no dependency on lib/tio.golfj.
+gt(){ cat "$TMP/pre.gb" "$TMP/tutf.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/tup" 2>/dev/null \
+        && chmod +x "$TMP/tup" && "$TMP/tup" < data/codepage.tsv; }
+# Every case first slurps stdin into a heap buffer and hands `t` (buf len); `t`
+# leaves the record count, which the lookup cases drop with `_`.  `\gets` is
+# `\get` + `s`, the longest-known-mnemonic-prefix rule doing exactly what the
+# \sqr48 case below tests.
+TL='5000A\setb\getb\setp{(\setc\getc 0\eq[\getc\getp,\getp\inc\setp]\getc 0\eq}\getb\getp\getb\rsub t'
+CPY="import sys;sys.path.insert(0,'tools');import codepage as c"
+[ "$(printf '%s' "$TL N E" | gt)" = "$(python3 -c "$CPY;print(len(c.all_rows()))")" ] \
+  && ok "t parses every row of data/codepage.tsv" || no "t record count"
+# A multi-byte glyph, matched on the RAW byte stream with no UTF-8 decoding:
+# E2 8A 95 is ⊕, i.e. \inc = 0x81 = 129, three bytes consumed.
+[ "$(printf '%s' "$TL _ 4A\setq 226\getq,138\getq1\radd,149\getq2\radd,\getq\getq3\radd v\setk\setj\getj N 32)\getk N E" | gt)" = "129 3" ] \
+  && ok "v: glyph ⊕ -> 0x81, 3 bytes" || no "v multi-byte glyph"
+# ...and the same word answers for the five glyphs that ARE ASCII (~ $ | = >).
+# codepage.encode consults the glyph table BEFORE the ASCII passthrough, so a
+# port must call v first even though today the two agree.
+[ "$(printf '%s' "$TL _ 4A\setq 126\getq,\getq\getq1\radd v\setk\setj\getj N 32)\getk N E" | gt)" = "126 1" ] \
+  && ok "v: ASCII glyph ~ -> 0x7E, 1 byte" || no "v ASCII glyph"
+# The window is honoured: two thirds of ⊕ is not ⊕, so nothing may match.
+[ "$(printf '%s' "$TL _ 4A\setq 226\getq,138\getq1\radd,\getq\getq2\radd v\setk_\getk N E" | gt)" = "0" ] \
+  && ok "v: a glyph truncated by e does not match" || no "v window"
+# LONGEST KNOWN MNEMONIC PREFIX, the rule the whole encoder hangs on: the alpha
+# run "sqrp" is \sqr (0x83 = 131) and then the word p -- three letters, not a
+# failure, exactly as \sqr48 is \sqr then 48.
+[ "$(printf '%s' "$TL _ \strsqrp\str\setj\getj4\radd\getj4\radd\getj@\radd w\setk\setj\getj N 32)\getk N E" | gt)" = "131 3" ] \
+  && ok "w: \\sqrp -> \\sqr 0x83, 3 letters (longest prefix)" || no "w longest prefix"
+# An encode-only LIB row: \range and ⍳ both encode to the call byte of the
+# letter word R, 0x52 = 82.
+[ "$(printf '%s' "$TL _ \strrange\str\setj\getj4\radd\getj4\radd\getj@\radd w\setk\setj\getj N 32)\getk N E" | gt)" = "82 5" ] \
+  && ok "w: \\range -> 0x52 (a letter-keyed LIB row still encodes)" || no "w encode-only row"
+# ...but 0x52 must NOT decode back to ⍳.  That is the asymmetry the mode column
+# exists for: a low byte could equally be a *user* word named R.
+[ "$(printf '%s' "$TL _ 82 x\setk_\getk N 32)82 y\setk_\getk N E" | gt)" = "0 0" ] \
+  && ok "x/y: 0x52 is E- and does not decode" || no "x/y encode-only row"
+# ⎈ \sys 0xA7 = 167, the last M4 slot and wave 8's own op: >= 0x80, so ED, so it
+# encodes from its mnemonic and decodes to both glyph (E2 8E 88) and mnemonic.
+[ "$(printf '%s' "$TL _ \strsys\str\setj\getj4\radd\getj4\radd\getj@\radd w\setk\setj\getj N 32)\getk N E" | gt)" = "167 3" ] \
+  && ok "w: \\sys -> 0xA7" || no "w sys"
+[ "$(printf '%s' "$TL _ 167 x\setk\setj\getk N 0\setm\getk 0\eq[{32)\getj\getm\radd?N\getm\inc\setm\getm\getk\eq}]E 167 y\setk\setj 0\setm\getk 0\eq[{\getj\getm\radd?)\getm\inc\setm\getm\getk\eq}]E" | gt)" = "$(printf '3 226 142 136\nsys')" ] \
+  && ok "x/y: 0xA7 decodes to ⎈ and to \\sys" || no "x/y sys"
+# All 256 bytes at once, against the oracle: total glyph + mnemonic bytes over
+# every byte codepage.decode would spell out.  Grows with the table on its own.
+[ "$(printf '%s' "$TL _ 0\seti 0\setn{\geti x\setk_\getn\getk\radd\setn \geti y\setk_\getn\getk\radd\setn \geti\inc\seti\geti 256\eq}\getn N E" | gt)" \
+  = "$(python3 -c "$CPY;print(sum(len(c.BYTE2GLYPH[b].encode())+len(c.BYTE2MNEM[b]) for b in range(256) if b>=128 and b in c.BYTE2GLYPH))")" ] \
+  && ok "x/y agree with codepage.py over all 256 bytes" || no "x/y whole byte space"
+
 # @@ W8-TOOLS @@
 
 

@@ -180,7 +180,24 @@ library so the three can be written in parallel without contending.
 |-------|-------|------|--------|
 | `a`–`h` | `lib/tio.golfj` — file/stream I/O on `⎈`, argv | W8 | reserved |
 | `i`–`r` | `lib/ttext.golfj` — byte-buffer text words | W8 | reserved |
-| `s`–`z` | `lib/tutf.golfj` — code-page table loader + glyph matching | W8 | reserved |
+
+`s`–`z` is allocated per letter, in the style of §2 above. `lib/tutf.golfj`
+loads `data/codepage.tsv` into a flat array of six-cell records and answers the
+four lookups an encoder and a decoder need; `s` is spent on the library's one
+**variable** (`→s`/`←s`, written `\sets`/`\gets`), which holds the base of the
+16-cell heap block all its state lives in, so the library claims no fixed
+scratch in §3 at all.
+
+| Letter | Signature | Meaning | Wave | Status |
+|--------|-----------|---------|------|--------|
+| `s` | — | *not a word*: the variable holding `tutf`'s state block | W8 | shipped |
+| `t` | `buf len -> n` | parse `data/codepage.tsv` from a buffer; → record count | W8 | shipped |
+| `u` | `a -> b` | the byte spelled by the two hex digits at address `a` | W8 | shipped |
+| `v` | `p e -> b k` | longest **glyph** matching the bytes at `p`, never past `e`; `k = 0` = none | W8 | shipped |
+| `w` | `p e -> b k` | longest **mnemonic** that is a prefix of the bytes at `p`, never past `e`; `k = 0` = none | W8 | shipped |
+| `x` | `b -> p k` | byte → glyph bytes, `ED` rows only; `k = 0` = not decodable | W8 | shipped |
+| `y` | `b -> p k` | byte → mnemonic bytes, `ED` rows only; `k = 0` = not decodable | W8 | shipped |
+| `z` | `p q k -> f` | `0` iff the `k` bytes at `p` equal the `k` bytes at `q` | W8 | shipped |
 
 Two rules carry over from the prelude and one does not:
 
