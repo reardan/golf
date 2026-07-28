@@ -42,7 +42,7 @@
 #
 #   0x410800   dictionary: the body address of the word named x is at +4*x
 #   0x411000   output buffer B: the byte at file offset f is stored at B+f
-#   0x4E0000   variable bank: cell for name x is at 0x4E0000+4*x  (→x / ←x)
+#   0x4E0000   variable bank: cell for name x is at 0x4E0000+8*x  (→x / ←x)
 #
 # Both fixed addresses are the ones v1 documents as D+2048 and D+4096 with
 # D = 0x410000, so the compiled binary keeps exactly today's memory map.  A
@@ -564,10 +564,11 @@ o           #   an ordinary byte: copy it into the block
 [           # 0x8F → : pop TOS into the named variable
 _
 (           #   the name is the next byte
-4*
-5111808+    #   its cell in the bank at 0x4E0000
-88o         #   0x58            pop rax
-137o        #   0x89 0x04 0x25  mov [cell], eax
+8*
+5111808+    #   its cell in the bank at 0x4E0000, 8 bytes per name (M3W)
+88o         #   0x58                 pop rax
+72o         #   0x48 0x89 0x04 0x25  mov [cell], rax
+137o
 4o
 37o
 w
@@ -579,13 +580,14 @@ w
 [           # 0x90 ← : push the named variable
 _
 (
-4*
+8*
 5111808+
-139o        #   0x8B 0x04 0x25  mov eax, [cell]
+72o         #   0x48 0x8B 0x04 0x25  mov rax, [cell] — the full 64-bit cell, so
+139o        #   a wide or negative value round-trips (M3W; it was a mov eax)
 4o
 37o
 w
-80o         #   0x50            push rax
+80o         #   0x50                 push rax
 ^
 ]
 

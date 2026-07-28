@@ -222,14 +222,24 @@ STR_CASE = ('"142-[_233o m4+@m20+!0w m4+@m24+! m4+@69632-m12+!0w 0 m28+!'
             '{("142-[_m28+@m24+@!m4+@m20+@4+-m20+@!104o m12+@w^]o m28+@1+m28+!0}]')
 
 # Named variables: →x stores TOS to a name-indexed cell, ←x loads it.  Compiler
-# prefixes (bytes 0x8F/0x90): read the name byte and emit an absolute 32-bit
-# store/load to a per-program variable bank at 0x4E0000 (bank[name] = +4*name).
+# prefixes (bytes 0x8F/0x90): read the name byte and emit an absolute 64-bit
+# store/load to a per-program variable bank at 0x4E0000 (bank[name] = +8*name).
 # NOTE: these are GLOBAL (one cell per name), not per-call frame — recursion
 # does not get fresh copies.  Frame-based locals remain a later step.
-SET_BYTE = 0x8F   # →   store: pop rax; mov [0x4E0000+4*name], eax
-GET_BYTE = 0x90   # ←   load:  mov eax,[0x4E0000+4*name]; push rax
-SET_CASE = '"143-[_(4*5111808+88o 137o 4o 37o w^]'
-GET_CASE = '"144-[_(4*5111808+139o 4o 37o w 80o^]'
+#
+# M3W: the bank was 4 bytes per name and `←x` was a `mov eax`, which zero-
+# extended — `4294967296→x←x` came back 0 and `0 5-→x←x` came back 4294967291.
+# Every other place a value can sit (the data stack, the atoms, list cells, the
+# prelude scratch bank) has been 64 bits since M4/W4A; this was the last narrow
+# one.  The fix is W4A's, exactly: stride 4 -> 8 and a REX.W on both templates.
+# 256 names x 8 bytes = 2 KB, still inside the 0x4E0000-0x4F0000 hole, so no
+# address had to be reallocated (../REGISTRY.md §3).  Widening in place would
+# have been impossible for the same reason the scratch bank could not be: at a
+# 4-byte stride x's high half IS the cell of name x+1.
+SET_BYTE = 0x8F   # →   store: pop rax; mov [0x4E0000+8*name], rax
+GET_BYTE = 0x90   # ←   load:  mov rax,[0x4E0000+8*name]; push rax
+SET_CASE = '"143-[_(8*5111808+88o 72o 137o 4o 37o w^]'
+GET_CASE = '"144-[_(8*5111808+72o 139o 4o 37o w 80o^]'
 
 assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
 WORDS2 = mkblob.WORDS.replace(

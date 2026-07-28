@@ -51,7 +51,8 @@ REF_BYTE = mkblob2.REF_BYTE   # ′  push a word's or atom's runtime address
 STR_BYTE = mkblob2.STR_BYTE   # “  string literal delimiter (open and close)
 SET_BYTE = mkblob2.SET_BYTE   # →  pop TOS into a named variable
 GET_BYTE = mkblob2.GET_BYTE   # ←  push a named variable
-VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 4*c
+VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
+VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
 
 
 # --------------------------------------------------------------------- compile
@@ -196,11 +197,13 @@ def compile_bytes(src: bytes) -> bytes:
             patch32(patch, len(out))
             emit([0x68]); emit_u32(BASE + lenoff)
             continue
-        if c == SET_BYTE:                            # →x : pop rax; mov [x],eax
-            emit([0x58, 0x89, 0x04, 0x25]); emit_u32(VARBANK + 4 * take())
+        if c == SET_BYTE:                            # →x : pop rax; mov [x],rax
+            emit([0x58, 0x48, 0x89, 0x04, 0x25])
+            emit_u32(VARBANK + VARSTRIDE * take())
             continue
-        if c == GET_BYTE:                            # ←x : mov eax,[x]; push rax
-            emit([0x8B, 0x04, 0x25]); emit_u32(VARBANK + 4 * take()); emit([0x50])
+        if c == GET_BYTE:                            # ←x : mov rax,[x]; push rax
+            emit([0x48, 0x8B, 0x04, 0x25])
+            emit_u32(VARBANK + VARSTRIDE * take()); emit([0x50])
             continue
 
         if ch in TEMPLATES:                          # v1 op or v2 atom

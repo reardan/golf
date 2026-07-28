@@ -170,7 +170,7 @@ both forms are given here and the decimal is the one you type.
 | `m+32` | | **first free compiler scratch** | free |
 | `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
-| `0x4E0000` | 5111808 | user variable bank (`→x`/`←x`), 4 bytes per name — **user space** | shipped |
+| `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
@@ -200,9 +200,14 @@ Notes:
   `0x4F0034` in particular is baked into every M-VEC template as a 32-bit
   compare operand. That is a real 4 GB ceiling on the break (DESIGN.md, known
   limits) — widening the cells means widening five templates with them.
-  The **user variable bank at `0x4E0000` is 4 bytes per name for the same
-  reason**, which is the one place a 64-bit value still gets truncated.
-  A string is likewise still `[len:4][bytes]`, so `O`/`U` read its length with
+  The **user variable bank at `0x4E0000` was 4 bytes per name for the same
+  reason and is now 8** (M3W): unlike the four fixed cells, no template hard-codes
+  a bank address — the compiler computes `0x4E0000 + 8*name` when it emits the
+  store — so the stride could be changed by changing the two emitters, in
+  `self/golf2.golfj`, `mkblob2.py`'s seed cases and `boot/golfref.py` alike.
+  Widening it *in place* was as impossible as it was for the scratch bank: at a
+  4-byte stride, name `x`'s high half is name `x+1`'s cell.
+  A string is still `[len:4][bytes]`, so `O`/`U` read its length with
   the 32-bit `@`; only `U`'s *output* is an 8-byte-cell list.
 - **Scratch is callee-saved, not caller-saved.** Every scratch-using looping
   word in the prelude opens with `X` and closes with `Y` (lifting its result

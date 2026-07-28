@@ -624,6 +624,49 @@ W7BOLD=$(opbytes examples/legacy_capstone.golfj)
   && ok "capstone is $W7BNEW op bytes, down from $W7BOLD" || no "capstone did not shrink ($W7BNEW vs $W7BOLD)"
 # W7B -------------------------------------------------------------------------
 
+# @@ W8-VARS @@
+# W8A ------------------------------------------------------------- M3W -------
+echo "64-bit variable bank (M3W): →x / ←x round-trip a full 64-bit value"
+# The bank at 0x4E0000 was 4 bytes per name and ←x was a `mov eax`, so a wide
+# value came back truncated and zero-extended: 4294967296→x←x printed 0 and
+# 0 5-→x←x printed 4294967291.  Stride 4 -> 8 plus a REX.W on both templates,
+# in self/golf2.golfj AND mkblob2's v1-GOLF seed cases AND boot/golfref.py.
+[ "$(printf '%s' '4294967296→x←xṄ␤' | gc)" = "4294967296" ] \
+  && ok "2^32 survives →x/←x (was 0)"            || no "wide value through the bank"
+[ "$(printf '%s' '0 5-→x←xṄ␤' | gc)" = "-5" ] \
+  && ok "-5 survives →x/←x (was 4294967291)"     || no "negative through the bank"
+[ "$(printf '%s' '9007199254740991→x←x1+Ṅ␤' | gc)" = "9007199254740992" ] \
+  && ok "2^53-1 survives the bank and still increments" || no "2^53 through the bank"
+# A list value is an address, and after M3W a tag bit anywhere above bit 31
+# would survive it too — which is why NEXT_STEPS puts this before any tag work.
+[ "$(printf '%s' '5⍳→a←aTṄ␤←a⍕␤' | gc)" = "$(printf '0\n0 1 2 3 4 ')" ] \
+  && ok "a list address round-trips and still classifies as a list" || no "list through the bank"
+# Two names must not overlap at the wider stride: 8*'a' and 8*'b' are 8 apart,
+# so a full-width store to one may not touch the other.
+[ "$(printf '%s' '4294967295→a4294967294→b←aṄ␤←bṄ␤' | gc)" = "$(printf '4294967295\n4294967294')" ] \
+  && ok "adjacent names keep their own 8-byte cells"   || no "bank stride overlap"
+[ "$(printf '%s' '7→a3→b←a←b+←a←b-*Ṅ10)' | gc)" = "40" ] \
+  && ok "regression: (a+b)*(a-b) is still 40"    || no "M3 regression"
+# The ENCODING, not just the value: →x is `pop rax; mov [bank+8*'x'], rax` and
+# ←x is `mov rax,[bank+8*'x']; push rax`.  'x' is 120, so the cell is
+# 0x4E0000+960 = 0x4E03C0 -> c0034e00 little-endian.
+w8enc(){ printf '%s' "$1" | python3 tools/codepage.py encode | "$TMP/golf2" 2>/dev/null \
+           | od -An -tx1 -v | tr -d ' \n'; }
+case "$(w8enc '5→x←x)')" in
+  *5848890425c0034e00*) ok "→x is pop rax; mov [0x4E03C0], rax (REX.W, stride 8)";;
+  *)                    no "→x encoding";; esac
+case "$(w8enc '5→x←x)')" in
+  *488b0425c0034e0050*) ok "←x is mov rax,[0x4E03C0]; push rax (REX.W, stride 8)";;
+  *)                    no "←x encoding";; esac
+# Differential: the oracle transcribes the same two cases, so it must agree byte
+# for byte and not merely behave the same.
+printf '%s' '5→x←x 4294967296→y←y_)' | python3 tools/codepage.py encode > "$TMP/w8a.src"
+"$TMP/golf2" < "$TMP/w8a.src" > "$TMP/w8a.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w8a.src" > "$TMP/w8a.ref" 2>/dev/null
+cmp -s "$TMP/w8a.g2" "$TMP/w8a.ref" \
+  && ok "oracle: identical bytes for a program using → and ←" || no "oracle var-bank bytes"
+# W8A --------------------------------------------------------------------------
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
