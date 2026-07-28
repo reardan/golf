@@ -111,10 +111,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **31** |
 | the template blob itself | **697** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1481** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **3950** bytes |
-| assertions in the run2 suite | **198** |
-| assertions in the selfcheck suite | **28** |
+| the generated bootstrap seed (`self/seed.golf`) | **1663** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **4506** bytes |
+| assertions in the run2 suite | **213** |
+| assertions in the selfcheck suite | **31** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
 | the v2 p_memsz (`mkblob2.MEMSZ`) | **0x200000** |
@@ -185,6 +185,16 @@ the golf2 fixpoint included. In order:
   `p_memsz` shrank from `0x800000` to `0x200000`, the return stack moved with it
   to `0x600000`, and the heap base/span moved into the runtime cells at
   `0x4F0034`/`0x4F0038` because ASLR means they cannot be spelled out anywhere.
+- **M-CHAIN2 — chain definitions.** `⊚name f g h;` (byte `0xB0`) defines a word
+  as a *train of links* and lets the compiler supply every `′`: how many links
+  there are decides the shape — one is a call, two are two calls, three are
+  `′f ′g ′h ⑂`, more are the fork then the rest in turn — so `⊚m∑≢÷;` compiles to
+  byte-for-byte what `:m′∑′≢′÷⑂;` compiles to. The count is the whole mechanism:
+  only the first three link bytes are buffered, so there is no driver word, no
+  new prelude state and no runtime list of quotations. The `′` case's body moved
+  into the shared word `X` ("push the address of the word or atom named by this
+  byte"), which the chain calls three times. First new compiler logic since
+  M-SELF, and the first written in `self/golf2.golfj` as the primary source.
 - **M3W — the variable bank goes 64-bit.** The last narrow place on the value
   path: `→x`/`←x` went through a 4-byte-per-name bank and `←x` was a `mov eax`,
   so `4294967296→x←x` was `0` and `0 5-→x←x` was `4294967291`. Stride 4 → 8 plus

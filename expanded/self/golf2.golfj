@@ -15,14 +15,17 @@
 #                                                 fixpoint: golf2 == golf2'
 #
 # self/seed.golf carries a semantically IDENTICAL copy of this compiler written
-# in v1 GOLF (v1's mkblob.WORDS + the four spliced compiler cases REF_CASE /
-# STR_CASE / SET_CASE / GET_CASE), purely so v1c — which has never heard of v2 —
+# in v1 GOLF (v1's mkblob.WORDS, the spliced compiler cases REF_CASE / STR_CASE /
+# SET_CASE / GET_CASE / CHAIN_CASE / LINK_CASE, a `;` that closes a chain as well
+# as a definition, and the word X), purely so v1c — which has never heard of v2 —
 # can bootstrap this one.  Same token dispatch order, same backpatch discipline,
 # same emitted bytes for every input; test/selfcheck.sh gates that byte for
 # byte, so a change to compiler logic must land in BOTH or selfcheck goes red.
 #
-# Only ops the SEED can compile may appear below: ASCII, the four compiler
-# prefixes (′ “ → ←) and the atom bytes.  selfcheck.sh enforces it.
+# Only ops the SEED can compile may appear below: ASCII, the compiler prefixes
+# (′ “ → ← ⊚) and the atom bytes.  selfcheck.sh enforces it.  Note that this
+# source names those bytes as decimal literals (140, 176, …) rather than writing
+# the glyphs, so the constraint has never actually bitten.
 #
 # The blob is still a raw-byte template table and still must be spliced in by
 # the build.  Splice it AFTER encoding, into the raw byte stream: the blob is
@@ -71,13 +74,21 @@
 #   l  the address of a “ block's length field              was D+24
 #   x  a “ block's byte count                               was D+28
 #   y  `Z`'s digit temporary                                (new)
+#   u  1 while compiling a chain body, 0 otherwise           (M-CHAIN2)
+#   K  how many links the chain has taken so far             (M-CHAIN2)
+#   F  the 1st buffered link byte                            (M-CHAIN2)
+#   G  the 2nd buffered link byte                            (M-CHAIN2)
+#   I  the 3rd buffered link byte                            (M-CHAIN2)
 #
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
+# M-CHAIN2's five are the exception to "no two are live at once": they are live
+# together, for exactly the span of one chain definition, and the seed holds the
+# same five in its own scratch at m32..m48 (../REGISTRY.md §3).
 #
 # Words, in definition-before-use order (single-byte names, as the dictionary is
-# byte-indexed): B Y Z U a o L w W k c C f E e D g h t H.
+# byte-indexed): B Y Z U a o L w W k c C f E e D g h X t H.
 #
 # Every value the compiler handles is an address inside the load segment (under
 # 0x600000) or a small integer, and it installs no vectorization hooks (its hook
@@ -328,6 +339,48 @@ _           # any other byte: drop it and keep skipping
 }
 ;
 
+# X : emit the push of a word's or an atom's runtime address.
+#
+# This is the body of the ′ case, lifted out into a word because M-CHAIN2's
+# chain definitions need the same thing three times over: "push the address of
+# the thing named by this byte".  A defined word has a body to point at.  An
+# ATOM does not — it is a template in the blob, not callable code — so its
+# template is wrapped in a thunk [prologue][template][epilogue], emitted inline
+# and jumped over, and the thunk's address is pushed instead.  That is what
+# makes ′+ and a chain link like ÷ work without the user wrapping anything.
+
+:X          # X : emit `push <the address of the word or atom named b>` [ b -> ]
+→b
+←b
+Y
+@           # dict[name]: a defined word's body address, or 0
+"
+[           # 0 -> not a word but an atom:
+_           #   wrap its template in a thunk and push the thunk instead
+233o        #   0xE9 = jmp over the thunk
+←p
+→j          #   the jmp's placeholder site
+0
+w
+←p
+→r          #   the thunk itself starts here
+1E          #   [prologue]
+←b
+E           #   [the atom's own template]
+94E         #   [epilogue]
+←j
+k           #   backpatch the jmp to land after the thunk
+L
+←r
+69632-
+w           #   emit `push imm32 <the thunk's address>`
+^
+]
+69632-      # a defined word: push its body address directly
+L
+w
+;
+
 
 # ---------------------------------------------------------------------------
 # The token dispatcher
@@ -407,10 +460,30 @@ w           #   ... emitted as a placeholder, and left on the stack for ';'
 
 "
 59-
-[           # ';' : end a definition
+[           # ';' : end a definition — of either kind
 _
+←u
+1-
+[           #   a chain: 1 or 2 links never reached the fork, so they are
+0           #   emitted here, as the plain calls that thread x through them
+→u
+←K
+1-
+[           #     one link: f x
+←F
+e
+]
+←K
+2-
+[           #     two links: g(f x)
+←F
+e
+←G
+e
+]
+]
 94E         #   the epilogue: blob record 94, the template of '^'
-k           #   backpatch the ':' jmp to land after it
+k           #   backpatch the ':' or '⊚' jmp to land after it
 ^
 ]
 
@@ -485,35 +558,7 @@ w           #   emit `push imm32 <the data's address>`
 [           # 0x8C ′ : push the address of the next name
 _
 (
-→b
-←b
-Y
-@           #   dict[name]: a defined word's body address, or 0
-"
-[           #   0 -> not a word but an ATOM, which has no callable body:
-_           #     wrap its template in a thunk and push the thunk instead
-233o        #     0xE9 = jmp over the thunk
-←p
-→j          #     the jmp's placeholder site
-0
-w
-←p
-→r          #     the thunk itself starts here
-1E          #     [prologue]
-←b
-E           #     [the atom's own template]
-94E         #     [epilogue]
-←j
-k           #     backpatch the jmp to land after the thunk
-L
-←r
-69632-
-w           #     emit `push imm32 <the thunk's address>`
-^
-]
-69632-      #   a defined word: push its address directly
-L
-w
+X           #   the whole job is X's, since M-CHAIN2 shares it
 ^
 ]
 
@@ -588,6 +633,68 @@ _
 37o
 w
 80o         #   0x50                 push rax
+^
+]
+
+"
+176-
+[           # 0xB0 ⊚ : define a word as a tacit CHAIN of links
+_           #   the header is ':'s, plus the two state cells
+(           #   its name is the next byte
+→b
+233o        #   0xE9 = jmp over the body about to be compiled
+←p
+4+          #   the body begins after the 4-byte jmp displacement
+←b
+Y
+!           #   dict[name] = body address
+←p          #   the displacement's own address ...
+0
+w           #   ... emitted as a placeholder, and left on the stack for ';'
+1E          #   the word prologue (blob record 1)
+1→u         #   in a chain from here to the matching ';'
+0→K         #   with no links yet
+^
+]
+
+←u
+1-
+[           # inside a chain, this token is a LINK rather than a call.  The
+→b          # count decides the train, so only the first three are buffered:
+←K          # the third emits ′f ′g ′h and the ⑂ that forks them, and a fourth
+1+          # or later link is an ordinary call threading the fork's result on.
+→K          #   count this link
+←K
+1-
+[           #   link 1: buffer it
+←b
+→F
+^
+]
+←K
+2-
+[           #   link 2: buffer it
+←b
+→G
+^
+]
+←K
+3-
+[           #   link 3: the shape is known — emit the fork
+←b
+→I
+←F
+X           #     ′f
+←G
+X           #     ′g
+←I
+X           #     ′h
+199
+e           #     ⑂ : h(f x, g x).  An ordinary prelude word, so an ordinary call
+^
+]
+←b
+e           #   link 4 and later: a plain call, applied to what the fork left
 ^
 ]
 

@@ -666,6 +666,70 @@ python3 boot/golfref.py < "$TMP/w8a.src" > "$TMP/w8a.ref" 2>/dev/null
 cmp -s "$TMP/w8a.g2" "$TMP/w8a.ref" \
   && ok "oracle: identical bytes for a program using → and ←" || no "oracle var-bank bytes"
 # W8A --------------------------------------------------------------------------
+# W8B ---------------------------------------------------------- M-CHAIN2 ------
+echo "Chain definitions (M-CHAIN2): ⊚name f g h; is the train, without the ′s"
+# ⊚ (0xB0) is a compiler prefix, not a template: it opens a definition whose body
+# is a list of LINKS.  The link count decides the shape — 1 is a call, 2 are two
+# calls, 3 are ′f ′g ′h ⑂, more are the fork then plain calls — so nothing is
+# needed at run time that ⑂ did not already provide.
+[ "$(printf '%s' '\chainm∑≢÷;5⍳mṄ␤' | gc)" = "2" ] \
+  && ok "3 links: mean of ⍳5 = ÷(∑, ≢)"          || no "chain fork"
+[ "$(printf '%s' '\chains∑;5⍳sṄ␤' | gc)" = "10" ] \
+  && ok "1 link: a plain call"                   || no "chain 1 link"
+[ "$(printf '%s' '\chaind∑\dbl;5⍳dṄ␤' | gc)" = "20" ] \
+  && ok "2 links: ⊗(∑ x) — atop"                 || no "chain 2 links"
+[ "$(printf '%s' '\chainq∑≢÷\dbl;5⍳qṄ␤' | gc)" = "4" ] \
+  && ok "4 links: the fork, then the rest in turn" || no "chain 4 links"
+[ "$(printf '%s' '\chainz;7zṄ␤' | gc)" = "7" ] \
+  && ok "0 links: the identity"                  || no "chain 0 links"
+# THE claim of the milestone: the sugar is not a new mechanism, it is the same
+# bytes.  Compile both spellings of mean and require identical binaries.
+printf '%s' '\chainm∑≢÷;5⍳mṄ␤'   | python3 tools/codepage.py encode > "$TMP/w8b.sugar"
+printf '%s' ':m\ref∑\ref≢\ref\sdv\fork;5⍳mṄ␤' | python3 tools/codepage.py encode > "$TMP/w8b.expl"
+cat "$TMP/pre.gb" "$TMP/w8b.sugar" > "$TMP/w8b.s.src"; cat "$TMP/pre.gb" "$TMP/w8b.expl" > "$TMP/w8b.e.src"
+"$TMP/golf2" < "$TMP/w8b.s.src" > "$TMP/w8b.s.bin" 2>/dev/null
+"$TMP/golf2" < "$TMP/w8b.e.src" > "$TMP/w8b.e.bin" 2>/dev/null
+cmp -s "$TMP/w8b.s.bin" "$TMP/w8b.e.bin" \
+  && ok "⊚m∑≢÷; compiles to exactly the bytes of :m′∑′≢′÷⑂;" || no "chain sugar bytes"
+# A chain link may be an ATOM as well as a word — ÷ above is one, and ′ auto-
+# wraps it in a thunk.  Here every link is an atom: ⊗ ⊕ then ∣ (mod).
+[ "$(printf '%s' '\chainr\dbl\inc\smd;7rṄ␤' | gc)" = "6" ] \
+  && ok "links may be atoms (⊗ ⊕ ∣ over 7 = 14 mod 8)" || no "chain atom links"
+# A chain is an ordinary word: it can be ′-referenced, mapped, and called from
+# another chain.  Means of [0,1] and [0,1,2,3] are 0 and 1.
+[ "$(printf '%s' '\chainm∑≢÷;3⍶2&\store2⍳&8\radd\store4⍳&16\radd\store\refm€⍕␤' | gc)" = "0 1 " ] \
+  && ok "a chain word maps like any other"       || no "chain in map"
+# The explicit spelling is not deprecated and still works, and ′ — whose body
+# became the shared word X — is unchanged for words and for atoms alike.
+[ "$(printf '%s' '5⍳\ref∑\ref≢\ref\sdv\forkṄ␤' | gc)" = "2" ] \
+  && ok "regression: the explicit ′∑′≢′÷⑂ fork"  || no "explicit fork"
+[ "$(printf '%s' ':d\dbl;3\refd\exec48+)' | atom)" = "6" ] \
+  && ok "regression: ′word through the shared X" || no "ref word via X"
+[ "$(printf '%s' '3 4\ref+\exec48+)' | atom)" = "7" ] \
+  && ok "regression: ′atom auto-wrapping through the shared X" || no "ref atom via X"
+# Only tokens no earlier case claims become links, so a chain body is not a
+# general body: the structural bytes keep their ordinary meanings and do not
+# count as links.  Pinned on the BYTES, since the resulting word is nonsense to
+# run — a literal is emitted where it stands, while links are deferred — but it
+# must be exactly the nonsense the explicit spelling gives, or a future case
+# reordering has changed the language silently.
+printf '%s' '\chainc∑7≢÷;'   | python3 tools/codepage.py encode > "$TMP/w8b.dig1"
+printf '%s' ':c7\ref∑\ref≢\ref\sdv\fork;' | python3 tools/codepage.py encode > "$TMP/w8b.dig2"
+cat "$TMP/pre.gb" "$TMP/w8b.dig1" > "$TMP/w8b.d1.src"; cat "$TMP/pre.gb" "$TMP/w8b.dig2" > "$TMP/w8b.d2.src"
+"$TMP/golf2" < "$TMP/w8b.d1.src" > "$TMP/w8b.d1.bin" 2>/dev/null
+"$TMP/golf2" < "$TMP/w8b.d2.src" > "$TMP/w8b.d2.bin" 2>/dev/null
+cmp -s "$TMP/w8b.d1.bin" "$TMP/w8b.d2.bin" \
+  && ok "a digit in a chain body is a literal in place, and is not a link" || no "chain digit"
+tools/golfc -j examples/chaindef.golfj "$TMP/chd" 2>/dev/null
+[ "$("$TMP/chd" 2>/dev/null)" = "$(printf '2\n10\n20\n4')" ] \
+  && ok "golfc examples/chaindef.golfj" || no "chaindef.golfj"
+[ "$(oracle chaindef)" = "$(printf '2\n10\n20\n4')" ] \
+  && ok "oracle: chaindef.golfj behaves identically" || no "oracle chaindef.golfj"
+"$TMP/golf2" < <(cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < examples/chaindef.golfj)) > "$TMP/chd.g2" 2>/dev/null
+python3 boot/golfref.py < <(cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < examples/chaindef.golfj)) > "$TMP/chd.ref" 2>/dev/null
+cmp -s "$TMP/chd.g2" "$TMP/chd.ref" \
+  && ok "oracle: identical bytes for a program of chain definitions" || no "oracle chain bytes"
+# W8B --------------------------------------------------------------------------
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

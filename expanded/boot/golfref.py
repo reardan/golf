@@ -11,10 +11,10 @@ This is a full oracle, not a shim:
     truth for the code-page atom templates.  Adding an atom there makes it work
     here with no edit to this file.
   * **Compiler ops are implemented natively** here: ′ ref (0x8C), “ str (0x8E),
-    → set (0x8F) and ← get (0x90).  These four change the compiler's *logic*, not
-    just its template table, so they cannot be inherited — they are transcribed
-    from the authoritative v1-GOLF case strings REF_CASE / STR_CASE / SET_CASE /
-    GET_CASE in tools/mkblob2.py.
+    → set (0x8F), ← get (0x90) and ⊚ chain (0xB0).  These change the compiler's
+    *logic*, not just its template table, so they cannot be inherited — they are
+    transcribed from the authoritative v1-GOLF case strings REF_CASE / STR_CASE /
+    SET_CASE / GET_CASE / CHAIN_CASE in tools/mkblob2.py.
   * **Off the bootstrap path.**  The real ladder is golf0.py -> v1c ->
     self/golf2.golf (see DESIGN.md); nothing here is ever compiled or trusted by
     it.  This file exists to cross-check the self-hosted golf2 differentially:
@@ -51,6 +51,8 @@ REF_BYTE = mkblob2.REF_BYTE   # ′  push a word's or atom's runtime address
 STR_BYTE = mkblob2.STR_BYTE   # “  string literal delimiter (open and close)
 SET_BYTE = mkblob2.SET_BYTE   # →  pop TOS into a named variable
 GET_BYTE = mkblob2.GET_BYTE   # ←  push a named variable
+CHAIN_BYTE = mkblob2.CHAIN_BYTE  # ⊚  define a word as a tacit chain of links
+FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
 
@@ -64,6 +66,7 @@ def compile_bytes(src: bytes) -> bytes:
     out += mkblob2.STARTUP2
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)
+    chain = None        # M-CHAIN2: the link bytes taken so far, or None
     i, n = 0, len(src)
 
     def emit(bs):
@@ -90,6 +93,38 @@ def compile_bytes(src: bytes) -> bytes:
 
     def emit_u32(v):
         emit(v.to_bytes(4, "little"))
+
+    def push_ref(name):
+        """Emit `push <the address of the word or atom named `name`>`.
+
+        A defined word has a body to point at.  An atom does not — it is a
+        template, not callable code — so its template is wrapped in a thunk
+        (jumped over) and the thunk's address is pushed instead.  Shared by ′
+        and by M-CHAIN2's chain links, exactly as the word `X` is in
+        self/golf2.golfj."""
+        if name in dict_:                            # a defined word: its body VA
+            emit([0x68]); emit_u32(BASE + dict_[name])
+            return
+        if chr(name) not in TEMPLATES:
+            raise SystemExit(
+                f"golfref: ′ on unknown word 0x{name:02x} at byte {i-1}")
+        emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
+        thunk = len(out)
+        emit(golf0.PROLOGUE)
+        emit(TEMPLATES[chr(name)])
+        emit(golf0.EPILOGUE)
+        patch32(patch, len(out))                     # land on the push below
+        emit([0x68]); emit_u32(BASE + thunk)
+
+    def call_or_template(b):
+        """Compile one ordinary token: its template, or a call to that word."""
+        if chr(b) in TEMPLATES:
+            emit(TEMPLATES[chr(b)])
+            return
+        if b not in dict_:
+            raise SystemExit(f"golfref: undefined word 0x{b:02x} at byte {i-1}")
+        emit([0xE8]); site = len(out); emit(b"\0\0\0\0")
+        patch32(site, dict_[b])
 
     def take():
         """Consume one raw byte (the operand of a prefix op)."""
@@ -124,7 +159,11 @@ def compile_bytes(src: bytes) -> bytes:
             stack.append(('def', patch))
             emit(golf0.PROLOGUE)
             continue
-        if ch == ';':                                # end definition
+        if ch == ';':                                # end definition (either kind)
+            if chain is not None:                    # 1 or 2 links never forked
+                for b in chain[:2] if len(chain) < 3 else []:
+                    call_or_template(b)
+                chain = None
             emit(golf0.EPILOGUE)
             kind, patch = stack.pop()
             assert kind == 'def', "; without :"
@@ -164,22 +203,7 @@ def compile_bytes(src: bytes) -> bytes:
 
         # ---------------------------------------------------- v2 compiler logic
         if c == REF_BYTE:                            # ′name -> push name's VA
-            name = take()
-            if name in dict_:                        # a defined word: its body VA
-                emit([0x68]); emit_u32(BASE + dict_[name])
-                continue
-            if chr(name) not in TEMPLATES:
-                raise SystemExit(
-                    f"golfref: ′ on unknown word 0x{name:02x} at byte {i-1}")
-            # An atom has no callable body, so wrap its template in a thunk:
-            #   jmp over; [prologue][template][epilogue]; push thunk VA
-            emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
-            thunk = len(out)
-            emit(golf0.PROLOGUE)
-            emit(TEMPLATES[chr(name)])
-            emit(golf0.EPILOGUE)
-            patch32(patch, len(out))                 # land on the push below
-            emit([0x68]); emit_u32(BASE + thunk)
+            push_ref(take())
             continue
         if c == STR_BYTE:                            # “bytes“ -> byte block
             # jmp over; [len:u32][bytes...]; push VA of the length word.
@@ -206,14 +230,29 @@ def compile_bytes(src: bytes) -> bytes:
             emit_u32(VARBANK + VARSTRIDE * take()); emit([0x50])
             continue
 
-        if ch in TEMPLATES:                          # v1 op or v2 atom
-            emit(TEMPLATES[ch])
+        if c == CHAIN_BYTE:                          # ⊚name … ; : a tacit chain
+            name = take()                            # the header is ':'s
+            emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
+            dict_[name] = len(out)
+            stack.append(('def', patch))
+            emit(golf0.PROLOGUE)
+            chain = []                               # links from here to ';'
             continue
-        # otherwise: call a user-defined word
-        if c not in dict_:
-            raise SystemExit(f"golfref: undefined word {ch!r} (0x{c:02x}) at byte {i-1}")
-        emit([0xE8]); site = len(out); emit(b"\0\0\0\0")
-        patch32(site, dict_[c])
+        if chain is not None:
+            # Inside a chain body this token is a LINK, not a call.  The count
+            # decides the train: the third link emits ′f ′g ′h and the ⑂ that
+            # forks them, and a fourth or later link is an ordinary call applied
+            # to what the fork left.  A 1- or 2-link chain is flushed by ';'.
+            chain.append(c)
+            if len(chain) == 3:
+                for b in chain:
+                    push_ref(b)
+                call_or_template(FORK_BYTE)
+            elif len(chain) > 3:
+                call_or_template(c)
+            continue
+
+        call_or_template(c)                          # v1 op, v2 atom, or a call
         continue
 
     if stack:
