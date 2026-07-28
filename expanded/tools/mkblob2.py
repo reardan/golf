@@ -6,11 +6,12 @@ Both are built here, and both embed the **identical** template blob from
 written in:
 
     self/seed.golf    compiler logic in **v1 GOLF** — minimal's `mkblob.WORDS`
-                      with the four v2 compiler cases (′ “ → ←) spliced in by
-                      `WORDS2` below.  This is the bootstrap rung: v1c (the
-                      frozen ../minimal compiler) can compile it, and that is
-                      its only job — to produce a compiler able to build
-                      golf2.golf.  The WORDS2-splice mechanism lives ONLY here.
+                      with the v2 compiler cases (′ “ → ← ⊚, the chain-link
+                      case and the word X) spliced in by `WORDS2` below.  This
+                      is the bootstrap rung: v1c (the frozen ../minimal
+                      compiler) can compile it, and that is its only job — to
+                      produce a compiler able to build golf2.golf.  The
+                      WORDS2-splice mechanism lives ONLY here.
 
     self/golf2.golf   compiler logic in **v2 GOLF** — hand-written in
                       `self/golf2.golfj` (named variables, one op per line, the
@@ -76,8 +77,8 @@ ATOMS = [
     # Quotations: exec is an indirect call (pop a word address, call it).  Its
     # partner `ref` (push a word's address) is a compiler prefix, added to `t`
     # below — together they give higher-order functions (map/fold).
-# NOTE: `ref` and its three companion prefixes are the first compiler-logic
-# changes over v1.  Written in pure v1 GOLF so v1c can build seed.golf.
+# NOTE: `ref` and its companion prefixes are the compiler-logic changes over v1.
+# Written in pure v1 GOLF so v1c can build seed.golf.
     (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
     # Raw scalar ops — byte-for-byte copies of today's scalar templates for
     # `+ - * ⌊ ⌈ <`.  M-VEC will make those bare ops *polymorphic* (dispatch on
@@ -223,8 +224,15 @@ REF_BYTE = 0x8C
 # wrapping.  Compiler scratch m20 (jmp-site), m24 (thunk addr).
 # (Since M-SELF this case — like the three below — is seed.golf's copy of logic
 # that self/golf2.golfj states directly; the two must stay in step.)
-REF_CASE = ('"140-[_("m2048+\\4*+@"[_233o m4+@m20+!0w m4+@m24+! 1E"E94E '
-            'm4+@m20+@4+-m20+@!104o m24+@69632-w_^]\\_69632-104o w^]')
+#
+# M-CHAIN2 lifted the body out into the word `X` (spliced in just before `t`
+# below), because the chain case needs the very same "push the address of the
+# word or atom named by this byte" three times over.  ′ is now the token that
+# reads a name and calls it.
+REF_BODY = ('"m2048+\\4*+@"[_233o m4+@m20+!0w m4+@m24+! 1E"E94E '
+            'm4+@m20+@4+-m20+@!104o m24+@69632-w_^]\\_69632-104o w')
+REF_WORD = ':X' + REF_BODY + ';'
+REF_CASE = '"140-[_(X^]'
 # Insert the case into `t` just before its `e;` fallthrough.  `w^]e;` is the
 # unique junction between t's last case (the blob handler) and `e;` (t only
 # occurrence of `e;`; other words follow t in WORDS).
@@ -238,18 +246,74 @@ STR_CASE = ('"142-[_233o m4+@m20+!0w m4+@m24+! m4+@69632-m12+!0w 0 m28+!'
             '{("142-[_m28+@m24+@!m4+@m20+@4+-m20+@!104o m12+@w^]o m28+@1+m28+!0}]')
 
 # Named variables: →x stores TOS to a name-indexed cell, ←x loads it.  Compiler
-# prefixes (bytes 0x8F/0x90): read the name byte and emit an absolute 32-bit
-# store/load to a per-program variable bank at 0x4E0000 (bank[name] = +4*name).
+# prefixes (bytes 0x8F/0x90): read the name byte and emit an absolute 64-bit
+# store/load to a per-program variable bank at 0x4E0000 (bank[name] = +8*name).
 # NOTE: these are GLOBAL (one cell per name), not per-call frame — recursion
 # does not get fresh copies.  Frame-based locals remain a later step.
-SET_BYTE = 0x8F   # →   store: pop rax; mov [0x4E0000+4*name], eax
-GET_BYTE = 0x90   # ←   load:  mov eax,[0x4E0000+4*name]; push rax
-SET_CASE = '"143-[_(4*5111808+88o 137o 4o 37o w^]'
-GET_CASE = '"144-[_(4*5111808+139o 4o 37o w 80o^]'
+#
+# M3W: the bank was 4 bytes per name and `←x` was a `mov eax`, which zero-
+# extended — `4294967296→x←x` came back 0 and `0 5-→x←x` came back 4294967291.
+# Every other place a value can sit (the data stack, the atoms, list cells, the
+# prelude scratch bank) has been 64 bits since M4/W4A; this was the last narrow
+# one.  The fix is W4A's, exactly: stride 4 -> 8 and a REX.W on both templates.
+# 256 names x 8 bytes = 2 KB, still inside the 0x4E0000-0x4F0000 hole, so no
+# address had to be reallocated (../REGISTRY.md §3).  Widening in place would
+# have been impossible for the same reason the scratch bank could not be: at a
+# 4-byte stride x's high half IS the cell of name x+1.
+SET_BYTE = 0x8F   # →   store: pop rax; mov [0x4E0000+8*name], rax
+GET_BYTE = 0x90   # ←   load:  mov rax,[0x4E0000+8*name]; push rax
+SET_CASE = '"143-[_(8*5111808+88o 72o 137o 4o 37o w^]'
+GET_CASE = '"144-[_(8*5111808+72o 139o 4o 37o w 80o^]'
+
+# M-CHAIN2 (byte 0xB0, glyph ⊚): a CHAIN definition.  `⊚name f g h;` is the
+# tacit train the explicit spelling builds, with the compiler supplying every ′:
+#
+#     links   the chain is                       compiles to
+#     0       identity                           nothing
+#     1       f x                                a plain call
+#     2       g(f x)          — atop             two plain calls
+#     3       h(f x, g x)     — a fork           ′f ′g ′h ⑂
+#     n>3     the fork, then the rest in turn    ′f ′g ′h ⑂ then plain calls
+#
+# So the count decides the shape and only the first three link bytes have to be
+# buffered: the third emits the three pushes and the ⑂ call (byte 199, an
+# ordinary prelude word — `199e` compiles the call to it), a fourth or later link
+# is an ordinary token, and `;` flushes a 1- or 2-link chain.  No driver word, no
+# new prelude state, no runtime list of quotations.
+#
+# Seed-side state, ../REGISTRY.md §3:  m32 in-a-chain flag · m36 link count ·
+# m40/m44/m48 the buffered link bytes.  (self/golf2.golfj holds the same five in
+# its variable bank as u K F G I — it owns that bank; see its header.)
+CHAIN_BYTE = 0xB0
+# The header is `:`'s, plus the two state cells: jmp over the body, dict[name] =
+# body address, leave the jmp site on the stack for `;`, emit the prologue.
+CHAIN_CASE = ('"176-[_(233o m4+@4+\\m2048+\\4*+! m4+@0w1E 1m32+!0m36+!^]')
+# A token inside a chain is a LINK.  This case must sit LAST, just before the
+# `e;` fallthrough: everything `t` recognizes earlier (whitespace, comments,
+# digits, the structural bytes) keeps its ordinary meaning inside a chain body.
+LINK_CASE = ('m32+@1-[m36+@1+m36+!'
+             'm36+@1-[m40+!^]'
+             'm36+@2-[m44+!^]'
+             'm36+@3-[m48+! m40+@X m44+@X m48+@X 199e^]'
+             'e^]')
+# `;` closes a chain as well as a definition: a 1- or 2-link chain never reached
+# the fork, so its links are emitted here as plain calls.  Then the ordinary
+# epilogue and backpatch, which are the same for both kinds of definition.
+SEMI_OLD = '"59-[_94Ek^]'
+SEMI_CASE = ('"59-[_ m32+@1-[0m32+! m36+@1-[m40+@e] m36+@2-[m40+@e m44+@e]] '
+             '94Ek^]')
 
 assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
+assert mkblob.WORDS.count(SEMI_OLD) == 1, "';' case not unique"
+assert mkblob.WORDS.count(":t ") == 1, "':t' anchor not unique"
 WORDS2 = mkblob.WORDS.replace(
-    "w^]e;", "w^]" + REF_CASE + STR_CASE + SET_CASE + GET_CASE + "e;")
+    "w^]e;", "w^]" + REF_CASE + STR_CASE + SET_CASE + GET_CASE
+             + CHAIN_CASE + LINK_CASE + "e;")
+WORDS2 = WORDS2.replace(SEMI_OLD, SEMI_CASE)
+# X is called from inside `t`, so it has to be defined before it — and after
+# everything it calls itself (o, w, E, and the templates), which `h` is the last
+# of.  v1's own words are unchanged; this is an addition, like the cases above.
+WORDS2 = WORDS2.replace(":t ", REF_WORD + ":t ")
 
 # --- M-MEM (W6): v2's BSS stops reserving the static list heap ---------------
 # v1 asks for p_memsz = 0x800000, i.e. [0x400000, 0xC00000).  The bottom megabyte
@@ -310,7 +374,7 @@ def _check_atoms():
     bs = [b for b, _mn, _gl, _tpl, _doc in ATOMS]
     dup = sorted({b for b in bs if bs.count(b) > 1})
     assert not dup, "duplicate ATOMS byte: " + ", ".join(f"0x{b:02X}" for b in dup)
-    taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE}
+    taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE, CHAIN_BYTE}
     taken |= {ord(ch) for ch in golf0.TEMPLATES}
     clash = sorted(set(bs) & taken)
     assert not clash, ("ATOMS byte already allocated: "

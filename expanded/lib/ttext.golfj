@@ -94,17 +94,18 @@
 # non-negative.  Test it with `0≺` (signed!) and never with `»`/`﹤`, which are
 # unsigned and see -1 as the largest number there is.
 #
-#   *** DO NOT PARK A -1 IN A →x/←x VARIABLE. ***  The variable bank is FOUR
-#   bytes per name and `←x` compiles to `mov eax,[cell]`, which ZERO-extends:
-#   `q` -> -1 -> `→x` -> `←x` gives 4294967295, and `0≺` on that is false, so
-#   the not-found branch silently does not run.  (A loop bound computed from it
-#   then runs about four billion times, which is how this was found.)  Test the
-#   marker while it is still on the DATA stack — `" 0≺ 1﹢ [ _ <fallback> ] →x`
-#   is the shape — or keep the whole value on the stack.  This is the same
-#   4-byte hazard ../REGISTRY.md §3 warns about for pointers above 2^31; it
-#   just bites at the other end of the range.  Nothing in this library stores
-#   anything in a variable, so every -1 below is a true 64-bit -1 when it is
-#   handed back.
+#   A -1 marker survives a →x/←x round trip — but only since W8A/M3W, and the
+#   history is worth keeping.  While this library was being written the bank was
+#   FOUR bytes per name and `←x` compiled to `mov eax,[cell]`, which
+#   ZERO-extends: `q` -> -1 -> `→x` -> `←x` gave 4294967295, `0≺` on that was
+#   false, the not-found branch silently did not run, and a loop bound computed
+#   from it ran about four billion times.  That is how the hazard was found —
+#   as a segfault.  M3W widened the bank to eight bytes and made `←x` a full
+#   64-bit load, which fixed it at the source for every caller at once.
+#   test/run2.sh keeps a regression case on it, because every "not found" in
+#   this library is a -1 and narrowing the bank again would break all of them
+#   silently.  Nothing here stores anything in a variable in any case, so every
+#   -1 below is a true 64-bit -1 when it is handed back.
 #
 # ===========================================================================
 # ASCII-ONLY LETTERS — a deliberate divergence from tools/codepage.py

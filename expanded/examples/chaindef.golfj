@@ -1,0 +1,15 @@
+# Chain definitions (M-CHAIN2): ⊚ defines a word as a train of LINKS, and the
+# compiler supplies every ′.  How many links there are decides the shape:
+#
+#   1 link    f x                        a plain call
+#   2 links   g(f x)          — atop     two plain calls
+#   3 links   h(f x, g x)     — a fork   ′f ′g ′h ⑂
+#   n>3       the fork, then the rest applied in turn
+#
+# So ⊚m∑≢÷; is EXACTLY :m′∑′≢′÷⑂; — the same bytes, none of the punctuation.
+# A link is one token naming a word or an atom, the same thing ′ accepts.
+⊚m∑≢÷;              # mean = divide(sum, len)
+⊚s∑;                # one link: sum
+⊚d∑⊗;               # two links: double the sum
+⊚q∑≢÷⊗;             # four links: double the mean
+5⍳"""m Ṅ␤sṄ␤dṄ␤qṄ␤  # ⍳5 four times over: 2 · 10 · 20 · 4

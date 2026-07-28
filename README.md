@@ -66,9 +66,13 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
   regression-tested: `4⍳4⍳′*⊞∑` is that same dot product the long way.
 - **tacit combinators** built at runtime — `∘` compose, `⇉` pipeline, `⑂` fork,
   so `5⍳′∑′≢′÷⑂` is a mean.
+- **chain definitions** — `⊚name f g h;` defines a word as a train of links and
+  the compiler supplies every `′`, so `⊚m∑≢÷;` *is* `:m′∑′≢′÷⑂;`, byte for byte.
+  The link count picks the shape: one is a call, two compose, three fork.
 - **strings** as `“...“` byte blocks that convert to code lists, so every list op
   works on them: `“Hello“U1+J` maps +1 → `Ifmmp` (long form: `“Hello“U′⊕€J`).
-- **named variables** `→x`/`←x`, so `←a←b+←a←b-*` is `(a+b)*(a-b)` with no juggling.
+- **named variables** `→x`/`←x` over a 64-bit-per-name bank, so `←a←b+←a←b-*` is
+  `(a+b)*(a-b)` with no juggling.
 
 So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J` — which
 before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both
@@ -87,7 +91,7 @@ python3 tools/codepage.py table                        # atoms + library glyphs
 tools/golfc -j examples/capstone.golfj out && ./out    # compile a glyph program
 ```
 
-`bash test/run2.sh` is **249 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **273 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.
