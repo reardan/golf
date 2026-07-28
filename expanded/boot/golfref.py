@@ -57,7 +57,10 @@ VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 4*c
 # --------------------------------------------------------------------- compile
 def compile_bytes(src: bytes) -> bytes:
     out = bytearray(golf0.HEADER)
-    out += golf0.STARTUP
+    # M-MEM: v2 binaries shrink p_memsz and seed rbp below the smaller BSS.
+    # Both values come from mkblob2 so the oracle and golf2 cannot drift.
+    out[mkblob2.MEMSZ_OFF:mkblob2.MEMSZ_OFF + 8] = mkblob2.MEMSZ.to_bytes(8, "little")
+    out += mkblob2.STARTUP2
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)
     i, n = 0, len(src)
