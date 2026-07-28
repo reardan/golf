@@ -183,9 +183,13 @@ echo "Totality (M-SOUND): every list word is correct on empty input; re-entrant 
 # @@ W2-TAG @@
 echo "Shape polymorphism (M-TAG): T shape test, D dispatcher, ∔ ∸ ⨰ ⩍ ⩌"
 # The heap bounds are runtime cells (0x4F0034 base, 0x4F0038 span), set by the
-# prelude's top-level init; base+span is the return-stack top 0xC00000.
-[ "$(printf '%s' '5177396@ 5177400@\radd N E' | gc)" = "12582912" ] \
-  && ok "heap-bounds cells initialized (base+span = 0xC00000)" || no "heap bounds cells"
+# prelude's top-level init.  W6B/M-MEM made that init ask the kernel (`0⌸`), so
+# the base is the ASLR-shifted program break and cannot be spelled out here; what
+# is still checkable — and is the property this test always meant — is that the
+# heap lies above everything statically addressed, i.e. above the BSS top, which
+# M-MEM shrank from 0xC00000 to 0x600000.  W6B's own block checks the rest.
+[ "$(printf '%s' '5177396@ 6291456\rlt1\radd N E' | gc)" = "1" ] \
+  && ok "heap-bounds cells initialized (base above the 0x600000 BSS top)" || no "heap bounds cells"
 [ "$(printf '%s' '5R T N E'  | gc)" = "0" ] && ok "T: a heap address is a list" || no "T list"
 [ "$(printf '%s' '7 T N E'   | gc)" = "1" ] && ok "T: a small int is an int"    || no "T int"
 # The one that would break a naive signed test: -1 is 0xFFFF… , above the heap.
@@ -319,6 +323,67 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
 
 # @@ W6-LIT @@
 # @@ W6-MEM @@
+# W6B --------------------------------------------------------------- M-MEM ---
+echo "Growable heap (M-MEM): ⌸ brk, the list heap is the kernel's, not a BSS hole"
+# The atom on its own, no prelude: brk(0) reads the break, brk(a) moves it and
+# reports the break in effect afterwards.
+[ "$(printf '%s' '0 0\brk\rlt1\radd48+)' | atom)" = "0" ] \
+  && ok "⌸ brk(0) returns a non-zero program break" || no "brk read"
+[ "$(printf '%s' '0\brk 4096\radd\brk 0\brk\rsub1\radd48+)' | atom)" = "1" ] \
+  && ok "⌸ brk(p+4096) moves the break and reports the new one" || no "brk grow"
+# p_memsz shrank from 0x800000 to 0x200000, so the BSS ends at 0x600000 and the
+# return stack starts there instead of at 0xC00000.  Everything above is heap.
+[ "$(printf '%s' '0\brk 6291456\rlt1\radd48+)' | atom)" = "1" ] \
+  && ok "the break starts above the shrunken BSS (0x600000)" || no "brk above bss"
+# The prelude's init publishes what the kernel gave into the M-TAG bounds cells.
+# The base is ASLR-shifted (observed anywhere from ~0x1C00000 to ~0x3B000000),
+# so only its relation to the static image is assertable — never its value.
+[ "$(printf '%s' '0 5177400@\rlt1\radd N E' | gc)" = "0" ] \
+  && ok "heap span cell is non-zero (brk handed back the initial chunk)" || no "brk heap span"
+[ "$(printf '%s' '5⍳ 5177396@\rsub 5177400@\rlt1\radd N E' | gc)" = "0" ] \
+  && ok "a fresh list lands inside [base, base+span)" || no "list inside bounds"
+# Nothing that is not a list may fall inside the moved window: the M-CHAIN thunk
+# arena, a word address and a -1 flag all still classify as ints.
+[ "$(printf '%s' '5⍳T N E' | gc)"      = "0" ] && ok "T: a brk-heap address is a list" || no "brk T list"
+[ "$(printf '%s' '5046272 T N E' | gc)" = "1" ] \
+  && ok "T: the 0x4D0000 thunk arena is still outside the heap" || no "brk T arena"
+[ "$(printf '%s' ':d\dbl;\refd T N E' | gc)" = "1" ] \
+  && ok "T: a word address is still outside the heap" || no "brk T word"
+# The milestone itself.  The old static heap was 7,340,032 bytes between
+# 0x500000 and the return stack, so a list of 917,504 cells or more walked off
+# the end and segfaulted; 200000⍳ (1.6 MB) fitted even then, 2000000⍳ (16 MB)
+# never could.  Both are one A call, so the break moves exactly once each.
+[ "$(printf '%s' '200000⍳≢ṄE'  | gc)" = "200000" ]  \
+  && ok "200000⍳ — a 1.6 MB list"  || no "200000 range"
+[ "$(printf '%s' '2000000⍳≢ṄE' | gc)" = "2000000" ] \
+  && ok "2000000⍳ — a 16 MB list, twice the whole old BSS" || no "2000000 range"
+[ "$(printf '%s' '2000000⍳1999999⊇ṄE' | gc)" = "1999999" ] \
+  && ok "the last cell of a 16 MB list is intact" || no "big index"
+[ "$(printf '%s' '917504⍳≢ṄE'  | gc)" = "917504" ]  \
+  && ok "917504⍳ — the exact size that overran the old static heap" || no "917504 range"
+# A big map: a second list of the same size, so the heap grows a second time.
+[ "$(printf '%s' ':d\dbl;1000000⍳\refdM 999999⊇ṄE' | gc)" = "1999998" ] \
+  && ok "map over 1,000,000 elements (two 8 MB lists live at once)" || no "big map"
+# Growth must keep the span covering lists allocated BEFORE it, or the older one
+# would stop classifying as a list the moment the heap moved.
+[ "$(printf '%s' '300000⍳→a300000⍳_←a 299999⊇ṄE' | gc)" = "299999" ] \
+  && ok "an older list survives a heap growth" || no "span after growth"
+[ "$(printf '%s' '300000⍳→a300000⍳_←a T N E' | gc)" = "0" ] \
+  && ok "T still classifies an older list after the span grew" || no "T after growth"
+[ "$(printf '%s' '200000⍳→a200000⍳_←a 3+ 199999⊇ṄE' | gc)" = "200002" ] \
+  && ok "M-VEC broadcast over a big list across a growth" || no "big vec broadcast"
+# The other side of the shrink: the return stack starts at the BSS top, so it
+# moved from 0xC00000 to 0x600000 and now has 0x600000-0x4F1000 = 1.08 MB, i.e.
+# ~138k frames, entirely to itself — where before it shared 7 MB with the heap
+# and lost a frame for every 8 bytes allocated.  r recurses n+1 deep.
+[ "$(printf '%s' ':r"[^]\dec r;50000 r N E' | gc)" = "0" ] \
+  && ok "50,000-deep recursion on the relocated return stack" || no "return stack depth"
+tools/golfc -j examples/bigheap.golfj "$TMP/big" 2>/dev/null
+[ "$("$TMP/big" 2>/dev/null)" = "$(printf '1000000\n1999998\n999999')" ] \
+  && ok "golfc examples/bigheap.golfj" || no "bigheap.golfj"
+[ "$(oracle bigheap)" = "$(printf '1000000\n1999998\n999999')" ] \
+  && ok "oracle: bigheap.golfj behaves identically" || no "oracle bigheap.golfj"
+# W6B ----------------------------------------------------------------------
 # @@ W7-DOCS @@
 
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
