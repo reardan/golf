@@ -57,6 +57,19 @@ buffers, compare/find/slice, decimal and hex parsing), `tutf.golfj` (the
 a pool the prelude has never touched — so adding a tool word costs nothing
 scarce. See `../REGISTRY.md` §2.1.
 
+The two tables they read — [`../data/codepage.tsv`](../data/codepage.tsv) (byte
+· mode · source · mnemonic · hex-encoded glyph, one row per code-page entry) and
+[`../data/blob.hex`](../data/blob.hex) (one `[key][len][data]` blob record per
+line, in emission order with the M-VEC overrides already substituted) — are
+**generated and checked in**. [`../tools/mktables.py`](../tools/mktables.py)
+writes them from `mkblob2.ATOMS` and `codepage.COMPILER`/`LIB`, so the Python
+tables stay the single source of truth and the registry discipline still applies
+to every byte; the GOLF tools only ever read the serialised form, because they
+cannot read a Python literal (and cannot carry the glyphs as GOLF string
+literals either — a `“...“` block cannot contain byte `0x8E`). Regenerate with
+`python3 tools/mktables.py` after touching either table; `test/selfcheck.sh`
+fails if what is committed is stale.
+
 ## Not ported, on purpose
 
 `mkblob2.build_seed()` stays Python. It reuses `minimal/tools/mkblob.py`'s
