@@ -445,6 +445,143 @@ tools/golfc -j examples/bigheap.golfj "$TMP/big" 2>/dev/null
   && ok "oracle: bigheap.golfj behaves identically" || no "oracle bigheap.golfj"
 # W6B ----------------------------------------------------------------------
 # @@ W7-DOCS @@
+# W7A ------------------------------------------------------ doc assertions ---
+# The prose is part of the build.  Every number quoted in ../README.md,
+# DESIGN.md and REGISTRY.md is pulled back out with grep/sed here and compared
+# against the artifact it describes, so a doc that drifts fails loudly instead
+# of lying quietly.  The keys are distinctive phrases the docs were written to
+# carry, and w7num/w7hex refuse a key that does not match EXACTLY ONE line — so
+# deleting or duplicating a row is caught too, not just editing its number.
+echo "Docs match reality (W7A): README/DESIGN/REGISTRY numbers vs the artifacts"
+W7README="$EXP/../README.md"
+w7num(){ # w7num <file> <unique key> -> that line's **bold** integer
+  local n; n=$(grep -cF "$2" "$1" 2>/dev/null)
+  [ "$n" = 1 ] || { printf 'KEY-MATCHED-%s-LINES' "${n:-0}"; return; }
+  grep -F "$2" "$1" | grep -oE '\*\*[0-9]+\*\*' | head -1 | tr -d '*'
+}
+w7hex(){ # w7hex <file> <unique key> -> that line's **bold** hex constant
+  local n; n=$(grep -cF "$2" "$1" 2>/dev/null)
+  [ "$n" = 1 ] || { printf 'KEY-MATCHED-%s-LINES' "${n:-0}"; return; }
+  grep -F "$2" "$1" | grep -oE '\*\*0x[0-9A-Fa-f]+\*\*' | head -1 | tr -d '*'
+}
+# The machine side of every comparison, computed once.
+python3 - > "$TMP/w7a.facts" <<'PY'
+import sys
+sys.path.insert(0, "tools")
+import mkblob2, codepage
+alloc  = {b for b, *_ in mkblob2.ATOMS}
+alloc |= {(x[0] if isinstance(x[0], int) else ord(x[0])) for x in codepage.LIB}
+alloc |= {x[0] for x in codepage.COMPILER}
+hi = [b for b in alloc if b >= 0x91]
+print("atoms",  len(mkblob2.ATOMS))
+print("blob",   len(mkblob2.build_blob2()))
+print("memsz",  hex(mkblob2.MEMSZ))
+print("rstack", hex(mkblob2.RSTACK_TOP))
+print("rsdec",  mkblob2.RSTACK_TOP)
+# The return stack runs from RSTACK_TOP down to the top of the 0x4F bank, 8
+# bytes a frame; the docs quote it in thousands.
+print("frames", (mkblob2.RSTACK_TOP - 0x4F1000) // 8 // 1000)
+print("hiused", len(hi))
+print("hifree", 111 - len(hi))
+PY
+w7fact(){ awk -v k="$1" '$1==k{print $2}' "$TMP/w7a.facts"; }
+# Op bytes of a glyph program: encode drops the #-comments, and neither capstone
+# holds a significant space, so stripping layout whitespace leaves the ops.
+w7ops(){ python3 tools/codepage.py encode < "$1" | tr -d '[:space:]' | wc -c | tr -d ' '; }
+
+W7ATOMS=$(w7fact atoms)
+W7RA=$(sed -n 's/.*\*\*\([0-9][0-9]*\) operator atoms\*\*.*/\1/p' "$W7README" | head -1)
+[ "$W7RA" = "$W7ATOMS" ] \
+  && ok "README.md quotes $W7ATOMS operator atoms = len(mkblob2.ATOMS)" \
+  || no "README.md atom count is '$W7RA', mkblob2.ATOMS has $W7ATOMS"
+[ "$(w7num DESIGN.md 'operator atoms in')" = "$W7ATOMS" ] \
+  && ok "DESIGN.md quotes $W7ATOMS operator atoms = len(mkblob2.ATOMS)" \
+  || no "DESIGN.md atom count is '$(w7num DESIGN.md 'operator atoms in')', not $W7ATOMS"
+
+# Self-referential: this suite's assertion total is the number of its own
+# ok-call sites (one per assertion; the `case` blocks put theirs on the ok
+# branch), which is what the final "Result:" line prints when nothing fails.
+W7SITES=$(grep -oE 'ok +"' test/run2.sh | wc -l | tr -d ' ')
+W7RT=$(sed -n 's/.*\*\*\([0-9][0-9]*\) assertions green\*\*.*/\1/p' "$W7README" | head -1)
+[ "$W7RT" = "$W7SITES" ] \
+  && ok "README.md quotes $W7SITES assertions = this suite's own total" \
+  || no "README.md claims '$W7RT' assertions, run2.sh has $W7SITES"
+[ "$(w7num DESIGN.md 'assertions in the run2 suite')" = "$W7SITES" ] \
+  && ok "DESIGN.md quotes $W7SITES assertions = this suite's own total" \
+  || no "DESIGN.md run2 count is '$(w7num DESIGN.md 'assertions in the run2 suite')', not $W7SITES"
+# selfcheck.sh loops over its example list, so its total is a runtime fact: ask
+# it.  It is a fraction of a second and writes nothing into the repo.
+W7SC=$(bash test/selfcheck.sh 2>/dev/null | sed -n 's/^Result: \([0-9]*\) passed, \([0-9]*\) failed$/\1 \2/p')
+[ "$W7SC" = "$(w7num DESIGN.md 'assertions in the selfcheck suite') 0" ] \
+  && ok "DESIGN.md quotes test/selfcheck.sh's real total (${W7SC% *} passed, 0 failed)" \
+  || no "DESIGN.md selfcheck count vs actual: '$(w7num DESIGN.md 'assertions in the selfcheck suite') 0' vs '$W7SC'"
+
+[ "$(w7num DESIGN.md 'the generated bootstrap seed')" = "$(wc -c < self/seed.golf)" ] \
+  && ok "DESIGN.md's self/seed.golf size matches wc -c ($(wc -c < self/seed.golf) bytes)" \
+  || no "DESIGN.md seed size '$(w7num DESIGN.md 'the generated bootstrap seed')' vs $(wc -c < self/seed.golf)"
+[ "$(w7num DESIGN.md 'the generated v2 compiler')" = "$(wc -c < self/golf2.golf)" ] \
+  && ok "DESIGN.md's self/golf2.golf size matches wc -c ($(wc -c < self/golf2.golf) bytes)" \
+  || no "DESIGN.md golf2 size '$(w7num DESIGN.md 'the generated v2 compiler')' vs $(wc -c < self/golf2.golf)"
+[ "$(w7num DESIGN.md 'the template blob itself')" = "$(w7fact blob)" ] \
+  && ok "DESIGN.md's template-blob size matches build_blob2() ($(w7fact blob) bytes)" \
+  || no "DESIGN.md blob size '$(w7num DESIGN.md 'the template blob itself')' vs $(w7fact blob)"
+
+[ "$(w7num DESIGN.md 'the capstone, in op bytes')" = "$(w7ops examples/capstone.golfj)" ] \
+  && ok "DESIGN.md's capstone size matches the encoded file ($(w7ops examples/capstone.golfj) op bytes)" \
+  || no "DESIGN.md capstone '$(w7num DESIGN.md 'the capstone, in op bytes')' vs $(w7ops examples/capstone.golfj)"
+[ "$(w7num DESIGN.md 'the legacy capstone, in op bytes')" = "$(w7ops examples/legacy_capstone.golfj)" ] \
+  && ok "DESIGN.md's legacy-capstone size matches the encoded file ($(w7ops examples/legacy_capstone.golfj) op bytes)" \
+  || no "DESIGN.md legacy capstone '$(w7num DESIGN.md 'the legacy capstone, in op bytes')' vs $(w7ops examples/legacy_capstone.golfj)"
+
+# M-MEM's two numbers are one number: p_memsz and the return-stack top move
+# together (mkblob2 derives RSTACK_TOP from MEMSZ), and REGISTRY.md §3 spells
+# the top in both hex and decimal, so check the row's two columns against it.
+[ "$(w7hex DESIGN.md 'the v2 p_memsz')" = "$(w7fact memsz)" ] \
+  && ok "DESIGN.md's p_memsz matches mkblob2.MEMSZ ($(w7fact memsz))" \
+  || no "DESIGN.md p_memsz '$(w7hex DESIGN.md 'the v2 p_memsz')' vs $(w7fact memsz)"
+W7REG=$(awk -F'|' '/mkblob2.RSTACK_TOP/{gsub(/[ `]/,"",$2); gsub(/[ `]/,"",$3); print $2"/"$3; exit}' REGISTRY.md)
+[ "$(w7hex DESIGN.md 'the return-stack top address')" = "$(w7fact rstack)" ] \
+  && [ "$W7REG" = "$(w7fact rstack)/$(w7fact rsdec)" ] \
+  && ok "DESIGN.md and REGISTRY.md §3 both give the return-stack top as $(w7fact rstack) / $(w7fact rsdec)" \
+  || no "return-stack top: DESIGN '$(w7hex DESIGN.md 'the return-stack top address')', REGISTRY '$W7REG', real $(w7fact rstack)/$(w7fact rsdec)"
+[ "$(w7num DESIGN.md 'clean return-stack frames')" = "$(w7fact frames)" ] \
+  && ok "DESIGN.md's ~$(w7fact frames)k return-stack frames matches the measured span" \
+  || no "DESIGN.md frame count '$(w7num DESIGN.md 'clean return-stack frames')' vs $(w7fact frames)"
+
+# M-MEM deleted the fixed heap base and the 0xC00000 stack top: no memory-map
+# row may resurrect either, and nothing in §1.2 may still be unshipped.
+W7STALE=$(grep -cE '^\| `0x500000`|^\| `0xC00000`|shipping in wave' REGISTRY.md)
+[ "$W7STALE" = "0" ] \
+  && ok "REGISTRY.md has no fixed-heap-base row, no 0xC00000 row, no unshipped status" \
+  || no "REGISTRY.md still carries $W7STALE stale row(s) (0x500000 / 0xC00000 / 'shipping in wave')"
+[ "$(grep -F 'are now spent, leaving' REGISTRY.md | grep -oE '\*\*[0-9]+\*\*' | tr -d '*' | tr '\n' '/')" \
+    = "$(w7fact hiused)/$(w7fact hifree)/" ] \
+  && ok "REGISTRY.md §1: $(w7fact hiused) high op bytes spent, $(w7fact hifree) free — matches the tables" \
+  || no "REGISTRY.md high-byte budget is stale (real: $(w7fact hiused) spent, $(w7fact hifree) free)"
+
+# The README quotes programs, not just numbers.  Both halves are pinned: the
+# bare spellings are the ones examples/capstone.golfj carries, the long ones are
+# examples/legacy_capstone.golfj's — and then both are RUN, and must print what
+# the README says they print.
+W7PIN=0
+for s in '4⍳4⍳*∑' '3→k“Hello“U←k+J'; do
+  grep -qF "$s" "$W7README" && grep -qF "$s" examples/capstone.golfj || W7PIN=1
+done
+for s in '4⍳4⍳′*⊞∑' '3→k:f←k+;“Hello“U′f€J'; do
+  grep -qF "$s" "$W7README" && grep -qF "$s" examples/legacy_capstone.golfj || W7PIN=1
+done
+[ "$W7PIN" = 0 ] \
+  && ok "README.md's spellings are verbatim the ones capstone/legacy_capstone pin" \
+  || no "a README spelling is not in the example that pins it"
+W7DOCOUT=$(printf '%s' '5⍳′²€∑Ṅ␤4⍳4⍳*∑Ṅ␤4⍳3+⍕␤“Hello“U1+J␤3→k“Hello“U←k+J␤5⍳′∑′≢′÷⑂Ṅ␤100⍳∑Ṅ␤' | gc)
+[ "$W7DOCOUT" = "$(printf '30\n14\n3 4 5 6 \nIfmmp\nKhoor\n2\n4950')" ] \
+  && ok "every bare one-liner quoted in README.md prints what README.md claims" \
+  || no "a README one-liner printed something else: $W7DOCOUT"
+W7LEGOUT=$(printf '%s' '4⍳4⍳′*⊞∑Ṅ␤“Hello“U′⊕€J␤3→k:f←k+;“Hello“U′f€J␤' | gc)
+[ "$W7LEGOUT" = "$(printf '14\nIfmmp\nKhoor')" ] \
+  && ok "every long-form one-liner quoted in README.md still prints the same" \
+  || no "a README long-form one-liner printed something else: $W7LEGOUT"
+# W7A -------------------------------------------------------------------------
 
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
 CAPOUT=$(printf '30\n14\n5\nKhoor')

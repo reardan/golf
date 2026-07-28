@@ -79,10 +79,10 @@
 # Words, in definition-before-use order (single-byte names, as the dictionary is
 # byte-indexed): B Y Z U a o L w W k c C f E e D g h t H.
 #
-# Values handled by the compiler are all far below 0x500000 and it installs no
-# vectorization hooks (its hook cells stay BSS-zero), so the bare + - * take the
-# scalar path here, byte for byte.  They are used throughout; the raw atoms
-# (﹢ ﹣ ﹡) would compile to the same code and are not needed.
+# Every value the compiler handles is an address inside the load segment (under
+# 0x600000) or a small integer, and it installs no vectorization hooks (its hook
+# cells stay BSS-zero), so the bare + - * take the scalar path here, byte for
+# byte.  The raw atoms (﹢ ﹣ ﹡) would compile to the same code and are not needed.
 #
 # Named variables also removed every single stack-juggling op: this source
 # contains no swap, no over, and `"` dup only where a value is genuinely tested
@@ -655,7 +655,7 @@ H           # paint the ELF header into the (zeroed) buffer
 B
 120+
 →p          # code begins right after the 120-byte header
-3E          # blob record 3: the startup stub, mov ebp,0xC00000
+3E          # blob record 3: the startup stub, mov ebp,0x600000 (RSTACK_TOP)
 
 {           # the token loop:
 g           #   fetch a char (a pushed-back one first)
