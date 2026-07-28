@@ -107,6 +107,15 @@ ATOMS = [
     (0xA3, "sar", "≫", [0x59, 0x48, 0xD3, 0x3C, 0x24],    "arithmetic shift right (by TOS)"),
     (0xA4, "fetch", "⊙", [0x58, 0x48, 0x8B, 0x00, 0x50],  "addr -> v, full 64-bit cell"),
     (0xA5, "store", "⊛", [0x58, 0x59, 0x48, 0x89, 0x08],  "v addr -> ; full 64-bit cell"),
+    # M-MEM (wave 6): the brk(2) syscall — `0⌸` reads the current program break,
+    # `addr⌸` moves it there.  Either way the kernel returns the break IN EFFECT
+    # afterwards (the OLD one if it refused), so a caller can always recompute
+    # the true span from the return value instead of assuming it got what it
+    # asked for.  This is what lets lib/prelude.golfj grow the list heap on
+    # demand rather than living inside a fixed BSS reservation.  syscall
+    # clobbers only rcx/r11, which no template holds across an op.
+    (0xA6, "brk",   "⌸", [0x5F, 0x6A, 0x0C, 0x58, 0x0F, 0x05, 0x50],
+                                                          "addr -> break; brk(2)"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
@@ -226,6 +235,59 @@ assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
 WORDS2 = mkblob.WORDS.replace(
     "w^]e;", "w^]" + REF_CASE + STR_CASE + SET_CASE + GET_CASE + "e;")
 
+# --- M-MEM (W6): v2's BSS stops reserving the static list heap ---------------
+# v1 asks for p_memsz = 0x800000, i.e. [0x400000, 0xC00000).  The bottom megabyte
+# is the image and the fixed banks; the SEVEN megabytes above it were shared
+# between a bump heap growing up from 0x500000 and the return stack growing down
+# from 0xC00000.  That is both a hard ceiling on list size (~917k cells, after
+# which the two met and the program died) and dead address space for every
+# program that never allocates — every compiler on the ladder included.
+#
+# The list heap is brk-grown now (atom 0xA6 ⌸, driven by lib/prelude.golfj), so
+# v2 binaries reserve only what is *statically addressed* (../REGISTRY.md §3):
+#
+#   0x400000..0x421000   image: code, compiler data base 0x410000, output buffer
+#   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
+#   0x4E0000..0x4E0400   →x/←x variable bank
+#   0x4F0000..0x4F1000   runtime cells, M-VEC hook table, scratch spill stack
+#   ..0x600000           return stack, growing DOWN from the end of the segment
+#
+# p_memsz and the return-stack top are ONE number, not two: golf0.STARTUP seeds
+# rbp with the top of the BSS, so shrinking the segment necessarily moves the
+# return stack with it and BOTH blob records (3 startup, 4 header) have to change
+# together — hence the second override here.  It leaves ~1.08 MB of return stack
+# (≈138k frames) between the 0x4F bank and the segment end, against a compiler
+# whose deepest nesting is a handful of frames.
+#
+# Everything ABOVE the segment is the brk heap.  The kernel starts the break at
+# the page-aligned end of the last PT_LOAD and then ASLR-shifts it by up to
+# 32 MB, so the heap base is NOT 0x600000 and cannot be hard-coded anywhere —
+# which is exactly why the prelude reads it with `0⌸` at startup and publishes
+# it in the 0x4F0034/0x4F0038 bounds cells the M-VEC templates and `T` read.
+#
+# The frozen v1 compiler keeps v1's numbers: minimal/ is untouched, so v1c and
+# the `seed` it builds still run with a 0xC00000 return stack.  Only what the v2
+# blob emits changes, and both golf2 and golf2' embed this blob — the fixpoint
+# is unaffected.
+MEMSZ = 0x200000                    # v2 p_memsz (v1: 0x800000)
+RSTACK_TOP = golf0.BASE + MEMSZ     # 0x600000: return-stack top AND heap floor
+MEMSZ_OFF = 64 + 40                 # Phdr at file offset 64; p_memsz at +40
+
+def header_pairs2():
+    """v1's ELF header with p_memsz overridden, as (offset, value) pairs.
+
+    Same shape as mkblob.header_pairs(): the output buffer is BSS, so only the
+    non-zero bytes are stored and word `H` writes them over the zeros.
+    """
+    hdr = bytearray(golf0.HEADER)
+    assert int.from_bytes(hdr[MEMSZ_OFF:MEMSZ_OFF + 8], "little") == 0x800000, \
+        "p_memsz is not where this expects it"
+    hdr[MEMSZ_OFF:MEMSZ_OFF + 8] = MEMSZ.to_bytes(8, "little")
+    return bytes(x for off, v in enumerate(hdr) if v for x in (off, v))
+
+assert golf0.STARTUP[0] == 0xBD and len(golf0.STARTUP) == 5, "STARTUP is not mov ebp,imm32"
+STARTUP2 = bytes([0xBD]) + RSTACK_TOP.to_bytes(4, "little")     # mov ebp, RSTACK_TOP
+
 def _check_atoms():
     """Op-byte namespace (see ../REGISTRY.md §1): an ATOMS byte must be unique
     and must not shadow a compiler prefix or a v1 template byte."""
@@ -242,8 +304,8 @@ def build_blob2():
     b = bytearray()
     b += mkblob.rec(1, golf0.PROLOGUE)
     b += mkblob.rec(2, mkblob.COND)
-    b += mkblob.rec(3, golf0.STARTUP)
-    b += mkblob.rec(4, mkblob.header_pairs())
+    b += mkblob.rec(3, STARTUP2)                     # M-MEM: rbp = RSTACK_TOP
+    b += mkblob.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
     b += mkblob.rec(5, golf0.AUTOEXIT)
     used = set()
     def emit(key, tpl):

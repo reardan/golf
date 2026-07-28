@@ -104,7 +104,7 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA3` | `\sar` | `≫` | arithmetic shift right | shipped |
 | `0xA4` | `\fetch` | `⊙` | 64-bit fetch | shipped |
 | `0xA5` | `\store` | `⊛` | 64-bit store | shipped |
-| `0xA6` | `\brk` | `⌸` | `brk` syscall (wave 6) | reserved |
+| `0xA6` | `\brk` | `⌸` | `brk` syscall (wave 6) | shipped (M-MEM) |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
 | `0xC2` | `\vmul` | `⨰` | polymorphic mul | shipped |

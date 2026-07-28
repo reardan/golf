@@ -8,7 +8,8 @@
 # and written with \store, so element i of `l` lives at l + 8 + 8*i and A hands
 # out cells*8 bytes.  Reserved runtime memory — ../REGISTRY.md §3 is
 # authoritative:
-#   0x4F0000             heap pointer (the address word H pushes)
+#   0x4F0000             heap bump pointer — a byte OFFSET from the heap base
+#                        (the address word H pushes; BSS-zero at start)
 #   0x4F0010..0x4F002C   RETIRED — the old 4-byte scratch bank, now free
 #   0x4F0030             spill-stack pointer (a byte OFFSET; BSS-zero at start)
 #   0x4F0034 / 0x4F0038  heap base / span cells (the M-TAG bounds)
@@ -21,7 +22,10 @@
 #                        5177488 5177496
 #   0x4F00A0             first free scratch
 #   0x4F0900..0x4F0FFF   scratch spill stack — 28 frames of 64 bytes (X/Y)
-#   0x500000             heap base (bump allocator)
+#   ..0x600000           return stack, growing DOWN from the top of the BSS
+#   0x600000+ (moving)   the BRK HEAP — W6/M-MEM: the list heap is whatever the
+#                        kernel gives back, starting at the program break and
+#                        ASLR-shifted, so its base is READ (0⌸) and never named
 # Do not touch any of it from your program.
 #
 # The four cells at 0x4F0030..0x4F003C did NOT move and did NOT widen: they are
@@ -96,7 +100,15 @@
 # \fetch/\store, which is the whole point: a scratch cell may now hold -1.
 :X5177392@5179648\radd 5177440\fetch&\store5177448\fetch&8\radd\store5177456\fetch&16\radd\store5177464\fetch&24\radd\store5177472\fetch&32\radd\store5177480\fetch&40\radd\store5177488\fetch&48\radd\store5177496\fetch&56\radd\store_5177392@64\radd5177392!;
 :Y5177392@64\rsub"5177392!5179648\radd"\fetch5177440\store"8\radd\fetch5177448\store"16\radd\fetch5177456\store"24\radd\fetch5177464\store"32\radd\fetch5177472\store"40\radd\fetch5177480\store"48\radd\fetch5177488\store"56\radd\fetch5177496\store_;
-:A8\rmul5177480\store H@5242880\radd H@5177480\fetch\radd H!;  # A: alloc(cells) -> addr
+# A: alloc(cells) -> addr.  Bump allocation out of the BRK heap (W6/M-MEM — see
+# the "W6 allocator" block near the bottom for the whole story).  s5 = the byte
+# size; H is still the bump OFFSET from the heap base, so the block starts at
+# base+H; when the new offset would pass the break, extend the break and
+# republish the span so the M-TAG range test keeps covering every live list.
+# \brk is an atom, not a call, so s5 is never held across one and A still needs
+# no spill frame.
+:A8\rmul5177480\store 5177396@H@\radd H@5177480\fetch\radd"5177400@\rlt[
+  "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!;
 :L\fetch;                                           # L: len(list)
 :I8\rmul\radd8\radd\fetch;                          # I: index(list,i)
 :R X"1\radd A"5177440\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177448\fetch"8\rmul5177440\fetch\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177440\fetch Y;
@@ -133,11 +145,11 @@
 # (0xFFFF… is far above the heap) and every small literal (far below it).  The
 # two bounds live in runtime cells — heap base 0x4F0034, span 0x4F0038 — so W6
 # can move or grow the heap by rewriting two stores and nothing else.
-# Top-level init: the prelude is prepended source, so these plain tokens run at
-# program start, before any user code.  Stack-neutral.  32-bit `!` is enough —
-# both values are < 2^31 and BSS leaves the high half of the cell zero, so a
-# future 64-bit reader still sees the right number.
-5242880 5177396!7340032 5177400!    # base 0x500000, span 0xC00000-0x500000
+# Top-level init: the prelude is prepended source, so plain tokens run at program
+# start, before any user code.  W6/M-MEM moved that init to the "W6 allocator"
+# block below, where it asks the kernel for the bounds instead of naming them —
+# both cells are still written before anything can allocate or call T, because
+# every allocation happens in a word body and user code runs last.
 # T  v -> 0 (list) / 1 (int).  Zero-is-true, so `T[…]` runs the LIST path.
 # (v-base) <u span is -1 exactly for a heap address and 0 otherwise; 1\radd maps
 # that to 0/1.  A leaf: no scratch, hence no spill frame, hence callable anywhere
@@ -191,9 +203,10 @@
 # three scratch slots moved to the new bank.
 #
 # Thunks come from a dedicated CODE ARENA at 0x4D0000 (bump pointer 0x4F003C),
-# never from the list heap: a heap address (>= 0x500000) would be
+# never from the list heap: an address inside the heap bounds would be
 # indistinguishable from a list to the shape test, whereas 0x4D0000 sits below
-# the variable bank and above the compiler's ceiling, so a composed quotation
+# the variable bank and above the compiler's ceiling — and, since W6/M-MEM,
+# below the program break, i.e. below the heap base — so a composed quotation
 # classifies as an int like every other ′ address.  ∘ is X/Y-wrapped (it parks f,
 # g and the thunk's start address in s1/s2/s3) so it may be called from inside a
 # map or a fold; each call bumps the arena by 39 bytes.
@@ -226,7 +239,47 @@
 #   * the FIXED cells — heap pointer, spill pointer, heap base/span, code arena,
 #     the M-VEC hook cells, and a string's 4-byte length prefix — keep 32-bit
 #     `@`/`!`, because their addresses and strides are hard-coded elsewhere.
-# --- W6 allocator ---
+# --- W6 allocator (M-MEM): the list heap is brk-grown ---
+# Through W5 the heap was a fixed hole in the BSS: base 0x500000, span up to the
+# return-stack top 0xC00000.  Seven megabytes, hard-coded in two stores, and the
+# 917,504th cell of a list ran into the return stack and took the program with
+# it.  W6 hands the job to the kernel: tools/mkblob2.py shrinks v2's p_memsz so
+# the BSS ends at 0x600000 (image + banks + return stack, nothing more), and
+# everything above that is the brk heap, grown on demand by the ⌸ atom (0xA6).
+#
+#   0⌸       -> the current program break (the heap base)
+#   addr⌸    -> move the break there; returns the break IN EFFECT afterwards
+#
+# The base is NOT 0x600000 and must never be written down: the kernel ASLR-shifts
+# the initial break by up to 32 MB.  That is the point of the two bounds cells —
+# 0x4F0034 base and 0x4F0038 span — which W2 introduced precisely so W6 could
+# fill them from the kernel.  Everything downstream reads them: `T`, the shape
+# dispatcher D behind ∔ ∸ ⨰ ⩌ ⩍, and the M-VEC templates' cheap 32-bit
+# `cmp eax,[0x4F0034]` filter.  A value is a list iff (v - base) <u span, so:
+#
+#   * span must always COVER every live list.  A never hands out a block whose
+#     end offset exceeds the span — it extends the break first and republishes
+#     the span, which only ever grows, so lists allocated before a growth stay
+#     inside the (now wider) window.
+#   * everything that is not a list must stay OUTSIDE the window.  It does, by
+#     construction: the whole static image — code and word addresses at
+#     0x400000+, the compiler's own pointers at 0x410000+, the M-CHAIN thunk
+#     arena at 0x4D0000, the variable bank, the scratch bank and the spill stack
+#     — lives BELOW the break, and negative flags like -1 are far above it.
+#
+# Span is taken from what brk RETURNS rather than what it was asked for, so a
+# refusal cannot leave the cell claiming memory the process does not own.
+# The standing assumption is that the break stays below 2^32: both cells are
+# 4 bytes and the M-VEC filter compares against 0x4F0034 with a 32-bit `cmp`.
+# `@`/`!` zero-extend, so the full unsigned 32-bit range round-trips exactly;
+# observed breaks here run from ~0x1C00000 to ~0x3B000000, three orders of
+# magnitude of headroom.  What would NOT survive is a >= 4 GB break, which
+# needs the bounds cells (and the template operand) widened first.
+# Stack-neutral; 32-bit `!` is right for both cells (each is < 2^31 and BSS
+# leaves the high half zero).  1 MB is the initial chunk and also A's growth
+# increment: A extends to (needed + 1 MB), so one oversized allocation still
+# takes exactly one syscall.
+0\brk"5177396!1048576\radd\brk 5177396@\rsub5177400!
 # --- W3 hook installation (top-level init; must stay LAST) ---
 # M-VEC — implicit vectorization.  The bare + - * ⌈ ⌊ now compile to a
 # polymorphic template: it calls through a per-op HOOK CELL when that cell is
