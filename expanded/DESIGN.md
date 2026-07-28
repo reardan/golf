@@ -252,7 +252,9 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   covered — a `-1` compare flag, a word address, an `0x4D0000` thunk are all
   outside the window and are regression-tested — but nothing rules out a program
   whose arithmetic genuinely produces a heap-sized number. The fix is a real tag
-  bit on the value, which is item 5 of the forward queue.
+  bit on the value, which is item 3 of the forward queue — where the
+  originally specified scheme (bit 63) is now recorded as wrong, because every
+  negative integer has that bit set.
 
 ## Layout
 

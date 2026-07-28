@@ -27,7 +27,8 @@ Four facts about the implementation shape everything below:
    wants to synthesize a closure can too, with no compiler change.
 3. **`T` is a range test, not a tag.** Everything polymorphic rests on "is this
    value inside the heap window", which is cheap, correct for every value the
-   suite exercises, and wrong in principle. Item 2 below is the fix.
+   suite exercises, and wrong in principle. Item 3 below is the fix — and
+   the scheme this file used to specify for it was not.
 4. **The compiler binary never runs the prelude**, so its M-VEC hook cells stay
    zero and it always takes the scalar path. That is the reason implicit
    vectorization did not disturb the fixpoint, and the same argument covers any
@@ -35,62 +36,14 @@ Four facts about the implementation shape everything below:
 
 ## The queue
 
-### 1. M-CHAIN2 — chain syntax, the sugar the combinators earned (medium)
+The order below changed once since the roadmap closed. `M3W` (widen the
+variable bank) moved to the front — it is mechanical, it fixes a wrong answer of
+its own, and **every tag scheme that puts a bit above bit 31 needs it first**, or
+`→x`/`←x` would truncate the tag off a list. `M-TAG2` moved back, because the
+scheme it specified turns out to be wrong for a reason worth writing down (see
+its entry).
 
-*What.* `∘ ⇉ ⑂` are the threading rules of a Jelly chain, spelled as words. The
-sugar is a compiler prefix that turns a `:definition;` body into links so the
-rules apply *implicitly*: write `:m ∑ ≢ ÷;` and get `mean`, instead of
-`:m′∑′≢′÷⑂;`. Every `′` in a tacit definition is noise the compiler can supply.
-
-*How.* A new compiler-logic byte from the `0xB0`–`0xBF` range (REGISTRY.md §1)
-introducing a *chain* definition: the compiler collects the links of the body as
-word addresses rather than compiling calls, then emits one call to a prelude
-driver that applies the fixed monadic/dyadic threading rule to the collected
-list. The links are already ordinary quotations, so the driver is `⇉`/`⑂` logic
-in `lib/prelude.golfj` — the compiler-side change is a token that pushes
-addresses instead of calling them, which `′` already proves is a five-line case.
-Written in `self/golf2.golfj` **and** mirrored into `mkblob2.py`'s v1-GOLF seed,
-or `selfcheck.sh` catches the drift.
-
-*Tests.* `:m∑≢÷;5⍳mṄ` → `2`; the explicit `′∑′≢′÷⑂` form keeps working (it is
-what the sugar expands to); fixpoint green.
-
-*Why first.* It is the one remaining piece of the Jelly surface, it is the
-payoff for M-SELF (new compiler logic written in the pleasant language), and it
-is pure notation — no representation change to collide with items 2 and 3.
-
-### 2. M-TAG2 — a real tag bit (medium, fixes a known wrong answer)
-
-*What.* Retire the range test. `T` is `v - base <u span` today, so an *integer*
-that happens to land in `[base, base+span)` is dispatched as a list — the one
-outright incorrect behavior in the language (DESIGN.md, known limits). Range
-tagging also forces the two 32-bit bounds cells at `0x4F0034`/`0x4F0038`, which
-put a hard 4 GB ceiling on the break.
-
-*How.* Tag the *list*, not the int: a heap address is handed to user code with
-bit 63 set, and every prelude word masks it off before dereferencing. Then `T`
-is a shift — exact, constant, no cells — and the M-VEC preamble's conservative
-`(a|b) <u heap-base` filter becomes an exact `(a|b) >> 63`, so the templates get
-*shorter* as well as correct. `A` sets the bit on the address it returns; `I`,
-`L`, `M`, `F`, `W`, `V`, `Q`, `J`, `U`, `Z`, `K`, `G`, `D` clear it on entry.
-Nothing outside `lib/prelude.golfj` dereferences a list, so the blast radius is
-one file plus five templates.
-
-*Why not the classic scheme.* Tagging the *int* (bit 0, Lisp-style) would make
-every arithmetic template shift and unshift — GOLF's atoms are raw one-instruction
-templates and that is the whole aesthetic. Tagging the pointer costs one `btr`
-per dereference in library code that is already doing a memory access.
-
-*Fixpoint impact.* Same argument as M-VEC: the compiler never runs the prelude,
-its hooks stay zero, and both golf2 and golf2' embed the new blob. Real but
-contained, and the ladder verifies exactly this.
-
-*Tests.* The regression that cannot pass today — take the heap base out of the
-bounds cell, hand it to `+` as an *integer*, and require scalar addition; every
-existing polymorphic test unchanged; `0x4F0034`/`0x4F0038` deleted from
-REGISTRY.md §3 in the same commit.
-
-### 3. M3W — widen the variable bank (small, mechanical)
+### 1. M3W — widen the variable bank (small, mechanical)
 
 *What.* `→x`/`←x` go through a 4-byte-per-name bank at `0x4E0000` and `←x` is a
 `mov eax`, so `4294967296→x←x` is `0` and `0 5-→x←x` is `4294967291`. Every
@@ -103,10 +56,104 @@ in `tools/mkblob2.py` become `mov [0x4E0000+8*name], rax` / `mov rax,
 `0x4E0000`–`0x4F0000` hole, so no address needs reallocating. Because these are
 compiler-emitted templates they exist in *both* `self/golf2.golfj` and the
 seed's spliced cases and must change in lockstep — which is precisely the drift
-`selfcheck.sh` was built to catch.
+`selfcheck.sh` was built to catch. `boot/golfref.py` mirrors both.
 
 *Tests.* `4294967296→x←xṄ` → `4294967296`; `0 5-→x←xṄ` → `-5`; a list address
 survives `→x`/`←x` and still classifies as a list; fixpoint green.
+
+*Why first.* It is small, it is a real wrong answer, and it is the one piece of
+groundwork item 3 cannot do without.
+
+### 2. M-CHAIN2 — chain syntax, the sugar the combinators earned (medium)
+
+*What.* `∘ ⇉ ⑂` are the threading rules of a Jelly chain, spelled as words. The
+sugar is a compiler prefix that turns a `:definition;` body into links so the
+rules apply *implicitly*: write `:m ∑ ≢ ÷;` and get `mean`, instead of
+`:m′∑′≢′÷⑂;`. Every `′` in a tacit definition is noise the compiler can supply.
+
+*How.* A new compiler-logic byte from the `0xB0`–`0xBF` range (REGISTRY.md §1)
+introducing a *chain* definition: `⊚name link link link ;` compiles the links
+into the train the explicit spelling would have built, so the compiler supplies
+every `′`. It needs no driver word and no new prelude state, because the shape
+of a train is decided by how many links there are:
+
+| links | the chain is | what it compiles to |
+|-------|--------------|---------------------|
+| 0 | identity | nothing |
+| 1 | `f x` | a plain call to `f` |
+| 2 | `g(f x)` — atop | two plain calls |
+| 3 | `h(f x, g x)` — a fork | `′f ′g ′h ⑂`, exactly today's spelling |
+| n>3 | the fork, then the rest in sequence | `′f ′g ′h ⑂` then plain calls |
+
+So the compiler only has to buffer the first three link bytes: on the third it
+emits the three `′` pushes and the `⑂` call, after that a link is an ordinary
+call, and `;` flushes a 1- or 2-link chain as plain calls. That is one new case
+in `t`, one flag and four cells of compiler state, and a `;` that checks the
+flag. The `′` case's body becomes a word (`X`) so the chain and `′` share the
+one copy of "push the address of the word or atom named by this byte". Written
+in `self/golf2.golfj` **and** mirrored into `mkblob2.py`'s v1-GOLF seed and
+`boot/golfref.py`, or `selfcheck.sh` catches the drift.
+
+*Limits, stated up front.* A link is a single token naming a word or an atom —
+the same thing `′` accepts. Digits, `“…“`, `[`, `{`, `→x` and `′` inside a chain
+body keep their ordinary meanings rather than becoming links, and a chain of
+three or more links compiles a call to `⑂`, so it needs the prelude.
+
+*Tests.* `⊚m∑≢÷;5⍳mṄ` → `2`; it emits byte-for-byte what `:m′∑′≢′÷⑂;` emits; the
+explicit form keeps working; 1-, 2- and 4-link chains; fixpoint green.
+
+*Why here.* It is the one remaining piece of the Jelly surface, it is the payoff
+for M-SELF (new compiler logic written in the pleasant language), and it is pure
+notation — no representation change to collide with anything below.
+
+### 3. M-TAG2 — a real tag bit (medium — **the specified scheme is wrong**)
+
+*What.* Retire the range test. `T` is `v - base <u span` today, so an *integer*
+that happens to land in `[base, base+span)` is dispatched as a list — the one
+outright incorrect behavior in the language (DESIGN.md, known limits). Range
+tagging also forces the two 32-bit bounds cells at `0x4F0034`/`0x4F0038`, which
+put a hard 4 GB ceiling on the break.
+
+*Why the bit-63 plan cannot ship.* This entry used to say: hand the address to
+user code with **bit 63** set, and `T` becomes `v >> 63`. That is exact for
+pointers and catastrophic for integers — **every negative number has bit 63
+set**. `0 1-` is `0xFFFF…FF`, so under that scheme `-1` classifies as a list;
+the M-VEC preamble's `or rax,[rsp+8]; jns .scalar` filter would send `-1 5+` to
+the dispatcher as list-shaped and `Ṅ` would dereference it. The suite already
+pins the opposite (`0 1-T` → int, and "a -1 flag reaches the hook and falls back
+to the scalar op"), so the change trades a rare wrong answer for a common one.
+GOLF has been signed since M4 — `≺ ≻ ≫`, `÷`, `∣` and `N`'s sign check all say
+so — and any tag in the sign bit fights that.
+
+*What a correct version looks like.* The honest framing is that in an untagged
+64-bit word you cannot have both the full integer range and an exact pointer
+tag; you only choose **which integers you sacrifice**. Ranked:
+
+1. **A high-byte tag, e.g. `v >> 48 == 1`** (list = `addr | 2^48`). Negative
+   numbers are `0xFFFF…` at the top and stay integers; so does everything under
+   `2^48`. The sacrificed set becomes `[2^48, 2^49)` — 281 to 562 trillion —
+   instead of "any number the size of a few megabytes", which is the range real
+   programs actually compute in. It keeps every advertised win: `T` is a shift
+   and a compare, the two bounds cells and the 4 GB ceiling go away, and the
+   M-VEC filter becomes exact. Masking is `(v<<16)>>16` — two atoms, no cell.
+2. **Keep the range test, make the window exact.** Cheap, no representation
+   change, but it does not fix the known wrong answer at all.
+3. **Tag the int (bit 0, Lisp-style).** Every arithmetic template would shift
+   and unshift; GOLF's atoms are raw one-instruction templates and that is the
+   whole aesthetic. Rejected.
+
+Option 1 is what a future wave should implement, and it must land **after**
+item 1 (M3W): a `2^48` tag does not survive a 4-byte variable cell.
+
+*Fixpoint impact.* Same argument as M-VEC: the compiler never runs the prelude,
+its hooks stay zero, and both golf2 and golf2' embed the new blob. Real but
+contained, and the ladder verifies exactly this.
+
+*Tests.* The regression that cannot pass today — take the heap base out of the
+bounds cell, hand it to `+` as an *integer*, and require scalar addition — plus
+the one that guards the fix: `0 1-T` is still an int, and so is every negative a
+program can produce. Every existing polymorphic test unchanged;
+`0x4F0034`/`0x4F0038` deleted from REGISTRY.md §3 in the same commit.
 
 ### 4. M-FRAME — per-call locals (medium)
 
@@ -138,7 +185,7 @@ matching class before bumping. A first cut can be one list and exact-fit only �
 the allocation pattern here is overwhelmingly "same-size list, over and over".
 
 *Why here.* It is invisible until a program is long-running, and it wants the
-tag bit (item 2) first so a header cell can never be mistaken for a value.
+tag bit (item 3) first so a header cell can never be mistaken for a value.
 
 ### 6. M2 — multi-character identifiers (medium)
 
@@ -168,6 +215,11 @@ list of codes, so the parser is a fold over that.
 
 *Tests.* Pipe `1 2 3` in, sum it, print `6`; empty input yields the empty list.
 
+*Coordinate first.* M-TOOL (the wave porting the build scripts to GOLF) is
+taking `0xA7` for a general `\sys` syscall atom and is building its own I/O
+words. Whoever gets there second should use that atom rather than allocate a
+second one — check REGISTRY.md §1 before writing any code here.
+
 ## As needed
 
 - **M7 — compiler quality.** A peephole optimizer still does not fit the
@@ -178,7 +230,7 @@ list of codes, so the parser is a fold over that.
 - **M9 — reach.** `include`/modules; an object-file emitter so output links with
   `cc`; a small IR to retarget (arm64) or emit C.
 - **Shape checks.** `Z` truncates to the shorter list and nothing reports a rank
-  mismatch. With a real tag (item 2) `D` can afford to say so.
+  mismatch. With a real tag (item 3) `D` can afford to say so.
 
 ## Hygiene along the way
 
@@ -199,10 +251,22 @@ list of codes, so the parser is a fold over that.
   in `README.md` and `DESIGN.md` against the artifacts they describe. If a
   change moves one of them, the suite tells you which doc to edit.
 
-## Suggested first move
+## The wave in flight
 
-Item 1 (chain syntax) and item 2 (the tag bit) are independent — one is
-notation, one is representation — and together they close the last gap in the
-Jelly surface and the last wrong answer in the language. Item 1 is the better
-demo; item 2 is the better engineering. Doing 2 first makes 5 and the shape
-checks cheap, and shortens five templates on the way through.
+**M3W then M-CHAIN2** — items 1 and 2. Both live entirely in the compiler's
+front end (`self/golf2.golfj`, `mkblob2.py`'s v1-GOLF seed cases,
+`boot/golfref.py`) and neither touches a representation, so they compose: the
+bank widening lands first because it is the smaller change and the one every
+later tag scheme depends on, and the chain sugar lands on top of it.
+
+Item 3 (the tag bit) is **not** in this wave. It was the better engineering
+right up until the specified scheme turned out to misclassify every negative
+integer; it goes back on the queue with a corrected design rather than shipping
+a regression. Item 5 and the shape checks stay behind it, as they always were.
+
+**Parallel work.** M-TOOL — the repo's build scripts rewritten in expanded GOLF
+— is in flight on its own branch. It owns `0xA7 \sys`, the entry-`rsp` cell at
+`0x4F0040`, the lowercase library letters and everything under `gtools/`; this
+wave owns the compiler's front end and touches none of them. The one shared file
+is `tools/mkblob2.py`, where the two waves edit different halves (its `ATOMS`
+table versus its spliced compiler cases).
