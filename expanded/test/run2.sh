@@ -678,6 +678,84 @@ garg(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "
   && ok "oracle: golfref.py stashes the entry rsp too" || no "oracle argv"
 
 # @@ W8-TOOLLIB @@
+echo "Tool library lib/tio.golfj (M-TOOL): a die · b open · c read · d write · e slurp · f flush · g emit · h argv"
+# gc compiles the prelude and nothing else, so the tool libraries need a helper
+# of their own: prelude + tio + the case.  It also FORWARDS its arguments to the
+# compiled program, which is the only way a NUL-terminated path gets in — a
+# “…“ literal is a counted block, not a C string, so argv is what `b` is fed.
+python3 tools/codepage.py encode < lib/tio.golfj > "$TMP/tio.gb"
+tio(){ cat "$TMP/pre.gb" "$TMP/tio.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/tp" 2>/dev/null \
+         && chmod +x "$TMP/tp" && "$TMP/tp" "$@"; }
+printf 'GOLF tio\n' > "$TMP/tio-in"                    # 9 bytes, this harness's own file
+# The library's whole point in one line, used twice below (a small file and a
+# big one): open argv[1], slurp it, push every byte back out through g, flush.
+tiocat='1 h 0 b e→n→p 0→i ←n 0\eq[{←p←i\radd?g ←i1\radd→i ←i←n\rlt1\radd}]f'
+[ "$(printf '%s' '72g 73g f' | tio)" = "HI" ] \
+  && ok "g emit + f flush (one write syscall, not two)" || no "emit/flush"
+[ "$(printf '%s' '“abc“→s 1 ←s4\radd ←s@ d' | tio)" = "abc" ] \
+  && ok "d write-all (fd buf n ->)" || no "write-all"
+[ "$(printf '%s' '1 h 0 b e N E _' | tio "$TMP/tio-in")" = "9" ] \
+  && ok "b open(argv[1]) + e slurp -> the file's length" || no "open/slurp length"
+# The whole round trip: this is `cat`, and it is what the tools are made of.
+[ "$(printf '%s' "$tiocat" | tio "$TMP/tio-in")" = "GOLF tio" ] \
+  && ok "e slurp -> g emit round trip (cat)" || no "slurp/emit round trip"
+# c reads ONCE, into whatever buffer it is given: a “    “ literal's own bytes
+# do fine, the load segment being RWX.  4 of the 9 bytes, so got is 4, not 9.
+[ "$(printf '%s' '1 h 0 b→v “    “→s ←v ←s4\radd 4 c N E ←s O E' | tio "$TMP/tio-in")" = "$(printf '4\nGOLF')" ] \
+  && ok "c read(fd, buf, 4) -> a short read is a normal answer" || no "read once"
+# An empty file: slurp's read loop is a DO-while, so EOF on the first read has
+# to fall straight out with len 0, and a flush with nothing pending is a no-op.
+: > "$TMP/tio-empty"
+[ "$(printf '%s' '1 h 0 b e N E _ f' | tio "$TMP/tio-empty")" = "0" ] \
+  && ok "e slurp of an empty file -> 0 (the guard case)" || no "slurp empty"
+# Growth.  The buffer starts at 65536 bytes and doubles by allocating a fresh
+# block and copying, so a 200003-byte file exercises the copy loop twice — and
+# proves the copy is exact, since the bytes come back out through g.
+python3 -c "
+import random, sys
+random.seed(7)                       # a fixed seed: the same file every run
+sys.stdout.buffer.write(random.randbytes(200003))" > "$TMP/tio-big"
+[ "$(printf '%s' '1 h 0 b e N E _' | tio "$TMP/tio-big")" = "200003" ] \
+  && ok "e slurp grows past 65536 bytes (200003)" || no "slurp growth"
+printf '%s' "$tiocat" | tio "$TMP/tio-big" > "$TMP/tio-big.out"
+cmp -s "$TMP/tio-big" "$TMP/tio-big.out" \
+  && ok "200003 bytes survive slurp + emit byte for byte" || no "slurp/emit large"
+# The emitter auto-flushes at 8192, so 20000 bytes need three writes and no
+# help from the caller beyond the final f.
+printf '%s' '0→i{65g ←i1\radd→i ←i 20000\rlt1\radd}f' | tio > "$TMP/tio-flush.out"
+[ "$(wc -c < "$TMP/tio-flush.out")" = "20000" ] \
+  && ok "g auto-flushes when the 8192-byte buffer fills" || no "emit auto-flush"
+# Slurping fd 0 needs a stdin of its own — the helper hands its own to the
+# compiler — so this case builds the binary first and then feeds it, once from
+# a file and once from a PIPE, where a short read is the rule and not the
+# exception.  `build/gencode < self/golf2.golfj` is exactly this shape.
+printf '%s' '0 e N E _' | python3 tools/codepage.py encode > "$TMP/tioslurp.gb"
+cat "$TMP/pre.gb" "$TMP/tio.gb" "$TMP/tioslurp.gb" | "$TMP/golf2" > "$TMP/tps" 2>/dev/null && chmod +x "$TMP/tps"
+[ "$("$TMP/tps" < "$TMP/tio-big" 2>/dev/null)" = "200003" ] \
+  && ok "e slurp of fd 0 (a redirected file)" || no "slurp stdin"
+[ "$(cat "$TMP/tio-big" | "$TMP/tps" 2>/dev/null)" = "200003" ] \
+  && ok "e slurp of fd 0 (a pipe: every read comes up short)" || no "slurp pipe"
+# Writing a file: open with w=1 (O_WRONLY|O_CREAT|O_TRUNC, 0644) and point the
+# emitter at the fd by storing it in the library's cell (REGISTRY.md §3).
+printf '%s' '2 h 1 b 5177520\store 79g 75g 10g f' | tio "$TMP/tio-in" "$TMP/tio-out" >/dev/null 2>&1
+[ "$(cat "$TMP/tio-out" 2>/dev/null)" = "OK" ] \
+  && ok "b open(w=1) creates a file the emitter writes into" || no "open for writing"
+# argv, bounds-checked: h answers 0 past the end instead of reading envp.
+[ "$(printf '%s' '9 h N E 1 h?N E' | tio one two)" = "$(printf '0\n111')" ] \
+  && ok "h argv[i], and 0 for i >= argc" || no "argv helper"
+# The error policy, end to end: a missing file is a message on fd 2 and status
+# 1, not a 0 length that quietly produces an empty artifact.
+printf '%s' '1 h 0 b _ “not reached“O' | python3 tools/codepage.py encode > "$TMP/tiodie.gb"
+cat "$TMP/pre.gb" "$TMP/tio.gb" "$TMP/tiodie.gb" | "$TMP/golf2" > "$TMP/tpd" 2>/dev/null && chmod +x "$TMP/tpd"
+tiomsg=$("$TMP/tpd" "$TMP/no-such-file-here" 2>&1 >/dev/null); tiost=$?
+[ "$tiost" = 1 ] && [ "$tiomsg" = "tio: cannot open file for reading" ] \
+  && ok "a die: open of a missing file -> fd 2 + exit 1" || no "die on open failure"
+# X/Y discipline: d and e take a spill frame, so they nest inside a prelude
+# looping word the way every scratch-using word must.
+[ "$(printf '%s' ':x 65\radd"g;5R′xM S N E f' | tio)" = "$(printf '335\nABCDE')" ] \
+  && ok "g inside a map (scratch survives the nesting)" || no "emit in map"
+[ "$(printf '%s' ':y“ab“→s 1 ←s4\radd ←s@ d 7;3R′yM S N E' | tio)" = "$(printf 'ababab21')" ] \
+  && ok "d inside a map (X/Y frame nests)" || no "write-all in map"
 
 # @@ W8-TOOLS @@
 

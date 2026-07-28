@@ -181,9 +181,31 @@ library so the three can be written in parallel without contending.
 
 | Range | Owner | Wave | Status |
 |-------|-------|------|--------|
-| `a`–`h` | `lib/tio.golfj` — file/stream I/O on `⎈`, argv | W8 | reserved |
+| `a`–`h` | `lib/tio.golfj` — file/stream I/O on `⎈`, argv (per letter below) | W8 | shipped |
 | `i`–`r` | `lib/ttext.golfj` — byte-buffer text words | W8 | reserved |
 | `s`–`z` | `lib/tutf.golfj` — code-page table loader + glyph matching | W8 | reserved |
+
+**`a`–`h` — `lib/tio.golfj`, per letter (W8, shipped):**
+
+| Letter | Signature | Meaning |
+|--------|-----------|---------|
+| `a` | `str ->` | die: the `“…“` block to fd 2, a newline, `exit(1)` |
+| `b` | `path w -> fd` | open: `w`=0 read-only, `w`≠0 create/truncate for writing |
+| `c` | `fd buf n -> got` | one `read`; `got` is 0 at EOF, never negative |
+| `d` | `fd buf n ->` | write **all** n bytes, looping over short writes |
+| `e` | `fd -> buf len` | slurp the whole fd into a fresh heap buffer |
+| `f` | `->` | flush the output buffer |
+| `g` | `byte ->` | emit one byte into the output buffer (auto-flushes at 8192) |
+| `h` | `i -> ptr` | `argv[i]`, or 0 when `i >= argc` |
+
+Eight letters is the entire budget for the file, so two things stayed phrases:
+`argc` is `5177408 ⊙ ⊙` and `close(fd)` is `fd 0 0 3 ⎈ _`. `h` already does the
+bounds comparison (which is the only spelling that cannot read past the end of
+the array), and `close` is a courtesy on a short-lived process whose `exit`
+closes every descriptor — so neither was worth displacing `a` (the whole error
+policy) or `h` (the 64-bit argv arithmetic). Every wrapper checks the kernel's
+return value and dies through `a` rather than returning a status a build script
+could forget to test.
 
 Two rules carry over from the prelude and one does not:
 
@@ -219,7 +241,8 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
 | `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
 | `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
-| `0x4F00A0`–`0x4F00FF` | 5177504–5177599 | reserved for future scratch | free |
+| `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
+| `0x4F00C0`–`0x4F00FF` | 5177536–5177599 | reserved for future scratch | free |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
 | `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
