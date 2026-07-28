@@ -4,8 +4,10 @@
 # lib/prelude.golfj, and prepended to a program by gtools/build — prelude first,
 # then every lib/t*.golfj in glob order, then the program.  The one glyph left
 # as a glyph is the string delimiter “, because `\str` run together with the
-# message text it opens is a great deal harder to read than the mark itself.  It is NOT part of the prelude: an ordinary user
-# program never sees it, only the repo's own build tools under gtools/ do.
+# message text it opens is a great deal harder to read than the mark itself.
+#
+# This file is NOT part of the prelude: an ordinary user program never sees it,
+# only the repo's own build tools under gtools/ do.
 #
 # Everything here rests on two things wave 8 added (../REGISTRY.md §1.2, §3):
 #   ⎈ \sys      a1 a2 a3 num ⎈ -> result — the raw syscall.  open(path,flags,

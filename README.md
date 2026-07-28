@@ -87,7 +87,7 @@ python3 tools/codepage.py table                        # atoms + library glyphs
 tools/golfc -j examples/capstone.golfj out && ./out    # compile a glyph program
 ```
 
-`bash test/run2.sh` is **206 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **222 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.
