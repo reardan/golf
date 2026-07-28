@@ -320,6 +320,19 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
 # @@ W6-LIT @@
 # @@ W6-MEM @@
 # @@ W7-DOCS @@
+# Wave 8 (M-TOOL) anchors.  Unlike the waves above, several of these run in
+# parallel, so they are spaced out: git merges two inserts cleanly only when the
+# hunks do not share context lines.  Add tests directly under your own anchor and
+# leave the blank lines around the others alone.
+
+# @@ W8-SYS @@
+
+# @@ W8-ARGV @@
+
+# @@ W8-TOOLLIB @@
+
+# @@ W8-TOOLS @@
+
 
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
 tools/golfc -j examples/capstone.golfj "$TMP/cap" 2>/dev/null
