@@ -1,0 +1,175 @@
+# gtools/decode.golfj — `tools/codepage.py decode`, written in GOLF.
+#
+# A stdin -> stdout filter: raw code-page bytes in, readable source out.  With
+# `-m`, the same bytes come out in ASCII `\mnemonic` form instead of as glyphs.
+# Authored in code-page mnemonic form and compiled by gtools/build, which
+# prepends lib/prelude.golfj and then lib/tio.golfj, lib/ttext.golfj and
+# lib/tutf.golfj.
+#
+# It SHADOWS the Python (see ./README.md): tools/codepage.py stays the build
+# path and the source of truth, and this file is trusted exactly as far as
+# test/gtools.sh proves it byte-identical on real input.
+#
+# ---------------------------------------------------------------------------
+# The rule, straight out of codepage.decode()
+# ---------------------------------------------------------------------------
+#
+#     for b in data:
+#         if b in BYTE2GLYPH and b >= 0x80:  -> the glyph, or \mnemonic
+#         elif b in (9,10) or 32 <= b < 127: -> that ASCII character
+#         else:                              -> \xNN, UPPERCASE hex
+#
+# Three branches, in that order, one per input byte.  The first is `x` (glyph)
+# or `y` (mnemonic) from lib/tutf.golfj, which answer over the table in
+# ../data/codepage.tsv; the second is one range test and two equalities; the
+# third is two nibbles.  Nothing here needs to know what any particular byte
+# MEANS — decode is a rendering, not a parse.
+#
+# ---------------------------------------------------------------------------
+# THE ASYMMETRY, and why this is not encode read backwards
+# ---------------------------------------------------------------------------
+#
+# `⍳` and `\range` both ENCODE to byte 0x52 — the call byte of the prelude word
+# `R` — but 0x52 DECODES as a plain ASCII `R`.  A byte below 0x80 is an ordinary
+# letter and could equally be a *user* word of that name, so rendering it as the
+# library word's glyph would be a guess, and a wrong one for every program that
+# defines its own `R`.  tools/codepage.py says the same thing in its LIB comment
+# and enforces it with `b >= 0x80` in decode.
+#
+# The table carries that as its `mode` column: `ED` = decodes back, `E-` =
+# encode-only, and every letter-keyed LIB row is `E-`.  `x` and `y` already skip
+# the `E-` rows and answer (0, 0), so THE ONLY THING THIS FILE HAS TO GET RIGHT
+# IS THE FALLTHROUGH: a length of 0 means "not decodable", which is not an error
+# — it drops through to the ASCII branch, and 0x52 comes out as `R`.  Treating
+# it as a failure would be the bug, and it would only show up on a source that
+# uses a bare letter word, i.e. on nearly every real file.
+#
+# The same fallthrough covers the five ATOM rows that are ASCII (`~ $ | = >`,
+# also `E-`): `~` decodes to `~` because that is the byte, not because the
+# glyph table was consulted.
+#
+# BYTE 0x5C.  There is no row for it, and 92 is printable, so it decodes to a
+# bare `\` — which `encode` would then read as the start of a mnemonic escape.
+# That is a genuine one-way asymmetry in the code page and it is REPRODUCED
+# here, not fixed: matching Python is the whole contract.  It is also why
+# lib/prelude.golfj:207-213 goes out of its way never to emit 0x5C, and why the
+# libraries this file is built on contain no swap op either.
+#
+# ---------------------------------------------------------------------------
+# Where the table comes from, and how `-m` gets in
+# ---------------------------------------------------------------------------
+#
+# THE TABLE PATH IS `data/codepage.tsv`, RESOLVED AGAINST THE CURRENT DIRECTORY,
+# and any argument that is not `-m` replaces it.  The default is what makes this
+# a drop-in filter — test/gtools.sh's `diff_filter` runs a tool with NO arguments
+# at all, and both it and test/run2.sh `cd` to expanded/ first, which is also
+# the directory every documented invocation in ./README.md is written from.  The
+# override is what makes it a program rather than a fixture: gtools/build drops
+# its binaries in expanded/build/, and a tool that could only ever run from one
+# directory would be a tool nobody could put in a pipeline.
+#
+# Three alternatives were considered and rejected.  Deriving the path from
+# argv[0] (what the Python does with `os.path.dirname(__file__)`) does not
+# transfer: argv[0] here is `build/gdecode`, whose directory is `build/`, not
+# the tree root.  Compiling the table in as a literal is impossible — a `“…“`
+# block cannot contain byte 0x8E and the encoder is not string-aware, which is
+# the whole reason ../data/codepage.tsv exists as a file.  An environment
+# variable would mean walking envp past argv, for a knob a positional argument
+# already provides.
+#
+# `-m` IS ACCEPTED ANYWHERE IN argv.  The Python spells it `"-m" in argv[2:]` —
+# anywhere after the subcommand — and this tool has no subcommand, so "anywhere"
+# is the faithful reading.  The match is exact, all three bytes including the
+# terminating NUL, so `-mm` or `-m=1` is a path and not a flag.  Reading
+# argv[i][1] and argv[i][2] cannot run off anything: the argv strings are one
+# contiguous block at the top of the stack, followed by envp's, so the two bytes
+# after any argument's first are always mapped.
+#
+# ---------------------------------------------------------------------------
+# Memory and the two hazards this file has to respect
+# ---------------------------------------------------------------------------
+#
+# NO POINTER ABOVE 2^31 IS EVER PARKED IN A VARIABLE.  The →x/←x bank is FOUR
+# bytes per name and `←x` zero-extends (../REGISTRY.md §2.1), so an argv pointer
+# — a stack address, far above 2^32 — would come back truncated.  Every argv
+# pointer below therefore stays on the DATA stack for its whole life: the flag
+# test reads it with `&`/`"`, and the table it names is opened and slurped on
+# the spot rather than remembered.  What the variables do hold is heap and load
+# -segment addresses (the slurped input, tutf's glyph pool, a `“…“` block) —
+# all far below 2^31 — plus counts and 0/1 flags.
+#
+# Variables used: `w` -m flag · `u` table-loaded flag · `z` end-of-argv flag ·
+# `i` index · `c` path buffer · `d` path literal · `p`/`n` input buffer and
+# length · `q` the current byte · `r`/`l` the match pointer and its length ·
+# `j` emit index · `v` printable flag · `o` nibble.  NOT `s`: that is
+# lib/tutf.golfj's own state variable and this program would erase the table.
+# The variable bank and the word namespace are disjoint (a name byte after
+# 0x8F/0x90 is never a call), so `p` here and `p` in lib/ttext.golfj are two
+# different things.
+#
+# Output goes through tio's `g` (buffered) and is flushed once by `f` at the
+# end; `)` and the prelude's printing words are never used, because they write
+# straight to fd 1 and would interleave wrongly with the buffer.  Errors are
+# tio's business: every syscall wrapper dies loudly on a negative errno, so a
+# missing ../data/codepage.tsv stops the tool instead of producing half a file.
+#
+# `{…}` is a DO-while.  The byte loop is guarded with `←n 0≡ [ {…} ]` so an
+# empty stdin emits nothing; the glyph-emitting loop inside it is deliberately
+# unguarded, since it only runs where the match length is already at least 1.
+# The argv loop is unguarded too and correctly so: its first iteration is the
+# test of argv[1], which `h` answers with 0 when there is no argv[1].
+
+# ---------------------------------------------------------------------------
+# Pass over argv.  `h` yields 0 past the end, which is both the loop's stop
+# condition and the reason no argc arithmetic appears here.  The pointer is
+# consumed by the `_` at the end of the body and never stored.
+#   ←i h                    argv[i] (or 0)
+#   " 0≡ 1﹢ [ 1→z ]        0 means the end: stop after this iteration
+#   " 0≡ [ … ]              non-0: examine it, leaving the pointer alone
+# The flag test ORs together arg[0]^'-', arg[1]^'m' and arg[2]^0, so the result
+# is 0 exactly for "-m"; `&` re-supplies the pointer for each byte, no swap.
+# `" [1→w] 0≡ [ … ]` is the if/else: the same verdict tested twice, once for 0
+# (it is the flag) and once for non-0 (it is a path).  A path is opened, slurped
+# and parsed AT ONCE, inside the guard that also latches `u`, so the pointer
+# never has to survive the loop and a second path argument is ignored.
+0\setw 0\setu 0\setz 1\seti
+{\geti h
+ "0\eq 1\radd[1\setz]
+ "0\eq["?45\xor &1\radd?109\xor\or &2\radd?\or "[1\setw]0\eq[\getu[" 0 b e t _ 1\setu]]]
+ _ \geti 1\radd\seti \getz}
+
+# No path argument: the default.  `b` wants a NUL-terminated string and a “…“
+# block is a counted one, so the 17 bytes are copied into 64 bytes of heap with
+# ttext's `m` and a 0 is appended — the hazard lib/tio.golfj's header names.
+\getu[8 A\setc “data/codepage.tsv“\setd
+ \getd 4\radd \getc \getd@ m 0 \getc\getd@\radd,
+ \getc 0 b e t _]
+
+# ---------------------------------------------------------------------------
+# The filter.  Slurp stdin, then one pass, one output decision per input byte.
+0 e\setn\setp 0\seti
+\getn 0\eq[{
+ \getp\geti\radd?\setq
+ \getw[\getq x\setl\setr]
+ \getw 0\eq[\getq y\setl\setr]
+ # Decodable (a length of at least 1): the glyph, or a backslash and the
+ # mnemonic.  The backslash is the literal 92, because a `\` cannot be written
+ # in a .golfj source at all — it always opens a mnemonic escape.  A length of
+ # 0 is NOT an error and gets no branch of its own: it falls into the ASCII
+ # test below, which is what makes 0x52 come out as `R`.
+ \getl 0\eq[\getw 0\eq[92 g]
+  0\setj{\getr\getj\radd?g \getj 1\radd\setj \getj\getl\eq}]
+ # Not decodable.  `(b==9) | (b==10) | ((b-32) <u 95)` is Python's
+ # `b in (9,10) or 32 <= b < 127` — ﹤ is UNSIGNED, so every byte below 32
+ # wraps to a huge number and fails the range test without a second compare.
+ # ﹢1 turns the -1/0 into the zero-is-true flag `[` wants.
+ \getl[\getq 9\eq \getq 10\eq\or \getq 32\rsub 95\rlt\or 1\radd\setv
+  \getv[\getq g]
+  # \xNN, UPPERCASE — `f"{b:02X}"`, not `02x`.  nibble + 48, plus 7 when it is
+  # above 9: ﹤ yields -1, so the ﹣ puts the 7 back for A-F and nothing for
+  # 0-9.  Branchless, and there is no lower-case path to get wrong.
+  \getv 0\eq[92 g 120 g
+   \getq 4\shr\seto \geto 48\radd 9\geto\rlt 7\rmul\rsub g
+   \getq 15\and\seto \geto 48\radd 9\geto\rlt 7\rmul\rsub g]]
+ \geti 1\radd\seti \geti\getn\rlt 1\radd}]
+f
