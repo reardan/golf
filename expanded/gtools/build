@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# gtools/build — compile a GOLF-written build tool.
+#
+#   gtools/build gtools/encode.golfj build/gencode
+#
+# This is tools/golfc plus the tool libraries.  A program under gtools/ is
+# compiled as:
+#
+#     lib/prelude.golfj  +  lib/t*.golfj  +  the program
+#
+# all code-page encoded and concatenated, then fed to the bootstrapped golf2.
+# The prelude comes first because the tool libraries are written on top of it
+# (A, X/Y, N, the raw atoms); the libraries come before the program because GOLF
+# requires definition before use.
+#
+# Library order among lib/t*.golfj is glob order, which is also dependency
+# order by construction: ttext (pure byte math) <- tio (I/O, uses ttext) is
+# wrong alphabetically, so any cross-library dependency must go through a word
+# defined in the EARLIER file.  Keep the libraries independent of each other;
+# if that ever stops being possible, list them explicitly here instead.
+set -eu
+HERE=$(cd "$(dirname "$0")/.." && pwd)          # expanded/
+BUILD="$HERE/build"; mkdir -p "$BUILD"
+
+[ $# -eq 2 ] || { echo "usage: gtools/build PROG.golfj OUT" >&2; exit 2; }
+prog=$1; out=$2
+
+# Reuse golfc's ladder: -n compiles a bare program, so ask it to build nothing
+# and just make sure build/golf2 is fresh.  (golfc rebuilds the ladder itself
+# when any compiler source is newer than build/golf2.)
+"$HERE/tools/golfc" -n /dev/null "$BUILD/.gtools-ladder" >/dev/null 2>&1 || true
+GOLF2="$BUILD/golf2"
+[ -x "$GOLF2" ] || { echo "gtools/build: $GOLF2 missing (ladder failed)" >&2; exit 1; }
+
+src=$(mktemp); trap 'rm -f "$src"' EXIT
+cp="python3 $HERE/tools/codepage.py encode"
+$cp < "$HERE/lib/prelude.golfj" >> "$src"
+for lib in "$HERE"/lib/t*.golfj; do
+  [ -e "$lib" ] || continue                     # no tool libraries yet: fine
+  $cp < "$lib" >> "$src"
+done
+$cp < "$prog" >> "$src"
+
+"$GOLF2" < "$src" > "$out"
+chmod +x "$out"
