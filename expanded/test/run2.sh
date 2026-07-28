@@ -624,6 +624,113 @@ W7BOLD=$(opbytes examples/legacy_capstone.golfj)
   && ok "capstone is $W7BNEW op bytes, down from $W7BOLD" || no "capstone did not shrink ($W7BNEW vs $W7BOLD)"
 # W7B -------------------------------------------------------------------------
 
+# @@ W8-VARS @@
+# W8A ------------------------------------------------------------- M3W -------
+echo "64-bit variable bank (M3W): →x / ←x round-trip a full 64-bit value"
+# The bank at 0x4E0000 was 4 bytes per name and ←x was a `mov eax`, so a wide
+# value came back truncated and zero-extended: 4294967296→x←x printed 0 and
+# 0 5-→x←x printed 4294967291.  Stride 4 -> 8 plus a REX.W on both templates,
+# in self/golf2.golfj AND mkblob2's v1-GOLF seed cases AND boot/golfref.py.
+[ "$(printf '%s' '4294967296→x←xṄ␤' | gc)" = "4294967296" ] \
+  && ok "2^32 survives →x/←x (was 0)"            || no "wide value through the bank"
+[ "$(printf '%s' '0 5-→x←xṄ␤' | gc)" = "-5" ] \
+  && ok "-5 survives →x/←x (was 4294967291)"     || no "negative through the bank"
+[ "$(printf '%s' '9007199254740991→x←x1+Ṅ␤' | gc)" = "9007199254740992" ] \
+  && ok "2^53-1 survives the bank and still increments" || no "2^53 through the bank"
+# A list value is an address, and after M3W a tag bit anywhere above bit 31
+# would survive it too — which is why NEXT_STEPS puts this before any tag work.
+[ "$(printf '%s' '5⍳→a←aTṄ␤←a⍕␤' | gc)" = "$(printf '0\n0 1 2 3 4 ')" ] \
+  && ok "a list address round-trips and still classifies as a list" || no "list through the bank"
+# Two names must not overlap at the wider stride: 8*'a' and 8*'b' are 8 apart,
+# so a full-width store to one may not touch the other.
+[ "$(printf '%s' '4294967295→a4294967294→b←aṄ␤←bṄ␤' | gc)" = "$(printf '4294967295\n4294967294')" ] \
+  && ok "adjacent names keep their own 8-byte cells"   || no "bank stride overlap"
+[ "$(printf '%s' '7→a3→b←a←b+←a←b-*Ṅ10)' | gc)" = "40" ] \
+  && ok "regression: (a+b)*(a-b) is still 40"    || no "M3 regression"
+# The ENCODING, not just the value: →x is `pop rax; mov [bank+8*'x'], rax` and
+# ←x is `mov rax,[bank+8*'x']; push rax`.  'x' is 120, so the cell is
+# 0x4E0000+960 = 0x4E03C0 -> c0034e00 little-endian.
+w8enc(){ printf '%s' "$1" | python3 tools/codepage.py encode | "$TMP/golf2" 2>/dev/null \
+           | od -An -tx1 -v | tr -d ' \n'; }
+case "$(w8enc '5→x←x)')" in
+  *5848890425c0034e00*) ok "→x is pop rax; mov [0x4E03C0], rax (REX.W, stride 8)";;
+  *)                    no "→x encoding";; esac
+case "$(w8enc '5→x←x)')" in
+  *488b0425c0034e0050*) ok "←x is mov rax,[0x4E03C0]; push rax (REX.W, stride 8)";;
+  *)                    no "←x encoding";; esac
+# Differential: the oracle transcribes the same two cases, so it must agree byte
+# for byte and not merely behave the same.
+printf '%s' '5→x←x 4294967296→y←y_)' | python3 tools/codepage.py encode > "$TMP/w8a.src"
+"$TMP/golf2" < "$TMP/w8a.src" > "$TMP/w8a.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w8a.src" > "$TMP/w8a.ref" 2>/dev/null
+cmp -s "$TMP/w8a.g2" "$TMP/w8a.ref" \
+  && ok "oracle: identical bytes for a program using → and ←" || no "oracle var-bank bytes"
+# W8A --------------------------------------------------------------------------
+# W8B ---------------------------------------------------------- M-CHAIN2 ------
+echo "Chain definitions (M-CHAIN2): ⊚name f g h; is the train, without the ′s"
+# ⊚ (0xB0) is a compiler prefix, not a template: it opens a definition whose body
+# is a list of LINKS.  The link count decides the shape — 1 is a call, 2 are two
+# calls, 3 are ′f ′g ′h ⑂, more are the fork then plain calls — so nothing is
+# needed at run time that ⑂ did not already provide.
+[ "$(printf '%s' '\chainm∑≢÷;5⍳mṄ␤' | gc)" = "2" ] \
+  && ok "3 links: mean of ⍳5 = ÷(∑, ≢)"          || no "chain fork"
+[ "$(printf '%s' '\chains∑;5⍳sṄ␤' | gc)" = "10" ] \
+  && ok "1 link: a plain call"                   || no "chain 1 link"
+[ "$(printf '%s' '\chaind∑\dbl;5⍳dṄ␤' | gc)" = "20" ] \
+  && ok "2 links: ⊗(∑ x) — atop"                 || no "chain 2 links"
+[ "$(printf '%s' '\chainq∑≢÷\dbl;5⍳qṄ␤' | gc)" = "4" ] \
+  && ok "4 links: the fork, then the rest in turn" || no "chain 4 links"
+[ "$(printf '%s' '\chainz;7zṄ␤' | gc)" = "7" ] \
+  && ok "0 links: the identity"                  || no "chain 0 links"
+# THE claim of the milestone: the sugar is not a new mechanism, it is the same
+# bytes.  Compile both spellings of mean and require identical binaries.
+printf '%s' '\chainm∑≢÷;5⍳mṄ␤'   | python3 tools/codepage.py encode > "$TMP/w8b.sugar"
+printf '%s' ':m\ref∑\ref≢\ref\sdv\fork;5⍳mṄ␤' | python3 tools/codepage.py encode > "$TMP/w8b.expl"
+cat "$TMP/pre.gb" "$TMP/w8b.sugar" > "$TMP/w8b.s.src"; cat "$TMP/pre.gb" "$TMP/w8b.expl" > "$TMP/w8b.e.src"
+"$TMP/golf2" < "$TMP/w8b.s.src" > "$TMP/w8b.s.bin" 2>/dev/null
+"$TMP/golf2" < "$TMP/w8b.e.src" > "$TMP/w8b.e.bin" 2>/dev/null
+cmp -s "$TMP/w8b.s.bin" "$TMP/w8b.e.bin" \
+  && ok "⊚m∑≢÷; compiles to exactly the bytes of :m′∑′≢′÷⑂;" || no "chain sugar bytes"
+# A chain link may be an ATOM as well as a word — ÷ above is one, and ′ auto-
+# wraps it in a thunk.  Here every link is an atom: ⊗ ⊕ then ∣ (mod).
+[ "$(printf '%s' '\chainr\dbl\inc\smd;7rṄ␤' | gc)" = "6" ] \
+  && ok "links may be atoms (⊗ ⊕ ∣ over 7 = 14 mod 8)" || no "chain atom links"
+# A chain is an ordinary word: it can be ′-referenced, mapped, and called from
+# another chain.  Means of [0,1] and [0,1,2,3] are 0 and 1.
+[ "$(printf '%s' '\chainm∑≢÷;3⍶2&\store2⍳&8\radd\store4⍳&16\radd\store\refm€⍕␤' | gc)" = "0 1 " ] \
+  && ok "a chain word maps like any other"       || no "chain in map"
+# The explicit spelling is not deprecated and still works, and ′ — whose body
+# became the shared word X — is unchanged for words and for atoms alike.
+[ "$(printf '%s' '5⍳\ref∑\ref≢\ref\sdv\forkṄ␤' | gc)" = "2" ] \
+  && ok "regression: the explicit ′∑′≢′÷⑂ fork"  || no "explicit fork"
+[ "$(printf '%s' ':d\dbl;3\refd\exec48+)' | atom)" = "6" ] \
+  && ok "regression: ′word through the shared X" || no "ref word via X"
+[ "$(printf '%s' '3 4\ref+\exec48+)' | atom)" = "7" ] \
+  && ok "regression: ′atom auto-wrapping through the shared X" || no "ref atom via X"
+# Only tokens no earlier case claims become links, so a chain body is not a
+# general body: the structural bytes keep their ordinary meanings and do not
+# count as links.  Pinned on the BYTES, since the resulting word is nonsense to
+# run — a literal is emitted where it stands, while links are deferred — but it
+# must be exactly the nonsense the explicit spelling gives, or a future case
+# reordering has changed the language silently.
+printf '%s' '\chainc∑7≢÷;'   | python3 tools/codepage.py encode > "$TMP/w8b.dig1"
+printf '%s' ':c7\ref∑\ref≢\ref\sdv\fork;' | python3 tools/codepage.py encode > "$TMP/w8b.dig2"
+cat "$TMP/pre.gb" "$TMP/w8b.dig1" > "$TMP/w8b.d1.src"; cat "$TMP/pre.gb" "$TMP/w8b.dig2" > "$TMP/w8b.d2.src"
+"$TMP/golf2" < "$TMP/w8b.d1.src" > "$TMP/w8b.d1.bin" 2>/dev/null
+"$TMP/golf2" < "$TMP/w8b.d2.src" > "$TMP/w8b.d2.bin" 2>/dev/null
+cmp -s "$TMP/w8b.d1.bin" "$TMP/w8b.d2.bin" \
+  && ok "a digit in a chain body is a literal in place, and is not a link" || no "chain digit"
+tools/golfc -j examples/chaindef.golfj "$TMP/chd" 2>/dev/null
+[ "$("$TMP/chd" 2>/dev/null)" = "$(printf '2\n10\n20\n4')" ] \
+  && ok "golfc examples/chaindef.golfj" || no "chaindef.golfj"
+[ "$(oracle chaindef)" = "$(printf '2\n10\n20\n4')" ] \
+  && ok "oracle: chaindef.golfj behaves identically" || no "oracle chaindef.golfj"
+"$TMP/golf2" < <(cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < examples/chaindef.golfj)) > "$TMP/chd.g2" 2>/dev/null
+python3 boot/golfref.py < <(cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < examples/chaindef.golfj)) > "$TMP/chd.ref" 2>/dev/null
+cmp -s "$TMP/chd.g2" "$TMP/chd.ref" \
+  && ok "oracle: identical bytes for a program of chain definitions" || no "oracle chain bytes"
+# W8B --------------------------------------------------------------------------
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

@@ -62,7 +62,8 @@ import sys
 sys.path.insert(0, "tools")
 import codepage, mkblob2
 data = codepage.encode(open("self/golf2.golfj", encoding="utf-8").read())
-known = {mkblob2.REF_BYTE, mkblob2.STR_BYTE, mkblob2.SET_BYTE, mkblob2.GET_BYTE}
+known = {mkblob2.REF_BYTE, mkblob2.STR_BYTE, mkblob2.SET_BYTE, mkblob2.GET_BYTE,
+         mkblob2.CHAIN_BYTE}
 known |= {b for b, _mn, _gl, _tpl, _d in mkblob2.ATOMS}
 used = sorted({b for b in data if b >= 0x80})
 sys.stderr.write("       high bytes used: "
@@ -103,7 +104,7 @@ both fizz "$MIN/examples/fizzbuzz.golf"
 
 echo "It compiles the v2 language (prelude + examples, via the code page)"
 python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"
-for ex in lists strings vars vectorize capstone; do
+for ex in lists strings vars vectorize capstone chaindef; do
   cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < "examples/$ex.golfj") > "$TMP/src.$ex"
   both "$ex" "$TMP/src.$ex"
   o=$("$TMP/old.$ex" 2>/dev/null); n=$("$TMP/new.$ex" 2>/dev/null)
@@ -112,7 +113,7 @@ for ex in lists strings vars vectorize capstone; do
 done
 
 echo "Byte-for-byte agreement: the two source forms are the same compiler"
-for t in hello fizz lists strings vars vectorize capstone; do
+for t in hello fizz lists strings vars vectorize capstone chaindef; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -125,6 +126,7 @@ gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"
 [ "$(printf '%s' ':d\dbl;5R\refdMQE'| gnew)" = "0 2 4 6 8 " ] && ok "′ ref + quotations"    || no "ref"
 [ "$(printf '%s' '“desserts“UVJ'    | gnew)" = "stressed" ]   && ok "“ string literals"     || no "str"
 [ "$(printf '%s' '7→a3→b←a←b+←a←b-*N10)' | gnew)" = "40" ]    && ok "→ / ← named variables" || no "vars"
+[ "$(printf '%s' '⊚m∑≢÷;5⍳mṄ'      | gnew)" = "2" ]           && ok "⊚ chain definitions"  || no "chain"
 [ "$(printf '%s' '`5 HELLO?)'       | gnew)" = "H" ]          && ok "\` raw blob escape"    || no "blob"
 [ "$(printf '%s' "'1)"              | gnew)" = "1" ]          && ok "' char literals"       || no "char lit"
 

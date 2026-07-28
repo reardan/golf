@@ -71,6 +71,8 @@ COMPILER = [
     (mkblob2.STR_BYTE, "str", "“", "string literal delimiter: “text“ -> byte block"),
     (mkblob2.SET_BYTE, "set", "→", "prefix: →x pops TOS into variable x"),
     (mkblob2.GET_BYTE, "get", "←", "prefix: ←x pushes variable x"),
+    (mkblob2.CHAIN_BYTE, "chain", "⊚",
+     "prefix: ⊚name f g h; defines a tacit chain (a train of links)"),
 ]
 
 def lib_byte(key) -> int:

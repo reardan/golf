@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **21** are now spent, leaving **90** free. It is partitioned as follows
+space; **22** are now spent, leaving **89** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -106,6 +106,7 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA4` | `\fetch` | `⊙` | 64-bit fetch | shipped |
 | `0xA5` | `\store` | `⊛` | 64-bit store | shipped |
 | `0xA6` | `\brk` | `⌸` | `brk` syscall — the list heap's growth primitive | shipped |
+| `0xB0` | `\chain` | `⊚` | chain definition prefix: `⊚name f g h;` (compiler logic, no template) | shipped |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
 | `0xC2` | `\vmul` | `⨰` | polymorphic mul | shipped |
@@ -167,10 +168,12 @@ both forms are given here and the decimal is the one you type.
 | `0x410000` | 4259840 | compiler data base `D` (`m`) | shipped |
 | `m+4` … `m+16` | | v1 compiler scratch (`P`, `S`, `Q`) | shipped |
 | `m+20`, `m+24`, `m+28` | | golf2 compiler scratch: `′` jmp-site / thunk addr, `“` len-site / count | shipped |
-| `m+32` | | **first free compiler scratch** | free |
+| `m+32`, `m+36` | | M-CHAIN2 chain state in the **seed** only: the in-a-chain flag, the link count | shipped |
+| `m+40`, `m+44`, `m+48` | | M-CHAIN2 in the **seed** only: the first three buffered link bytes | shipped |
+| `m+52` | | **first free compiler scratch** | free |
 | `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
-| `0x4E0000` | 5111808 | user variable bank (`→x`/`←x`), 4 bytes per name — **user space** | shipped |
+| `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
@@ -200,9 +203,14 @@ Notes:
   `0x4F0034` in particular is baked into every M-VEC template as a 32-bit
   compare operand. That is a real 4 GB ceiling on the break (DESIGN.md, known
   limits) — widening the cells means widening five templates with them.
-  The **user variable bank at `0x4E0000` is 4 bytes per name for the same
-  reason**, which is the one place a 64-bit value still gets truncated.
-  A string is likewise still `[len:4][bytes]`, so `O`/`U` read its length with
+  The **user variable bank at `0x4E0000` was 4 bytes per name for the same
+  reason and is now 8** (M3W): unlike the four fixed cells, no template hard-codes
+  a bank address — the compiler computes `0x4E0000 + 8*name` when it emits the
+  store — so the stride could be changed by changing the two emitters, in
+  `self/golf2.golfj`, `mkblob2.py`'s seed cases and `boot/golfref.py` alike.
+  Widening it *in place* was as impossible as it was for the scratch bank: at a
+  4-byte stride, name `x`'s high half is name `x+1`'s cell.
+  A string is still `[len:4][bytes]`, so `O`/`U` read its length with
   the 32-bit `@`; only `U`'s *output* is an 8-byte-cell list.
 - **Scratch is callee-saved, not caller-saved.** Every scratch-using looping
   word in the prelude opens with `X` and closes with `Y` (lifting its result

@@ -111,10 +111,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **31** |
 | the template blob itself | **697** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1475** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **3932** bytes |
-| assertions in the run2 suite | **189** |
-| assertions in the selfcheck suite | **28** |
+| the generated bootstrap seed (`self/seed.golf`) | **1663** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **4506** bytes |
+| assertions in the run2 suite | **213** |
+| assertions in the selfcheck suite | **31** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
 | the v2 p_memsz (`mkblob2.MEMSZ`) | **0x200000** |
@@ -185,6 +185,24 @@ the golf2 fixpoint included. In order:
   `p_memsz` shrank from `0x800000` to `0x200000`, the return stack moved with it
   to `0x600000`, and the heap base/span moved into the runtime cells at
   `0x4F0034`/`0x4F0038` because ASLR means they cannot be spelled out anywhere.
+- **M-CHAIN2 — chain definitions.** `⊚name f g h;` (byte `0xB0`) defines a word
+  as a *train of links* and lets the compiler supply every `′`: how many links
+  there are decides the shape — one is a call, two are two calls, three are
+  `′f ′g ′h ⑂`, more are the fork then the rest in turn — so `⊚m∑≢÷;` compiles to
+  byte-for-byte what `:m′∑′≢′÷⑂;` compiles to. The count is the whole mechanism:
+  only the first three link bytes are buffered, so there is no driver word, no
+  new prelude state and no runtime list of quotations. The `′` case's body moved
+  into the shared word `X` ("push the address of the word or atom named by this
+  byte"), which the chain calls three times. First new compiler logic since
+  M-SELF, and the first written in `self/golf2.golfj` as the primary source.
+- **M3W — the variable bank goes 64-bit.** The last narrow place on the value
+  path: `→x`/`←x` went through a 4-byte-per-name bank and `←x` was a `mov eax`,
+  so `4294967296→x←x` was `0` and `0 5-→x←x` was `4294967291`. Stride 4 → 8 plus
+  a REX.W on both emitters — in `self/golf2.golfj`, `mkblob2.py`'s v1-GOLF seed
+  cases and `boot/golfref.py`, which `selfcheck.sh` gates for drift. 256 names ×
+  8 bytes = 2 KB, still inside the `0x4E0000`–`0x4F0000` hole, so no address was
+  reallocated. **Every value a GOLF program can hold is now 64 bits wide
+  everywhere it can sit.**
 - **The capstone shrank.** `examples/capstone.golfj` went from **54** op bytes to
   **46** by letting the bare polymorphic operators do the looping; the pre-M-VEC
   spellings are kept verbatim and output-checked as
@@ -219,13 +237,6 @@ the golf2 fixpoint included. In order:
 These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
-- **Named-variable cells are 32-bit.** The bank at `0x4E0000` is 4 bytes per
-  name and `←x` is a `mov eax`, so a wide value does not round-trip:
-  `4294967296→x←x` is `0`, and `0 5-→x←x` comes back as `4294967291` (the low
-  dword, zero-extended). Everything *else* on the value path is 64 bits — the
-  stack, the atoms, list cells, the prelude scratch bank — so this is the one
-  remaining narrow place, and widening it is a bank-relocation job exactly like
-  the one W4A already did for scratch.
 - **The heap-bounds cells are 32-bit too.** `0x4F0034`/`0x4F0038` are read by
   `T` and are baked into all five M-VEC templates as a 32-bit compare operand.
   The break is ASLR-shifted but far below 4 GB in practice; a program that grew
@@ -252,7 +263,9 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   covered — a `-1` compare flag, a word address, an `0x4D0000` thunk are all
   outside the window and are regression-tested — but nothing rules out a program
   whose arithmetic genuinely produces a heap-sized number. The fix is a real tag
-  bit on the value, which is item 5 of the forward queue.
+  bit on the value, which is item 3 of the forward queue — where the
+  originally specified scheme (bit 63) is now recorded as wrong, because every
+  negative integer has that bit set.
 
 ## Layout
 
