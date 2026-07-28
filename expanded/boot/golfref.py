@@ -20,9 +20,11 @@ This is a full oracle, not a shim:
     it.  This file exists to cross-check the self-hosted golf2 differentially:
     the two compilers agree on *behaviour*, not necessarily on byte layout.
 
-Only structural constants (ELF header, prologue/epilogue/startup, the v1 op
-templates) are imported from the frozen v1 compiler; the compile loop is local
-so v2 can diverge from it freely.
+Only structural constants (ELF header, prologue/epilogue, the v1 op templates)
+are imported from the frozen v1 compiler; the compile loop is local so v2 can
+diverge from it freely.  The startup stub is v2's own — `mkblob2.STARTUP2`, v1's
+with the entry-`rsp` stash in front — because that is what the blob carries and
+the two must emit the same program prologue.
 """
 import os, sys
 
@@ -30,7 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "minimal", "boot"))
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 import golf0     # frozen v1: ELF header, prologue/epilogue, v1 op templates
-import mkblob2   # v2: the atom table (byte -> machine-code template)
+import mkblob2   # v2: the atom table (byte -> template) and v2's STARTUP2
 
 BASE = golf0.BASE          # ELF load address; file offset f maps to VA BASE+f
 FILESZ = golf0.FILESZ      # fixed p_filesz (binary must stay under this)
@@ -57,7 +59,10 @@ VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 4*c
 # --------------------------------------------------------------------- compile
 def compile_bytes(src: bytes) -> bytes:
     out = bytearray(golf0.HEADER)
-    out += golf0.STARTUP
+    # W8/M-TOOL: v2's own startup — v1's `mov ebp, 0xC00000` with the entry-`rsp`
+    # stash in front (mkblob2.STARTUP2).  Imported, not re-spelled, so the oracle
+    # and the self-hosted compiler cannot drift into different prologues.
+    out += mkblob2.STARTUP2
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)
     i, n = 0, len(src)

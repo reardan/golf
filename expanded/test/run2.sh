@@ -103,8 +103,9 @@ echo "M4 atoms: ≺ slt ≻ sgt (signed compare), ≪ shl ≫ sar, ⊙ fetch ⊛
 [ "$(printf '%s' '0 8-1\sar 6+48+)'  | atom)" = "2" ] && ok "sar (-8>>1=-4)" || no "sar negative"
 # -1 >>a 63 is -1; an unsigned shr would give 1 and print 2 instead of 0.
 [ "$(printf '%s' '0 1-63\sar1+48+)'  | atom)" = "0" ] && ok "sar keeps the sign bit" || no "sar sign"
-# 64-bit cell round-trip through free scratch 0x4F0040 (REGISTRY.md §3).
-[ "$(printf '%s' '7 5177408\store 5177408\fetch48+)' | atom)" = "7" ] \
+# 64-bit cell round-trip through free scratch 0x4F0048 (REGISTRY.md §3).  Not
+# 0x4F0040 any more: W8 gave that cell to the entry-`rsp` stash.
+[ "$(printf '%s' '7 5177416\store 5177416\fetch48+)' | atom)" = "7" ] \
   && ok "store + fetch (64-bit cell round-trip)" || no "store/fetch"
 
 echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
@@ -367,6 +368,51 @@ printf '%s' '42 0 0 60\sys' | atom >/dev/null 2>&1
   && ok "oracle: ⎈ auto-inherited from ATOMS, byte-identical behaviour" || no "oracle sys"
 
 # @@ W8-ARGV @@
+echo "argv (M-TOOL): STARTUP stashes the entry rsp at 0x4F0040, so argc/argv are reachable"
+# The kernel enters the process with rsp pointing at argc (argv[i] at rsp+8+8*i),
+# but GOLF uses rsp AS its data stack, so the very first push destroys it.
+# STARTUP — tools/mkblob2.STARTUP2, the only code that runs before any push —
+# now stashes it at 5177408 (0x4F0040, REGISTRY.md §3).  That cell holds a STACK
+# address, far above 2^32 on Linux x86-64, so it and every argv[i] pointer it
+# leads to must be read with the 64-bit ⊙ \fetch; the 32-bit @ would truncate.
+# No prelude needed: the stash is in the program's own prologue.
+[ "$(printf '%s' '5177408\fetch 2147483647\gt1+48+)' | atom)" = "0" ] \
+  && ok "the entry rsp is above 2^31 (so @ would truncate it)" || no "entry rsp width"
+# gc compiles to "$TMP/p" and runs it with no extra arguments, so argc is 1 and
+# argv[0] is that absolute temp path — its first byte is '/' (47).
+[ "$(printf '%s' '5177408\fetch\fetch N E' | gc)" = "1" ] \
+  && ok "argc is 1 (5177408 ⊙ ⊙)" || no "argc"
+[ "$(printf '%s' '5177408\fetch 8\radd\fetch?N E' | gc)" = "47" ] \
+  && ok "argv[0] starts with '/' (5177408 ⊙ 8 ﹢ ⊙)" || no "argv[0] first byte"
+# Walk argv[0] to its NUL.  The temp path's length is not fixed, but the harness
+# always names the binary "p", so the byte before the NUL is.  The pointer stays
+# on the data stack throughout: →x/←x is a 4-byte bank and would truncate it.
+[ "$(printf '%s' '5177408\fetch 8\radd\fetch 0→n{"←n\radd?←n\inc→n 0\eq}←n\radd 2\rsub?)E' | gc)" = "p" ] \
+  && ok "walking argv[0] to its NUL lands on the last byte" || no "argv[0] walk"
+# Real arguments.  gc's exact pipeline, except that the compiled program is run
+# with the helper's own arguments — gc cannot forward them, since every other
+# case in this file wants a bare invocation.
+garg(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+          && chmod +x "$TMP/p" && "$TMP/p" "$@"; }
+[ "$(printf '%s' '5177408\fetch\fetch N E' | garg one two)" = "3" ] \
+  && ok "argc counts the real arguments" || no "argc with arguments"
+[ "$(printf '%s' '5177408\fetch 16\radd\fetch?)E' | garg one two)" = "o" ] \
+  && ok "argv[1] at entry_rsp+16" || no "argv[1]"
+[ "$(printf '%s' '5177408\fetch 24\radd\fetch?)E' | garg one two)" = "t" ] \
+  && ok "argv[2] at entry_rsp+24" || no "argv[2]"
+# A whole argument, the way a tool will read a file name: measure it, then emit
+# it byte by byte.  n is a count and fits the 4-byte variable bank; the pointer
+# does not, so it lives on the stack and is duplicated with " each iteration.
+[ "$(printf '%s' '5177408\fetch 16\radd\fetch 0→n{"←n\radd?←n\inc→n 0\eq}←n 1\rsub→n 0→i{"←i\radd?)←i\inc→i ←i←n\eq}_E' | garg one two)" = "one" ] \
+  && ok "argv[1] read out in full (measure, then emit)" || no "argv[1] string"
+# The System V entry contract in one line: argv[argc] is NULL (envp follows it).
+[ "$(printf '%s' '5177408\fetch"\fetch\inc 8\rmul\radd\fetch N E' | garg one two)" = "0" ] \
+  && ok "argv[argc] is NULL (the argv array is terminated)" || no "argv NULL terminator"
+# Oracle parity.  boot/golfref.py must emit the SAME startup stub: if it still
+# emitted v1's, the cell would be BSS-zero and 5177408 ⊙ ⊙ would fault on a null
+# pointer.  gref runs its binary as "$TMP/ovec" — again argc 1, argv[0] from '/'.
+[ "$(printf '%s' '5177408\fetch\fetch N E 5177408\fetch 8\radd\fetch?N E' | gref)" = "$(printf '1\n47')" ] \
+  && ok "oracle: golfref.py stashes the entry rsp too" || no "oracle argv"
 
 # @@ W8-TOOLLIB @@
 
