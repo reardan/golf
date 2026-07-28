@@ -322,6 +322,57 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
   && ok "regression: nested HOF at 64-byte spill frames" || no "widened nested HOF"
 
 # @@ W6-LIT @@
+# W6A ------------------------------------------------------------------------
+echo "Big literals (M4): a constant wider than 32 bits"
+# `push imm32` SIGN-EXTENDS, so 0..2^31-1 was every constant a GOLF program could
+# name: 4294967296 arrived as -4294967296 and 2147483648 as -2147483648.  The
+# compiler's `W` word (self/golf2.golfj) now tests `v >> 31` and emits
+# `mov rax, <imm64>; push rax` — 11 bytes instead of 5 — when the value needs it.
+[ "$(printf '%s' '4294967296 N E'      | gc)" = "4294967296" ] \
+  && ok "2^32 (the first value push imm32 cannot carry)" || no "big literal 2^32"
+[ "$(printf '%s' '2147483648 N E'      | gc)" = "2147483648" ] \
+  && ok "2^31 (fits 32 bits, but push imm32 would negate it)" || no "big literal 2^31"
+[ "$(printf '%s' '2147483647 N E'      | gc)" = "2147483647" ] \
+  && ok "2^31-1 (the largest literal that still fits imm32)" || no "boundary 2^31-1"
+[ "$(printf '%s' '4294967295 1+N E'    | gc)" = "4294967296" ] \
+  && ok "carrying across the 32-bit boundary at run time" || no "carry over 2^32"
+[ "$(printf '%s' '9007199254740991 N E'| gc)" = "9007199254740991" ] \
+  && ok "2^53-1 (well past anything 32 bits can hold)" || no "big literal 2^53"
+[ "$(printf '%s' ':b4294967296;b N E'  | gc)" = "4294967296" ] \
+  && ok "a big literal inside a user word" || no "big literal in a word"
+[ "$(printf '%s' '4294967296 4294967296+N E' | gc)" = "8589934592" ] \
+  && ok "two big literals through the polymorphic + (both re-test as ints)" || no "big literal arithmetic"
+# The prelude is not involved: the emitter is the compiler's, so it works bare.
+[ "$(printf '%s' '4294967296 32\shr48+)' | atom)" = "1" ] \
+  && ok "no prelude: the high dword of 2^32 is 1" || no "bare big literal"
+# The ENCODING itself, not just the value — a literal that fitted before must
+# still compile to exactly the five bytes it always did, or every compiled
+# program on the ladder would shift.  `)` follows each literal (6a 01 58 ...).
+w6alit(){ printf '%s' "$1" | "$TMP/golf2" 2>/dev/null | od -An -tx1 -v | tr -d ' \n'; }
+case "$(w6alit '5)')" in
+  *68050000006a01*) ok "5 is still push imm32 (68 05 00 00 00)";;
+  *)                no "small literal encoding changed";; esac
+case "$(w6alit '2147483647)')" in
+  *68ffffff7f6a01*) ok "2^31-1 is still push imm32 (68 ff ff ff 7f)";;
+  *)                no "2^31-1 encoding";; esac
+case "$(w6alit '2147483648)')" in
+  *48b80000008000000000506a01*) ok "2^31 switches to mov rax,imm64; push rax";;
+  *)                            no "2^31 encoding";; esac
+case "$(w6alit '4294967296)')" in
+  *48b80000000001000000506a01*) ok "2^32 as mov rax,imm64; push rax";;
+  *)                            no "2^32 encoding";; esac
+# Differential: the encodings are the whole point here, so boot/golfref.py has to
+# agree byte for byte, not merely behave the same.
+printf '%s' '4294967296 5 2147483648 1099511627775 0)' > "$TMP/w6alit.src"
+"$TMP/golf2" < "$TMP/w6alit.src" > "$TMP/w6alit.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w6alit.src" > "$TMP/w6alit.ref" 2>/dev/null
+cmp -s "$TMP/w6alit.g2" "$TMP/w6alit.ref" \
+  && ok "oracle: identical bytes for a program of mixed-width literals" || no "oracle big-literal bytes"
+W6ABIG=$(printf '4294967296\n2147483648\n4294967296\n1099511627775\n86400\n43200000000000')
+tools/golfc -j examples/bignum.golfj "$TMP/bignum" 2>/dev/null
+[ "$("$TMP/bignum" 2>/dev/null)" = "$W6ABIG" ] && ok "golfc examples/bignum.golfj" || no "bignum.golfj"
+[ "$(oracle bignum)" = "$W6ABIG" ] \
+  && ok "oracle: bignum.golfj behaves identically" || no "oracle bignum.golfj"
 # @@ W6-MEM @@
 # W6B --------------------------------------------------------------- M-MEM ---
 echo "Growable heap (M-MEM): ⌸ brk, the list heap is the kernel's, not a BSS hole"
