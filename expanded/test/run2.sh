@@ -154,7 +154,11 @@ oracle(){ cat <(python3 tools/codepage.py encode < lib/prelude.golfj) \
   && ok "oracle: vars.golfj behaves identically"      || no "oracle vars.golfj"
 [ "$(oracle strings)" = "$(printf 'Hello, world!\ndesserts\nIfmmp')" ] \
   && ok "oracle: strings.golfj behaves identically"   || no "oracle strings.golfj"
-[ "$(oracle vectorize)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] \
+# vectorize.golfj says the same three programs twice — the explicit ⊞/closure
+# half, then the M-VEC bare-operator half — so its output is those three lines
+# repeated.  Any divergence between the halves shows up here as a diff.
+VECOUT=$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 \n0 2 4 6 8 \n14\n10 11 12 13 14 ')
+[ "$(oracle vectorize)" = "$VECOUT" ] \
   && ok "oracle: vectorize.golfj behaves identically" || no "oracle vectorize.golfj"
 
 echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closures"
@@ -162,7 +166,12 @@ echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closur
 [ "$(printf '%s' '4R4R\ref*ZSNE'      | gc)" = "14" ] && ok "dot product (′atom *)" || no "dot"
 [ "$(printf '%s' '10→k:f←k+;5R′fMQE' | gc)" = "10 11 12 13 14 " ] && ok "broadcast (closure)" || no "broadcast"
 tools/golfc -j examples/vectorize.golfj "$TMP/vec" 2>/dev/null
-[ "$("$TMP/vec" 2>/dev/null)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
+[ "$("$TMP/vec" 2>/dev/null)" = "$VECOUT" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
+# The point of the file: the two halves are the same programs, so the first three
+# printed lines and the last three must be equal.
+VECHALF=$("$TMP/vec" 2>/dev/null | head -3)
+[ -n "$VECHALF" ] && [ "$VECHALF" = "$("$TMP/vec" 2>/dev/null | tail -3)" ] \
+  && ok "vectorize.golfj: the bare operators agree with ⊞ and the closure" || no "vectorize halves agree"
 
 # Insertion anchors: each wave adds its tests directly under its own anchor, so
 # concurrent waves never touch the same line. Comment-only; keep them in order.
@@ -438,8 +447,45 @@ tools/golfc -j examples/bigheap.golfj "$TMP/big" 2>/dev/null
 # @@ W7-DOCS @@
 
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
+CAPOUT=$(printf '30\n14\n5\nKhoor')
 tools/golfc -j examples/capstone.golfj "$TMP/cap" 2>/dev/null
-[ "$("$TMP/cap" 2>/dev/null)" = "$(printf '30\n14\n5\nKhoor')" ] && ok "golfc examples/capstone.golfj" || no "capstone.golfj"
+[ "$("$TMP/cap" 2>/dev/null)" = "$CAPOUT" ] && ok "golfc examples/capstone.golfj" || no "capstone.golfj"
+[ "$(oracle capstone)" = "$CAPOUT" ] \
+  && ok "oracle: capstone.golfj behaves identically" || no "oracle capstone.golfj"
+
+# W7B ------------------------------------------------ legacy spellings -------
+# W7B rewrote the capstone to let the bare polymorphic + and * do the looping.
+# The forms it dropped are not deprecated — they are how a list meets any
+# function that is NOT one of the five hooked operators — so the pre-M-VEC
+# capstone is kept verbatim as examples/legacy_capstone.golfj and pinned here.
+# The two files are the same program written two ways; the binding assertion is
+# that they print the same bytes, not merely that each prints something.
+echo "Legacy spellings (W7B): the explicit forms the capstone shrank away from"
+tools/golfc -j examples/legacy_capstone.golfj "$TMP/lcap" 2>/dev/null
+[ "$("$TMP/lcap" 2>/dev/null)" = "$CAPOUT" ] \
+  && ok "golfc examples/legacy_capstone.golfj" || no "legacy_capstone.golfj"
+[ "$("$TMP/lcap" 2>/dev/null)" = "$("$TMP/cap" 2>/dev/null)" ] \
+  && ok "the shrunken capstone prints exactly what the explicit spellings did" || no "capstone vs legacy output"
+[ "$(oracle legacy_capstone)" = "$CAPOUT" ] \
+  && ok "oracle: legacy_capstone.golfj behaves identically" || no "oracle legacy_capstone.golfj"
+# ⊞ zip-with a ′atom quotation, and broadcast hand-built from a variable, a
+# closure word and ′f€ — line 2 and line 4 of the old capstone, on their own.
+[ "$(printf '%s' '4R4R\ref*ZSNE'          | gc)" = "14" ] \
+  && ok "legacy: ⊞ zip-with ′* still dots two lists"  || no "legacy zip"
+[ "$(printf '%s' '3→k:f←k+;“Hello“U′fMJE' | gc)" = "Khoor" ] \
+  && ok "legacy: closure + ′f€ still Caesar-shifts a string" || no "legacy closure map"
+[ "$(printf '%s' '“Hello“U\ref\incMJE'    | gc)" = "Ifmmp" ] \
+  && ok "legacy: ′⊕€ still maps an atom over a string" || no "legacy atom map string"
+# And the shrink is real, measured on the code page rather than on the prose:
+# encode drops every #-comment, and neither of these two programs contains a
+# significant space (no space-separated literals, no space inside a “...“), so
+# deleting the remaining layout whitespace leaves exactly the op bytes.
+opbytes(){ python3 tools/codepage.py encode < "$1" | tr -d '[:space:]' | wc -c; }
+W7BNEW=$(opbytes examples/capstone.golfj)
+W7BOLD=$(opbytes examples/legacy_capstone.golfj)
+[ "$W7BNEW" -lt "$W7BOLD" ] \
+  && ok "capstone is $W7BNEW op bytes, down from $W7BOLD" || no "capstone did not shrink ($W7BNEW vs $W7BOLD)"
+# W7B -------------------------------------------------------------------------
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

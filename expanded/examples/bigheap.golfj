@@ -5,6 +5,6 @@
 # bounded by RAM.  Nothing here mentions an address: the prelude reads the base
 # from the kernel at startup and publishes it in the M-TAG bounds cells, which
 # is what keeps `T` and the vectorized operators honest as the heap moves.
-1000000⍳≢Ṅ␤                 # an 8 MB range — more than the whole old BSS
-:d⊗;1000000⍳′dM999999⊇Ṅ␤    # map over it: a second 8 MB list; its last element
-1000000⍳999999⊇Ṅ␤           # and a third, so the break has to move again
+1000000⍳≢Ṅ␤              # an 8 MB range — more than the whole old BSS
+1000000⍳2*999999⊇Ṅ␤      # bare * over 8 MB: a second list, then its last element
+1000000⍳999999⊇Ṅ␤        # and a third, so the break has to move again
