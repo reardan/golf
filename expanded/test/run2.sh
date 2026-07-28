@@ -415,6 +415,100 @@ garg(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "
   && ok "oracle: golfref.py stashes the entry rsp too" || no "oracle argv"
 
 # @@ W8-TOOLLIB @@
+echo "Tool text library (lib/ttext.golfj): byte ranges, compare/find, decimal, hex"
+# These words are NOT in the prelude, so the gc helper above cannot see them:
+# gtools/build prepends lib/t*.golfj only to programs under gtools/.  Hence gtt,
+# the same pipeline with lib/ttext.golfj spliced in between.  A "text buffer"
+# here is a raw (addr, len) PAIR on the data stack — what read(2) hands back —
+# so a “…“ literal is fed in as ←s 4﹢ (its bytes) plus ←s @ (its 4-byte length
+# prefix).  Flags are zero-is-true, like `T` and like `[` itself; not-found and
+# bad-digit are -1, which is why every check below prints with the signed Ṅ.
+python3 tools/codepage.py encode < lib/ttext.golfj > "$TMP/ttext.gb"
+gtt(){ cat "$TMP/pre.gb" "$TMP/ttext.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+         && chmod +x "$TMP/p" && "$TMP/p"; }
+# i is-digit, j is-ASCII-letter.  195 is a UTF-8 lead byte: Python's isalpha()
+# would call the character it starts a letter, j calls it not one (by design —
+# see the divergence note in lib/ttext.golfj's header).
+[ "$(printf '%s' '53 i N E 120 i N E 113 j N E 53 j N E 195 j N E' | gtt)" = "$(printf '0\n1\n0\n1\n1')" ] \
+  && ok "i is-digit / j is-ASCII-letter (zero-is-true; 0x80+ is not a letter)" || no "i/j classify"
+# k is the hex-digit value AND the is-hex-digit test: it is negative for a byte
+# that is not one, so `k 0≺` is the flag in the same polarity as i and j.
+[ "$(printf '%s' '102 k N E 65 k N E 103 k N E 102 k 0\slt N E 103 k 0\slt N E' | gtt)" = "$(printf '15\n10\n-1\n0\n-1')" ] \
+  && ok "k hex-digit value, -1 when it is not one (and is-hex-digit is k 0≺)" || no "k hexval"
+# l: a hex PAIR -> one byte.  This is every wave-3 tool's inner loop over
+# data/blob.hex and data/codepage.tsv, so both cases and both failures matter.
+[ "$(printf '%s' '“a7“→a ←a4\radd l N E “FF“→b ←b4\radd l N E “00“→c ←c4\radd l N E “z0“→d ←d4\radd l N E “0z“→e ←e4\radd l N E' | gtt)" \
+   = "$(printf '167\n255\n0\n-1\n-1')" ] \
+  && ok "l two hex digits -> a byte (either digit bad -> -1)" || no "l hex pair"
+# m: copy n bytes.  The guarded n == 0 case must copy nothing at all.
+[ "$(printf '%s' '“abcdef“→s “......“→d ←s4\radd ←d4\radd 3 m ←d O E ←s4\radd ←d4\radd 0 m ←d O E' | gtt)" \
+   = "$(printf 'abc...\nabc...')" ] \
+  && ok "m copy n bytes (and n == 0 copies none)" || no "m memcpy"
+# n: (value, bytes consumed).  "99" with len 2 is a number at the very END of a
+# buffer — no terminator to stop on, so only the length may stop it.  "0" is the
+# value a "while v != 0" parser loses, and len 0 / a non-digit are the two ways
+# a caller learns there was no number here at all.
+[ "$(printf '%s' '“123x“→s ←s4\radd 4 n →u N E ←u N E' | gtt)" = "$(printf '123\n3')" ] \
+  && ok "n parse decimal -> value + bytes consumed" || no "n decimal"
+[ "$(printf '%s' '“99“→s ←s4\radd 2 n →u N E ←u N E “0“→t ←t4\radd 1 n →u N E ←u N E' | gtt)" \
+   = "$(printf '99\n2\n0\n1')" ] \
+  && ok "n at the very end of a buffer, and n of \"0\"" || no "n end/zero"
+[ "$(printf '%s' '“x9“→s ←s4\radd 2 n →u N E ←u N E ←s4\radd 0 n →u N E ←u N E' | gtt)" \
+   = "$(printf '0\n0\n0\n0')" ] \
+  && ok "n on a non-digit and on an EMPTY range -> (0, 0)" || no "n empty"
+# o: unsigned decimal INTO a buffer.  The prelude's Ṅ can do neither of these —
+# it writes to fd 1, and it is signed, so it renders 2^64-1 as "-1".
+[ "$(printf '%s' '“......“→b 0 ←b4\radd o N E ←b O E “......“→c 90210 ←c4\radd o N E ←c O E' | gtt)" \
+   = "$(printf '1\n0.....\n5\n90210.')" ] \
+  && ok "o format decimal into a buffer -> bytes written (0 -> \"0\")" || no "o format"
+# The largest value these words support, both ways: 2^64-1 does not fit a GOLF
+# literal, so it can only get onto the stack through n — and only o can print it.
+[ "$(printf '%s' '“18446744073709551615“→s ←s4\radd ←s@ n →u “                    “→b ←b4\radd o →c ←b O E ←c N E ←u N E' | gtt)" \
+   = "$(printf '18446744073709551615\n20\n20')" ] \
+  && ok "n/o round-trip 18446744073709551615 (the largest value supported)" || no "n/o u64 max"
+# p reads both ways: "starts with" and, at equal lengths, "these are equal".  A
+# needle longer than the haystack is 1 WITHOUT reading past the end, which is
+# what makes it safe to sweep to a buffer's last byte; an empty needle is 0.
+[ "$(printf '%s' '“hello world“→s “hello“→t ““→e
+←s4\radd 11 ←t4\radd ←t@ p N E ←s4\radd 11 ←s4\radd 5 p N E ←s4\radd 5 ←t4\radd 5 p N E
+←s4\radd 3 ←t4\radd ←t@ p N E ←s4\radd 11 ←e4\radd ←e@ p N E ←s4\radd 0 ←e4\radd 0 p N E' | gtt)" \
+   = "$(printf '0\n0\n0\n1\n0\n0')" ] \
+  && ok "p starts-with / range-equal (short haystack 1, empty needle 0)" || no "p compare"
+[ "$(printf '%s' '“hello world“→s “world“→t “hellp“→v ←s4\radd 11 ←t4\radd 5 p N E ←s4\radd 5 ←v4\radd 5 p N E' | gtt)" \
+   = "$(printf '1\n1')" ] \
+  && ok "p says no (and stops at the first differing byte)" || no "p mismatch"
+# q: the byte finder.  0 is a legitimate answer, so absent must be -1, not 0.
+[ "$(printf '%s' '“hello world“→s ←s4\radd 11 108 q N E ←s4\radd 11 100 q N E ←s4\radd 11 122 q N E ←s4\radd 0 104 q N E' | gtt)" \
+   = "$(printf '2\n10\n-1\n-1')" ] \
+  && ok "q find a byte (absent -1, EMPTY range -1)" || no "q find byte"
+# r: the sequence finder, p in a sweep.  It must find a needle that is NOT at
+# offset 0 — the bug that a stop flag of the wrong polarity hides perfectly.
+[ "$(printf '%s' '“abcabd“→w “abd“→x “abc“→y ““→e
+←w4\radd 6 ←x4\radd 3 r N E ←w4\radd 6 ←y4\radd 3 r N E
+←w4\radd 6 “zz“→z ←z4\radd 2 r N E ←w4\radd 2 ←x4\radd 3 r N E ←w4\radd 6 ←e4\radd 0 r N E' | gtt)" \
+   = "$(printf '3\n0\n-1\n-1\n0')" ] \
+  && ok "r find a sequence (late hit, absent -1, over-long -1, empty 0)" || no "r find seq"
+# Re-entrancy.  These words hold their state in the prelude's s0..s7 under an
+# X/Y spill frame, so they may be called from inside a €map — and r calls p in
+# its inner loop, which is the same property one level down.
+[ "$(printf '%s' '“hello world“→s :z _ ←s4\radd 11 111 q ; 5R\refz M Q E :c _ ←s4\radd 11 “world“→t ←t4\radd 5 r ; 5R\refc M Q E 100R S N E' | gtt)" \
+   = "$(printf '4 4 4 4 4 \n6 6 6 6 6 \n4950')" ] \
+  && ok "ttext words nest inside €map (X/Y frame; prelude scratch survives)" || no "ttext re-entrancy"
+# The thing the library exists for: one real record of data/blob.hex, decoded
+# with these words alone.  "A7 07 58 5A 5E 5F 0F 05 50" is ⎈ \sys's own
+# template — key 0xA7, seven body bytes — so the count l reports must agree with
+# the length byte the record declares.
+[ "$(printf '%s' '“A7 07 58 5A 5E 5F 0F 05 50“→s ←s@ 1\radd 3/→z ←s4\radd l N E ←s4\radd 3\radd l N E ←z 2\rsub N E' | gtt)" \
+   = "$(printf '167\n7\n7')" ] \
+  && ok "a real data/blob.hex record: key 167, 7 declared, 7 pairs decoded" || no "blob.hex record"
+# The -1 marker is a full 64-bit -1 on the data stack — and stops being one the
+# moment it is parked in a →x/←x variable, because the bank is FOUR bytes per
+# name and ←x zero-extends.  A tool that writes `q →x ←x 0≺ [ … ]` never takes
+# its not-found branch.  Pinned here because it is a trap in the CALLER, so no
+# amount of care inside lib/ttext.golfj can prevent it.
+[ "$(printf '%s' '“abc“→s ←s4\radd 3 122 q N E ←s4\radd 3 122 q →x ←x N E' | gtt)" \
+   = "$(printf '%s\n%s' -1 4294967295)" ] \
+  && ok "not-found is -1 on the stack — and 4294967295 through a →x variable" || no "-1 through a variable"
 
 # @@ W8-TOOLS @@
 
