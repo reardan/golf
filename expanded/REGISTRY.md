@@ -105,7 +105,7 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA4` | `\fetch` | `⊙` | 64-bit fetch | shipped |
 | `0xA5` | `\store` | `⊛` | 64-bit store | shipped |
 | `0xA6` | `\brk` | `⌸` | `brk` syscall (wave 6) | reserved |
-| `0xA7` | `\sys` | `⎈` | raw syscall: `a1 a2 a3 num -> result` (wave 8, M-TOOL) | reserved |
+| `0xA7` | `\sys` | `⎈` | raw syscall: `a1 a2 a3 num -> result` (wave 8, M-TOOL) | shipped |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
 | `0xC2` | `\vmul` | `⨰` | polymorphic mul | shipped |

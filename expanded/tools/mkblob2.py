@@ -107,6 +107,21 @@ ATOMS = [
     (0xA3, "sar", "≫", [0x59, 0x48, 0xD3, 0x3C, 0x24],    "arithmetic shift right (by TOS)"),
     (0xA4, "fetch", "⊙", [0x58, 0x48, 0x8B, 0x00, 0x50],  "addr -> v, full 64-bit cell"),
     (0xA5, "store", "⊛", [0x58, 0x59, 0x48, 0x89, 0x08],  "v addr -> ; full 64-bit cell"),
+    # The language's first general syscall (M-TOOL): until now GOLF's whole I/O
+    # surface was `(` and `)`, one byte on fd 0 / fd 1, so a GOLF program could
+    # not open a file, read argv, or exit with a code.  `⎈` takes THREE arguments
+    # and a number — `a1 a2 a3 num ⎈ -> result` — popped rax, rdx, rsi, rdi so the
+    # source reads left to right in natural argument order, with `0` pushed for
+    # arguments a call does not use.  Three is exactly enough for everything the
+    # repo's own build scripts need: `open`(path,flags,mode) — number 2, NOT
+    # `openat`, which would want a 4th argument in r10 and therefore its own op —
+    # plus read/write(fd,buf,n), close, exit, brk and lseek.  The kernel's return
+    # value is pushed back unchanged, negative errno on failure.  `syscall`
+    # clobbers rcx and r11, which is harmless here: no GOLF value is ever live in
+    # a register across ops (the data stack IS rsp, every template starts and ends
+    # on it), and rbp — the return-stack pointer — is untouched by the kernel.
+    (0xA7, "sys", "⎈", [0x58, 0x5A, 0x5E, 0x5F, 0x0F, 0x05, 0x50],
+                                                          "a1 a2 a3 num -> result: raw syscall"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------

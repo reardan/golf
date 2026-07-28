@@ -326,6 +326,45 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
 # leave the blank lines around the others alone.
 
 # @@ W8-SYS @@
+echo "Raw syscalls (M-TOOL): ⎈ sys — a1 a2 a3 num ⎈ -> result"
+# Before this op GOLF's entire I/O surface was `(` and `)`: one byte from fd 0,
+# one byte to fd 1. ⎈ pops rax, rdx, rsi, rdi in that order, so a call reads
+# left-to-right in argument order and unused arguments are simply pushed as 0.
+# A “…“ literal pushes the address of its 4-byte length field, so its text
+# starts at addr+4 and its length is `@` of the address — hence →s / ←s here
+# rather than a hand-counted byte count.
+[ "$(printf '%s' '“hello from sys“→s 1←s4\radd←s@1\sys_' | atom)" = "hello from sys" ] \
+  && ok "⎈ write(1, buf, n) — the first syscall GOLF can spell" || no "sys write"
+# The kernel's return value is pushed back unchanged: write returns the count.
+[ "$(printf '%s' '“hello from sys“→s 1←s4\radd←s@1\sys N E' | gc)" = "hello from sys14" ] \
+  && ok "⎈ pushes the kernel's return value (write -> 14)" || no "sys write count"
+# ...and a NEGATIVE ERRNO on failure — the raw kernel convention, not libc's
+# -1-plus-errno. close() of a never-opened fd is EBADF on every kernel, whatever
+# RLIMIT_NOFILE happens to be, so -9 is stable.
+[ "$(printf '%s' '999999 0 0 3\sys N E' | gc)" = "-9" ] \
+  && ok "⎈ returns a negative errno (close of a bogus fd -> -EBADF)" || no "sys errno"
+# read(0, buf, 4). The load segment is RWX, so the bytes of a “    “ literal are
+# a perfectly legal scratch buffer. This one needs a stdin of its own: the
+# helpers above hand theirs to the compiler, so it is already at EOF by the time
+# the compiled program runs.
+printf '%s' '“    “→s 0←s4\radd 4 0\sys N E ←s O E' \
+  | python3 tools/codepage.py encode > "$TMP/sysrd.gb"
+cat "$TMP/pre.gb" "$TMP/sysrd.gb" | "$TMP/golf2" > "$TMP/sysrd" 2>/dev/null && chmod +x "$TMP/sysrd"
+[ "$(printf 'GOLF' | "$TMP/sysrd" 2>/dev/null)" = "$(printf '4\nGOLF')" ] \
+  && ok "⎈ read(0, buf, 4) straight into a string literal's bytes" || no "sys read"
+# exit(42): the one-argument shape, with 0 pushed for the two arguments the call
+# does not use. This is what lets a GOLF tool fail a build.
+printf '%s' '42 0 0 60\sys' | atom >/dev/null 2>&1
+[ "$?" = 42 ] && ok "⎈ exit(42) — unused arguments are just 0" || no "sys exit"
+# `syscall` clobbers rcx and r11 and nothing else GOLF depends on: no value is
+# ever live in a register across ops, and rbp — the return-stack pointer — is
+# untouched, so a word can syscall and still return to its caller.
+[ "$(printf '%s' ':w“in a word“→s 1←s4\radd←s@1\sys_;w E 7 8+N E' | gc)" = "$(printf 'in a word\n15')" ] \
+  && ok "⎈ inside a word: the return stack (rbp) survives the syscall" || no "sys in word"
+# ⎈ is a pure template, so boot/golfref.py needed no edit — it builds its
+# TEMPLATES from mkblob2.ATOMS. This is what proves the inheritance is real.
+[ "$(printf '%s' '“hello from sys“→s 1←s4\radd←s@1\sys N E' | gref)" = "hello from sys14" ] \
+  && ok "oracle: ⎈ auto-inherited from ATOMS, byte-identical behaviour" || no "oracle sys"
 
 # @@ W8-ARGV @@
 
