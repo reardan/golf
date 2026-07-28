@@ -8,22 +8,29 @@ self-hosting bootstrap**.
 
 ## Vision: hybrid
 
-Two useful languages hide inside GOLF, and we build them in order:
+Two useful languages hide inside GOLF:
 
-1. **A usable minimal language first** (Forth/C-flavored): multi-character names,
+1. **A usable minimal language** (Forth/C-flavored): multi-character names,
    locals & parameters, signed 64-bit values, a small standard library. The core
    you can write programs — and the rest of the compiler — in.
 2. **A terse golf surface** (Jelly-flavored), via a **code page**: operators are
    single bytes from the full 0..255 space, each shown as a glyph. The minimal
    ASCII language stays valid underneath (bytes 0..127); the golf atoms live at
-   0x80+. This is now the active direction — see "Code page" below.
+   0x80+. See "Code page" below.
+
+The plan was (1) then (2); what actually happened was (2) then most of (1). The
+code page removed the pressure that multi-character names were supposed to
+relieve, so the golf surface, the library and 64-bit values came first, and the
+two pieces of (1) still outstanding — real names and per-call locals — are items
+6 and 4 of [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 Bytes 128..255 were entirely unused and the compiler's `e` word already
 dispatches *any* byte it finds in the template blob, so the code page costs
 almost nothing on the compiler side. It is a better answer to "GOLF ran out of
 single-byte op slots" than multi-character identifiers, and it leans into the
-golf heritage. Multi-char identifiers (M2, below) are now *optional* — useful for
-readable user-defined names, but no longer required to grow the built-in op set.
+golf heritage. Multi-char identifiers (M2, now in [`NEXT_STEPS.md`](NEXT_STEPS.md))
+are *optional* — useful for readable user-defined names, but no longer required
+to grow the built-in op set.
 
 ## Code page (Jelly-style)
 
@@ -95,118 +102,94 @@ cross-check the self-hosted `golf2` while a milestone is in flux.
 
 Run everything: `bash test/run2.sh`.
 
-## Why "more ops" was the natural first step — and what it forces
+## Where things stand
 
-Milestone 1 adds five operators (`$` AND, `|` OR, `=` XOR, `~` NOT, `>` SHR). In
-GOLF a "dumb" op is compiled by copying a fixed machine-code template, and the
-compiler's `e` word already dispatches *any* op it finds in the template blob —
-so a new dumb op costs **only its template, zero compiler-logic change**. That is
-why this was the cheapest possible first feature and why it exercises the whole
-ladder without touching golf2's code.
+Every number in this table is asserted by the `W7A` block of `test/run2.sh`
+against the thing it describes, so none of it can go stale quietly.
 
-It also hits a wall on purpose: those five chars were the **last** free printable
-ASCII single-byte slots. GOLF has now spent its entire *printable* one-glyph
-namespace — which is what pushed us to the **code page**: use the whole 0..255
-byte space for single-byte ops (bytes 0x80+ for the new atoms) and render them
-through glyphs. That keeps GOLF terse and Jelly-like instead of forcing
-multi-character identifiers.
+| Measured | Now |
+|----------|-----|
+| operator atoms in `mkblob2.ATOMS` | **31** |
+| the template blob itself | **697** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **1475** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **3932** bytes |
+| assertions in the run2 suite | **189** |
+| assertions in the selfcheck suite | **28** |
+| the capstone, in op bytes | **46** |
+| the legacy capstone, in op bytes | **54** |
+| the v2 p_memsz (`mkblob2.MEMSZ`) | **0x200000** |
+| the return-stack top address (`mkblob2.RSTACK_TOP`) | **0x600000** |
+| clean return-stack frames | ≈**138**k |
 
-## Milestones
+The roadmap that this file used to carry as a plan is now history; the forward
+queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
-Each milestone is independently testable and must keep `test/run2.sh` green
-(including the golf2 fixpoint). This list records what shipped and the original
-plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+## The record: what shipped
 
-- **M1 — new operators (done).** `$ | = ~ >` bitwise/shift ops as templates.
-  Backward compatible; golf2 still compiles every v1 program.
+Each milestone was independently testable and had to keep `test/run2.sh` green,
+the golf2 fixpoint included. In order:
 
-- **M-CP — code page (done).** All-256-byte op space + code-page tooling
-  (`tools/codepage.py`) + 17 atoms: `± ⊕ ⊖ ² ⊗ ⊘` and the comparison/selection
-  family `» ≡ ⌈ ⌊ ÷ ∣` plus the M1 bitwise/shift ops. Each is a single-byte
-  machine-code template; `e` dispatches them with no compiler change.
-
-- **M-LIST — list type + standard library, first cut (done).** A list is a heap
-  block `[len, e0, e1, …]` of 32-bit cells. Delivered as a **prelude library**
-  written in GOLF (`lib/prelude.golfj`, prepended by `tools/golfc`): `A` alloc,
-  `R` range, `L` len, `I` index, `S` sum, `N` print-decimal, `E` newline, plus
-  the higher-order ops below. The compiler's fixpoint is untouched — the prelude
-  is just source that gets prepended. Code-page glyph aliases: `⍳ ∑ ≢ ⊇ ⍶ Ṅ ␤`.
-  So `100⍳∑Ṅ` = 4950. Reserved runtime memory: heap pointer at `0x4F0000`,
-  scratch at `0x4F0010`.., heap from `0x500000`. Known gap: empty-list handling
-  in the `{…}` do-while folds.
-
-- **M-HOF — quotations + higher-order functions (done).** Two primitives:
-  `′name` (glyph `′`, byte 0x8C) is a compiler prefix that pushes a word's
-  runtime address; `⍎` (`\exec`, byte 0x8D) pops an address and calls it. `′` is
-  the first change to golf2's compiler logic vs v1 — a new case in `t`, written
-  in v1 GOLF, and golf2's own source never uses it so the strict fixpoint still
-  holds. With these, the prelude adds `M` map (`list fn->list`), `F` fold
-  (`list init fn->x`), and `Q` print-list. Example: `:d⊗;5⍳′dM∑Ṅ` = "map double
-  over range(5), sum" = 20. (Note: `′`/`⍎` take *word* addresses, so to map an
-  atom you wrap it, `:d⊗;`.) The code-page `\` escape now also accepts `\\` for a
-  literal backslash, since `\` is GOLF's swap op.
-
-- **M2 — multi-character identifiers (optional / parallel).** No longer required
-  for op growth, but still valuable for readable *user-defined* names: a real
-  tokenizer, a name-arena symbol table, and two-pass/forward-declaration handling
-  so mutual recursion needs no pending-char hack. Pursue if/when programs get big
-  enough that single-byte word names hurt.
-
-- **M-JELLY — vectorization (done, implicit included).** **Explicit:** `Z` zip
-  (`⊞`, elementwise binary op over two lists), so `4⍳4⍳′*⊞∑` is a dot product,
-  plus broadcast via a named-variable closure. **Implicit (M-VEC):** the *bare*
-  `+ - * ⌈ ⌊` now vectorize — `4⍳3+` is `3 4 5 6`, `10 4⍳-` is `10 9 8 7`,
-  `4⍳4⍳*∑` is a dot product — with no type tag on the value and no change to the
-  compiler's logic. Each of the five keeps its old scalar body and gains a
-  38-byte preamble: `cmp qword [hook],0; je scalar` (the hook table is 256 cells
-  of 8 bytes at `0x4F0100`, indexed by op byte — REGISTRY.md §3), then a
-  conservative `(a|b) <u heap-base` filter that sends anything that cannot be an
-  address to the scalar path, then `call qword [hook]`. **The prelude is
-  authoritative, not the filter:** the hooks point at `∔ ∸ ⨰ ⩌ ⩍`, whose
-  dispatcher `D` re-tests both operands exactly (`T`) and falls back to the raw
-  scalar op — so a `-1` flag from `<`, which the cheap filter cannot reject, is
-  still added, not indexed. The prelude's own pointer and index math uses the
-  never-polymorphic raw atoms `﹢ ﹣ ﹡ ⊓ ⊔` (0x91–0x96), so nothing recurses.
-  **Why the bootstrap survives it:** the hook cells are BSS, and every compiler
-  binary on the ladder is a program that never runs `lib/prelude.golfj`, so its
-  cells stay zero and it always takes the check-then-scalar path. golf2 overrides
-  five v1 templates, so `v1c` and `golf2` emit different code for the same
-  source — permanent by design, and absorbed at the `v1c→seed` rung, which is
-  never compared against anything. The gate, `golf2 == golf2'`, is untouched:
-  both are built from `self/golf2.golf` and embed the same blob. Remaining wart:
-  no length/shape checks (`Z` truncates to the shorter list).
-
-- **M3 — named variables (done, lite).** `→x` stores TOS, `←x` loads it — compiler
-  prefix ops over a name-indexed **global** register bank at 0x4E0000. Kills most
-  stack-juggling: `(a+b)*(a-b)` is `←a←b+←a←b-*`. NOTE: global, not per-call
-  frames, so recursion doesn't get fresh copies. Full frame-based locals (with
-  scoping) remain a future step — lower priority under the tacit Jelly direction.
-
-- **M4 — 64-bit + signed + full arithmetic.** Widen cells from 32 to 64 bits;
-  add signed division/modulo (`cqo; idiv`), signed comparison, and shift-left.
-  Update the memory cell ops (`@`/`!`) and literals accordingly.
-
-- **M5 — strings (done).** String literals `“...“` (compiler op, byte 0x8E) emit
-  a length-prefixed byte block and push its address. `O` prints one; `U` converts
-  it to a **list of char codes**, so every list op (map/filter/reverse/fold)
-  works on strings — `:k⊕;“Hello“U′kMJ` = `Ifmmp`. `J` prints a code list as
-  text. Still open (was also M5): a real data section for named globals and a
-  `brk`/`mmap` allocator instead of the fixed bump heap.
-
-- **M6 — standard library (in progress).** In `lib/prelude.golfj`: list runtime
-  (A R L I), sum/product (S P), map/fold/filter (M F W), reverse (V), print
-  (N Q E). Still to grow: number parse, string ops (needs M5), buffered I/O.
-
-- **M7 — compiler quality (deferred).** A peephole optimizer doesn't fit the
-  current single-pass backpatch model: any *size-reducing* fold shifts every
-  later rel32 offset (needs a relocation/second pass), and a *size-preserving*
-  fold (`push imm;pop rax` → `mov;nop`) is perf-only — negligible for tiny golf
-  programs — and can't distinguish code from embedded string/blob bytes without
-  instruction-boundary tracking. Revisit once there's a relocation pass or a
-  register-based (top-of-stack-in-a-register) codegen, which is the real win.
-
-- **M9 — reach (optional).** `include`/modules; an object-file emitter so output
-  can be linked with `cc`; a small IR to retarget (arm64) or emit C.
+- **M1 — new operators.** `$ | = ~ >` (AND, OR, XOR, NOT, SHR) as pure templates:
+  the compiler's `e` word dispatches *any* byte it finds in the blob, so a "dumb"
+  op costs its template and zero compiler-logic change. It also spent the **last**
+  five free printable ASCII slots — which is what forced the code page.
+- **M-CP — the code page.** The whole 0..255 byte space for ops, rendered through
+  glyphs, plus `tools/codepage.py` (encode/decode/table/check). Terse and
+  Jelly-like, instead of multi-character identifiers.
+- **M-LIST — the list type and a prelude.** A list is a heap block
+  `[len, e0, e1, …]`; the library is written in GOLF (`lib/prelude.golfj`,
+  prepended by `tools/golfc`), so the compiler's fixpoint never notices it.
+- **M-HOF — quotations.** `′name` (compiler prefix) pushes a word's runtime
+  address, `⍎` calls one. The first change to golf2's logic vs v1 — and with it
+  `map`, `fold`, `filter`, `zip` are ordinary library words.
+- **M5 — strings.** `“...“` emits a length-prefixed byte block; `U` turns one
+  into a list of char codes, so every list op works on text, and `J` prints a
+  code list back.
+- **M3 — named variables.** `→x` / `←x` over a name-indexed **global** bank at
+  `0x4E0000`: `(a+b)*(a-b)` is `←a←b+←a←b-*`. Global, not per-frame (see limits).
+- **M-SOUND — a total list runtime.** Every prelude loop is guarded, so the empty
+  list is a fixed point rather than garbage, and `Z` truncates to the shorter of
+  its two inputs instead of reading off the end.
+- **M-TAG — shape polymorphism as a library.** `T` answers "list or int" by range
+  (`v - base <u span` against the runtime heap-bounds cells), `D` dispatches a
+  binary op on the shapes of both operands, and `∔ ∸ ⨰ ⩍ ⩌` are the polymorphic
+  arithmetic words built on it.
+- **M-VEC — the bare operators vectorize.** `4⍳3+` is `3 4 5 6`, `4⍳4⍳*∑` is a
+  dot product, with no type tag on the value and no change to the compiler's
+  logic. Each of `+ - * ⌈ ⌊` keeps its scalar body and gains a 38-byte preamble:
+  `cmp qword [hook],0; je scalar` (hook table: 256 cells of 8 bytes at `0x4F0100`,
+  indexed by op byte — REGISTRY.md §3), then a conservative `(a|b) <u heap-base`
+  filter, then `call qword [hook]`. **The prelude is authoritative, not the
+  filter:** the hooks point at `∔ ∸ ⨰ ⩌ ⩍`, whose dispatcher re-tests both
+  operands with `T` and falls back to the raw scalar op — so a `-1` flag from
+  `<`, which the cheap filter cannot reject, is still added, not indexed. The
+  prelude's own pointer math uses the never-polymorphic raw atoms
+  `﹢ ﹣ ﹡ ⊓ ⊔` (0x91–0x96), so nothing recurses. **Why the bootstrap survives
+  it:** the hook cells are BSS and no compiler on the ladder ever runs the
+  prelude, so its cells stay zero and it always takes the scalar path.
+- **M-CHAIN — tacit combinators.** `∘` compose writes a 39-byte thunk into the
+  RWX code arena at `0x4D0000` and returns its address, so composed quotations
+  are ordinary callables; `⇉` pipeline and `⑂` fork are built on it —
+  `5⍳′∑′≢′÷⑂` is a mean. Library only, no compiler change.
+- **M4 — 64 bits, signed, big literals.** List cells and the prelude scratch bank
+  widened to 8 bytes (the bank was *relocated* to `0x4F0060` rather than widened
+  in place); signed compare/shift atoms (`≺ ≻ ≪ ≫`) and 64-bit `⊙`/`⊛` landed;
+  `Ṅ` grew a sign check; and the compiler's `W` word gained a
+  `mov rax,imm64; push rax` path for constants that `push imm32` cannot carry.
+- **M-SELF — the compiler's source moved to v2 GOLF.** The ladder grew its last
+  rung and `self/golf2.golfj` became the file a human edits; `self/seed.golf` was
+  demoted to a bootstrap rung, and `test/selfcheck.sh` began gating that the two
+  are one compiler.
+- **M-MEM — the heap belongs to the kernel.** `⌸` (`brk`, 0xA6) grows the list
+  heap on demand, so v2 binaries reserve only what is *statically* addressed:
+  `p_memsz` shrank from `0x800000` to `0x200000`, the return stack moved with it
+  to `0x600000`, and the heap base/span moved into the runtime cells at
+  `0x4F0034`/`0x4F0038` because ASLR means they cannot be spelled out anywhere.
+- **The capstone shrank.** `examples/capstone.golfj` went from **54** op bytes to
+  **46** by letting the bare polymorphic operators do the looping; the pre-M-VEC
+  spellings are kept verbatim and output-checked as
+  `examples/legacy_capstone.golfj`, because they are still how a list meets a
+  function that is not one of the five hooked operators.
 
 ## Invariants we do not break
 
@@ -222,6 +205,54 @@ plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 - Every new "dumb" op is added as a template in `tools/mkblob2.py` (and mirrored
   in `boot/golfref.py`), so the reference oracle and the self-hosted compiler
   always agree.
+- Every byte, glyph, mnemonic, prelude letter and fixed address is allocated in
+  [`REGISTRY.md`](REGISTRY.md) **before** it is implemented, and
+  `python3 tools/codepage.py check` enforces the namespace invariants.
+- The prelude never uses `→x` / `←x`: the variable bank is user space, so a
+  prelude word that stored to `→i` would clobber a user's `i`.
+- The numbers quoted in this file and in the top-level `README.md` are asserted
+  by `test/run2.sh` against what they describe. Change the thing, change the doc,
+  or the suite fails.
+
+## Known limits
+
+These are real, currently true, and none of them is a bug in the bootstrap. The
+fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+- **Named-variable cells are 32-bit.** The bank at `0x4E0000` is 4 bytes per
+  name and `←x` is a `mov eax`, so a wide value does not round-trip:
+  `4294967296→x←x` is `0`, and `0 5-→x←x` comes back as `4294967291` (the low
+  dword, zero-extended). Everything *else* on the value path is 64 bits — the
+  stack, the atoms, list cells, the prelude scratch bank — so this is the one
+  remaining narrow place, and widening it is a bank-relocation job exactly like
+  the one W4A already did for scratch.
+- **The heap-bounds cells are 32-bit too.** `0x4F0034`/`0x4F0038` are read by
+  `T` and are baked into all five M-VEC templates as a 32-bit compare operand.
+  The break is ASLR-shifted but far below 4 GB in practice; a program that grew
+  the break past `2^32` would need those cells — and the templates — widened.
+- **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
+  emits `push imm32` for every literal; golf2's `W` word switched to
+  `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different
+  (and, for the seed, *wrong*) bytes for a source containing a literal ≥ `2^31`.
+  This is harmless — `self/golf2.golfj` contains no such literal, every address
+  it names is under `0x600000`, and the seed's only job is to build golf2 once —
+  but it is a genuine property of the ladder, not an oversight.
+  `test/selfcheck.sh` proves seed ≡ golf2 on the sources that matter.
+- **The return stack is smaller than it was, and better.** M-MEM shrank
+  `p_memsz` to `0x200000`, so the stack now runs from `0x600000` down to the
+  `0x4F` bank: about 1.08 MB, ≈**138**k frames, all of them *its own*. Before,
+  it nominally had ~917k frames but shared them with a bump heap growing up from
+  `0x500000` — every 8 bytes allocated cost a frame, and the two met without
+  complaint. Deterministic and smaller beats large and shared.
+- **KNOWN ISSUE — an integer inside the heap window looks like a list.** `T` is
+  a range test (`v - base <u span`), so any *integer* whose value happens to
+  land in `[base, base+span)` is dispatched as a list by `D` and by the five
+  polymorphic templates. Pre-existing since M-TAG, unfixed, and it moved rather
+  than went away when M-MEM put the heap at the break. Known-safe values are
+  covered — a `-1` compare flag, a word address, an `0x4D0000` thunk are all
+  outside the window and are regression-tested — but nothing rules out a program
+  whose arithmetic genuinely produces a heap-sized number. The fix is a real tag
+  bit on the value, which is item 5 of the forward queue.
 
 ## Layout
 
@@ -235,6 +266,8 @@ plan; the prioritized forward queue lives in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 | `tools/golfc` | compile a program (prepends the prelude; `-j` to encode glyph source) |
 | `lib/prelude.golfj` | the standard library: list runtime, map/fold, number/list printing |
 | `boot/golfref.py` | Python reference/oracle for v2 (debugging only) |
-| `examples/` | v2 programs (`bitwise.g2`, `atoms.golfj`, `lists.golfj`, …) |
-| `test/run2.sh` | bootstrap ladder + atom + code-page + list tests |
+| `examples/` | v2 programs (`capstone.golfj`, `legacy_capstone.golfj`, `bigheap.golfj`, …) |
+| `test/run2.sh` | bootstrap ladder, language tests, oracle differentials, doc assertions |
 | `test/selfcheck.sh` | M-SELF: `seed` and `golf2` are the same compiler; the generated files are fresh |
+| `REGISTRY.md` | the allocation ledger: op bytes, mnemonics, glyphs, prelude letters, memory |
+| `NEXT_STEPS.md` | the forward queue |
