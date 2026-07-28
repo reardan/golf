@@ -64,6 +64,52 @@ echo "GOLF-written build tools vs the Python originals (M-TOOL)"
 # @@ W8-ENCODE @@
 
 # @@ W8-DECODE @@
+# decode's INPUT is raw code-page bytes and $CORPUS is .golfj source, which is
+# decode's OUTPUT — so diff_filter cannot be used as it stands.  The corpus is
+# encoded by the Python first, and three inputs that are not encoded source at
+# all are added: data/blob.hex (plain ASCII with no atom byte in it),
+# self/golf2.golf (a real compiled artifact, so arbitrary high bytes) and all
+# 256 byte values in order, which is what exercises the \xNN fallback and every
+# encode-only row at once.
+if build gtools/decode.golfj gdecode; then
+  mkdir -p "$TMP/dec"
+  for f in $CORPUS; do
+    python3 tools/codepage.py encode < "$f" > "$TMP/dec/$(echo "$f" | tr / _).gb"
+  done
+  python3 -c 'import sys;sys.stdout.buffer.write(bytes(range(256)))' > "$TMP/dec/all256.bin"
+  cp data/blob.hex "$TMP/dec/blob.hex.bin"; cp self/golf2.golf "$TMP/dec/golf2.golf.bin"
+  bad=""; badm=""
+  for f in "$TMP"/dec/*; do
+    "$TMP/gdecode"                 < "$f" > "$TMP/g.out" 2>/dev/null
+    python3 tools/codepage.py decode < "$f" > "$TMP/p.out" 2>/dev/null
+    cmp -s "$TMP/g.out" "$TMP/p.out" || bad="$bad $(basename "$f")"
+    "$TMP/gdecode" -m                 < "$f" > "$TMP/g.out" 2>/dev/null
+    python3 tools/codepage.py decode -m < "$f" > "$TMP/p.out" 2>/dev/null
+    cmp -s "$TMP/g.out" "$TMP/p.out" || badm="$badm $(basename "$f")"
+  done
+  [ -z "$bad" ]  && ok "gdecode matches codepage.py decode on every encoded source" \
+                 || no "gdecode differs on:$bad"
+  [ -z "$badm" ] && ok "gdecode -m matches codepage.py decode -m on the same inputs" \
+                 || no "gdecode -m differs on:$badm"
+  # The \xNN fallback, pinned as text rather than left implicit in the sweep
+  # above: NUL and 0xFF have no ED row and are not printable, and the hex is
+  # UPPERCASE.  0x52 next to them is the asymmetry — ⍳ and \range encode to it,
+  # and it still decodes as the plain letter R.
+  [ "$(printf '\000R\377' | "$TMP/gdecode")" = '\x00R\xFF' ] \
+    && ok "gdecode: \\xNN fallback is uppercase, and 0x52 stays a plain R" \
+    || no "gdecode \\xNN fallback"
+  # run2.sh asserts that the code page round-trips for examples/atoms.golfj
+  # (decode -m | encode | cmp).  Same assertion with the GOLF decoder in the
+  # middle, over the whole corpus: what it produces is real source that the
+  # Python encoder reads back to the very bytes it was handed.
+  rt=""
+  for f in "$TMP"/dec/*.gb; do
+    "$TMP/gdecode" -m < "$f" | python3 tools/codepage.py encode 2>/dev/null \
+      | cmp -s - "$f" || rt="$rt $(basename "$f")"
+  done
+  [ -z "$rt" ] && ok "gdecode -m | codepage.py encode reproduces the input bytes" \
+               || no "gdecode round trip differs on:$rt"
+fi
 
 # @@ W8-MKBLOB @@
 
