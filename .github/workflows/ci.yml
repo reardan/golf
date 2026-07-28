@@ -18,7 +18,17 @@ jobs:
       - name: Expanded (v2) — bootstrap ladder + tests
         run: bash expanded/test/run2.sh
 
-      # run2.sh regenerates expanded/self/golf2.golf from tools/mkblob2.py;
-      # the checked-in seed must not drift from what the generator produces.
-      - name: Checked-in seed matches the generator
-        run: git diff --exit-code -- expanded/self/golf2.golf
+      # The ladder cannot see either of these: once seed has built golf2 it is
+      # never consulted again, so the two source forms could drift unnoticed.
+      - name: Expanded (v2) — seed and golf2 are the same compiler
+        run: bash expanded/test/selfcheck.sh
+
+      # The GOLF-written build tools must match the Python originals byte for
+      # byte.  Skips itself while gtools/ is empty.
+      - name: Expanded (v2) — GOLF build tools match their Python counterparts
+        run: bash expanded/test/gtools.sh
+
+      # run2.sh regenerates BOTH expanded/self/*.golf from tools/mkblob2.py;
+      # neither checked-in file may drift from what the generator produces.
+      - name: Checked-in compiler sources match the generator
+        run: git diff --exit-code -- expanded/self/golf2.golf expanded/self/seed.golf
