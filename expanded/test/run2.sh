@@ -155,7 +155,11 @@ oracle(){ cat <(python3 tools/codepage.py encode < lib/prelude.golfj) \
   && ok "oracle: vars.golfj behaves identically"      || no "oracle vars.golfj"
 [ "$(oracle strings)" = "$(printf 'Hello, world!\ndesserts\nIfmmp')" ] \
   && ok "oracle: strings.golfj behaves identically"   || no "oracle strings.golfj"
-[ "$(oracle vectorize)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] \
+# vectorize.golfj says the same three programs twice — the explicit ⊞/closure
+# half, then the M-VEC bare-operator half — so its output is those three lines
+# repeated.  Any divergence between the halves shows up here as a diff.
+VECOUT=$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 \n0 2 4 6 8 \n14\n10 11 12 13 14 ')
+[ "$(oracle vectorize)" = "$VECOUT" ] \
   && ok "oracle: vectorize.golfj behaves identically" || no "oracle vectorize.golfj"
 
 echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closures"
@@ -163,7 +167,12 @@ echo "Vectorization (M-JELLY slice): ⊞ zip (elementwise), broadcast via closur
 [ "$(printf '%s' '4R4R\ref*ZSNE'      | gc)" = "14" ] && ok "dot product (′atom *)" || no "dot"
 [ "$(printf '%s' '10→k:f←k+;5R′fMQE' | gc)" = "10 11 12 13 14 " ] && ok "broadcast (closure)" || no "broadcast"
 tools/golfc -j examples/vectorize.golfj "$TMP/vec" 2>/dev/null
-[ "$("$TMP/vec" 2>/dev/null)" = "$(printf '0 2 4 6 8 \n14\n10 11 12 13 14 ')" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
+[ "$("$TMP/vec" 2>/dev/null)" = "$VECOUT" ] && ok "golfc examples/vectorize.golfj" || no "vectorize.golfj"
+# The point of the file: the two halves are the same programs, so the first three
+# printed lines and the last three must be equal.
+VECHALF=$("$TMP/vec" 2>/dev/null | head -3)
+[ -n "$VECHALF" ] && [ "$VECHALF" = "$("$TMP/vec" 2>/dev/null | tail -3)" ] \
+  && ok "vectorize.golfj: the bare operators agree with ⊞ and the closure" || no "vectorize halves agree"
 
 # Insertion anchors: each wave adds its tests directly under its own anchor, so
 # concurrent waves never touch the same line. Comment-only; keep them in order.
@@ -184,9 +193,13 @@ echo "Totality (M-SOUND): every list word is correct on empty input; re-entrant 
 # @@ W2-TAG @@
 echo "Shape polymorphism (M-TAG): T shape test, D dispatcher, ∔ ∸ ⨰ ⩍ ⩌"
 # The heap bounds are runtime cells (0x4F0034 base, 0x4F0038 span), set by the
-# prelude's top-level init; base+span is the return-stack top 0xC00000.
-[ "$(printf '%s' '5177396@ 5177400@\radd N E' | gc)" = "12582912" ] \
-  && ok "heap-bounds cells initialized (base+span = 0xC00000)" || no "heap bounds cells"
+# prelude's top-level init.  W6B/M-MEM made that init ask the kernel (`0⌸`), so
+# the base is the ASLR-shifted program break and cannot be spelled out here; what
+# is still checkable — and is the property this test always meant — is that the
+# heap lies above everything statically addressed, i.e. above the BSS top, which
+# M-MEM shrank from 0xC00000 to 0x600000.  W6B's own block checks the rest.
+[ "$(printf '%s' '5177396@ 6291456\rlt1\radd N E' | gc)" = "1" ] \
+  && ok "heap-bounds cells initialized (base above the 0x600000 BSS top)" || no "heap bounds cells"
 [ "$(printf '%s' '5R T N E'  | gc)" = "0" ] && ok "T: a heap address is a list" || no "T list"
 [ "$(printf '%s' '7 T N E'   | gc)" = "1" ] && ok "T: a small int is an int"    || no "T int"
 # The one that would break a naive signed test: -1 is 0xFFFF… , above the heap.
@@ -319,8 +332,258 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
   && ok "regression: nested HOF at 64-byte spill frames" || no "widened nested HOF"
 
 # @@ W6-LIT @@
+# W6A ------------------------------------------------------------------------
+echo "Big literals (M4): a constant wider than 32 bits"
+# `push imm32` SIGN-EXTENDS, so 0..2^31-1 was every constant a GOLF program could
+# name: 4294967296 arrived as -4294967296 and 2147483648 as -2147483648.  The
+# compiler's `W` word (self/golf2.golfj) now tests `v >> 31` and emits
+# `mov rax, <imm64>; push rax` — 11 bytes instead of 5 — when the value needs it.
+[ "$(printf '%s' '4294967296 N E'      | gc)" = "4294967296" ] \
+  && ok "2^32 (the first value push imm32 cannot carry)" || no "big literal 2^32"
+[ "$(printf '%s' '2147483648 N E'      | gc)" = "2147483648" ] \
+  && ok "2^31 (fits 32 bits, but push imm32 would negate it)" || no "big literal 2^31"
+[ "$(printf '%s' '2147483647 N E'      | gc)" = "2147483647" ] \
+  && ok "2^31-1 (the largest literal that still fits imm32)" || no "boundary 2^31-1"
+[ "$(printf '%s' '4294967295 1+N E'    | gc)" = "4294967296" ] \
+  && ok "carrying across the 32-bit boundary at run time" || no "carry over 2^32"
+[ "$(printf '%s' '9007199254740991 N E'| gc)" = "9007199254740991" ] \
+  && ok "2^53-1 (well past anything 32 bits can hold)" || no "big literal 2^53"
+[ "$(printf '%s' ':b4294967296;b N E'  | gc)" = "4294967296" ] \
+  && ok "a big literal inside a user word" || no "big literal in a word"
+[ "$(printf '%s' '4294967296 4294967296+N E' | gc)" = "8589934592" ] \
+  && ok "two big literals through the polymorphic + (both re-test as ints)" || no "big literal arithmetic"
+# The prelude is not involved: the emitter is the compiler's, so it works bare.
+[ "$(printf '%s' '4294967296 32\shr48+)' | atom)" = "1" ] \
+  && ok "no prelude: the high dword of 2^32 is 1" || no "bare big literal"
+# The ENCODING itself, not just the value — a literal that fitted before must
+# still compile to exactly the five bytes it always did, or every compiled
+# program on the ladder would shift.  `)` follows each literal (6a 01 58 ...).
+w6alit(){ printf '%s' "$1" | "$TMP/golf2" 2>/dev/null | od -An -tx1 -v | tr -d ' \n'; }
+case "$(w6alit '5)')" in
+  *68050000006a01*) ok "5 is still push imm32 (68 05 00 00 00)";;
+  *)                no "small literal encoding changed";; esac
+case "$(w6alit '2147483647)')" in
+  *68ffffff7f6a01*) ok "2^31-1 is still push imm32 (68 ff ff ff 7f)";;
+  *)                no "2^31-1 encoding";; esac
+case "$(w6alit '2147483648)')" in
+  *48b80000008000000000506a01*) ok "2^31 switches to mov rax,imm64; push rax";;
+  *)                            no "2^31 encoding";; esac
+case "$(w6alit '4294967296)')" in
+  *48b80000000001000000506a01*) ok "2^32 as mov rax,imm64; push rax";;
+  *)                            no "2^32 encoding";; esac
+# Differential: the encodings are the whole point here, so boot/golfref.py has to
+# agree byte for byte, not merely behave the same.
+printf '%s' '4294967296 5 2147483648 1099511627775 0)' > "$TMP/w6alit.src"
+"$TMP/golf2" < "$TMP/w6alit.src" > "$TMP/w6alit.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w6alit.src" > "$TMP/w6alit.ref" 2>/dev/null
+cmp -s "$TMP/w6alit.g2" "$TMP/w6alit.ref" \
+  && ok "oracle: identical bytes for a program of mixed-width literals" || no "oracle big-literal bytes"
+W6ABIG=$(printf '4294967296\n2147483648\n4294967296\n1099511627775\n86400\n43200000000000')
+tools/golfc -j examples/bignum.golfj "$TMP/bignum" 2>/dev/null
+[ "$("$TMP/bignum" 2>/dev/null)" = "$W6ABIG" ] && ok "golfc examples/bignum.golfj" || no "bignum.golfj"
+[ "$(oracle bignum)" = "$W6ABIG" ] \
+  && ok "oracle: bignum.golfj behaves identically" || no "oracle bignum.golfj"
 # @@ W6-MEM @@
+# W6B --------------------------------------------------------------- M-MEM ---
+echo "Growable heap (M-MEM): ⌸ brk, the list heap is the kernel's, not a BSS hole"
+# The atom on its own, no prelude: brk(0) reads the break, brk(a) moves it and
+# reports the break in effect afterwards.
+[ "$(printf '%s' '0 0\brk\rlt1\radd48+)' | atom)" = "0" ] \
+  && ok "⌸ brk(0) returns a non-zero program break" || no "brk read"
+[ "$(printf '%s' '0\brk 4096\radd\brk 0\brk\rsub1\radd48+)' | atom)" = "1" ] \
+  && ok "⌸ brk(p+4096) moves the break and reports the new one" || no "brk grow"
+# p_memsz shrank from 0x800000 to 0x200000, so the BSS ends at 0x600000 and the
+# return stack starts there instead of at 0xC00000.  Everything above is heap.
+[ "$(printf '%s' '0\brk 6291456\rlt1\radd48+)' | atom)" = "1" ] \
+  && ok "the break starts above the shrunken BSS (0x600000)" || no "brk above bss"
+# The prelude's init publishes what the kernel gave into the M-TAG bounds cells.
+# The base is ASLR-shifted (observed anywhere from ~0x1C00000 to ~0x3B000000),
+# so only its relation to the static image is assertable — never its value.
+[ "$(printf '%s' '0 5177400@\rlt1\radd N E' | gc)" = "0" ] \
+  && ok "heap span cell is non-zero (brk handed back the initial chunk)" || no "brk heap span"
+[ "$(printf '%s' '5⍳ 5177396@\rsub 5177400@\rlt1\radd N E' | gc)" = "0" ] \
+  && ok "a fresh list lands inside [base, base+span)" || no "list inside bounds"
+# Nothing that is not a list may fall inside the moved window: the M-CHAIN thunk
+# arena, a word address and a -1 flag all still classify as ints.
+[ "$(printf '%s' '5⍳T N E' | gc)"      = "0" ] && ok "T: a brk-heap address is a list" || no "brk T list"
+[ "$(printf '%s' '5046272 T N E' | gc)" = "1" ] \
+  && ok "T: the 0x4D0000 thunk arena is still outside the heap" || no "brk T arena"
+[ "$(printf '%s' ':d\dbl;\refd T N E' | gc)" = "1" ] \
+  && ok "T: a word address is still outside the heap" || no "brk T word"
+# The milestone itself.  The old static heap was 7,340,032 bytes between
+# 0x500000 and the return stack, so a list of 917,504 cells or more walked off
+# the end and segfaulted; 200000⍳ (1.6 MB) fitted even then, 2000000⍳ (16 MB)
+# never could.  Both are one A call, so the break moves exactly once each.
+[ "$(printf '%s' '200000⍳≢ṄE'  | gc)" = "200000" ]  \
+  && ok "200000⍳ — a 1.6 MB list"  || no "200000 range"
+[ "$(printf '%s' '2000000⍳≢ṄE' | gc)" = "2000000" ] \
+  && ok "2000000⍳ — a 16 MB list, twice the whole old BSS" || no "2000000 range"
+[ "$(printf '%s' '2000000⍳1999999⊇ṄE' | gc)" = "1999999" ] \
+  && ok "the last cell of a 16 MB list is intact" || no "big index"
+[ "$(printf '%s' '917504⍳≢ṄE'  | gc)" = "917504" ]  \
+  && ok "917504⍳ — the exact size that overran the old static heap" || no "917504 range"
+# A big map: a second list of the same size, so the heap grows a second time.
+[ "$(printf '%s' ':d\dbl;1000000⍳\refdM 999999⊇ṄE' | gc)" = "1999998" ] \
+  && ok "map over 1,000,000 elements (two 8 MB lists live at once)" || no "big map"
+# Growth must keep the span covering lists allocated BEFORE it, or the older one
+# would stop classifying as a list the moment the heap moved.
+[ "$(printf '%s' '300000⍳→a300000⍳_←a 299999⊇ṄE' | gc)" = "299999" ] \
+  && ok "an older list survives a heap growth" || no "span after growth"
+[ "$(printf '%s' '300000⍳→a300000⍳_←a T N E' | gc)" = "0" ] \
+  && ok "T still classifies an older list after the span grew" || no "T after growth"
+[ "$(printf '%s' '200000⍳→a200000⍳_←a 3+ 199999⊇ṄE' | gc)" = "200002" ] \
+  && ok "M-VEC broadcast over a big list across a growth" || no "big vec broadcast"
+# The other side of the shrink: the return stack starts at the BSS top, so it
+# moved from 0xC00000 to 0x600000 and now has 0x600000-0x4F1000 = 1.08 MB, i.e.
+# ~138k frames, entirely to itself — where before it shared 7 MB with the heap
+# and lost a frame for every 8 bytes allocated.  r recurses n+1 deep.
+[ "$(printf '%s' ':r"[^]\dec r;50000 r N E' | gc)" = "0" ] \
+  && ok "50,000-deep recursion on the relocated return stack" || no "return stack depth"
+tools/golfc -j examples/bigheap.golfj "$TMP/big" 2>/dev/null
+[ "$("$TMP/big" 2>/dev/null)" = "$(printf '1000000\n1999998\n999999')" ] \
+  && ok "golfc examples/bigheap.golfj" || no "bigheap.golfj"
+[ "$(oracle bigheap)" = "$(printf '1000000\n1999998\n999999')" ] \
+  && ok "oracle: bigheap.golfj behaves identically" || no "oracle bigheap.golfj"
+# W6B ----------------------------------------------------------------------
 # @@ W7-DOCS @@
+# W7A ------------------------------------------------------ doc assertions ---
+# The prose is part of the build.  Every number quoted in ../README.md,
+# DESIGN.md and REGISTRY.md is pulled back out with grep/sed here and compared
+# against the artifact it describes, so a doc that drifts fails loudly instead
+# of lying quietly.  The keys are distinctive phrases the docs were written to
+# carry, and w7num/w7hex refuse a key that does not match EXACTLY ONE line — so
+# deleting or duplicating a row is caught too, not just editing its number.
+echo "Docs match reality (W7A): README/DESIGN/REGISTRY numbers vs the artifacts"
+W7README="$EXP/../README.md"
+w7num(){ # w7num <file> <unique key> -> that line's **bold** integer
+  local n; n=$(grep -cF "$2" "$1" 2>/dev/null)
+  [ "$n" = 1 ] || { printf 'KEY-MATCHED-%s-LINES' "${n:-0}"; return; }
+  grep -F "$2" "$1" | grep -oE '\*\*[0-9]+\*\*' | head -1 | tr -d '*'
+}
+w7hex(){ # w7hex <file> <unique key> -> that line's **bold** hex constant
+  local n; n=$(grep -cF "$2" "$1" 2>/dev/null)
+  [ "$n" = 1 ] || { printf 'KEY-MATCHED-%s-LINES' "${n:-0}"; return; }
+  grep -F "$2" "$1" | grep -oE '\*\*0x[0-9A-Fa-f]+\*\*' | head -1 | tr -d '*'
+}
+# The machine side of every comparison, computed once.
+python3 - > "$TMP/w7a.facts" <<'PY'
+import sys
+sys.path.insert(0, "tools")
+import mkblob2, codepage
+alloc  = {b for b, *_ in mkblob2.ATOMS}
+alloc |= {(x[0] if isinstance(x[0], int) else ord(x[0])) for x in codepage.LIB}
+alloc |= {x[0] for x in codepage.COMPILER}
+hi = [b for b in alloc if b >= 0x91]
+print("atoms",  len(mkblob2.ATOMS))
+print("blob",   len(mkblob2.build_blob2()))
+print("memsz",  hex(mkblob2.MEMSZ))
+print("rstack", hex(mkblob2.RSTACK_TOP))
+print("rsdec",  mkblob2.RSTACK_TOP)
+# The return stack runs from RSTACK_TOP down to the top of the 0x4F bank, 8
+# bytes a frame; the docs quote it in thousands.
+print("frames", (mkblob2.RSTACK_TOP - 0x4F1000) // 8 // 1000)
+print("hiused", len(hi))
+print("hifree", 111 - len(hi))
+PY
+w7fact(){ awk -v k="$1" '$1==k{print $2}' "$TMP/w7a.facts"; }
+# Op bytes of a glyph program: encode drops the #-comments, and neither capstone
+# holds a significant space, so stripping layout whitespace leaves the ops.
+w7ops(){ python3 tools/codepage.py encode < "$1" | tr -d '[:space:]' | wc -c | tr -d ' '; }
+
+W7ATOMS=$(w7fact atoms)
+W7RA=$(sed -n 's/.*\*\*\([0-9][0-9]*\) operator atoms\*\*.*/\1/p' "$W7README" | head -1)
+[ "$W7RA" = "$W7ATOMS" ] \
+  && ok "README.md quotes $W7ATOMS operator atoms = len(mkblob2.ATOMS)" \
+  || no "README.md atom count is '$W7RA', mkblob2.ATOMS has $W7ATOMS"
+[ "$(w7num DESIGN.md 'operator atoms in')" = "$W7ATOMS" ] \
+  && ok "DESIGN.md quotes $W7ATOMS operator atoms = len(mkblob2.ATOMS)" \
+  || no "DESIGN.md atom count is '$(w7num DESIGN.md 'operator atoms in')', not $W7ATOMS"
+
+# Self-referential: this suite's assertion total is the number of its own
+# ok-call sites (one per assertion; the `case` blocks put theirs on the ok
+# branch), which is what the final "Result:" line prints when nothing fails.
+W7SITES=$(grep -oE 'ok +"' test/run2.sh | wc -l | tr -d ' ')
+W7RT=$(sed -n 's/.*\*\*\([0-9][0-9]*\) assertions green\*\*.*/\1/p' "$W7README" | head -1)
+[ "$W7RT" = "$W7SITES" ] \
+  && ok "README.md quotes $W7SITES assertions = this suite's own total" \
+  || no "README.md claims '$W7RT' assertions, run2.sh has $W7SITES"
+[ "$(w7num DESIGN.md 'assertions in the run2 suite')" = "$W7SITES" ] \
+  && ok "DESIGN.md quotes $W7SITES assertions = this suite's own total" \
+  || no "DESIGN.md run2 count is '$(w7num DESIGN.md 'assertions in the run2 suite')', not $W7SITES"
+# selfcheck.sh loops over its example list, so its total is a runtime fact: ask
+# it.  It is a fraction of a second and writes nothing into the repo.
+W7SC=$(bash test/selfcheck.sh 2>/dev/null | sed -n 's/^Result: \([0-9]*\) passed, \([0-9]*\) failed$/\1 \2/p')
+[ "$W7SC" = "$(w7num DESIGN.md 'assertions in the selfcheck suite') 0" ] \
+  && ok "DESIGN.md quotes test/selfcheck.sh's real total (${W7SC% *} passed, 0 failed)" \
+  || no "DESIGN.md selfcheck count vs actual: '$(w7num DESIGN.md 'assertions in the selfcheck suite') 0' vs '$W7SC'"
+
+[ "$(w7num DESIGN.md 'the generated bootstrap seed')" = "$(wc -c < self/seed.golf)" ] \
+  && ok "DESIGN.md's self/seed.golf size matches wc -c ($(wc -c < self/seed.golf) bytes)" \
+  || no "DESIGN.md seed size '$(w7num DESIGN.md 'the generated bootstrap seed')' vs $(wc -c < self/seed.golf)"
+[ "$(w7num DESIGN.md 'the generated v2 compiler')" = "$(wc -c < self/golf2.golf)" ] \
+  && ok "DESIGN.md's self/golf2.golf size matches wc -c ($(wc -c < self/golf2.golf) bytes)" \
+  || no "DESIGN.md golf2 size '$(w7num DESIGN.md 'the generated v2 compiler')' vs $(wc -c < self/golf2.golf)"
+[ "$(w7num DESIGN.md 'the template blob itself')" = "$(w7fact blob)" ] \
+  && ok "DESIGN.md's template-blob size matches build_blob2() ($(w7fact blob) bytes)" \
+  || no "DESIGN.md blob size '$(w7num DESIGN.md 'the template blob itself')' vs $(w7fact blob)"
+
+[ "$(w7num DESIGN.md 'the capstone, in op bytes')" = "$(w7ops examples/capstone.golfj)" ] \
+  && ok "DESIGN.md's capstone size matches the encoded file ($(w7ops examples/capstone.golfj) op bytes)" \
+  || no "DESIGN.md capstone '$(w7num DESIGN.md 'the capstone, in op bytes')' vs $(w7ops examples/capstone.golfj)"
+[ "$(w7num DESIGN.md 'the legacy capstone, in op bytes')" = "$(w7ops examples/legacy_capstone.golfj)" ] \
+  && ok "DESIGN.md's legacy-capstone size matches the encoded file ($(w7ops examples/legacy_capstone.golfj) op bytes)" \
+  || no "DESIGN.md legacy capstone '$(w7num DESIGN.md 'the legacy capstone, in op bytes')' vs $(w7ops examples/legacy_capstone.golfj)"
+
+# M-MEM's two numbers are one number: p_memsz and the return-stack top move
+# together (mkblob2 derives RSTACK_TOP from MEMSZ), and REGISTRY.md §3 spells
+# the top in both hex and decimal, so check the row's two columns against it.
+[ "$(w7hex DESIGN.md 'the v2 p_memsz')" = "$(w7fact memsz)" ] \
+  && ok "DESIGN.md's p_memsz matches mkblob2.MEMSZ ($(w7fact memsz))" \
+  || no "DESIGN.md p_memsz '$(w7hex DESIGN.md 'the v2 p_memsz')' vs $(w7fact memsz)"
+W7REG=$(awk -F'|' '/mkblob2.RSTACK_TOP/{gsub(/[ `]/,"",$2); gsub(/[ `]/,"",$3); print $2"/"$3; exit}' REGISTRY.md)
+[ "$(w7hex DESIGN.md 'the return-stack top address')" = "$(w7fact rstack)" ] \
+  && [ "$W7REG" = "$(w7fact rstack)/$(w7fact rsdec)" ] \
+  && ok "DESIGN.md and REGISTRY.md §3 both give the return-stack top as $(w7fact rstack) / $(w7fact rsdec)" \
+  || no "return-stack top: DESIGN '$(w7hex DESIGN.md 'the return-stack top address')', REGISTRY '$W7REG', real $(w7fact rstack)/$(w7fact rsdec)"
+[ "$(w7num DESIGN.md 'clean return-stack frames')" = "$(w7fact frames)" ] \
+  && ok "DESIGN.md's ~$(w7fact frames)k return-stack frames matches the measured span" \
+  || no "DESIGN.md frame count '$(w7num DESIGN.md 'clean return-stack frames')' vs $(w7fact frames)"
+
+# M-MEM deleted the fixed heap base and the 0xC00000 stack top: no memory-map
+# row may resurrect either, and nothing in §1.2 may still be unshipped.
+W7STALE=$(grep -cE '^\| `0x500000`|^\| `0xC00000`|shipping in wave' REGISTRY.md)
+[ "$W7STALE" = "0" ] \
+  && ok "REGISTRY.md has no fixed-heap-base row, no 0xC00000 row, no unshipped status" \
+  || no "REGISTRY.md still carries $W7STALE stale row(s) (0x500000 / 0xC00000 / 'shipping in wave')"
+[ "$(grep -F 'are now spent, leaving' REGISTRY.md | grep -oE '\*\*[0-9]+\*\*' | tr -d '*' | tr '\n' '/')" \
+    = "$(w7fact hiused)/$(w7fact hifree)/" ] \
+  && ok "REGISTRY.md §1: $(w7fact hiused) high op bytes spent, $(w7fact hifree) free — matches the tables" \
+  || no "REGISTRY.md high-byte budget is stale (real: $(w7fact hiused) spent, $(w7fact hifree) free)"
+
+# The README quotes programs, not just numbers.  Both halves are pinned: the
+# bare spellings are the ones examples/capstone.golfj carries, the long ones are
+# examples/legacy_capstone.golfj's — and then both are RUN, and must print what
+# the README says they print.
+W7PIN=0
+for s in '4⍳4⍳*∑' '3→k“Hello“U←k+J'; do
+  grep -qF "$s" "$W7README" && grep -qF "$s" examples/capstone.golfj || W7PIN=1
+done
+for s in '4⍳4⍳′*⊞∑' '3→k:f←k+;“Hello“U′f€J'; do
+  grep -qF "$s" "$W7README" && grep -qF "$s" examples/legacy_capstone.golfj || W7PIN=1
+done
+[ "$W7PIN" = 0 ] \
+  && ok "README.md's spellings are verbatim the ones capstone/legacy_capstone pin" \
+  || no "a README spelling is not in the example that pins it"
+W7DOCOUT=$(printf '%s' '5⍳′²€∑Ṅ␤4⍳4⍳*∑Ṅ␤4⍳3+⍕␤“Hello“U1+J␤3→k“Hello“U←k+J␤5⍳′∑′≢′÷⑂Ṅ␤100⍳∑Ṅ␤' | gc)
+[ "$W7DOCOUT" = "$(printf '30\n14\n3 4 5 6 \nIfmmp\nKhoor\n2\n4950')" ] \
+  && ok "every bare one-liner quoted in README.md prints what README.md claims" \
+  || no "a README one-liner printed something else: $W7DOCOUT"
+W7LEGOUT=$(printf '%s' '4⍳4⍳′*⊞∑Ṅ␤“Hello“U′⊕€J␤3→k:f←k+;“Hello“U′f€J␤' | gc)
+[ "$W7LEGOUT" = "$(printf '14\nIfmmp\nKhoor')" ] \
+  && ok "every long-form one-liner quoted in README.md still prints the same" \
+  || no "a README long-form one-liner printed something else: $W7LEGOUT"
+# W7A -------------------------------------------------------------------------
+
 # Wave 8 (M-TOOL) anchors.  Unlike the waves above, several of these run in
 # parallel, so they are spaced out: git merges two inserts cleanly only when the
 # hunks do not share context lines.  Add tests directly under your own anchor and
@@ -420,8 +683,45 @@ garg(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "
 
 
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
+CAPOUT=$(printf '30\n14\n5\nKhoor')
 tools/golfc -j examples/capstone.golfj "$TMP/cap" 2>/dev/null
-[ "$("$TMP/cap" 2>/dev/null)" = "$(printf '30\n14\n5\nKhoor')" ] && ok "golfc examples/capstone.golfj" || no "capstone.golfj"
+[ "$("$TMP/cap" 2>/dev/null)" = "$CAPOUT" ] && ok "golfc examples/capstone.golfj" || no "capstone.golfj"
+[ "$(oracle capstone)" = "$CAPOUT" ] \
+  && ok "oracle: capstone.golfj behaves identically" || no "oracle capstone.golfj"
+
+# W7B ------------------------------------------------ legacy spellings -------
+# W7B rewrote the capstone to let the bare polymorphic + and * do the looping.
+# The forms it dropped are not deprecated — they are how a list meets any
+# function that is NOT one of the five hooked operators — so the pre-M-VEC
+# capstone is kept verbatim as examples/legacy_capstone.golfj and pinned here.
+# The two files are the same program written two ways; the binding assertion is
+# that they print the same bytes, not merely that each prints something.
+echo "Legacy spellings (W7B): the explicit forms the capstone shrank away from"
+tools/golfc -j examples/legacy_capstone.golfj "$TMP/lcap" 2>/dev/null
+[ "$("$TMP/lcap" 2>/dev/null)" = "$CAPOUT" ] \
+  && ok "golfc examples/legacy_capstone.golfj" || no "legacy_capstone.golfj"
+[ "$("$TMP/lcap" 2>/dev/null)" = "$("$TMP/cap" 2>/dev/null)" ] \
+  && ok "the shrunken capstone prints exactly what the explicit spellings did" || no "capstone vs legacy output"
+[ "$(oracle legacy_capstone)" = "$CAPOUT" ] \
+  && ok "oracle: legacy_capstone.golfj behaves identically" || no "oracle legacy_capstone.golfj"
+# ⊞ zip-with a ′atom quotation, and broadcast hand-built from a variable, a
+# closure word and ′f€ — line 2 and line 4 of the old capstone, on their own.
+[ "$(printf '%s' '4R4R\ref*ZSNE'          | gc)" = "14" ] \
+  && ok "legacy: ⊞ zip-with ′* still dots two lists"  || no "legacy zip"
+[ "$(printf '%s' '3→k:f←k+;“Hello“U′fMJE' | gc)" = "Khoor" ] \
+  && ok "legacy: closure + ′f€ still Caesar-shifts a string" || no "legacy closure map"
+[ "$(printf '%s' '“Hello“U\ref\incMJE'    | gc)" = "Ifmmp" ] \
+  && ok "legacy: ′⊕€ still maps an atom over a string" || no "legacy atom map string"
+# And the shrink is real, measured on the code page rather than on the prose:
+# encode drops every #-comment, and neither of these two programs contains a
+# significant space (no space-separated literals, no space inside a “...“), so
+# deleting the remaining layout whitespace leaves exactly the op bytes.
+opbytes(){ python3 tools/codepage.py encode < "$1" | tr -d '[:space:]' | wc -c; }
+W7BNEW=$(opbytes examples/capstone.golfj)
+W7BOLD=$(opbytes examples/legacy_capstone.golfj)
+[ "$W7BNEW" -lt "$W7BOLD" ] \
+  && ok "capstone is $W7BNEW op bytes, down from $W7BOLD" || no "capstone did not shrink ($W7BNEW vs $W7BOLD)"
+# W7B -------------------------------------------------------------------------
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

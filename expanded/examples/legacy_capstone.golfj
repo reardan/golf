@@ -1,0 +1,12 @@
+# The capstone as it was written before M-VEC: every vectorization spelled out.
+# examples/capstone.golfj now says all four of these with bare + and *, and
+# prints exactly the same four lines.  This file exists so the explicit forms
+# stay compiled and output-checked forever — ⊞ zip-with a ′atom quotation, and
+# broadcast built by hand out of a named variable, a closure word and ′f€.
+# Nothing here is deprecated: € ⇤ ⌿ ⊞ are how a list meets a function that is
+# not one of the five polymorphic operators, which is most functions.
+# DO NOT shorten this file.  Not shrinking is its entire job.
+5⍳′²€∑Ṅ␤                # sum of squares 0..4  (map ², sum)      -> 30
+4⍳4⍳′*⊞∑Ṅ␤              # dot product range(4)·range(4)  (zip *)  -> 14
+10⍳:e2%;′e⌿≢Ṅ␤          # count evens in 0..9  (filter, len)      -> 5
+3→k:f←k+;“Hello“U′f€J␤   # Caesar +3 of "Hello"  (var + map)       -> Khoor

@@ -53,27 +53,44 @@ space, shown as glyphs; `tools/codepage.py` converts glyph/mnemonic source ⇄ r
 bytes and the compiler dispatches any byte in its template table. What it can do
 now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
 
-- **29 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
-  div/mod, negate/inc/dec/square/double/halve.
-- a **list type** (heap `[len, e0, …]`) with a GOLF standard library
-  (`lib/prelude.golfj`): range, len, index, sum, product, reverse, filter, and a
-  number/list printer.
+- **32 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
+  div/mod, shifts, 64-bit fetch/store, `brk`, negate/inc/dec/square/double/halve.
+- a **list type** on a `brk`-grown heap (`[len, e0, …]`, 64-bit cells) with a
+  GOLF standard library (`lib/prelude.golfj`): range, len, index, sum, product,
+  reverse, filter, and a number/list printer.
 - **higher-order functions** via quotations — `′f`/`′atom` push a callable, `⍎`
-  calls it — so `map`, `fold`, and `zip` work; `4⍳4⍳′*⊞∑` is a dot product.
+  calls it — so `map`, `fold`, and `zip` work; `5⍳′²€∑` is a sum of squares.
+- **implicit vectorization** — the bare `+ - * ⌈ ⌊` dispatch on the *shape* of
+  their operands, so the operator is the loop: `4⍳4⍳*∑` is a dot product and
+  `4⍳3+` is `3 4 5 6`. The explicit pre-M-VEC spellings still work and stay
+  regression-tested: `4⍳4⍳′*⊞∑` is that same dot product the long way.
+- **tacit combinators** built at runtime — `∘` compose, `⇉` pipeline, `⑂` fork,
+  so `5⍳′∑′≢′÷⑂` is a mean.
 - **strings** as `“...“` byte blocks that convert to code lists, so every list op
-  works on them (`“Hello“U′⊕€J` maps +1 → `Ifmmp`).
+  works on them: `“Hello“U1+J` maps +1 → `Ifmmp` (long form: `“Hello“U′⊕€J`).
 - **named variables** `→x`/`←x`, so `←a←b+←a←b-*` is `(a+b)*(a-b)` with no juggling.
 
-So `100⍳∑Ṅ` prints `4950`, and `3→k:f←k+;“Hello“U′f€J` is a Caesar cipher. The
-plan and status live in [`expanded/DESIGN.md`](expanded/DESIGN.md); the
-prioritized queue of what's next is [`expanded/NEXT_STEPS.md`](expanded/NEXT_STEPS.md).
+So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J` — which
+before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both
+spellings are compiled and output-checked by the suite, as
+`examples/capstone.golfj` and its `examples/legacy_capstone.golfj` twin.
+
+The design, the shipped record and the known limits live in
+[`expanded/DESIGN.md`](expanded/DESIGN.md); the prioritized queue of what's next
+is [`expanded/NEXT_STEPS.md`](expanded/NEXT_STEPS.md).
 
 ```sh
 cd expanded
-bash test/run2.sh
+bash test/run2.sh                                      # ladder + language + docs
+bash test/selfcheck.sh                                 # seed and golf2 are one compiler
 python3 tools/codepage.py table                        # atoms + library glyphs
 tools/golfc -j examples/capstone.golfj out && ./out    # compile a glyph program
 ```
+
+`bash test/run2.sh` is **206 assertions green**, the fixpoint included. Every
+number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
+sizes, this assertion count — is itself asserted by that suite, so a doc that
+drifts out of date fails the build instead of lying quietly.
 
 ## The idea, in one paragraph
 

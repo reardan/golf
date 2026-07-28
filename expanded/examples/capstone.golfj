@@ -1,5 +1,13 @@
 # A tour of expanded GOLF: lists, higher-order, vectorization, strings, variables.
-5⍳′²€∑Ṅ␤                # sum of squares 0..4  (map ², sum)      -> 30
-4⍳4⍳′*⊞∑Ṅ␤              # dot product range(4)·range(4)  (zip *)  -> 14
-10⍳:e2%;′e⌿≢Ṅ␤          # count evens in 0..9  (filter, len)      -> 5
-3→k:f←k+;“Hello“U′f€J␤   # Caesar +3 of "Hello"  (var + map)       -> Khoor
+# Two of these four lines used to spell their vectorization out — ′*⊞ to zip two
+# lists, a :f←k+; closure plus ′f€ to broadcast a scalar over one.  Since M-VEC
+# the bare + - * ⌈ ⌊ dispatch on the shapes they are handed, so the operator IS
+# the loop and the scaffolding around it disappears.  What is left is the part
+# that was ever about the problem: map/filter where a real function is needed,
+# and a bare operator where the shape already says what to do.
+# examples/legacy_capstone.golfj keeps the old spellings and prints these same
+# four lines, byte for byte — the shrink is pure notation, not new behaviour.
+5⍳′²€∑Ṅ␤            # sum of squares 0..4 — map ², sum           -> 30
+4⍳4⍳*∑Ṅ␤            # dot product ⍳4·⍳4 — bare * zips two lists  -> 14
+10⍳:e2%;′e⌿≢Ṅ␤      # count evens in 0..9 — filter, len          -> 5
+3→k“Hello“U←k+J␤    # Caesar +3 of "Hello" — bare + broadcasts   -> Khoor

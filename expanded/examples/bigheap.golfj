@@ -1,0 +1,10 @@
+# M-MEM — big data.  Through W5 the list heap was a 7 MB hole in the BSS between
+# 0x500000 and the return stack, so the 917,504th cell of a list overwrote the
+# return stack and the program died.  W6 shrank v2's p_memsz to 0x200000 and
+# grows the heap with the `brk` syscall (⌸, byte 0xA6) instead, so a list is now
+# bounded by RAM.  Nothing here mentions an address: the prelude reads the base
+# from the kernel at startup and publishes it in the M-TAG bounds cells, which
+# is what keeps `T` and the vectorized operators honest as the heap moves.
+1000000⍳≢Ṅ␤              # an 8 MB range — more than the whole old BSS
+1000000⍳2*999999⊇Ṅ␤      # bare * over 8 MB: a second list, then its last element
+1000000⍳999999⊇Ṅ␤        # and a third, so the break has to move again

@@ -59,9 +59,13 @@ VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 4*c
 # --------------------------------------------------------------------- compile
 def compile_bytes(src: bytes) -> bytes:
     out = bytearray(golf0.HEADER)
-    # W8/M-TOOL: v2's own startup — v1's `mov ebp, 0xC00000` with the entry-`rsp`
-    # stash in front (mkblob2.STARTUP2).  Imported, not re-spelled, so the oracle
-    # and the self-hosted compiler cannot drift into different prologues.
+    # M-MEM: v2 binaries shrink p_memsz and seed rbp below the smaller BSS.
+    # Both values come from mkblob2 so the oracle and golf2 cannot drift.
+    out[mkblob2.MEMSZ_OFF:mkblob2.MEMSZ_OFF + 8] = mkblob2.MEMSZ.to_bytes(8, "little")
+    # W8/M-TOOL: and STARTUP2 now carries the entry-`rsp` stash in front of that
+    # `mov ebp, RSTACK_TOP`, so a compiled program can reach argv.  Imported, not
+    # re-spelled: the oracle and the self-hosted compiler must not drift into
+    # different prologues, and run2.sh's oracle-parity case gates exactly that.
     out += mkblob2.STARTUP2
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)
@@ -77,10 +81,17 @@ def compile_bytes(src: bytes) -> bytes:
         out[at:at + 4] = rel.to_bytes(4, "little", signed=True)
 
     def emit_lit(v):
-        # Local (not golf0's) so v2 literals can grow past 32 bits: W6 lifts this
-        # assert and emits a 64-bit form.  Below 2^31 the encoding is identical.
-        assert 0 <= v < 0x80000000, f"literal out of range: {v}"
-        emit([0x68]); emit(v.to_bytes(4, "little"))          # push imm32
+        # Local (not golf0's) so v2 literals can grow past 32 bits (M4).  Mirrors
+        # the `W` word in self/golf2.golfj byte for byte: `push imm32` sign-
+        # extends, so it only reproduces 0..2^31-1; anything wider goes through
+        # rax, the only x86-64 form carrying a full 64-bit immediate.  Below 2^31
+        # the encoding is unchanged, so small literals still compile identically.
+        v &= 0xFFFFFFFFFFFFFFFF        # the compiler's accumulator is a register
+        if v < 0x80000000:
+            emit([0x68]); emit(v.to_bytes(4, "little"))      # push imm32
+        else:
+            emit([0x48, 0xB8]); emit(v.to_bytes(8, "little"))  # mov rax, imm64
+            emit([0x50])                                       # push rax
 
     def emit_u32(v):
         emit(v.to_bytes(4, "little"))

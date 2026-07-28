@@ -30,11 +30,11 @@
 #
 # Lines beginning with `#` are comments; the last of them is the one-line
 # summary below, and every line after that is a record.
-# 54 records, 705 bytes with the sentinel, longest template 48.
+# 55 records, 714 bytes with the sentinel, longest template 48.
 01 07 48 83 ED 08 8F 45 00
 02 05 58 48 85 C0 0F
-03 0D 48 89 24 25 40 00 4F 00 BD 00 00 C0 00
-04 2E 00 7F 01 45 02 4C 03 46 04 02 05 01 06 01 10 02 12 3E 14 01 18 78 1A 40 20 40 34 40 36 38 38 01 40 01 44 07 52 40 5A 40 62 01 6A 80 71 10
+03 0D 48 89 24 25 40 00 4F 00 BD 00 00 60 00
+04 2E 00 7F 01 45 02 4C 03 46 04 02 05 01 06 01 10 02 12 3E 14 01 18 78 1A 40 20 40 34 40 36 38 38 01 40 01 44 07 52 40 5A 40 62 01 6A 20 71 10
 05 07 31 FF 6A 3C 58 0F 05
 22 03 FF 34 24
 5F 01 58
@@ -84,4 +84,5 @@ A2 05 59 48 D3 24 24
 A3 05 59 48 D3 3C 24
 A4 05 58 48 8B 00 50
 A5 05 58 59 48 89 08
+A6 07 5F 6A 0C 58 0F 05 50
 A7 07 58 5A 5E 5F 0F 05 50

@@ -77,12 +77,12 @@
 # namespaces (dictionary vs bank), but none is reused across the two here.
 #
 # Words, in definition-before-use order (single-byte names, as the dictionary is
-# byte-indexed): B Y Z U a o L w k c C f E e D g h t H.
+# byte-indexed): B Y Z U a o L w W k c C f E e D g h t H.
 #
-# Values handled by the compiler are all far below 0x500000 and it installs no
-# vectorization hooks (its hook cells stay BSS-zero), so the bare + - * take the
-# scalar path here, byte for byte.  They are used throughout; the raw atoms
-# (﹢ ﹣ ﹡) would compile to the same code and are not needed.
+# Every value the compiler handles is an address inside the load segment (under
+# 0x600000) or a small integer, and it installs no vectorization hooks (its hook
+# cells stay BSS-zero), so the bare + - * take the scalar path here, byte for
+# byte.  The raw atoms (﹢ ﹣ ﹡) would compile to the same code and are not needed.
 #
 # Named variables also removed every single stack-juggling op: this source
 # contains no swap, no over, and `"` dup only where a value is genuinely tested
@@ -139,6 +139,43 @@
 ←p
 !
 4a
+;
+
+# W : emit the push of a constant, in whichever width the constant needs (M4).
+#
+# `push imm32` is one byte shorter but SIGN-EXTENDS its operand, so it can only
+# carry 0..2^31-1: 4294967296 would arrive as -4294967296 and 2147483648 as
+# -2147483648.  A value that does not fit goes through rax instead —
+#
+#     48 B8 <imm64>   mov rax, <the full 64-bit constant>
+#     50              push rax
+#
+# — the only x86-64 form that can carry a full 64-bit immediate.  The test is
+# `v >> 31`: it is 0 exactly for the values push imm32 reproduces, so every
+# literal that fitted before still compiles to exactly the bytes it did before
+# and only genuinely wide ones pay the extra 6.
+#
+# The accumulator this reads was always a 64-bit register (`10*` is imul rax),
+# so nothing above had to change — only the emitter at the end of the number.
+#
+# `w` stores through the 32-bit `!`, i.e. it writes the low dword of whatever it
+# is handed; the second `w` is therefore fed `v >> 32` explicitly.
+
+:W          # W : emit `push <v>`, 32- or 64-bit wide              [ v -> ]
+"           # keep v; the copy decides the width
+31>         # v >> 31 : 0 exactly when v fits a sign-extended imm32
+[           # it fits ->
+L           #   0x68            push imm32
+w           #   the value, as one dword
+^
+]
+72o         # 0x48 0xB8       mov rax, imm64
+184o
+"
+w           # its low dword ...
+32>
+w           # ... and its high dword
+80o         # 0x50            push rax
 ;
 
 :k          # k : backpatch a pending rel32 site to land here      [ site -> ]
@@ -331,8 +368,7 @@ U
 U
 [           #   not a digit: the number ends here
 →q          #     push the terminator back for the main loop
-L
-w           #     emit `push imm32 <value>`
+W           #     emit the push — imm32, or mov rax,imm64 past 2^31-1
 ^
 ]
 Z           #   fold the digit in
@@ -619,7 +655,7 @@ H           # paint the ELF header into the (zeroed) buffer
 B
 120+
 →p          # code begins right after the 120-byte header
-3E          # blob record 3: the startup stub, mov ebp,0xC00000
+3E          # blob record 3: the startup stub, mov ebp,0x600000 (RSTACK_TOP)
 
 {           # the token loop:
 g           #   fetch a char (a pushed-back one first)

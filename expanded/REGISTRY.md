@@ -43,8 +43,9 @@ is a proper prefix of another, or that has another as a proper prefix.
 Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digits
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
-compiler prefixes). **`0x91`–`0xFF` — 111 bytes — is the entire remaining op
-space**, partitioned as follows so waves never contend:
+compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
+space; **22** are now spent, leaving **89** free. It is partitioned as follows
+so waves never contend:
 
 | Range         | Owner / purpose                                            |
 |---------------|------------------------------------------------------------|
@@ -91,12 +92,12 @@ for the range immediately above them; do not fill them opportunistically.
 
 | Byte | Mnemonic | Glyph | Meaning | Status |
 |------|----------|-------|---------|--------|
-| `0x91` | `\radd` | `﹢` | raw add | shipping in wave 0 |
-| `0x92` | `\rsub` | `﹣` | raw sub | shipping in wave 0 |
-| `0x93` | `\rmul` | `﹡` | raw mul | shipping in wave 0 |
-| `0x94` | `\rmin` | `⊓` | raw unsigned min | shipping in wave 0 |
-| `0x95` | `\rmax` | `⊔` | raw unsigned max | shipping in wave 0 |
-| `0x96` | `\rlt` | `﹤` | raw unsigned less | shipping in wave 0 |
+| `0x91` | `\radd` | `﹢` | raw add | shipped |
+| `0x92` | `\rsub` | `﹣` | raw sub | shipped |
+| `0x93` | `\rmul` | `﹡` | raw mul | shipped |
+| `0x94` | `\rmin` | `⊓` | raw unsigned min | shipped |
+| `0x95` | `\rmax` | `⊔` | raw unsigned max | shipped |
+| `0x96` | `\rlt` | `﹤` | raw unsigned less | shipped |
 | `0x97` | — | — | spare (raw-atom range) | reserved |
 | `0xA0` | `\slt` | `≺` | signed less | shipped |
 | `0xA1` | `\sgt` | `≻` | signed greater | shipped |
@@ -104,7 +105,7 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA3` | `\sar` | `≫` | arithmetic shift right | shipped |
 | `0xA4` | `\fetch` | `⊙` | 64-bit fetch | shipped |
 | `0xA5` | `\store` | `⊛` | 64-bit store | shipped |
-| `0xA6` | `\brk` | `⌸` | `brk` syscall (wave 6) | reserved |
+| `0xA6` | `\brk` | `⌸` | `brk` syscall — the list heap's growth primitive | shipped |
 | `0xA7` | `\sys` | `⎈` | raw syscall: `a1 a2 a3 num -> result` (wave 8, M-TOOL) | shipped |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
@@ -129,8 +130,10 @@ which covers every syscall the tools need — `open`(path,flags,mode) (number 2,
 (fd,buf,n), `close`(fd,_,_), `exit`(code,_,_), `brk`(addr,_,_), `lseek`. Push `0`
 for unused arguments; the kernel's return value is pushed back (negative errno on
 failure). A syscall needing `r10`/`r8`/`r9` would need its own op — deliberately
-out of scope. `⌸ \brk` stays reserved for W6/M-MEM: an allocator wants a
-dedicated op, not a raw number.
+out of scope. `⌸ \brk` shipped separately in W6/M-MEM and stays: the heap's
+growth primitive wants a dedicated one-argument op, not a raw number and three
+pushes, and the prelude — which must never pay for what it does not use — calls
+it on every allocation that outgrows the break.
 
 ---
 
@@ -141,7 +144,7 @@ Uppercase letters are the pool.
 
 **In use (shipped):** `A` alloc · `D` shape dispatch · `E` newline · `F` fold ·
 `G` broadcast int⊙list · `H` heap-pointer address · `I` index · `J` join ·
-`K` broadcast list⊙int · `L` len · `M` map · `N` print uint · `O` puts ·
+`K` broadcast list⊙int · `L` len · `M` map · `N` print signed decimal · `O` puts ·
 `P` product · `Q` show · `R` range · `S` sum · `T` shape test · `U` chars ·
 `V` reverse · `W` filter · `X` push spill frame · `Y` pop spill frame · `Z` zip.
 
@@ -210,8 +213,8 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
-| `0x4F0034` | 5177396 | heap base cell | shipped |
-| `0x4F0038` | 5177400 | heap span cell | shipped |
+| `0x4F0034` | 5177396 | **heap base cell** — the `brk` the prelude's init was handed, published for `T` and the five M-VEC templates. ASLR-shifted every run, so it is never spelled out anywhere | shipped |
+| `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `T` is `v - base <u span` | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
 | `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
@@ -219,8 +222,8 @@ both forms are given here and the decimal is the one you type.
 | `0x4F00A0`–`0x4F00FF` | 5177504–5177599 | reserved for future scratch | free |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
-| `0x500000` | 5242880 | heap base today (bump allocator) | shipped |
-| `0xC00000` | 12582912 | return stack top (grows **down** into the heap) | shipped |
+| `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
+| the `brk` | — | **the list heap**, above the whole load segment, grown by `⌸`. Not a fixed address: the kernel ASLR-shifts the initial break, which is why it lives in the two cells above | shipped |
 
 Notes:
 
@@ -240,9 +243,13 @@ Notes:
   value — which is why the bank was *relocated* to `0x4F0060` rather than
   widened in place (at a 4-byte stride `s0`'s high half is `s1`). All scratch
   access is `⊙`/`⊛` (`\fetch`/`\store`). The four cells at `0x4F0030`–`0x4F003C`
-  deliberately did **not** move or widen: they are forever pointer-valued
-  (< 2^31), plain `@`/`!` on them is therefore exact, and `0x4F0034` in
-  particular is baked into every M-VEC template as a 32-bit compare operand.
+  deliberately did **not** move or widen: they hold pointers and byte offsets
+  that are < 2^31 in practice, plain `@`/`!` on them is therefore exact, and
+  `0x4F0034` in particular is baked into every M-VEC template as a 32-bit
+  compare operand. That is a real 4 GB ceiling on the break (DESIGN.md, known
+  limits) — widening the cells means widening five templates with them.
+  The **user variable bank at `0x4E0000` is 4 bytes per name for the same
+  reason**, which is the one place a 64-bit value still gets truncated.
   A string is likewise still `[len:4][bytes]`, so `O`/`U` read its length with
   the 32-bit `@`; only `U`'s *output* is an 8-byte-cell list.
 - **Scratch is callee-saved, not caller-saved.** Every scratch-using looping
@@ -252,10 +259,14 @@ Notes:
   scratch themselves — only the data stack and absolute addresses. `A` is the
   one exception: `s5` is A-only and never held across a call, so `A` needs no
   frame, and `I` is scratch-free.
-- **Heap/return-stack collision** is real: the bump heap at `0x500000` grows up
-  and the return stack grows down from `0xC00000` in the same 8 MB segment.
-  W6/M-MEM moves the heap above `0xC00000` and sizes it with `brk` (`0xA6`),
-  which is why `0x4F0034`/`0x4F0038` exist.
+- **The heap/return-stack collision is gone.** Until M-MEM a bump heap grew up
+  from `0x500000` while the return stack grew down from `0xC00000` inside the
+  same 8 MB BSS: a list of ~917k cells met the stack and the program died. The
+  heap is now the kernel's, grown with `brk` (`0xA6`) above the load segment, so
+  `p_memsz` reserves only what is statically addressed (`0x200000`) and the
+  return stack has its 1.08 MB — ≈138k frames — entirely to itself. That is why
+  `0x4F0034`/`0x4F0038` exist: the base cannot be a constant any more.
+  **Do not add a fixed heap-base row to this table.**
 - The M-VEC hook table is at stride 8 (not 4) so it stayed correct when M4
   widened list cells to 64 bits — which W4A has now done, with no change to the
   templates, the hook cells or the seed.
