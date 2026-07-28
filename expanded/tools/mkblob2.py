@@ -32,7 +32,8 @@ one means adding a row to ATOMS below.  See ../DESIGN.md.
 The move toward a Jelly-style code page: operators are single bytes drawn from
 the full 0..255 space, each shown via a code page glyph (../tools/codepage.py).
 This module is the single source of truth for the atoms: their byte, glyph,
-mnemonic, and machine-code template.
+mnemonic, and machine-code template — and, since W8, for v2's own startup stub
+(`STARTUP2`, which stashes the entry `rsp` so `argv` is reachable).
 """
 import os, sys
 
@@ -238,11 +239,30 @@ def _check_atoms():
     assert not clash, ("ATOMS byte already allocated: "
                        + ", ".join(f"0x{b:02X}" for b in clash))
 
+# --- W8/M-TOOL: the entry-`rsp` stash -----------------------------------------
+# At process entry the kernel leaves `rsp` pointing at `argc`, with `argv[i]` at
+# `rsp+8+8*i`.  GOLF uses `rsp` AS its data stack, so that pointer is destroyed
+# by the very first push — and `STARTUP` is the only code that runs before any
+# push.  Stashing `rsp` there is therefore the ONLY way a GOLF program can ever
+# reach its own command line.  The cell is 0x4F0040, decimal 5177408, and is
+# 8 bytes read with `⊙` and never `@` — see ../REGISTRY.md §3 for why.
+#
+# An expanded-LOCAL copy rather than a change to golf0.STARTUP, because
+# ../minimal is the frozen ground-truth bootstrap root and is never touched.
+# The divergence costs nothing: seed.golf is compiled by v1c, which carries v1's
+# blob and so emits v1's STARTUP — but the v1c -> seed rung is never compared
+# against anything.  Every binary that seed and golf2 EMIT carries STARTUP2,
+# because both embed the identical blob built below, so test/selfcheck.sh's
+# `seed and golf2 emit byte-identical binaries` and run2.sh's `golf2 == golf2'`
+# fixpoint both still hold — with every emitted binary 8 bytes longer.
+STARTUP2 = bytes([0x48, 0x89, 0x24, 0x25, 0x40, 0x00, 0x4F, 0x00]) + golf0.STARTUP
+#          mov [0x4F0040], rsp                       then v1's mov ebp, 0xC00000
+
 def build_blob2():
     b = bytearray()
     b += mkblob.rec(1, golf0.PROLOGUE)
     b += mkblob.rec(2, mkblob.COND)
-    b += mkblob.rec(3, golf0.STARTUP)
+    b += mkblob.rec(3, STARTUP2)
     b += mkblob.rec(4, mkblob.header_pairs())
     b += mkblob.rec(5, golf0.AUTOEXIT)
     used = set()

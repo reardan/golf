@@ -213,7 +213,7 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0034` | 5177396 | heap base cell | shipped |
 | `0x4F0038` | 5177400 | heap span cell | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
-| `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | reserved |
+| `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
 | `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
 | `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
 | `0x4F00A0`–`0x4F00FF` | 5177504–5177599 | reserved for future scratch | free |
@@ -227,7 +227,10 @@ Notes:
 - **Scratch is exhausted.** All eight of `s0`–`s7` are live in `lib/prelude.golfj`
   today. A new prelude word that needs a temporary must either use one of the
   cells above or push a spill frame (`X`/`Y`) — it may not invent an address.
-- **The entry-`rsp` cell is a full 8 bytes and must be read with `⊙`.** Unlike
+- **The entry-`rsp` cell is a full 8 bytes and must be read with `⊙`.** It is
+  written by `tools/mkblob2.STARTUP2` (mirrored by `boot/golfref.py`), which is
+  v1's `mov ebp, 0xC00000` with a `mov [0x4F0040], rsp` in front — so every
+  binary the v2 toolchain emits is 8 bytes longer than it used to be. Unlike
   every other fixed cell here it holds a *stack* address, which on Linux x86-64
   is far above 2^32 — `@` would truncate it. So are the `argv[i]` pointers it
   leads to, and any buffer address handed to `⎈`: all of that arithmetic is
