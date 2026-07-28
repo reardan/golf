@@ -182,10 +182,10 @@ library so the three can be written in parallel without contending.
 | Range | Owner | Wave | Status |
 |-------|-------|------|--------|
 | `a`–`h` | `lib/tio.golfj` — file/stream I/O on `⎈`, argv (per letter below) | W8 | shipped |
-| `i`–`r` | `lib/ttext.golfj` — byte-buffer text words | W8 | reserved |
+| `i`–`r` | `lib/ttext.golfj` — byte-buffer text words (per letter below) | W8 | shipped |
 | `s`–`z` | `lib/tutf.golfj` — code-page table loader + glyph matching | W8 | reserved |
 
-**`a`–`h` — `lib/tio.golfj`, per letter (W8, shipped):**
+#### `a`–`h` — `lib/tio.golfj`, files, streams and argv (W8, shipped)
 
 | Letter | Signature | Meaning |
 |--------|-----------|---------|
@@ -206,6 +206,37 @@ closes every descriptor — so neither was worth displacing `a` (the whole error
 policy) or `h` (the 64-bit argv arithmetic). Every wrapper checks the kernel's
 return value and dies through `a` rather than returning a status a build script
 could forget to test.
+
+#### `i`–`r` — `lib/ttext.golfj`, byte-buffer text words (W8, shipped)
+
+The `i`–`r` range is spent in full; there is no room left in it, which is why
+is-hex-digit is `k 0≺` rather than a word of its own. A **text buffer** here is
+a raw `(addr, len)` pair on the data stack — what `read(2)` hands back — not a
+`“…“` block; a block is fed in as `←t 4﹢` plus `←t @`. Flags are zero-is-true
+(0 = yes) like `T`; "not found" and "not a hex digit" are `-1`, so they must be
+tested with the signed `≺` and never with the unsigned `»`/`﹤` — **and never
+after a round trip through a `→x`/`←x` variable**, whose 4-byte cell and
+zero-extending load turn `-1` into `4294967295` and silently disable the
+not-found branch. Test the marker while it is still on the data stack.
+
+| Letter | Signature | Meaning | Wave | Status |
+|--------|-----------|---------|------|--------|
+| `i` | `ch -> f` | is-digit: 0 for `'0'`–`'9'`, 1 otherwise | W8 | shipped |
+| `j` | `ch -> f` | is-ASCII-letter: 0 for `A`–`Z` `a`–`z` only, 1 otherwise | W8 | shipped |
+| `k` | `ch -> v` | hex-digit value 0–15, or -1; `k 0≺` is the is-hex-digit test | W8 | shipped |
+| `l` | `addr -> b` | the two hex digits at `addr` as one byte 0–255, or -1 | W8 | shipped |
+| `m` | `src dst n ->` | copy `n` bytes, ascending | W8 | shipped |
+| `n` | `addr len -> v used` | parse an unsigned decimal run: value and bytes consumed | W8 | shipped |
+| `o` | `v addr -> nb` | write `v` as unsigned decimal at `addr`; bytes written | W8 | shipped |
+| `p` | `a alen b blen -> f` | 0 iff `(a,alen)` starts with `(b,blen)`; equality at equal lengths | W8 | shipped |
+| `q` | `addr len ch -> i` | index of the first `ch` in the range, or -1 | W8 | shipped |
+| `r` | `a alen b blen -> i` | index of the first `(b,blen)` inside `(a,alen)`, or -1 | W8 | shipped |
+
+`ttext` allocates **no** variable name and **no** new fixed address: every
+looping word frames with `X`/`Y` and then uses the prelude's own `s0`–`s7`, so
+a `gtools/` program's `→x`/`←x` can never collide with it and a pointer can
+never be truncated by the bank's 4-byte cells. `k` is a leaf (no scratch, no
+frame) and is callable with someone else's scratch live.
 
 Two rules carry over from the prelude and one does not:
 
