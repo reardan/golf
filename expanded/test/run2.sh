@@ -103,8 +103,9 @@ echo "M4 atoms: ≺ slt ≻ sgt (signed compare), ≪ shl ≫ sar, ⊙ fetch ⊛
 [ "$(printf '%s' '0 8-1\sar 6+48+)'  | atom)" = "2" ] && ok "sar (-8>>1=-4)" || no "sar negative"
 # -1 >>a 63 is -1; an unsigned shr would give 1 and print 2 instead of 0.
 [ "$(printf '%s' '0 1-63\sar1+48+)'  | atom)" = "0" ] && ok "sar keeps the sign bit" || no "sar sign"
-# 64-bit cell round-trip through free scratch 0x4F0040 (REGISTRY.md §3).
-[ "$(printf '%s' '7 5177408\store 5177408\fetch48+)' | atom)" = "7" ] \
+# 64-bit cell round-trip through free scratch 0x4F0048 (REGISTRY.md §3).  Not
+# 0x4F0040 any more: W8 gave that cell to the entry-`rsp` stash.
+[ "$(printf '%s' '7 5177416\store 5177416\fetch48+)' | atom)" = "7" ] \
   && ok "store + fetch (64-bit cell round-trip)" || no "store/fetch"
 
 echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
@@ -582,6 +583,334 @@ W7LEGOUT=$(printf '%s' '4⍳4⍳′*⊞∑Ṅ␤“Hello“U′⊕€J␤3→k:f
   && ok "every long-form one-liner quoted in README.md still prints the same" \
   || no "a README long-form one-liner printed something else: $W7LEGOUT"
 # W7A -------------------------------------------------------------------------
+
+# Wave 8 (M-TOOL) anchors.  Unlike the waves above, several of these run in
+# parallel, so they are spaced out: git merges two inserts cleanly only when the
+# hunks do not share context lines.  Add tests directly under your own anchor and
+# leave the blank lines around the others alone.
+
+# @@ W8-SYS @@
+echo "Raw syscalls (M-TOOL): ⎈ sys — a1 a2 a3 num ⎈ -> result"
+# Before this op GOLF's entire I/O surface was `(` and `)`: one byte from fd 0,
+# one byte to fd 1. ⎈ pops rax, rdx, rsi, rdi in that order, so a call reads
+# left-to-right in argument order and unused arguments are simply pushed as 0.
+# A “…“ literal pushes the address of its 4-byte length field, so its text
+# starts at addr+4 and its length is `@` of the address — hence →s / ←s here
+# rather than a hand-counted byte count.
+[ "$(printf '%s' '“hello from sys“→s 1←s4\radd←s@1\sys_' | atom)" = "hello from sys" ] \
+  && ok "⎈ write(1, buf, n) — the first syscall GOLF can spell" || no "sys write"
+# The kernel's return value is pushed back unchanged: write returns the count.
+[ "$(printf '%s' '“hello from sys“→s 1←s4\radd←s@1\sys N E' | gc)" = "hello from sys14" ] \
+  && ok "⎈ pushes the kernel's return value (write -> 14)" || no "sys write count"
+# ...and a NEGATIVE ERRNO on failure — the raw kernel convention, not libc's
+# -1-plus-errno. close() of a never-opened fd is EBADF on every kernel, whatever
+# RLIMIT_NOFILE happens to be, so -9 is stable.
+[ "$(printf '%s' '999999 0 0 3\sys N E' | gc)" = "-9" ] \
+  && ok "⎈ returns a negative errno (close of a bogus fd -> -EBADF)" || no "sys errno"
+# read(0, buf, 4). The load segment is RWX, so the bytes of a “    “ literal are
+# a perfectly legal scratch buffer. This one needs a stdin of its own: the
+# helpers above hand theirs to the compiler, so it is already at EOF by the time
+# the compiled program runs.
+printf '%s' '“    “→s 0←s4\radd 4 0\sys N E ←s O E' \
+  | python3 tools/codepage.py encode > "$TMP/sysrd.gb"
+cat "$TMP/pre.gb" "$TMP/sysrd.gb" | "$TMP/golf2" > "$TMP/sysrd" 2>/dev/null && chmod +x "$TMP/sysrd"
+[ "$(printf 'GOLF' | "$TMP/sysrd" 2>/dev/null)" = "$(printf '4\nGOLF')" ] \
+  && ok "⎈ read(0, buf, 4) straight into a string literal's bytes" || no "sys read"
+# exit(42): the one-argument shape, with 0 pushed for the two arguments the call
+# does not use. This is what lets a GOLF tool fail a build.
+printf '%s' '42 0 0 60\sys' | atom >/dev/null 2>&1
+[ "$?" = 42 ] && ok "⎈ exit(42) — unused arguments are just 0" || no "sys exit"
+# `syscall` clobbers rcx and r11 and nothing else GOLF depends on: no value is
+# ever live in a register across ops, and rbp — the return-stack pointer — is
+# untouched, so a word can syscall and still return to its caller.
+[ "$(printf '%s' ':w“in a word“→s 1←s4\radd←s@1\sys_;w E 7 8+N E' | gc)" = "$(printf 'in a word\n15')" ] \
+  && ok "⎈ inside a word: the return stack (rbp) survives the syscall" || no "sys in word"
+# ⎈ is a pure template, so boot/golfref.py needed no edit — it builds its
+# TEMPLATES from mkblob2.ATOMS. This is what proves the inheritance is real.
+[ "$(printf '%s' '“hello from sys“→s 1←s4\radd←s@1\sys N E' | gref)" = "hello from sys14" ] \
+  && ok "oracle: ⎈ auto-inherited from ATOMS, byte-identical behaviour" || no "oracle sys"
+
+# @@ W8-ARGV @@
+echo "argv (M-TOOL): STARTUP stashes the entry rsp at 0x4F0040, so argc/argv are reachable"
+# The kernel enters the process with rsp pointing at argc (argv[i] at rsp+8+8*i),
+# but GOLF uses rsp AS its data stack, so the very first push destroys it.
+# STARTUP — tools/mkblob2.STARTUP2, the only code that runs before any push —
+# now stashes it at 5177408 (0x4F0040, REGISTRY.md §3).  That cell holds a STACK
+# address, far above 2^32 on Linux x86-64, so it and every argv[i] pointer it
+# leads to must be read with the 64-bit ⊙ \fetch; the 32-bit @ would truncate.
+# No prelude needed: the stash is in the program's own prologue.
+[ "$(printf '%s' '5177408\fetch 2147483647\gt1+48+)' | atom)" = "0" ] \
+  && ok "the entry rsp is above 2^31 (so @ would truncate it)" || no "entry rsp width"
+# gc compiles to "$TMP/p" and runs it with no extra arguments, so argc is 1 and
+# argv[0] is that absolute temp path — its first byte is '/' (47).
+[ "$(printf '%s' '5177408\fetch\fetch N E' | gc)" = "1" ] \
+  && ok "argc is 1 (5177408 ⊙ ⊙)" || no "argc"
+[ "$(printf '%s' '5177408\fetch 8\radd\fetch?N E' | gc)" = "47" ] \
+  && ok "argv[0] starts with '/' (5177408 ⊙ 8 ﹢ ⊙)" || no "argv[0] first byte"
+# Walk argv[0] to its NUL.  The temp path's length is not fixed, but the harness
+# always names the binary "p", so the byte before the NUL is.  The pointer stays
+# on the data stack throughout: →x/←x is a 4-byte bank and would truncate it.
+[ "$(printf '%s' '5177408\fetch 8\radd\fetch 0→n{"←n\radd?←n\inc→n 0\eq}←n\radd 2\rsub?)E' | gc)" = "p" ] \
+  && ok "walking argv[0] to its NUL lands on the last byte" || no "argv[0] walk"
+# Real arguments.  gc's exact pipeline, except that the compiled program is run
+# with the helper's own arguments — gc cannot forward them, since every other
+# case in this file wants a bare invocation.
+garg(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+          && chmod +x "$TMP/p" && "$TMP/p" "$@"; }
+[ "$(printf '%s' '5177408\fetch\fetch N E' | garg one two)" = "3" ] \
+  && ok "argc counts the real arguments" || no "argc with arguments"
+[ "$(printf '%s' '5177408\fetch 16\radd\fetch?)E' | garg one two)" = "o" ] \
+  && ok "argv[1] at entry_rsp+16" || no "argv[1]"
+[ "$(printf '%s' '5177408\fetch 24\radd\fetch?)E' | garg one two)" = "t" ] \
+  && ok "argv[2] at entry_rsp+24" || no "argv[2]"
+# A whole argument, the way a tool will read a file name: measure it, then emit
+# it byte by byte.  n is a count and fits the 4-byte variable bank; the pointer
+# does not, so it lives on the stack and is duplicated with " each iteration.
+[ "$(printf '%s' '5177408\fetch 16\radd\fetch 0→n{"←n\radd?←n\inc→n 0\eq}←n 1\rsub→n 0→i{"←i\radd?)←i\inc→i ←i←n\eq}_E' | garg one two)" = "one" ] \
+  && ok "argv[1] read out in full (measure, then emit)" || no "argv[1] string"
+# The System V entry contract in one line: argv[argc] is NULL (envp follows it).
+[ "$(printf '%s' '5177408\fetch"\fetch\inc 8\rmul\radd\fetch N E' | garg one two)" = "0" ] \
+  && ok "argv[argc] is NULL (the argv array is terminated)" || no "argv NULL terminator"
+# Oracle parity.  boot/golfref.py must emit the SAME startup stub: if it still
+# emitted v1's, the cell would be BSS-zero and 5177408 ⊙ ⊙ would fault on a null
+# pointer.  gref runs its binary as "$TMP/ovec" — again argc 1, argv[0] from '/'.
+[ "$(printf '%s' '5177408\fetch\fetch N E 5177408\fetch 8\radd\fetch?N E' | gref)" = "$(printf '1\n47')" ] \
+  && ok "oracle: golfref.py stashes the entry rsp too" || no "oracle argv"
+
+# @@ W8-TOOLLIB @@
+echo "Tool library lib/tio.golfj (M-TOOL): a die · b open · c read · d write · e slurp · f flush · g emit · h argv"
+# gc compiles the prelude and nothing else, so the tool libraries need a helper
+# of their own: prelude + tio + the case.  It also FORWARDS its arguments to the
+# compiled program, which is the only way a NUL-terminated path gets in — a
+# “…“ literal is a counted block, not a C string, so argv is what `b` is fed.
+python3 tools/codepage.py encode < lib/tio.golfj > "$TMP/tio.gb"
+tio(){ cat "$TMP/pre.gb" "$TMP/tio.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/tp" 2>/dev/null \
+         && chmod +x "$TMP/tp" && "$TMP/tp" "$@"; }
+printf 'GOLF tio\n' > "$TMP/tio-in"                    # 9 bytes, this harness's own file
+# The library's whole point in one line, used twice below (a small file and a
+# big one): open argv[1], slurp it, push every byte back out through g, flush.
+tiocat='1 h 0 b e→n→p 0→i ←n 0\eq[{←p←i\radd?g ←i1\radd→i ←i←n\rlt1\radd}]f'
+[ "$(printf '%s' '72g 73g f' | tio)" = "HI" ] \
+  && ok "g emit + f flush (one write syscall, not two)" || no "emit/flush"
+[ "$(printf '%s' '“abc“→s 1 ←s4\radd ←s@ d' | tio)" = "abc" ] \
+  && ok "d write-all (fd buf n ->)" || no "write-all"
+[ "$(printf '%s' '1 h 0 b e N E _' | tio "$TMP/tio-in")" = "9" ] \
+  && ok "b open(argv[1]) + e slurp -> the file's length" || no "open/slurp length"
+# The whole round trip: this is `cat`, and it is what the tools are made of.
+[ "$(printf '%s' "$tiocat" | tio "$TMP/tio-in")" = "GOLF tio" ] \
+  && ok "e slurp -> g emit round trip (cat)" || no "slurp/emit round trip"
+# c reads ONCE, into whatever buffer it is given: a “    “ literal's own bytes
+# do fine, the load segment being RWX.  4 of the 9 bytes, so got is 4, not 9.
+[ "$(printf '%s' '1 h 0 b→v “    “→s ←v ←s4\radd 4 c N E ←s O E' | tio "$TMP/tio-in")" = "$(printf '4\nGOLF')" ] \
+  && ok "c read(fd, buf, 4) -> a short read is a normal answer" || no "read once"
+# An empty file: slurp's read loop is a DO-while, so EOF on the first read has
+# to fall straight out with len 0, and a flush with nothing pending is a no-op.
+: > "$TMP/tio-empty"
+[ "$(printf '%s' '1 h 0 b e N E _ f' | tio "$TMP/tio-empty")" = "0" ] \
+  && ok "e slurp of an empty file -> 0 (the guard case)" || no "slurp empty"
+# Growth.  The buffer starts at 65536 bytes and doubles by allocating a fresh
+# block and copying, so a 200003-byte file exercises the copy loop twice — and
+# proves the copy is exact, since the bytes come back out through g.
+python3 -c "
+import random, sys
+random.seed(7)                       # a fixed seed: the same file every run
+sys.stdout.buffer.write(random.randbytes(200003))" > "$TMP/tio-big"
+[ "$(printf '%s' '1 h 0 b e N E _' | tio "$TMP/tio-big")" = "200003" ] \
+  && ok "e slurp grows past 65536 bytes (200003)" || no "slurp growth"
+printf '%s' "$tiocat" | tio "$TMP/tio-big" > "$TMP/tio-big.out"
+cmp -s "$TMP/tio-big" "$TMP/tio-big.out" \
+  && ok "200003 bytes survive slurp + emit byte for byte" || no "slurp/emit large"
+# The emitter auto-flushes at 8192, so 20000 bytes need three writes and no
+# help from the caller beyond the final f.
+printf '%s' '0→i{65g ←i1\radd→i ←i 20000\rlt1\radd}f' | tio > "$TMP/tio-flush.out"
+[ "$(wc -c < "$TMP/tio-flush.out")" = "20000" ] \
+  && ok "g auto-flushes when the 8192-byte buffer fills" || no "emit auto-flush"
+# Slurping fd 0 needs a stdin of its own — the helper hands its own to the
+# compiler — so this case builds the binary first and then feeds it, once from
+# a file and once from a PIPE, where a short read is the rule and not the
+# exception.  `build/gencode < self/golf2.golfj` is exactly this shape.
+printf '%s' '0 e N E _' | python3 tools/codepage.py encode > "$TMP/tioslurp.gb"
+cat "$TMP/pre.gb" "$TMP/tio.gb" "$TMP/tioslurp.gb" | "$TMP/golf2" > "$TMP/tps" 2>/dev/null && chmod +x "$TMP/tps"
+[ "$("$TMP/tps" < "$TMP/tio-big" 2>/dev/null)" = "200003" ] \
+  && ok "e slurp of fd 0 (a redirected file)" || no "slurp stdin"
+[ "$(cat "$TMP/tio-big" | "$TMP/tps" 2>/dev/null)" = "200003" ] \
+  && ok "e slurp of fd 0 (a pipe: every read comes up short)" || no "slurp pipe"
+# Writing a file: open with w=1 (O_WRONLY|O_CREAT|O_TRUNC, 0644) and point the
+# emitter at the fd by storing it in the library's cell (REGISTRY.md §3).
+printf '%s' '2 h 1 b 5177520\store 79g 75g 10g f' | tio "$TMP/tio-in" "$TMP/tio-out" >/dev/null 2>&1
+[ "$(cat "$TMP/tio-out" 2>/dev/null)" = "OK" ] \
+  && ok "b open(w=1) creates a file the emitter writes into" || no "open for writing"
+# argv, bounds-checked: h answers 0 past the end instead of reading envp.
+[ "$(printf '%s' '9 h N E 1 h?N E' | tio one two)" = "$(printf '0\n111')" ] \
+  && ok "h argv[i], and 0 for i >= argc" || no "argv helper"
+# The error policy, end to end: a missing file is a message on fd 2 and status
+# 1, not a 0 length that quietly produces an empty artifact.
+printf '%s' '1 h 0 b _ “not reached“O' | python3 tools/codepage.py encode > "$TMP/tiodie.gb"
+cat "$TMP/pre.gb" "$TMP/tio.gb" "$TMP/tiodie.gb" | "$TMP/golf2" > "$TMP/tpd" 2>/dev/null && chmod +x "$TMP/tpd"
+tiomsg=$("$TMP/tpd" "$TMP/no-such-file-here" 2>&1 >/dev/null); tiost=$?
+[ "$tiost" = 1 ] && [ "$tiomsg" = "tio: cannot open file for reading" ] \
+  && ok "a die: open of a missing file -> fd 2 + exit 1" || no "die on open failure"
+# X/Y discipline: d and e take a spill frame, so they nest inside a prelude
+# looping word the way every scratch-using word must.
+[ "$(printf '%s' ':x 65\radd"g;5R′xM S N E f' | tio)" = "$(printf '335\nABCDE')" ] \
+  && ok "g inside a map (scratch survives the nesting)" || no "emit in map"
+[ "$(printf '%s' ':y“ab“→s 1 ←s4\radd ←s@ d 7;3R′yM S N E' | tio)" = "$(printf 'ababab21')" ] \
+  && ok "d inside a map (X/Y frame nests)" || no "write-all in map"
+
+echo "Tool text library (lib/ttext.golfj): byte ranges, compare/find, decimal, hex"
+# These words are NOT in the prelude, so the gc helper above cannot see them:
+# gtools/build prepends lib/t*.golfj only to programs under gtools/.  Hence gtt,
+# the same pipeline with lib/ttext.golfj spliced in between.  A "text buffer"
+# here is a raw (addr, len) PAIR on the data stack — what read(2) hands back —
+# so a “…“ literal is fed in as ←s 4﹢ (its bytes) plus ←s @ (its 4-byte length
+# prefix).  Flags are zero-is-true, like `T` and like `[` itself; not-found and
+# bad-digit are -1, which is why every check below prints with the signed Ṅ.
+python3 tools/codepage.py encode < lib/ttext.golfj > "$TMP/ttext.gb"
+gtt(){ cat "$TMP/pre.gb" "$TMP/ttext.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+         && chmod +x "$TMP/p" && "$TMP/p"; }
+# i is-digit, j is-ASCII-letter.  195 is a UTF-8 lead byte: Python's isalpha()
+# would call the character it starts a letter, j calls it not one (by design —
+# see the divergence note in lib/ttext.golfj's header).
+[ "$(printf '%s' '53 i N E 120 i N E 113 j N E 53 j N E 195 j N E' | gtt)" = "$(printf '0\n1\n0\n1\n1')" ] \
+  && ok "i is-digit / j is-ASCII-letter (zero-is-true; 0x80+ is not a letter)" || no "i/j classify"
+# k is the hex-digit value AND the is-hex-digit test: it is negative for a byte
+# that is not one, so `k 0≺` is the flag in the same polarity as i and j.
+[ "$(printf '%s' '102 k N E 65 k N E 103 k N E 102 k 0\slt N E 103 k 0\slt N E' | gtt)" = "$(printf '15\n10\n-1\n0\n-1')" ] \
+  && ok "k hex-digit value, -1 when it is not one (and is-hex-digit is k 0≺)" || no "k hexval"
+# l: a hex PAIR -> one byte.  This is every wave-3 tool's inner loop over
+# data/blob.hex and data/codepage.tsv, so both cases and both failures matter.
+[ "$(printf '%s' '“a7“→a ←a4\radd l N E “FF“→b ←b4\radd l N E “00“→c ←c4\radd l N E “z0“→d ←d4\radd l N E “0z“→e ←e4\radd l N E' | gtt)" \
+   = "$(printf '167\n255\n0\n-1\n-1')" ] \
+  && ok "l two hex digits -> a byte (either digit bad -> -1)" || no "l hex pair"
+# m: copy n bytes.  The guarded n == 0 case must copy nothing at all.
+[ "$(printf '%s' '“abcdef“→s “......“→d ←s4\radd ←d4\radd 3 m ←d O E ←s4\radd ←d4\radd 0 m ←d O E' | gtt)" \
+   = "$(printf 'abc...\nabc...')" ] \
+  && ok "m copy n bytes (and n == 0 copies none)" || no "m memcpy"
+# n: (value, bytes consumed).  "99" with len 2 is a number at the very END of a
+# buffer — no terminator to stop on, so only the length may stop it.  "0" is the
+# value a "while v != 0" parser loses, and len 0 / a non-digit are the two ways
+# a caller learns there was no number here at all.
+[ "$(printf '%s' '“123x“→s ←s4\radd 4 n →u N E ←u N E' | gtt)" = "$(printf '123\n3')" ] \
+  && ok "n parse decimal -> value + bytes consumed" || no "n decimal"
+[ "$(printf '%s' '“99“→s ←s4\radd 2 n →u N E ←u N E “0“→t ←t4\radd 1 n →u N E ←u N E' | gtt)" \
+   = "$(printf '99\n2\n0\n1')" ] \
+  && ok "n at the very end of a buffer, and n of \"0\"" || no "n end/zero"
+[ "$(printf '%s' '“x9“→s ←s4\radd 2 n →u N E ←u N E ←s4\radd 0 n →u N E ←u N E' | gtt)" \
+   = "$(printf '0\n0\n0\n0')" ] \
+  && ok "n on a non-digit and on an EMPTY range -> (0, 0)" || no "n empty"
+# o: unsigned decimal INTO a buffer.  The prelude's Ṅ can do neither of these —
+# it writes to fd 1, and it is signed, so it renders 2^64-1 as "-1".
+[ "$(printf '%s' '“......“→b 0 ←b4\radd o N E ←b O E “......“→c 90210 ←c4\radd o N E ←c O E' | gtt)" \
+   = "$(printf '1\n0.....\n5\n90210.')" ] \
+  && ok "o format decimal into a buffer -> bytes written (0 -> \"0\")" || no "o format"
+# The largest value these words support, both ways: 2^64-1 does not fit a GOLF
+# literal, so it can only get onto the stack through n — and only o can print it.
+[ "$(printf '%s' '“18446744073709551615“→s ←s4\radd ←s@ n →u “                    “→b ←b4\radd o →c ←b O E ←c N E ←u N E' | gtt)" \
+   = "$(printf '18446744073709551615\n20\n20')" ] \
+  && ok "n/o round-trip 18446744073709551615 (the largest value supported)" || no "n/o u64 max"
+# p reads both ways: "starts with" and, at equal lengths, "these are equal".  A
+# needle longer than the haystack is 1 WITHOUT reading past the end, which is
+# what makes it safe to sweep to a buffer's last byte; an empty needle is 0.
+[ "$(printf '%s' '“hello world“→s “hello“→t ““→e
+←s4\radd 11 ←t4\radd ←t@ p N E ←s4\radd 11 ←s4\radd 5 p N E ←s4\radd 5 ←t4\radd 5 p N E
+←s4\radd 3 ←t4\radd ←t@ p N E ←s4\radd 11 ←e4\radd ←e@ p N E ←s4\radd 0 ←e4\radd 0 p N E' | gtt)" \
+   = "$(printf '0\n0\n0\n1\n0\n0')" ] \
+  && ok "p starts-with / range-equal (short haystack 1, empty needle 0)" || no "p compare"
+[ "$(printf '%s' '“hello world“→s “world“→t “hellp“→v ←s4\radd 11 ←t4\radd 5 p N E ←s4\radd 5 ←v4\radd 5 p N E' | gtt)" \
+   = "$(printf '1\n1')" ] \
+  && ok "p says no (and stops at the first differing byte)" || no "p mismatch"
+# q: the byte finder.  0 is a legitimate answer, so absent must be -1, not 0.
+[ "$(printf '%s' '“hello world“→s ←s4\radd 11 108 q N E ←s4\radd 11 100 q N E ←s4\radd 11 122 q N E ←s4\radd 0 104 q N E' | gtt)" \
+   = "$(printf '2\n10\n-1\n-1')" ] \
+  && ok "q find a byte (absent -1, EMPTY range -1)" || no "q find byte"
+# r: the sequence finder, p in a sweep.  It must find a needle that is NOT at
+# offset 0 — the bug that a stop flag of the wrong polarity hides perfectly.
+[ "$(printf '%s' '“abcabd“→w “abd“→x “abc“→y ““→e
+←w4\radd 6 ←x4\radd 3 r N E ←w4\radd 6 ←y4\radd 3 r N E
+←w4\radd 6 “zz“→z ←z4\radd 2 r N E ←w4\radd 2 ←x4\radd 3 r N E ←w4\radd 6 ←e4\radd 0 r N E' | gtt)" \
+   = "$(printf '3\n0\n-1\n-1\n0')" ] \
+  && ok "r find a sequence (late hit, absent -1, over-long -1, empty 0)" || no "r find seq"
+# Re-entrancy.  These words hold their state in the prelude's s0..s7 under an
+# X/Y spill frame, so they may be called from inside a €map — and r calls p in
+# its inner loop, which is the same property one level down.
+[ "$(printf '%s' '“hello world“→s :z _ ←s4\radd 11 111 q ; 5R\refz M Q E :c _ ←s4\radd 11 “world“→t ←t4\radd 5 r ; 5R\refc M Q E 100R S N E' | gtt)" \
+   = "$(printf '4 4 4 4 4 \n6 6 6 6 6 \n4950')" ] \
+  && ok "ttext words nest inside €map (X/Y frame; prelude scratch survives)" || no "ttext re-entrancy"
+# The thing the library exists for: one real record of data/blob.hex, decoded
+# with these words alone.  "A7 07 58 5A 5E 5F 0F 05 50" is ⎈ \sys's own
+# template — key 0xA7, seven body bytes — so the count l reports must agree with
+# the length byte the record declares.
+[ "$(printf '%s' '“A7 07 58 5A 5E 5F 0F 05 50“→s ←s@ 1\radd 3/→z ←s4\radd l N E ←s4\radd 3\radd l N E ←z 2\rsub N E' | gtt)" \
+   = "$(printf '167\n7\n7')" ] \
+  && ok "a real data/blob.hex record: key 167, 7 declared, 7 pairs decoded" || no "blob.hex record"
+# The -1 marker survives a →x/←x round trip.  It did NOT while W8 was being
+# built: the bank was four bytes per name and ←x zero-extended, so `q →x ←x 0≺`
+# saw 4294967295, never took its not-found branch, and a loop bound derived from
+# it ran about four billion times.  W8A/M3W widened the bank to eight bytes and
+# made ←x a full 64-bit load, which fixed it at the source.  Kept as a
+# REGRESSION test rather than deleted: every ttext word that reports "not found"
+# does it with -1, and narrowing the bank again would break all of them at once,
+# silently and far from the change.
+[ "$(printf '%s' '“abc“→s ←s4\radd 3 122 q N E ←s4\radd 3 122 q →x ←x N E' | gtt)" \
+   = "$(printf '%s\n%s' -1 -1)" ] \
+  && ok "not-found -1 survives a →x/←x round trip (needs M3W's 64-bit bank)" || no "-1 through a variable"
+
+echo "Tool library lib/tutf.golfj (M-TOOL): data/codepage.tsv as an in-memory table"
+python3 tools/codepage.py encode < lib/tutf.golfj > "$TMP/tutf.gb" 2>/dev/null \
+  && ok "encode lib/tutf.golfj" || no "encode lib/tutf.golfj"
+# prelude + tutf + program.  The program source arrives on gt's stdin (the
+# process substitution reads it), and the compiled binary is then handed the
+# real data/codepage.tsv -- `t` takes a BUFFER, not a path, so the table library
+# is testable with no file I/O and no dependency on lib/tio.golfj.
+gt(){ cat "$TMP/pre.gb" "$TMP/tutf.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/tup" 2>/dev/null \
+        && chmod +x "$TMP/tup" && "$TMP/tup" < data/codepage.tsv; }
+# Every case first slurps stdin into a heap buffer and hands `t` (buf len); `t`
+# leaves the record count, which the lookup cases drop with `_`.  `\gets` is
+# `\get` + `s`, the longest-known-mnemonic-prefix rule doing exactly what the
+# \sqr48 case below tests.
+TL='5000A\setb\getb\setp{(\setc\getc 0\eq[\getc\getp,\getp\inc\setp]\getc 0\eq}\getb\getp\getb\rsub t'
+CPY="import sys;sys.path.insert(0,'tools');import codepage as c"
+[ "$(printf '%s' "$TL N E" | gt)" = "$(python3 -c "$CPY;print(len(c.all_rows()))")" ] \
+  && ok "t parses every row of data/codepage.tsv" || no "t record count"
+# A multi-byte glyph, matched on the RAW byte stream with no UTF-8 decoding:
+# E2 8A 95 is ⊕, i.e. \inc = 0x81 = 129, three bytes consumed.
+[ "$(printf '%s' "$TL _ 4A\setq 226\getq,138\getq1\radd,149\getq2\radd,\getq\getq3\radd v\setk\setj\getj N 32)\getk N E" | gt)" = "129 3" ] \
+  && ok "v: glyph ⊕ -> 0x81, 3 bytes" || no "v multi-byte glyph"
+# ...and the same word answers for the five glyphs that ARE ASCII (~ $ | = >).
+# codepage.encode consults the glyph table BEFORE the ASCII passthrough, so a
+# port must call v first even though today the two agree.
+[ "$(printf '%s' "$TL _ 4A\setq 126\getq,\getq\getq1\radd v\setk\setj\getj N 32)\getk N E" | gt)" = "126 1" ] \
+  && ok "v: ASCII glyph ~ -> 0x7E, 1 byte" || no "v ASCII glyph"
+# The window is honoured: two thirds of ⊕ is not ⊕, so nothing may match.
+[ "$(printf '%s' "$TL _ 4A\setq 226\getq,138\getq1\radd,\getq\getq2\radd v\setk_\getk N E" | gt)" = "0" ] \
+  && ok "v: a glyph truncated by e does not match" || no "v window"
+# LONGEST KNOWN MNEMONIC PREFIX, the rule the whole encoder hangs on: the alpha
+# run "sqrp" is \sqr (0x83 = 131) and then the word p -- three letters, not a
+# failure, exactly as \sqr48 is \sqr then 48.
+[ "$(printf '%s' "$TL _ \strsqrp\str\setj\getj4\radd\getj4\radd\getj@\radd w\setk\setj\getj N 32)\getk N E" | gt)" = "131 3" ] \
+  && ok "w: \\sqrp -> \\sqr 0x83, 3 letters (longest prefix)" || no "w longest prefix"
+# An encode-only LIB row: \range and ⍳ both encode to the call byte of the
+# letter word R, 0x52 = 82.
+[ "$(printf '%s' "$TL _ \strrange\str\setj\getj4\radd\getj4\radd\getj@\radd w\setk\setj\getj N 32)\getk N E" | gt)" = "82 5" ] \
+  && ok "w: \\range -> 0x52 (a letter-keyed LIB row still encodes)" || no "w encode-only row"
+# ...but 0x52 must NOT decode back to ⍳.  That is the asymmetry the mode column
+# exists for: a low byte could equally be a *user* word named R.
+[ "$(printf '%s' "$TL _ 82 x\setk_\getk N 32)82 y\setk_\getk N E" | gt)" = "0 0" ] \
+  && ok "x/y: 0x52 is E- and does not decode" || no "x/y encode-only row"
+# ⎈ \sys 0xA7 = 167, the last M4 slot and wave 8's own op: >= 0x80, so ED, so it
+# encodes from its mnemonic and decodes to both glyph (E2 8E 88) and mnemonic.
+[ "$(printf '%s' "$TL _ \strsys\str\setj\getj4\radd\getj4\radd\getj@\radd w\setk\setj\getj N 32)\getk N E" | gt)" = "167 3" ] \
+  && ok "w: \\sys -> 0xA7" || no "w sys"
+[ "$(printf '%s' "$TL _ 167 x\setk\setj\getk N 0\setm\getk 0\eq[{32)\getj\getm\radd?N\getm\inc\setm\getm\getk\eq}]E 167 y\setk\setj 0\setm\getk 0\eq[{\getj\getm\radd?)\getm\inc\setm\getm\getk\eq}]E" | gt)" = "$(printf '3 226 142 136\nsys')" ] \
+  && ok "x/y: 0xA7 decodes to ⎈ and to \\sys" || no "x/y sys"
+# All 256 bytes at once, against the oracle: total glyph + mnemonic bytes over
+# every byte codepage.decode would spell out.  Grows with the table on its own.
+[ "$(printf '%s' "$TL _ 0\seti 0\setn{\geti x\setk_\getn\getk\radd\setn \geti y\setk_\getn\getk\radd\setn \geti\inc\seti\geti 256\eq}\getn N E" | gt)" \
+  = "$(python3 -c "$CPY;print(sum(len(c.BYTE2GLYPH[b].encode())+len(c.BYTE2MNEM[b]) for b in range(256) if b>=128 and b in c.BYTE2GLYPH))")" ] \
+  && ok "x/y agree with codepage.py over all 256 bytes" || no "x/y whole byte space"
+
+# @@ W8-TOOLS @@
+
 
 echo "Capstone: lists + higher-order + vectorization + strings + variables together"
 CAPOUT=$(printf '30\n14\n5\nKhoor')

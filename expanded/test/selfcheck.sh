@@ -53,6 +53,20 @@ sys.stderr.write(f"       blob escape: {len(esc)} bytes\n")
 seed, g2 = open("self/seed.golf","rb").read(), open("self/golf2.golf","rb").read()
 sys.exit(0 if seed.count(esc) == 1 and g2.count(esc) == 1 else 1)
 PY
+# The GOLF-written tools under gtools/ cannot read a Python literal, so the code
+# page and the template blob are also checked in as data (data/codepage.tsv,
+# data/blob.hex), generated from the same tables by tools/mktables.py.  Nothing
+# on the build path reads them, so only this check can notice when an atom is
+# added to mkblob2.ATOMS and the data files are not regenerated — at which point
+# every gtools/ program would silently be working from a stale code page.
+python3 - <<'PY' && ok "data/codepage.tsv + data/blob.hex == mktables.py's output" || no "a data/ table is stale"
+import sys; sys.path.insert(0, "tools"); import mktables
+bad = [n for n, build in mktables.OUTPUTS
+       if build() != open("data/" + n, "rb").read()]
+for n in bad:
+    sys.stderr.write(f"       data/{n} differs — run: python3 tools/mktables.py\n")
+sys.exit(1 if bad else 0)
+PY
 # Only ops the SEED can compile may appear in golf2.golf's code: ASCII, plus the
 # four compiler prefixes (′ “ → ←) and the atom bytes.  Anything else and the
 # compiler could never be built by the seed that bootstraps it.  Checked on the

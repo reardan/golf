@@ -20,9 +20,11 @@ This is a full oracle, not a shim:
     it.  This file exists to cross-check the self-hosted golf2 differentially:
     the two compilers agree on *behaviour*, not necessarily on byte layout.
 
-Only structural constants (ELF header, prologue/epilogue/startup, the v1 op
-templates) are imported from the frozen v1 compiler; the compile loop is local
-so v2 can diverge from it freely.
+Only structural constants (ELF header, prologue/epilogue, the v1 op templates)
+are imported from the frozen v1 compiler; the compile loop is local so v2 can
+diverge from it freely.  The startup stub is v2's own — `mkblob2.STARTUP2`, v1's
+with the entry-`rsp` stash in front — because that is what the blob carries and
+the two must emit the same program prologue.
 """
 import os, sys
 
@@ -30,7 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "minimal", "boot"))
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 import golf0     # frozen v1: ELF header, prologue/epilogue, v1 op templates
-import mkblob2   # v2: the atom table (byte -> machine-code template)
+import mkblob2   # v2: the atom table (byte -> template) and v2's STARTUP2
 
 BASE = golf0.BASE          # ELF load address; file offset f maps to VA BASE+f
 FILESZ = golf0.FILESZ      # fixed p_filesz (binary must stay under this)
@@ -63,6 +65,10 @@ def compile_bytes(src: bytes) -> bytes:
     # M-MEM: v2 binaries shrink p_memsz and seed rbp below the smaller BSS.
     # Both values come from mkblob2 so the oracle and golf2 cannot drift.
     out[mkblob2.MEMSZ_OFF:mkblob2.MEMSZ_OFF + 8] = mkblob2.MEMSZ.to_bytes(8, "little")
+    # W8/M-TOOL: and STARTUP2 now carries the entry-`rsp` stash in front of that
+    # `mov ebp, RSTACK_TOP`, so a compiled program can reach argv.  Imported, not
+    # re-spelled: the oracle and the self-hosted compiler must not drift into
+    # different prologues, and run2.sh's oracle-parity case gates exactly that.
     out += mkblob2.STARTUP2
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)

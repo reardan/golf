@@ -33,7 +33,8 @@ one means adding a row to ATOMS below.  See ../DESIGN.md.
 The move toward a Jelly-style code page: operators are single bytes drawn from
 the full 0..255 space, each shown via a code page glyph (../tools/codepage.py).
 This module is the single source of truth for the atoms: their byte, glyph,
-mnemonic, and machine-code template.
+mnemonic, and machine-code template — and, since W8, for v2's own startup stub
+(`STARTUP2`, which stashes the entry `rsp` so `argv` is reachable).
 """
 import os, sys
 
@@ -117,6 +118,21 @@ ATOMS = [
     # clobbers only rcx/r11, which no template holds across an op.
     (0xA6, "brk",   "⌸", [0x5F, 0x6A, 0x0C, 0x58, 0x0F, 0x05, 0x50],
                                                           "addr -> break; brk(2)"),
+    # The language's first general syscall (M-TOOL): until now GOLF's whole I/O
+    # surface was `(` and `)`, one byte on fd 0 / fd 1, so a GOLF program could
+    # not open a file, read argv, or exit with a code.  `⎈` takes THREE arguments
+    # and a number — `a1 a2 a3 num ⎈ -> result` — popped rax, rdx, rsi, rdi so the
+    # source reads left to right in natural argument order, with `0` pushed for
+    # arguments a call does not use.  Three is exactly enough for everything the
+    # repo's own build scripts need: `open`(path,flags,mode) — number 2, NOT
+    # `openat`, which would want a 4th argument in r10 and therefore its own op —
+    # plus read/write(fd,buf,n), close, exit, brk and lseek.  The kernel's return
+    # value is pushed back unchanged, negative errno on failure.  `syscall`
+    # clobbers rcx and r11, which is harmless here: no GOLF value is ever live in
+    # a register across ops (the data stack IS rsp, every template starts and ends
+    # on it), and rbp — the return-stack pointer — is untouched by the kernel.
+    (0xA7, "sys", "⎈", [0x58, 0x5A, 0x5E, 0x5F, 0x0F, 0x05, 0x50],
+                                                          "a1 a2 a3 num -> result: raw syscall"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
@@ -350,7 +366,7 @@ def header_pairs2():
     return bytes(x for off, v in enumerate(hdr) if v for x in (off, v))
 
 assert golf0.STARTUP[0] == 0xBD and len(golf0.STARTUP) == 5, "STARTUP is not mov ebp,imm32"
-STARTUP2 = bytes([0xBD]) + RSTACK_TOP.to_bytes(4, "little")     # mov ebp, RSTACK_TOP
+SETUP_RSTACK = bytes([0xBD]) + RSTACK_TOP.to_bytes(4, "little")  # mov ebp, RSTACK_TOP
 
 def _check_atoms():
     """Op-byte namespace (see ../REGISTRY.md §1): an ATOMS byte must be unique
@@ -364,11 +380,36 @@ def _check_atoms():
     assert not clash, ("ATOMS byte already allocated: "
                        + ", ".join(f"0x{b:02X}" for b in clash))
 
+# --- W8/M-TOOL: the entry-`rsp` stash -----------------------------------------
+# At process entry the kernel leaves `rsp` pointing at `argc`, with `argv[i]` at
+# `rsp+8+8*i`.  GOLF uses `rsp` AS its data stack, so that pointer is destroyed
+# by the very first push — and `STARTUP` is the only code that runs before any
+# push.  Stashing `rsp` there is therefore the ONLY way a GOLF program can ever
+# reach its own command line.  The cell is 0x4F0040, decimal 5177408, and is
+# 8 bytes read with `⊙` and never `@` — see ../REGISTRY.md §3 for why.
+#
+# An expanded-LOCAL copy rather than a change to golf0.STARTUP, because
+# ../minimal is the frozen ground-truth bootstrap root and is never touched.
+# The divergence costs nothing: seed.golf is compiled by v1c, which carries v1's
+# blob and so emits v1's STARTUP — but the v1c -> seed rung is never compared
+# against anything.  Every binary that seed and golf2 EMIT carries STARTUP2,
+# because both embed the identical blob built below, so test/selfcheck.sh's
+# `seed and golf2 emit byte-identical binaries` and run2.sh's `golf2 == golf2'`
+# fixpoint both still hold — with every emitted binary 8 bytes longer.
+#
+# The stash goes in FRONT of M-MEM's `mov ebp, RSTACK_TOP` (wave 6), not in front
+# of v1's `mov ebp, 0xC00000`: the two waves both rewrite record 3 and the merged
+# startup has to do both jobs.  Order matters only in that the stash must precede
+# anything that pushes; neither instruction does, so it reads front to back.
+ARGV_STASH = bytes([0x48, 0x89, 0x24, 0x25, 0x40, 0x00, 0x4F, 0x00])
+#            mov [0x4F0040], rsp
+STARTUP2 = ARGV_STASH + SETUP_RSTACK
+
 def build_blob2():
     b = bytearray()
     b += mkblob.rec(1, golf0.PROLOGUE)
     b += mkblob.rec(2, mkblob.COND)
-    b += mkblob.rec(3, STARTUP2)                     # M-MEM: rbp = RSTACK_TOP
+    b += mkblob.rec(3, STARTUP2)                     # M-TOOL stash + M-MEM rbp
     b += mkblob.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
     b += mkblob.rec(5, golf0.AUTOEXIT)
     used = set()

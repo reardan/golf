@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **22** are now spent, leaving **89** free. It is partitioned as follows
+space; **23** are now spent, leaving **88** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -106,6 +106,7 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA4` | `\fetch` | `⊙` | 64-bit fetch | shipped |
 | `0xA5` | `\store` | `⊛` | 64-bit store | shipped |
 | `0xA6` | `\brk` | `⌸` | `brk` syscall — the list heap's growth primitive | shipped |
+| `0xA7` | `\sys` | `⎈` | raw syscall: `a1 a2 a3 num -> result` (wave 8, M-TOOL) | shipped |
 | `0xB0` | `\chain` | `⊚` | chain definition prefix: `⊚name f g h;` (compiler logic, no template) | shipped |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
@@ -122,6 +123,18 @@ arithmetic can migrate to them before the ASCII bytes start dispatching on
 shape. `0xC0`–`0xC7` are prelude *words* at high bytes, not templates — they
 have no entry in `mkblob2.ATOMS`; they get `codepage.LIB` rows (which, being
 ≥ `0x80`, decode as well as encode).
+
+`0xA7 \sys` is the last slot of the M4 range and the language's first general
+syscall. Its ABI is three arguments and a number, `a1 a2 a3 num ⎈ -> result`,
+which covers every syscall the tools need — `open`(path,flags,mode) (number 2,
+**not** `openat`, which would need a 4th argument in `r10`), `read`/`write`
+(fd,buf,n), `close`(fd,_,_), `exit`(code,_,_), `brk`(addr,_,_), `lseek`. Push `0`
+for unused arguments; the kernel's return value is pushed back (negative errno on
+failure). A syscall needing `r10`/`r8`/`r9` would need its own op — deliberately
+out of scope. `⌸ \brk` shipped separately in W6/M-MEM and stays: the heap's
+growth primitive wants a dedicated one-argument op, not a raw number and three
+pushes, and the prelude — which must never pay for what it does not use — calls
+it on every allocation that outgrows the break.
 
 ---
 
@@ -156,6 +169,108 @@ or M2 multi-char identifiers.
 > stored to `→i` would silently clobber a user's `i`. Prelude state goes in the
 > fixed scratch cells of §3.
 
+### 2.1 Tool-library letters (lowercase)
+
+The uppercase pool above is the *prelude's*, and it is nearly gone. The GOLF
+tool libraries — `lib/tio.golfj`, `lib/ttext.golfj`, `lib/tutf.golfj`, prepended
+by `gtools/build` after the prelude and only for programs under `gtools/` — take
+**lowercase** letters, which no prelude word has ever used. They are a separate,
+much roomier pool, so a new tool word costs nothing scarce.
+
+The same discipline applies: allocate here first. Ranges are partitioned by
+library — which is what let the three be written in parallel without
+contending; each range is detailed per letter below its own heading.
+
+| Range | Owner | Wave | Status |
+|-------|-------|------|--------|
+| `a`–`h` | `lib/tio.golfj` — file/stream I/O on `⎈`, argv (per letter below) | W8 | shipped |
+| `i`–`r` | `lib/ttext.golfj` — byte-buffer text words (per letter below) | W8 | shipped |
+| `s`–`z` | `lib/tutf.golfj` — code-page table loader + glyph matching (per letter below) | W8 | shipped |
+
+#### `s`–`z` — `lib/tutf.golfj`, the code-page table (W8, shipped)
+
+`lib/tutf.golfj` loads `data/codepage.tsv` into a flat array of six-cell
+records and answers the
+four lookups an encoder and a decoder need; `s` is spent on the library's one
+**variable** (`→s`/`←s`, written `\sets`/`\gets`), which holds the base of the
+16-cell heap block all its state lives in, so the library claims no fixed
+scratch in §3 at all.
+
+| Letter | Signature | Meaning | Wave | Status |
+|--------|-----------|---------|------|--------|
+| `s` | — | *not a word*: the variable holding `tutf`'s state block | W8 | shipped |
+| `t` | `buf len -> n` | parse `data/codepage.tsv` from a buffer; → record count | W8 | shipped |
+| `u` | `a -> b` | the byte spelled by the two hex digits at address `a` | W8 | shipped |
+| `v` | `p e -> b k` | longest **glyph** matching the bytes at `p`, never past `e`; `k = 0` = none | W8 | shipped |
+| `w` | `p e -> b k` | longest **mnemonic** that is a prefix of the bytes at `p`, never past `e`; `k = 0` = none | W8 | shipped |
+| `x` | `b -> p k` | byte → glyph bytes, `ED` rows only; `k = 0` = not decodable | W8 | shipped |
+| `y` | `b -> p k` | byte → mnemonic bytes, `ED` rows only; `k = 0` = not decodable | W8 | shipped |
+| `z` | `p q k -> f` | `0` iff the `k` bytes at `p` equal the `k` bytes at `q` | W8 | shipped |
+
+#### `a`–`h` — `lib/tio.golfj`, files, streams and argv (W8, shipped)
+
+| Letter | Signature | Meaning |
+|--------|-----------|---------|
+| `a` | `str ->` | die: the `“…“` block to fd 2, a newline, `exit(1)` |
+| `b` | `path w -> fd` | open: `w`=0 read-only, `w`≠0 create/truncate for writing |
+| `c` | `fd buf n -> got` | one `read`; `got` is 0 at EOF, never negative |
+| `d` | `fd buf n ->` | write **all** n bytes, looping over short writes |
+| `e` | `fd -> buf len` | slurp the whole fd into a fresh heap buffer |
+| `f` | `->` | flush the output buffer |
+| `g` | `byte ->` | emit one byte into the output buffer (auto-flushes at 8192) |
+| `h` | `i -> ptr` | `argv[i]`, or 0 when `i >= argc` |
+
+Eight letters is the entire budget for the file, so two things stayed phrases:
+`argc` is `5177408 ⊙ ⊙` and `close(fd)` is `fd 0 0 3 ⎈ _`. `h` already does the
+bounds comparison (which is the only spelling that cannot read past the end of
+the array), and `close` is a courtesy on a short-lived process whose `exit`
+closes every descriptor — so neither was worth displacing `a` (the whole error
+policy) or `h` (the 64-bit argv arithmetic). Every wrapper checks the kernel's
+return value and dies through `a` rather than returning a status a build script
+could forget to test.
+
+#### `i`–`r` — `lib/ttext.golfj`, byte-buffer text words (W8, shipped)
+
+The `i`–`r` range is spent in full; there is no room left in it, which is why
+is-hex-digit is `k 0≺` rather than a word of its own. A **text buffer** here is
+a raw `(addr, len)` pair on the data stack — what `read(2)` hands back — not a
+`“…“` block; a block is fed in as `←t 4﹢` plus `←t @`. Flags are zero-is-true
+(0 = yes) like `T`; "not found" and "not a hex digit" are `-1`, so they must be
+tested with the signed `≺` and never with the unsigned `»`/`﹤`, which see `-1`
+as the largest number there is. Parking one in a `→x`/`←x` variable is safe
+**since W8A/M3W** and was not before it: the 4-byte bank's zero-extending load
+turned `-1` into `4294967295` and silently disabled the not-found branch. The
+64-bit bank fixed that for every caller at once; `test/run2.sh` keeps a
+regression case on it.
+
+| Letter | Signature | Meaning | Wave | Status |
+|--------|-----------|---------|------|--------|
+| `i` | `ch -> f` | is-digit: 0 for `'0'`–`'9'`, 1 otherwise | W8 | shipped |
+| `j` | `ch -> f` | is-ASCII-letter: 0 for `A`–`Z` `a`–`z` only, 1 otherwise | W8 | shipped |
+| `k` | `ch -> v` | hex-digit value 0–15, or -1; `k 0≺` is the is-hex-digit test | W8 | shipped |
+| `l` | `addr -> b` | the two hex digits at `addr` as one byte 0–255, or -1 | W8 | shipped |
+| `m` | `src dst n ->` | copy `n` bytes, ascending | W8 | shipped |
+| `n` | `addr len -> v used` | parse an unsigned decimal run: value and bytes consumed | W8 | shipped |
+| `o` | `v addr -> nb` | write `v` as unsigned decimal at `addr`; bytes written | W8 | shipped |
+| `p` | `a alen b blen -> f` | 0 iff `(a,alen)` starts with `(b,blen)`; equality at equal lengths | W8 | shipped |
+| `q` | `addr len ch -> i` | index of the first `ch` in the range, or -1 | W8 | shipped |
+| `r` | `a alen b blen -> i` | index of the first `(b,blen)` inside `(a,alen)`, or -1 | W8 | shipped |
+
+`ttext` allocates **no** variable name and **no** new fixed address: every
+looping word frames with `X`/`Y` and then uses the prelude's own `s0`–`s7`, so
+a `gtools/` program's `→x`/`←x` can never collide with it and a pointer can
+never be truncated by the bank's 4-byte cells. `k` is a leaf (no scratch, no
+frame) and is callable with someone else's scratch live.
+
+Two rules carry over from the prelude and one does not:
+
+- Tool libraries obey the same scratch discipline (`X`/`Y` frames, §3) and the
+  same raw-atom rule (`\radd` and friends, never the polymorphic ASCII ops).
+- A tool library **may** use `→x`/`←x`: unlike the prelude it is not linked into
+  user programs, only into `gtools/` programs, which own their whole process.
+  Variable names are still allocated per library in the file's own header.
+- A `gtools/` program may use any letter not claimed above, plus digits.
+
 ---
 
 ## 3. Memory map
@@ -180,9 +295,11 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0034` | 5177396 | **heap base cell** — the `brk` the prelude's init was handed, published for `T` and the five M-VEC templates. ASLR-shifted every run, so it is never spelled out anywhere | shipped |
 | `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `T` is `v - base <u span` | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
-| `0x4F0040`–`0x4F005F` | 5177408–5177439 | reserved for future scratch | free |
+| `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
+| `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
 | `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
-| `0x4F00A0`–`0x4F00FF` | 5177504–5177599 | reserved for future scratch | free |
+| `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
+| `0x4F00C0`–`0x4F00FF` | 5177536–5177599 | reserved for future scratch | free |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
 | `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
@@ -193,6 +310,14 @@ Notes:
 - **Scratch is exhausted.** All eight of `s0`–`s7` are live in `lib/prelude.golfj`
   today. A new prelude word that needs a temporary must either use one of the
   cells above or push a spill frame (`X`/`Y`) — it may not invent an address.
+- **The entry-`rsp` cell is a full 8 bytes and must be read with `⊙`.** It is
+  written by `tools/mkblob2.STARTUP2` (mirrored by `boot/golfref.py`), which is
+  v1's `mov ebp, 0xC00000` with a `mov [0x4F0040], rsp` in front — so every
+  binary the v2 toolchain emits is 8 bytes longer than it used to be. Unlike
+  every other fixed cell here it holds a *stack* address, which on Linux x86-64
+  is far above 2^32 — `@` would truncate it. So are the `argv[i]` pointers it
+  leads to, and any buffer address handed to `⎈`: all of that arithmetic is
+  64-bit, `⊙`/`⊛` and the raw atoms, never `@`/`!`.
 - **Scratch is 64-bit and 8-strided; the four fixed cells are not.** A list cell
   has been 8 bytes since M4/W4A, so every scratch slot has to hold a full 64-bit
   value — which is why the bank was *relocated* to `0x4F0060` rather than

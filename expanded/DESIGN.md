@@ -109,12 +109,12 @@ against the thing it describes, so none of it can go stale quietly.
 
 | Measured | Now |
 |----------|-----|
-| operator atoms in `mkblob2.ATOMS` | **31** |
-| the template blob itself | **697** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1663** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **4506** bytes |
-| assertions in the run2 suite | **213** |
-| assertions in the selfcheck suite | **31** |
+| operator atoms in `mkblob2.ATOMS` | **32** |
+| the template blob itself | **714** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **1680** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **4523** bytes |
+| assertions in the run2 suite | **273** |
+| assertions in the selfcheck suite | **32** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
 | the v2 p_memsz (`mkblob2.MEMSZ`) | **0x200000** |

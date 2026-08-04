@@ -1,0 +1,281 @@
+# GOLF/2 tool text library — byte ranges, compare/find, decimal and hex.
+# Authored in code-page mnemonic form, like lib/prelude.golfj, and prepended to
+# gtools/ programs by gtools/build (prelude, then lib/t*.golfj in glob order,
+# then the program).  It is NOT linked into ordinary user programs.
+#
+# ===========================================================================
+# WHAT A "TEXT BUFFER" IS HERE — the decision every word below is built on
+# ===========================================================================
+#
+# A text buffer in this library is a **(addr, len) pair on the data stack**: a
+# raw start address and a byte count, in that order, unadorned by any header.
+# `n` and `q` take one; `p` and `r` take two, haystack then needle.  Nothing
+# here ever allocates, copies or NUL-terminates on your behalf.
+#
+# The repo already has a competing convention — the `“…“` block, `[len:4][raw
+# bytes]`, whose value is the address of the 4-byte length field, which `O`
+# (puts) and `U` (chars) speak.  It was rejected as this library's currency for
+# three reasons:
+#
+#   1. A wave-3 tool gets its bytes from `read(2)`.  The kernel hands back a
+#      buffer address it was given and a count it returns — a (addr, len) pair,
+#      exactly.  Adopting the block form would mean either reserving four bytes
+#      in front of every buffer and storing the count into them before any word
+#      here could look at it, or copying the whole file.  Adopting the pair form
+#      costs nothing: the two values are already on the stack.
+#   2. The pair form SUBSUMES the block form.  A block `t` becomes a pair on the
+#      spot — `←t 4﹢` is the address, `←t @` is the length (a 32-bit `@`,
+#      because a string's length prefix is still four bytes and W4A left it
+#      alone).  The reverse direction is a copy.  So a caller can always feed a
+#      literal to these words; a block-based library could never have been fed
+#      a slice of a slurped file without one.
+#   3. A pair is the only form that can name a SUBRANGE.  Every tool here walks
+#      a buffer: "the rest of the line from the cursor", "the field between two
+#      tabs".  With a pair those are `buf i ﹢` and a subtracted length, free.
+#      There is no way to make a `“…“` block point into the middle of another.
+#
+# The price is that a range is unnamed and unchecked — two stack cells that
+# nothing ties together, and no word here bounds-checks against a buffer end it
+# cannot see.  Every word that is GIVEN a length therefore treats it as gospel
+# and reads at most that many bytes; `n` in particular stops at `len` even with
+# no terminator in sight, which is what makes it safe to call on the last number
+# in a file.  The three words with no length argument — `l` (always two bytes),
+# `m` (told how many) and `o` (as many as the number needs, and `o` WRITES) —
+# say so in their own comments, and are the three places a caller has to think.
+#
+# The pair interoperates with lib/tio.golfj by construction and WITHOUT any
+# dependency on it: tio slurps a file and yields (addr, len); these words take
+# (addr, len).  Nothing below calls a tio word — `ttext` sorts after `tio` and
+# before `tutf` in gtools/build's glob, so `tutf` is out of reach by definition
+# and `tio` is out of reach by choice.  The only prelude words used below are
+# `X` and `Y`; not even `⍶` alloc, since nothing here allocates.
+#
+# ===========================================================================
+# Words.  Ten lowercase letters, `i`–`r`, per ../REGISTRY.md §2.1 — and that is
+# the WHOLE pool this library owns, so nothing below is spent on a word that is
+# two tokens of arithmetic away from another one.
+# ===========================================================================
+#   i  ch -> f              is-digit: 0 for '0'-'9', 1 otherwise
+#   j  ch -> f              is-ASCII-letter: 0 for A-Z a-z, 1 otherwise
+#   k  ch -> v              hex digit value 0..15, or -1 if not a hex digit
+#   l  addr -> b            the two hex digits at addr as a byte 0..255, or -1
+#   m  src dst n ->         copy n bytes from src to dst (forward; no overlap)
+#   n  addr len -> v used   parse an unsigned decimal run: value, bytes consumed
+#   o  v addr -> nb         write v as unsigned decimal at addr; bytes written
+#   p  a alen b blen -> f   0 iff the range (a,alen) starts with (b,blen)
+#   q  addr len ch -> i     index of the first ch in the range, or -1
+#   r  a alen b blen -> i   index of the first (b,blen) in (a,alen), or -1
+#
+# THE THREE CLASSIFIERS ARE `i`, `j` AND `k 0≺`.  is-hex-digit is not a word of
+# its own: `k` already computes it, so the test is `<ch> k 0≺` — negative means
+# "not a hex digit", so `≺` against 0 yields 0 exactly for a hex digit, in the
+# same zero-is-true polarity as `i` and `j`.  Use `" 0≺` instead when you want
+# to keep the value.  A whole letter whose body would be `k 0≺` is not a trade
+# worth making out of ten.
+#
+# COMPARE AND STARTS-WITH ARE ONE WORD.  `p a alen b blen` reads both ways:
+# "the range at a begins with the blen bytes at b" and, when alen == blen,
+# "these two ranges are equal".  Two ranges of the same length are equal exactly
+# when either starts with the other, so equality is `<a> <n> <b> <n> p`.  The
+# four-argument form is what makes it safe in the encoder's inner loop: a needle
+# longer than what is left of the haystack yields 1 (no match) instead of
+# reading past the end, which a three-argument `(a, b, n)` could not express.
+# Against a `“…“` literal `t` the call is `<a> <alen> ←t 4﹢ ←t @ p`.
+#
+# FLAG POLARITY IS ZERO-IS-TRUE, like the prelude's `T` and like `[` itself:
+# every `f` above is 0 for yes and 1 for no, so `<ch> j [ … ]` runs the block on
+# a letter with no adapter in between.  The -1/0 flags that `≡ ﹤ ≺` produce are
+# converted with `1﹢` where they are used; they never leak out of a word.
+#
+# NOT-FOUND IS -1, not a length or a zero.  `q` and `r` return an INDEX, and 0
+# is a perfectly good index (the needle at the very start), so the marker has to
+# live outside the index range; `k` and `l` return a VALUE, and 0 is the value
+# of '0'/"00", so the same applies.  -1 is `1±` here, since GOLF literals are
+# non-negative.  Test it with `0≺` (signed!) and never with `»`/`﹤`, which are
+# unsigned and see -1 as the largest number there is.
+#
+#   A -1 marker survives a →x/←x round trip — but only since W8A/M3W, and the
+#   history is worth keeping.  While this library was being written the bank was
+#   FOUR bytes per name and `←x` compiled to `mov eax,[cell]`, which
+#   ZERO-extends: `q` -> -1 -> `→x` -> `←x` gave 4294967295, `0≺` on that was
+#   false, the not-found branch silently did not run, and a loop bound computed
+#   from it ran about four billion times.  That is how the hazard was found —
+#   as a segfault.  M3W widened the bank to eight bytes and made `←x` a full
+#   64-bit load, which fixed it at the source for every caller at once.
+#   test/run2.sh keeps a regression case on it, because every "not found" in
+#   this library is a -1 and narrowing the bank again would break all of them
+#   silently.  Nothing here stores anything in a variable in any case, so every
+#   -1 below is a true 64-bit -1 when it is handed back.
+#
+# ===========================================================================
+# ASCII-ONLY LETTERS — a deliberate divergence from tools/codepage.py
+# ===========================================================================
+# Wave 3 ports codepage.py's `encode`, whose mnemonic scan is driven by Python's
+# `str.isalpha()`.  That is UNICODE-aware: it is true for 'é', 'Ω', 'ᵃ' and some
+# 130 000 other code points.  `j` matches ASCII A-Z a-z and nothing else — it
+# ORs in bit 5 to fold case and then tests the single range 'a'..'z', so every
+# byte >= 0x80 (including every UTF-8 continuation byte) classifies as not a
+# letter.
+#
+# The two agree on all real input and that is not luck: `encode` only consults
+# isalpha() on the run immediately after a `\`, i.e. on a mnemonic name, and
+# every mnemonic in ../REGISTRY.md §1 is ASCII by the rule that mnemonics are
+# `\word` escapes typed on an ASCII keyboard.  They would diverge on a source
+# file containing `\café`, which Python would read as the four-letter run
+# "café" and this library as "caf" followed by a stray byte.  Written down here
+# rather than left for someone to rediscover; if a non-ASCII mnemonic is ever
+# allocated, `j` is the word that has to grow a UTF-8 decoder.
+#
+# ===========================================================================
+# Memory.  This library allocates NO new fixed address and NO variable name.
+# ===========================================================================
+# Every word here that touches scratch at all opens with `X` and closes with
+# `Y`, and then uses the prelude's own bank `s0`–`s7` (0x4F0060, stride 8 —
+# 5177440 5177448
+# 5177456 5177464 5177472 5177480 5177488 5177496).  That is what the spill
+# frame is for: `X` copies all eight cells to the spill stack, so inside the
+# frame they are private, and `Y` puts the caller's back.  Consequences worth
+# stating:
+#
+#   * These words nest.  `r` calls `p` in its inner loop and `p` clobbers every
+#     scratch cell; because `p` frames, `r`'s own state survives.  A tool may
+#     equally call any of these from inside a `€` map or a `⇤` fold.
+#   * No collision with a gtools/ program is possible.  ../REGISTRY.md §2.1 does
+#     permit a tool library to use `→x`/`←x`, and this one declines: the
+#     variable bank has ONE global cell per name, so a reserved-name list would
+#     be a rule wave 3 has to remember, whereas a spill frame is a rule the
+#     machine enforces.  **Variables allocated by ttext: none.**
+#   * No truncation is possible either.  The bank is 64-bit and read with `⊙`;
+#     the variable bank is four bytes per name, which would have quietly cut a
+#     pointer above 2^31 in half.  Nothing here is near that today (the heap
+#     starts at 0x500000) but `⎈`-facing code has no business assuming it.
+#   * `l` and `k` are the two words a hot hex loop calls per byte.  `k` is a
+#     leaf — no scratch, no frame — so it is callable from anywhere, including
+#     from inside another word's live scratch.  `l` does frame, because it must
+#     hold two digit values across a call to `k`.
+#
+# ===========================================================================
+# House rules inherited from the prelude — see its header for the reasoning.
+# ===========================================================================
+#   * Raw atoms only.  Every pointer, index and flag step below is `﹢ ﹣ ﹡ ⊓ ⊔
+#     ﹤` (\radd \rsub \rmul \rmin \rmax \rlt), never the bare ASCII `+ - * ⌈ ⌊`:
+#     M-VEC made those five polymorphic and the dispatcher would recurse through
+#     this library's own address math.  `/` `%` `|` `≡` `≺` `?` `,` are NOT in
+#     the hook table and stay bare; `o`'s digit extraction is `10/` and `10%`
+#     on purpose, because those are UNSIGNED and `÷`/`∣` are not.  `Ṅ` uses the
+#     same unsigned pair but opens with a `0≺` sign test and so renders 2^64-1
+#     as "-1"; `o` never looks at the top bit, which is why it can print it.
+#   * `{…}` is a DO-while: the body always runs once.  Every loop that can have
+#     zero iterations is guarded with `<n> 0≡ [ {…} ]` — `≡` yields -1 when the
+#     count is 0, so `[` (which runs on TOS==0) skips.  The cases that guard
+#     buys: an empty range (`q`/`n` with len 0), an empty needle (`p` with
+#     blen 0, which is a match at every position, so `r` returns 0), and a
+#     zero-length copy (`m`).  `o`'s emit loop is deliberately UNGUARDED — its
+#     digit count is at least 1 even for the value 0, which is the one case a
+#     naive "while v != 0" formatter gets wrong.
+#   * Byte 0x5C (swap) is never emitted: `decode` renders it as a bare `\`,
+#     which `encode` would then read as the escape for whatever follows.  There
+#     is no swap below; where an operand order needed reversing it went through
+#     scratch instead.  See prelude.golfj:207-213.
+#   * `^` (early return) is used inside `[…]` in `k` only, in the style of
+#     self/golf2.golfj's `t`; every other word has a single exit so that its `Y`
+#     is unmistakably paired with its `X`.
+#
+# ===========================================================================
+
+# i : is-digit.  (ch - '0') <u 10 is -1 for a digit; ﹢1 turns that into the
+# zero-is-true flag.  A leaf, and the inner test of `n`.
+:i48\rsub 10\rlt 1\radd;
+
+# j : is-ASCII-letter, A-Z a-z ONLY (see the divergence note above).  `|32` sets
+# bit 5, which maps 'A'-'Z' onto 'a'-'z' and leaves 'a'-'z' alone, so one range
+# test covers both cases.  Digits survive it unchanged (they already have bit 5)
+# and land far below 'a'; '@' '[' '`' '{' and every byte >= 0x80 land outside.
+:j32\or 97\rsub 26\rlt 1\radd;
+
+# k : hex digit -> 0..15, or -1.  Digits first (the common case in a hex dump),
+# then the letters, folded to lower case by the same `|32` trick: 'a'..'f' is
+# the 6-wide range at 97, and 'a'-87 == 10.  Leaf: no scratch, no frame, safe to
+# call with someone else's s0..s7 live.  `<ch> k 0≺` is the is-hex-digit test.
+:k"i[48\rsub^]"32\or 97\rsub 6\rlt 1\radd[32\or 87\rsub^]_1\neg;
+
+# l : the two hex digits at addr as one byte, or -1 if either is not a hex
+# digit.  s0 holds the high nibble across the second `k` call and s1 the low one
+# — hence the frame.  The -1 is pushed FIRST and dropped only when both nibbles
+# check out, so the two guards need no else-branch and the word has one exit.
+# THIS IS THE ONE WORD HERE WITHOUT A LENGTH ARGUMENT: it reads addr and addr+1
+# unconditionally, so a caller sweeping to the end of a buffer must stop one
+# byte short of it (or, in `data/blob.hex`'s fixed "XX XX" layout, step by 3).
+:l X"?k 5177440\store 1\radd?k 5177448\store 1\neg 5177440\fetch 0\slt[5177448\fetch 0\slt[_5177440\fetch 16\rmul 5177448\fetch\radd]]Y;
+
+# m : copy n bytes src -> dst, ascending.  s0 src · s1 dst · s2 n · s3 index.
+# Guarded, so n == 0 copies nothing.  Ascending order means it is safe when dst
+# is below src and NOT when the two overlap the other way; no tool here does.
+:m X5177456\store 5177448\store 5177440\store 0 5177464\store 5177456\fetch 0\eq[{5177440\fetch 5177464\fetch\radd?5177448\fetch 5177464\fetch\radd,5177464\fetch 1\radd 5177464\store 5177464\fetch 5177456\fetch\rlt 1\radd}]Y;
+
+# n : parse an unsigned decimal run at (addr,len) -> value, bytes consumed.
+# Returning the count is the point: `data/blob.hex`'s byte counts and the `` ` ``
+# escape's length are followed by a delimiter the caller must then step over,
+# and it cannot know how many digits it just passed.  No digits at all is
+# (0, 0), which is how a caller detects "that was not a number" — and is why the
+# value alone would have been a useless return.
+# s0 addr · s1 len · s2 accumulator · s3 index · s5 the current byte.
+# The loop pushes a pessimistic stop flag 1 first and the digit branch replaces
+# it, so both paths leave exactly one cell for `}` to pop; the byte goes through
+# s5 rather than staying on the stack for the same reason.  Accumulation is
+# `acc ﹡10 ﹢ digit` in 64-bit wraparound arithmetic: no overflow is detected,
+# 18446744073709551615 is the largest value that round-trips, and one more digit
+# silently wraps.  `i` is a leaf, so calling it inside the frame is free.
+:n X5177448\store 5177440\store 0 5177456\store 0 5177464\store 5177448\fetch 0\eq[{1 5177440\fetch 5177464\fetch\radd?5177480\store 5177480\fetch i[5177480\fetch 48\rsub 5177456\fetch 10\rmul\radd 5177456\store 5177464\fetch 1\radd 5177464\store _5177464\fetch 5177448\fetch\rlt 1\radd]}]5177456\fetch 5177464\fetch Y;
+
+# o : write v as unsigned decimal at addr, and return how many bytes that took.
+# The prelude's `Ṅ` prints straight to fd 1, which is useless to a tool that
+# owns its output stream and must interleave the digits with everything else —
+# and `Ṅ` is SIGNED besides, so it renders 2^64-1 as "-1".  Digits come out
+# least-significant first but have to land most-significant first, so the word
+# counts them (s2) and then fills BACKWARDS from that count (s3 walks down).
+# s0 v · s1 addr · s2 digit count · s3 scratch quotient, then the write index.
+# The counting loop is guarded on v/10 so that v < 10 yields exactly one digit;
+# the emit loop is not guarded, because one digit always has to come out — 0 is
+# the value that a "while v != 0" loop would print as the empty string.
+# `o` WRITES, and takes no room argument: size the destination for the worst
+# case, which is 20 bytes (18446744073709551615).  It writes exactly the count
+# it returns and never a terminator.
+:o X5177448\store 5177440\store 5177440\fetch 10/5177464\store 1 5177456\store 5177464\fetch 0\eq[{5177456\fetch 1\radd 5177456\store 5177464\fetch 10/5177464\store 5177464\fetch 0\eq}]5177456\fetch 5177464\store{5177464\fetch 1\rsub 5177464\store 5177440\fetch 10%48\radd 5177448\fetch 5177464\fetch\radd,5177440\fetch 10/5177440\store 5177464\fetch 0\eq}5177456\fetch Y;
+
+# p : does the range (a,alen) start with the range (b,blen)?  0 yes, 1 no.
+# Also the equality test — `<a> <n> <b> <n> p` — see the header.  A needle
+# longer than the haystack is 1 without touching memory, which is exactly what
+# makes this safe to sweep along a buffer to its very last byte.  An EMPTY
+# needle is 0, matching Python's `"abc".startswith("")`; `r` depends on it.
+# s0 a · s1 alen · s2 b · s3 blen · s4 result · s5 index.  The per-byte compare
+# writes its verdict straight into s4, so the surviving value after the loop is
+# the verdict of the byte that stopped it: on a mismatch, 1; on running out of
+# needle, the last (matching) 0.  The continue flag is `s4 ⊔ (i >= blen)`.
+:p X5177464\store 5177456\store 5177448\store 5177440\store 1 5177472\store 5177464\fetch 5177448\fetch 1\radd\rlt 1\radd[0 5177472\store 0 5177480\store 5177464\fetch 0\eq[{5177440\fetch 5177480\fetch\radd?5177456\fetch 5177480\fetch\radd?\eq 1\radd 5177472\store 5177480\fetch 1\radd 5177480\store 5177472\fetch 5177480\fetch 5177464\fetch\rlt 1\radd\rmax}]]5177472\fetch Y;
+
+# q : index of the first ch in (addr,len), or -1.  The workhorse: splitting
+# data/blob.hex into lines and data/codepage.tsv into fields is this word twice.
+# s0 addr · s1 len · s2 ch · s3 index · s4 result · s5 hit flag.  The result
+# starts at -1 and is only ever written on a hit, so an empty range or a byte
+# that is not there falls straight through the guard with -1 intact.
+# NOTE THE FLAG FLIP.  s5 is zero-is-true — 0 MEANS a hit — which is what `[`
+# wants, but the exact opposite of what `}` wants: `}` loops on 0, so the stop
+# flag has to be 1 on a hit.  Hence `1 s5 ﹣` before the `⊔` with (i >= len);
+# feeding s5 in raw stops the sweep at the first byte that is NOT the one being
+# looked for, which is a search that only ever finds things at index 0.
+:q X5177456\store 5177448\store 5177440\store 1\neg 5177472\store 0 5177464\store 5177448\fetch 0\eq[{5177440\fetch 5177464\fetch\radd?5177456\fetch\eq 1\radd 5177480\store 5177480\fetch[5177464\fetch 5177472\store]5177464\fetch 1\radd 5177464\store 1 5177480\fetch\rsub 5177464\fetch 5177448\fetch\rlt 1\radd\rmax}]5177472\fetch Y;
+
+# r : index of the first occurrence of (b,blen) inside (a,alen), or -1.  Naive
+# O(alen*blen) sweep — the needles here are mnemonics and field separators, a
+# handful of bytes each, and a smarter search would cost more code than the
+# whole library saves.  s0 a · s1 alen · s2 b · s3 blen · s4 result · s5 hit ·
+# s6 position · s7 the number of positions to try, alen-blen+1.  `p` frames, so
+# it may be called from inside this loop without disturbing any of that; each
+# call is handed the REMAINING haystack (alen ﹣ i), which is always at least
+# blen because i stops at alen-blen.  A needle longer than the haystack skips
+# the loop entirely and yields -1; an empty needle yields 0, since p says yes at
+# position 0 — both match Python's `bytes.find`.  s5 carries `p`'s zero-is-true
+# verdict and is flipped with `1 s5 ﹣` for the stop flag, exactly as in `q` and
+# for the same reason: `[` runs on 0, `}` loops on 0, and they want opposites.
+:r X5177464\store 5177456\store 5177448\store 5177440\store 1\neg 5177472\store 0 5177488\store 5177464\fetch 5177448\fetch 1\radd\rlt 1\radd[5177448\fetch 5177464\fetch\rsub 1\radd 5177496\store{5177440\fetch 5177488\fetch\radd 5177448\fetch 5177488\fetch\rsub 5177456\fetch 5177464\fetch p 5177480\store 5177480\fetch[5177488\fetch 5177472\store]5177488\fetch 1\radd 5177488\store 1 5177480\fetch\rsub 5177488\fetch 5177496\fetch\rlt 1\radd\rmax}]5177472\fetch Y;
