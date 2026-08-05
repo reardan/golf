@@ -1,0 +1,202 @@
+# gtools/mkgolf2.golfj — `mkblob2.build_golf2()` in GOLF (M-TOOL, wave 8).
+#
+# The capstone of gtools/: the stage that produces self/golf2.golf, the
+# generated source of the compiler this program was compiled by.  Everything it
+# does is one splice — take the code-page encoded self/golf2.golfj, find the
+# single `@BLOB@` marker, put the blob escape there instead — but that splice is
+# the last piece of the build that was still only expressible in Python.
+#
+# ---------------------------------------------------------------------------
+# THE PIPELINE.  This tool is stage three of three, and deliberately no more.
+# ---------------------------------------------------------------------------
+#
+#     gtools/encode < self/golf2.golfj | gtools/mkgolf2 BLOB-ESCAPE-FILE \
+#                                                       > self/golf2.golf
+#
+# where BLOB-ESCAPE-FILE holds what `gtools/mkblob` writes: the raw escape
+# `` ` `` + the decimal byte count + one space + the blob.  Encoding and blob
+# assembly are NOT repeated here.  `mkblob2.build_golf2()` is a Python function
+# and can just call `codepage.encode` and `blob_escape()`; a GOLF tool is a
+# process, so composition is spelled with a pipe and an argument instead — but
+# it is the same composition, and duplicating either of those two tools inside
+# this one would create exactly the second copy that the whole shadow
+# architecture exists to prevent.
+#
+# Each stage is separately differential-tested against its Python counterpart in
+# test/gtools.sh, so the pipeline is trustworthy joint by joint rather than only
+# end to end.
+#
+# EITHER IMPLEMENTATION MAY STAND IN — that is the point of the shadow (see
+# gtools/README.md).  The Python originals produce byte-identical input, so this
+# tool is developed and tested against them and the mixed pipeline is a legal
+# way to run it:
+#
+#     python3 tools/codepage.py encode < self/golf2.golfj \
+#       | build/gmkgolf2 <(python3 -c 'import sys; sys.path.insert(0,"tools");
+#                                      import mkblob2
+#                                      sys.stdout.buffer.write(
+#                                          mkblob2.blob_escape())')
+#
+# That is how it was written, since gtools/encode.golfj and gtools/mkblob.golfj
+# were being authored in parallel with this file and did not exist yet.  Nothing
+# below knows or cares which side produced its input.
+#
+# ---------------------------------------------------------------------------
+# THE SPLICE RULES — from `mkblob2.build_golf2()`, which stays the source of
+# truth.  Read it, not this summary.
+# ---------------------------------------------------------------------------
+#
+#   * The marker is the six ASCII bytes @BLOB@, and it must occur EXACTLY ONCE.
+#     Zero or more than one is fatal: Python raises SystemExit naming the count,
+#     and so does this tool — a message on fd 2 that ends in the count, and
+#     exit(1).  The check is meaningful precisely because the encoder has
+#     already stripped comments, so an `@BLOB@` written inside a comment (there
+#     is one, in self/golf2.golfj's own header) never reaches this stage.
+#   * The splice happens AFTER encoding, on the RAW BYTE STREAM.  The blob is
+#     arbitrary bytes; a `#` inside it would make the encoder eat the rest of a
+#     "line", and a 0x8E would open a string literal.  So this tool is byte
+#     plumbing and nothing else: it never looks at what it is copying.
+#   * Everything outside the marker passes through untouched.  The output
+#     contains NUL bytes and machine code, so nothing here may treat 0 as a
+#     terminator: every range is an explicit (address, length) pair — the
+#     lib/ttext.golfj currency — and every byte goes out through lib/tio.golfj's
+#     buffered `g`, which is a byte sink and has no opinion about the value.
+#
+# Matches are counted NON-OVERLAPPING (the scan resumes six bytes past a hit),
+# which is what Python's `bytes.count` does, so `@BLOB@BLOB@` is one match in
+# both.  Nothing in the repo contains that, but the two implementations agreeing
+# on a case neither will ever see costs one word of arithmetic.
+#
+# ---------------------------------------------------------------------------
+# Words: B and C — the entire remaining uppercase pool (lib/prelude.golfj's
+# header: "Free: B and C").  a-z are spoken for by the three tool libraries.
+# ---------------------------------------------------------------------------
+#
+#   B  addr len ->   emit a byte range through `g`
+#   C  str ->        write a “…“ block to fd 2 (no newline, no exit)
+#
+# `B` is the whole output path: the result is three ranges — the source before
+# the marker, the blob escape, the source after the marker — and a word that
+# emits one range makes the splice three lines with no branches in them.  It
+# uses the prelude's s0/s1 under an X/Y frame rather than variables, so it
+# cannot alias anything the main program holds; `g` itself touches no scratch,
+# which is what makes the loop body a single call.
+#
+# `C` exists because lib/tio.golfj's `a` (die) is atomic — message, newline,
+# exit — and the error message here has to be interrupted by a NUMBER that is
+# only known at run time.  So the fixed part goes out through `C`, the count is
+# formatted with ttext's `o`, and the newline and exit(1) are written inline
+# rather than borrowing `a` for a message it would have to be given empty.
+#
+# ---------------------------------------------------------------------------
+# Variables.  The bank at 0x4E0000 is a SEPARATE NAMESPACE from word names —
+# `→p` names bank cell 'p', not lib/ttext.golfj's word `p` — so a tool program
+# may use any letter for a variable.  Reserved: `s`, which lib/tutf.golfj holds
+# its state block in (../REGISTRY.md §2.1).  This program never spells →s / ←s.
+#
+#   p n   the encoded source: address and length (slurped from fd 0)
+#   q u   the blob escape:    address and length (slurped from argv[1])
+#   i     scan cursor — how far into the source the marker search has got
+#   w     the index `r` just returned, relative to the cursor
+#   k     how many markers have been seen
+#   x     the offset of the FIRST one — the splice point
+#   z     the scan's stop flag: 0 keep going, 1 no more matches
+#   v y   the decimal-formatting buffer and the digit count (error path only)
+#
+# THE -1 NEVER REACHES A VARIABLE (../REGISTRY.md §2.1).  `r` answers -1 for
+# "not found", and a -1 in a bank cell is the classic way to lose an afternoon:
+# when this was written a cell was four bytes and `←x` zero-extended, so a
+# stored -1 came back as 4294967295, every signed test on it answered "not
+# negative", and a loop bound derived from one ran about four billion times.
+# (W8A/M3W has since widened the bank to eight bytes and made `←x` a full 64-bit
+# load, which retires that particular trap.)  The discipline below is kept
+# either way, because it costs nothing and is right under both: the -1 is tested
+# with the signed `≺` WHILE IT IS STILL ON THE DATA STACK, and what reaches
+# `→w` is either a real index or a 0 the stopped scan will not look at.  No
+# variable here ever holds a negative value.
+#
+# The argv pointer is likewise never stored — it is a STACK address, above 2^32
+# on Linux x86-64, and it goes from `h` straight into `b` on the data stack.
+# `p` and `q` are heap addresses (the prelude's brk heap) and are safe in a
+# variable under either bank width.
+#
+# NOTHING HERE IS SIZED.  The marker is six bytes and that is the only constant
+# in the program: the source length, the blob length and the splice point are
+# all read from the input.  A blob that grows an atom, or a self/golf2.golfj
+# that grows a page, changes no number below.
+#
+# ---------------------------------------------------------------------------
+# House rules, inherited from lib/prelude.golfj and the tool libraries.
+# ---------------------------------------------------------------------------
+#   * Raw atoms only for address, index and flag arithmetic: \radd \rsub, never
+#     the ASCII + - that M-VEC made polymorphic.
+#   * `{…}` is a DO-while.  The scan loop is deliberately UNGUARDED: it must run
+#     once even on empty input, because running `r` once is how "no marker at
+#     all" is discovered — and `r` with a needle longer than the haystack
+#     answers -1 without touching memory, so a 0-byte source is safe.  `B`'s
+#     loop IS guarded, since two of its three ranges can legitimately be empty
+#     (a marker at offset 0, or one at the very end of the file).
+#   * `[…]` runs on TOS == 0, `}` loops on 0 — opposite polarities, so the stop
+#     flag is read once for each.
+#   * Byte 0x5C (swap) never appears: `decode` would render it as a bare `\`
+#     that `encode` would then read as a mnemonic escape.
+# ---------------------------------------------------------------------------
+
+# B  addr len ->  emit the range through tio's buffered `g`.  s0 walks the
+# address, s1 counts down the remaining bytes.  Guarded on len, so an empty
+# range emits nothing.  `g` uses no scratch, so the body is one call deep and
+# the frame is only needed because s0/s1 must survive it.
+#
+# `g` AND NOT `d`, deliberately.  `1 addr len d` would write the same bytes in
+# one syscall instead of one per 8192, and it is tempting because all three
+# ranges are already contiguous.  But `d` is the raw primitive `f` is built out
+# of, not the stream: a tool that wrote its artifact with `d` on fd 1 while
+# anything else in the process emitted through `g` would interleave the two out
+# of order, and `g` is the stream every other tool under gtools/ produces its
+# output on.  One stream per tool (lib/tio.golfj's header) is worth more than
+# three syscalls, and the buffer makes the cost of the byte loop a rounding
+# error next to the read that produced the bytes.
+:B X5177448\store 5177440\store 5177448\fetch 0\eq[{5177440\fetch? g 5177440\fetch 1\radd 5177440\store 5177448\fetch 1\rsub 5177448\store 5177448\fetch 0\eq}]Y;
+
+# C  str ->  write a “…“ block to fd 2, unterminated.  A block is [len:4][bytes]
+# and its value is the address of the length field, so the payload is addr+4 and
+# the count is a 32-bit `@` — the one deliberate 4-byte read in this file, and
+# the same one lib/tio.golfj's `a` and the prelude's `O` do.
+:C X5177440\store 2 5177440\fetch 4\radd 5177440\fetch@ d Y;
+
+# ---------------------------------------------------------------------------
+# The program.
+# ---------------------------------------------------------------------------
+
+# argv[1] is the blob-escape file.  `h` answers 0 when the argument is not
+# there, which is the only spelling that cannot read past the end of argv.  The
+# pointer stays on the data stack across the test and into `b` — see the
+# 4-byte-bank note above.
+1 h "0\eq 1\radd[“usage: mkgolf2 BLOB-ESCAPE-FILE  (encoded source on stdin, golf2.golf on stdout)“a]
+0 b e \setu\setq
+
+# The encoded source arrives on stdin.  `e` loops over short reads, so a pipe
+# from gtools/encode is read to EOF exactly like a file.
+0 e \setn\setp
+
+# Count the markers, and remember where the first one is.  `r` searches the
+# REMAINING source each time; the cursor jumps six bytes past a hit so matches
+# do not overlap.  `r`'s -1 is turned into a stop flag on the data stack and
+# never stored.
+0\setk 0\setx 0\seti 0\setz
+{\getp\geti\radd \getn\geti\rsub “@BLOB@“4\radd 6 r
+ "0\slt 1\radd[_ 1\setz 0]\setw
+ \getz[\getk[\geti\getw\radd\setx] \getk 1\radd\setk \geti\getw\radd 6\radd\seti]
+ \getz}
+
+# Exactly one, or nothing is written.  `k-1 ≡ 0` is -1 when the count is right,
+# so `[` runs the failure arm and only the failure arm; it exits and never
+# returns, which is why the splice below needs no else.
+\getk 1\rsub 0\eq[“mkgolf2: expected exactly one @BLOB@ marker on stdin, found “C
+ 4 A\setv \getk\getv o\sety 10 \getv\gety\radd, 2 \getv\gety 1\radd d 1 0 0 60\sys]
+
+# The splice: source before the marker, the blob escape, source after it.
+\getp\getx B
+\getq\getu B
+\getp\getx\radd 6\radd \getn\getx\rsub 6\rsub B
+f
