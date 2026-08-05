@@ -1,0 +1,258 @@
+# gtools/mkblob.golfj — data/blob.hex -> the `` ` `` blob escape.
+#
+# The GOLF shadow of tools/mkblob2.blob_escape().  Authored in code-page
+# mnemonic form and compiled by gtools/build (prelude, then every lib/t*.golfj,
+# then this program).  Python stays the build path; this program is trusted
+# exactly as far as test/gtools.sh shows it emits the SAME BYTES — see
+# gtools/README.md.
+#
+# ===========================================================================
+# Interface
+# ===========================================================================
+#
+#     build/gmkblob data/blob.hex > /tmp/escape        # a path argument
+#     build/gmkblob < data/blob.hex > /tmp/escape      # or a plain filter
+#
+# argv[1] if there is one, standard input otherwise.  Output always goes to
+# stdout, diagnostics to fd 2, and a rejected input exits 1 with NOTHING on
+# stdout (`a` deliberately does not flush the buffer — half a blob is worse
+# than none of it, because half a blob still looks like a file).
+#
+# Both spellings, because both callers are real.  test/gtools.sh's `diff_filter`
+# runs a tool as a bare stdin->stdout filter with no arguments, and the sibling
+# codepage tools are filters by nature; but `mkblob` has exactly ONE meaningful
+# input in the whole repo, and `gmkblob data/blob.hex` is what a Makefile rule
+# or a shell one-liner wants to say.  Supporting the argument costs one line
+# (`1 h`, tio's argv word, already answers 0 when there is no argv[1]) and
+# closes off the failure mode where someone forgets the redirect and the tool
+# sits waiting on a terminal.
+#
+# A SECOND argument is refused rather than ignored.  `gmkblob in.hex out.bin` is
+# the mistake this shape invites — mkgolf2, the tool next door, really does take
+# an output path — and ignoring the second word would write the blob to the
+# terminal and look like it had worked.
+#
+# ===========================================================================
+# What it emits
+# ===========================================================================
+#
+# `mkblob2.blob_escape()` is
+#
+#     b"`" + str(len(blob)).encode() + b" " + blob
+#
+# — a backtick, the byte count in decimal, EXACTLY ONE space (the escape's
+# delimiter, not padding), then that many raw bytes.  No trailing newline: the
+# escape is spliced into the middle of self/golf2.golf at the @BLOB@ marker, so
+# a stray byte on either side would land in the compiler's source.
+#
+# The blob itself is `[key][len][len bytes]` records followed by a single 0
+# sentinel key.  data/blob.hex holds one whole record per line as space-
+# separated uppercase hex pairs, in build_blob2()'s exact emission order with
+# the M-VEC overrides already substituted, and — the one thing that is easy to
+# get wrong — THE SENTINEL IS NOT IN THE FILE.  Its own header says so and says
+# why: a bare `00` line would be the one line that is not a key+len+data record,
+# so every reader would need a special case for the last line.  This program
+# appends the 0 byte, and counts it in the length.
+#
+# NO COUNT IS BAKED IN — not the number of records, not the blob length, not the
+# longest template.  data/blob.hex grows every time an op byte is allocated (it
+# gained ⎈ \sys and ⌸ \brk in this wave alone), so the record count is read off
+# the input, the buffer is sized from the input, and the decimal length is
+# computed from what was actually decoded.  The figures in the file's own header
+# — 55 records, 713 record bytes, 714 with the sentinel — are today's, and this
+# program would emit tomorrow's without being touched.
+#
+# The output CONTAINS NUL BYTES and arbitrary binary — it is machine code — so
+# nothing in the path below may treat a 0 byte as a terminator.  Nothing does:
+# every byte goes out through tio's `g`, which is a counted buffer, and the
+# record bytes are copied by index, never scanned for a terminator.
+#
+# ===========================================================================
+# What it validates, and what it deliberately does not
+# ===========================================================================
+#
+# A build tool that emitted a subtly wrong blob would poison the next bootstrap
+# in a way the fixpoint might not even catch (a template that is never reached
+# by the compiler's own source compiles clean and breaks a user's program).  So
+# every structural property that is cheap to check is checked, and each one
+# dies through `a` with its own message on fd 2 and exit status 1:
+#
+#   * the line is space-separated hex pairs — length must be 3n-1, so `A3 05 59`
+#     passes and `A3 05 59 ` , `A3 0559` and `A3  05` do not;
+#   * every pair is two hex digits (`l` answers -1 otherwise);
+#   * every separator is ONE byte 0x20 — a tab or any other filler is rejected
+#     even though the length arithmetic would have accepted it;
+#   * at least two bytes on the line, i.e. a key and a length;
+#   * THE DECLARED LENGTH EQUALS THE DATA — `len` byte == (bytes on line) - 2.
+#     This is the check the whole file format exists to allow: a truncated line
+#     and a hand-edited length are the two corruptions that would otherwise
+#     produce a blob that is well-formed and wrong;
+#   * the key is not 0 — a 0 key is the sentinel, and a record with one would
+#     truncate the blob at that point for every reader;
+#   * NO DUPLICATE KEYS.  The compiler's record lookup returns the FIRST match,
+#     so a second record for a key is silently dead code — exactly the kind of
+#     thing that survives every test until the day the two differ.  Worth the
+#     256-byte table: duplicates are otherwise invisible;
+#   * at least one record.  Zero records means empty input or the wrong file,
+#     and `` `1 <NUL> `` is a perfectly well-formed escape for an empty blob,
+#     which is the worst possible thing to emit silently.
+#
+# Deliberately NOT checked, because it is policy this program has no standing to
+# hold an opinion about (data/blob.hex's own header: "a reader here is a
+# formatter, not a policy engine"):
+#
+#   * the ORDER of the records, and that keys 1-5 come first.  Order is
+#     load-bearing — the lookup returns the first match — but it is decided by
+#     build_blob2() before the file is written, and test/selfcheck.sh already
+#     fails if what is committed is not exactly what tools/mktables.py emits;
+#   * that any particular key is present, or that the template bytes are valid
+#     machine code.  There is no second source here to check them against;
+#   * hex-digit CASE.  mktables.py writes upper case; `l` folds case, so lower
+#     case is accepted.  Rejecting it would be a check on the generator's
+#     formatting, not on the data.
+#
+# ===========================================================================
+# Memory.  Eight fixed cells, and one heap block.
+# ===========================================================================
+# ../REGISTRY.md §3 leaves 0x4F00C0-0x4F00FF (5177536-5177599) free; this
+# program uses all eight cells of it, 8-byte stride, `\fetch`/`\store`
+# throughout.  That is a use, not a reservation: a gtools/ program is its own
+# executable and the region is dead the moment it exits, so every tool here may
+# spend the same eight cells however it likes.  Nothing is added to §3.
+# This program uses NO ->x / <-x variable and never touches s0..s7.  The
+# variable bank is one global cell per NAME, shared with anything else linked
+# into the same binary, and it has changed width once already (W8A/M3W widened
+# it to 8 bytes and made <-x a full 64-bit load, retiring the zero-extension
+# hazard the tool libraries were written around); a fixed cell is 64-bit by
+# construction, costs nothing, and cannot collide.  s0..s7 belong to the prelude
+# and to the ttext words called below — every one of those frames itself with
+# X/Y, so nothing here has to.
+#
+#   5177536  cur       the read cursor, an ADDRESS into the slurped input
+#   5177544  rem       bytes left from cur (cursor + remaining, not base + index:
+#                      two cells instead of three, and eight is the budget)
+#   5177552  blobbuf   where decoded record bytes accumulate
+#   5177560  bloblen   how many are there — also the running append offset
+#   5177568  lineaddr  ) B's arguments; live only inside B, so main may and does
+#   5177576  linelen   ) keep its own four across the call — then C's source
+#   5177584  nb        bytes on the current line (B), then C's count
+#   5177592  i         B's byte index, then B's key, then C's index
+#
+# B and C are the only two words this program defines, and B and C are the only
+# two uppercase letters lib/prelude.golfj has left (its header: "Free: B and C —
+# that is the entire remaining uppercase pool").  They never run at the same
+# time — every record is parsed before the first byte is emitted — so the four
+# cells above are shared rather than partitioned.
+#
+# ONE allocation, sized from the input (a record line is at least three bytes
+# per record byte, so input/8 + 40 cells is always room and usually triple it):
+#
+#     base+0    .. base+255   the 256-byte seen-key table (zeroed explicitly)
+#     base+256  .. base+287   the decimal scratch `o` formats the count into
+#                             (20 bytes is the worst case; 32 is what it gets)
+#     base+288  ..            blobbuf — the record bytes
+#
+# blobbuf is the only one of the three kept in a cell; the other two are spelled
+# `blobbuf 288 \rsub` and `blobbuf 32 \rsub` at their use sites.  That is what
+# makes eight cells enough.  The seen table is zeroed by hand rather than
+# trusting fresh `brk` pages to be zero — they are, but a bump allocator that
+# ever grows a reuse path would make that a silent wrong answer, and 256 stores
+# cost nothing next to a syscall.
+#
+# ===========================================================================
+# House rules inherited from lib/prelude.golfj and the tool libraries
+# ===========================================================================
+#   * Raw atoms only for every pointer, index, count and flag step: \radd \rsub
+#     \rmul \rmin \rlt.  The bare ASCII + - * are polymorphic since M-VEC and
+#     would send this program's own address math through the shape dispatcher.
+#     `/` is not in the hook table and stays bare, and is UNSIGNED, which is
+#     what the (linelen+1)/3 arithmetic wants.
+#   * Flag polarity is zero-is-true, like `[` itself.  \eq yields -1 when equal
+#     and 0 when not, so `<x> <y> \eq [ die ]` is "die unless they match" with
+#     no adapter; the -1/0 of \slt and \rlt is turned round with `1\radd` where
+#     a block has to run on TRUE instead.
+#   * `{…}` is a DO-while, so its body always runs once.  The line loop is
+#     guarded with `<rem> 0\eq [ {…} ]` (an empty input has no lines); B's
+#     per-byte loop is not, because B is only called with nb >= 2; C's is not,
+#     and C is therefore documented as needing n >= 1 — both its callers pass a
+#     count already proved non-zero (`o` returns at least 1 even for the value
+#     0, and the "no records" check has already run).
+#   * Byte 0x5C (swap) never appears — `decode` renders it as a bare `\`, which
+#     `encode` would then read as a mnemonic escape.  Where an operand order
+#     needed reversing it went through a cell (B's key) or through `&` (over).
+#   * `g` and `)` are two different streams; this program uses `g` for the
+#     artifact and `a` (fd 2) for anything it has to say about it, and never
+#     `)`, `N`, `O` or `Q`.
+# ===========================================================================
+
+# B : one record line -> validated bytes appended to blobbuf.  addr len ->
+# The line is 3n-1 bytes: n hex pairs with n-1 single spaces between them, so
+# byte i is at addr+3i and the separator before it at addr+3i-1.  `l` reads two
+# bytes unconditionally, and the last pair ends at addr+3n-2 = addr+linelen-1,
+# so the sweep stops exactly at the end of the line and never past it.
+:B 5177576\store 5177568\store
+5177576\fetch 1\radd 3/ 5177584\store
+5177584\fetch 3\rmul 1\rsub 5177576\fetch\eq[“mkblob: record line is not space-separated hex pairs“a]
+5177584\fetch 2\rlt 1\radd[“mkblob: record line is shorter than a key and a length byte“a]
+0 5177592\store
+{5177592\fetch 0\eq[5177568\fetch 5177592\fetch 3\rmul\radd 1\rsub?32\eq[“mkblob: hex pairs must be separated by exactly one space“a]]
+5177568\fetch 5177592\fetch 3\rmul\radd l"0\slt 1\radd[“mkblob: not a pair of hex digits“a]
+5177552\fetch 5177560\fetch\radd 5177592\fetch\radd,
+5177592\fetch 1\radd 5177592\store 5177592\fetch 5177584\fetch\rlt 1\radd}
+# The record is in the buffer; now the three checks that need it whole.  The
+# length byte is blobbuf[bloblen+1] and must equal nb-2, the key is
+# blobbuf[bloblen] and is parked in 5177592 (the index is finished with) so that
+# the seen-table address can be built above it without a swap.
+5177552\fetch 5177560\fetch\radd 1\radd?5177584\fetch 2\rsub\eq[“mkblob: the length byte disagrees with the data on the line“a]
+5177552\fetch 5177560\fetch\radd?5177592\store
+5177592\fetch 0\eq 1\radd[“mkblob: key 0 is the sentinel and cannot start a record“a]
+5177552\fetch 288\rsub 5177592\fetch\radd?0\eq[“mkblob: duplicate record key would shadow the later record“a]
+1 5177552\fetch 288\rsub 5177592\fetch\radd,
+5177560\fetch 5177584\fetch\radd 5177560\store;
+
+# C : emit n bytes from addr through tio's buffered `g`.  addr n ->
+# The count is gospel and a 0 byte is just another byte, so this is the one
+# thing between the blob and stdout that could have gone wrong on binary and
+# does not: no terminator is looked for and none is written.  UNGUARDED — a
+# do-while, so n must be at least 1; both callers have already proved theirs.
+:C 5177584\store 5177568\store 0 5177592\store
+{5177568\fetch 5177592\fetch\radd?g 5177592\fetch 1\radd 5177592\store 5177592\fetch 5177584\fetch\rlt 1\radd};
+
+# Open the input and slurp it.  `2 h` is argv[2] or 0, and a second argument is
+# a mistake, not an output path.  `1 h` is argv[1] or 0; a non-zero pointer is
+# NUL-terminated by the kernel, which is what open(2) wants, so `0 b` opens it
+# read-only.  A zero pointer IS the fd this program then reads: 0, stdin — the
+# two cases share the cell, which is why there is no branch around `e`.
+2 h 0\eq[“mkblob: takes at most one argument, the file to read; output is stdout“a]
+1 h"0\eq[0 b]e 5177544\store 5177536\store
+
+# One heap block: seen table, decimal scratch, then the record bytes.
+5177544\fetch 8/ 40\radd A 288\radd 5177552\store
+0 5177560\store
+0 5177592\store{0 5177552\fetch 288\rsub 5177592\fetch\radd,5177592\fetch 1\radd 5177592\store 5177592\fetch 256\rlt 1\radd}
+
+# The line loop.  `q` finds the newline; -1 (no newline before EOF, i.e. an
+# unterminated last line) means the line is all that is left.  The cursor then
+# advances by min(linelen+1, rem), which is linelen+1 for a terminated line and
+# rem for that last one — one expression instead of carrying the -1 forward, and
+# it can never be 0, so the loop always makes progress.  cur/rem are updated
+# BEFORE the line is handled, so lineaddr and linelen can stay on the data stack
+# (where a -1 is still a -1) and B is free to use the cells it needs.
+5177544\fetch 0\eq[{
+5177536\fetch"5177544\fetch 10 q"0\slt 1\radd[_5177544\fetch]
+"1\radd 5177544\fetch\rmin"5177536\fetch\radd 5177536\store 5177544\fetch&\rsub 5177544\store_
+"0\eq[&?35\eq[&&B]]_ _
+5177544\fetch 0\eq}]
+5177560\fetch 0\eq 1\radd[“mkblob: no records in the input“a]
+
+# The escape.  Backtick, the count IN DECIMAL — bloblen plus the one sentinel
+# byte — one space, the record bytes, the sentinel, and the final `f` that is
+# the flush nothing else can know is due.  `o` writes the digits into the
+# scratch at blobbuf-32 and returns how many, which has to be parked so that the
+# address can be pushed under it for C.
+96 g
+5177560\fetch 1\radd 5177552\fetch 32\rsub o 5177584\store
+5177552\fetch 32\rsub 5177584\fetch C
+32 g
+5177552\fetch 5177560\fetch C
+0 g f
