@@ -73,6 +73,15 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
   works on them: `“Hello“U1+J` maps +1 → `Ifmmp` (long form: `“Hello“U′⊕€J`).
 - **named variables** `→x`/`←x` over a 64-bit-per-name bank, so `←a←b+←a←b-*` is
   `(a+b)*(a-b)` with no juggling.
+- **syscalls and files** — `⎈` (`\sys`) is a raw three-argument syscall and
+  `STARTUP` stashes the entry `rsp`, so a GOLF program can open a file and read
+  its own `argv` instead of being a stdin-to-stdout filter forever.
+- **the repo's own build tools, written in GOLF** — `expanded/gtools/` holds
+  `encode`, `decode`, `mkblob`, `mkgolf2` and `hexcat`. They *shadow* the Python
+  originals rather than replacing them, and `test/gtools.sh` requires
+  byte-identical output over the repo's real sources. `mkblob | encode |
+  mkgolf2` regenerates the compiler's own source with no Python in the pipeline,
+  and that source still reaches the `golf2 == golf2'` fixpoint.
 
 So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J` — which
 before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both
@@ -87,11 +96,12 @@ is [`expanded/NEXT_STEPS.md`](expanded/NEXT_STEPS.md).
 cd expanded
 bash test/run2.sh                                      # ladder + language + docs
 bash test/selfcheck.sh                                 # seed and golf2 are one compiler
+bash test/gtools.sh                                    # the GOLF tools match their Python twins
 python3 tools/codepage.py table                        # atoms + library glyphs
 tools/golfc -j examples/capstone.golfj out && ./out    # compile a glyph program
 ```
 
-`bash test/run2.sh` is **273 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **274 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

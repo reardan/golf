@@ -21,7 +21,7 @@
 #   bash test/gtools.sh          (also run by CI, after run2.sh and selfcheck.sh)
 set -u
 cd "$(dirname "$0")/.."
-EXP=$(pwd)
+EXP=$(pwd); MIN="$EXP/../minimal"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok(){ printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass+1)); }
@@ -450,6 +450,54 @@ PY
       && ok "encode | mkgolf2 rebuilds self/golf2.golf end to end" \
       || no "the encode | mkgolf2 pipeline does not rebuild self/golf2.golf"
   fi
+fi
+
+# @@ W8-PIPELINE @@
+# The claim the whole milestone is for, and the one case no single tool could
+# make: the compiler's own source, regenerated with NO Python in the pipeline.
+#
+#     gmkblob data/blob.hex                    -> the ` blob escape
+#     gencode < self/golf2.golfj | gmkgolf2 ESC -> self/golf2.golf
+#
+# Each tool proves itself against its Python counterpart under its own anchor
+# above; each was also developed against Python stand-ins for its neighbours,
+# which is the shadow architecture working as intended — byte-identical stages
+# are interchangeable parts.  But "every stage matches" and "the stages compose"
+# are different claims, and only this one is the deliverable.  mkgolf2's own
+# block deliberately drives Python's blob_escape rather than guessing a
+# sibling's command line, so without this case the full chain is never run.
+#
+# Then the real test, which is not byte-identity at all: put the result back on
+# the bootstrap ladder.  A compiler source assembled by GOLF programs must still
+# compile ITSELF to a byte-identical binary — golf2 == golf2' — and that
+# compiler must still compile ordinary GOLF.
+if build gtools/mkblob.golfj  pmkblob  \
+&& build gtools/encode.golfj  pencode  \
+&& build gtools/mkgolf2.golfj pmkgolf2; then
+  "$TMP/pmkblob" data/blob.hex > "$TMP/p.esc" 2>/dev/null
+  "$TMP/pencode" < self/golf2.golfj 2>/dev/null \
+    | "$TMP/pmkgolf2" "$TMP/p.esc" > "$TMP/p.golf2" 2>/dev/null
+  cmp -s "$TMP/p.golf2" self/golf2.golf \
+    && ok "the whole pipeline, no Python: mkblob + encode + mkgolf2 rebuild self/golf2.golf" \
+    || no "the GOLF-only pipeline does not reproduce self/golf2.golf"
+
+  # golf0.py -> v1c -> seed -> golf2 -> golf2', but with the GOLF-generated
+  # source at the golf2 rung instead of the committed one.
+  python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$TMP/pv1c" 2>/dev/null; chmod +x "$TMP/pv1c"
+  "$TMP/pv1c"  < self/seed.golf  > "$TMP/pseed"  2>/dev/null; chmod +x "$TMP/pseed"
+  "$TMP/pseed" < "$TMP/p.golf2"  > "$TMP/pg2"    2>/dev/null; chmod +x "$TMP/pg2"
+  "$TMP/pg2"   < "$TMP/p.golf2"  > "$TMP/pg2p"   2>/dev/null; chmod +x "$TMP/pg2p"
+  cmp -s "$TMP/pg2" "$TMP/pg2p" \
+    && ok "fixpoint on the GOLF-generated source: golf2 == golf2'" \
+    || no "the GOLF-generated compiler source does not reach the fixpoint"
+
+  # ...and it is a working compiler, not just a stable one.
+  printf '%s' '5R\ref\sqrMSNE' | python3 tools/codepage.py encode > "$TMP/pprog.gb" 2>/dev/null
+  cat <(python3 tools/codepage.py encode < lib/prelude.golfj) "$TMP/pprog.gb" \
+    | "$TMP/pg2p" > "$TMP/pprog" 2>/dev/null && chmod +x "$TMP/pprog"
+  [ "$("$TMP/pprog" 2>/dev/null)" = "30" ] \
+    && ok "that compiler still compiles GOLF (sum of squares 0..4 -> 30)" \
+    || no "the GOLF-generated compiler miscompiles"
 fi
 
 echo
