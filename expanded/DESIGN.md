@@ -111,10 +111,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **714** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1680** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **4523** bytes |
-| assertions in the run2 suite | **274** |
-| assertions in the selfcheck suite | **32** |
+| the generated bootstrap seed (`self/seed.golf`) | **1685** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **4788** bytes |
+| assertions in the run2 suite | **286** |
+| assertions in the selfcheck suite | **35** |
 | assertions in the gtools differential suite | **42** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -232,6 +232,31 @@ the golf2 fixpoint included. In order:
   `mkblob2.build_seed()` deliberately stays Python — it reuses the frozen
   `minimal/` tree's own `WORDS` source text, and a second copy of that string
   is the drift this repo's whole test discipline exists to prevent.
+- **M-DIAG — the two silent failures got names.** GOLF reported nothing, ever;
+  these are the first two diagnostics in the language, and both were audited into
+  existence by [`GAPS.md`](GAPS.md) rather than hit in normal use.
+  **The compose arena is bounded.** `0x4D0000`–`0x4DFFFF` holds exactly 1680
+  39-byte thunks, and nothing enforced it: the 1681st `∘` started at `0x4E0017`,
+  inside the user variable bank, so a program that composed in a loop overwrote
+  its own `→x`/`←x` cells with machine code and ran on to exit 0. `∘` now tests
+  the bump pointer and dies at offset 65498. `brk`-growing the arena instead is
+  not available — `brk` memory is not executable and a thunk is code — and
+  nothing can be freed, since a thunk's address may have escaped anywhere.
+  **An undefined word is reported.** `e` emitted `call rel32` with
+  `rel32 = dict[name] - (p+4)` without ever reading `dict[name]`; for a
+  never-defined name that cell is BSS-zero, so the *compile* succeeded and the
+  binary died with SIGSEGV when the word was reached — the symptom of every typo,
+  and of every attempt at mutual recursion. Both compilers now test the slot and
+  exit 2; golf2 also writes `GOLF: undefined word <name>` to fd 2, and neither
+  leaves a partial binary on fd 1. The whole cost was moving `232o` below the
+  lookup so the slot could be tested before a byte was written; `rel32` is
+  unchanged, so the fixpoint and `seed == golf2` both held with no adjustment.
+  The seed exits 2 *without* a message — v1 GOLF has no way to reach fd 2, and
+  fd 1 is carrying the binary — which is the one deliberate divergence between
+  the two source forms, and `test/selfcheck.sh` asserts both halves of it rather
+  than letting it drift. The `′` path is *not* covered: `X` already reads a name
+  with no dictionary entry as an atom, which is how `′atom` auto-wrapping works,
+  so `′typo` is a different bug and still open.
 - **The capstone shrank.** `examples/capstone.golfj` went from **54** op bytes to
   **46** by letting the bare polymorphic operators do the looping; the pre-M-VEC
   spellings are kept verbatim and output-checked as
@@ -260,6 +285,36 @@ the golf2 fixpoint included. In order:
 - The numbers quoted in this file and in the top-level `README.md` are asserted
   by `test/run2.sh` against what they describe. Change the thing, change the doc,
   or the suite fails.
+
+## Deliberate non-goals
+
+Three things a reader coming from Python or Jelly will look for and not find.
+None of them is queued, because none of them is unbuilt — they are refused, and
+[`GAPS.md`](GAPS.md) measures what the refusal costs. Recorded here so the next
+person does not have to guess whether they were forgotten.
+
+- **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
+  no rationals, no complex, and no character distinct from its code. This is
+  what lets an atom be a raw one-instruction template, which is what keeps the
+  blob at 714 bytes, which is what keeps the compiler re-derivable in an
+  afternoon. Floats would put an SSE calling convention in every arithmetic
+  template; bignums would put an allocator on the arithmetic path. Either ends
+  the property this project exists to demonstrate.
+- **Arity.** GOLF has no notion of how many arguments a word takes; words are
+  variadic by stack discipline and nothing checks them, so a word that
+  under-pops silently eats its caller's values. Jelly's compression comes from
+  a parse-time arity algebra, and matching it means a real front end — a
+  different project, not a milestone. `⊚` chain definitions are as far as the
+  single-pass model goes.
+- **Diagnostics, in general.** The compiler is single-pass with no symbol table
+  and no source positions; it cannot say "line 4" because it does not know what
+  a line is. The two failures worth naming are named (an undefined word, an
+  exhausted compose arena) and both cost a byte-count that had to be justified.
+  A general error-reporting layer is not coming; it would be a large fraction of
+  a 4.8 KB compiler.
+
+The first two are permanent. The third is a budget, not a principle — a
+specific silent failure can earn its diagnostic, as those two did.
 
 ## Known limits
 

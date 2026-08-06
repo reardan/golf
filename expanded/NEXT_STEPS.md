@@ -19,8 +19,10 @@ definitions (M-CHAIN2), the first compiler logic authored in `golf2.golfj` as
 the primary source; and M-TOOL, which gave the language syscalls (`⎈`), argv,
 three tool libraries on the lowercase letters, and the repo's own build scripts
 rewritten in GOLF under `gtools/` — each one gated against its Python twin for
-byte-identical output. (The current counts and sizes live in DESIGN.md's table,
-where the suite asserts them.)
+byte-identical output. Most recently M-DIAG, the first two diagnostics the
+language has ever had, both found by the [`GAPS.md`](GAPS.md) audit rather than
+in use. (The current counts and sizes live in DESIGN.md's table, where the suite
+asserts them.)
 
 Four facts about the implementation shape everything below:
 
@@ -55,6 +57,20 @@ that happens to land in `[base, base+span)` is dispatched as a list — the one
 outright incorrect behavior in the language (DESIGN.md, known limits). Range
 tagging also forces the two 32-bit bounds cells at `0x4F0034`/`0x4F0038`, which
 put a hard 4 GB ceiling on the break.
+
+*Why it is also the gate on nested data.* This item used to be sold on
+correctness alone, which undersells it. GOLF's list cells hold whatever you put
+in them, so a list of lists **stores** fine — but nothing above the storage layer
+knows: `⍕` prints inner lists as raw pointers, and M-VEC's five operators
+dispatch on the shapes of their two operands exactly once, never recursing into
+elements. Jelly's core data structure is the arbitrarily nested list, so this is
+the single largest gap to it ([`GAPS.md`](GAPS.md) §1.1). Every fix for it —
+a recursive `⍕`, depth, rank, vectorization to arbitrary depth, a structural
+`≡` — has to ask "is this cell a list?" of *every element*, which is exactly the
+question `T` currently answers with a heuristic that is wrong in principle.
+Asking it once per operand is survivable; asking it per element, at every depth,
+is not. **The tag bit is the prerequisite for all of it**, and that is a better
+reason to do it than the misclassification bug on its own.
 
 *Why the bit-63 plan cannot ship.* This entry used to say: hand the address to
 user code with **bit 63** set, and `T` becomes `v >> 63`. That is exact for
@@ -145,9 +161,20 @@ forward-declaration handling so mutual recursion needs no pending-char hack.
 The high-byte word range `0xC0`–`0xCF` is the stopgap the prelude already uses;
 M2 is what makes it unnecessary.
 
-*Why not sooner.* Nothing above needs it, and it is the largest single change to
-the compiler's front end — best done when the language has stopped moving under
-it.
+*Why not sooner.* It is the largest single change to the compiler's front end,
+and best done when the language has stopped moving under it.
+
+*But it is no longer independent.* This entry used to say "nothing above needs
+it", and that is now false. The uppercase pool is down to `B` and `C` — two
+letters — and the library is missing, at minimum, sort, concatenate, take/drop,
+member, index-of, unique and a structural `≡` ([`GAPS.md`](GAPS.md) §1.3). Item
+5 (M6b) needs letters too, for a line reader and a number parser. Two letters do
+not cover either list, so **every remaining library item is gated behind this
+one** or behind spending the eight high bytes at `0xC8`–`0xCF` on words that
+should have had names. That does not automatically move M2 to the front — the
+tag bit is still the thing that makes the *language* correct, and it is cheaper —
+but "nothing needs it" is no longer the reason to defer it. Sequencing it right
+after the tag bit, and before the allocator, is the honest ordering.
 
 ### 5. M6b — a number parser and line-oriented input for USER programs (small)
 
@@ -200,6 +227,23 @@ would shadow half of any program's own words.
   change moves one of them, the suite tells you which doc to edit.
 
 ## The wave just landed
+
+**M-DIAG — the audit's two fixes.** [`GAPS.md`](GAPS.md) measured the language
+against Python and Jelly and turned up three defects nothing in the repo
+recorded; two of them were small enough to fix in the same pass. The compose
+arena is now bounded (it was silently overwriting the user variable bank after
+1680 composes, exit status 0), and an undefined word is now reported instead of
+compiling to a jump through a zeroed dictionary slot. Both are in DESIGN.md's
+record. The third — nested lists having no support above the storage layer — is
+item 1's second justification above, because the tag bit is its prerequisite.
+
+Two things that wave did **not** do. The `′` path still reads an undefined name
+as an atom (`X`'s auto-wrapping cannot tell a typo from `′⊗`), which is a
+separate small fix. And no diagnostic gained a source position: the compiler is
+single-pass with no notion of a line, so "undefined word `b`" is the whole
+message it can afford — see DESIGN.md's non-goals.
+
+## Earlier waves
 
 **M3W then M-CHAIN2.** Both lived entirely in the compiler's front end
 (`self/golf2.golfj`, `mkblob2.py`'s v1-GOLF seed cases, `boot/golfref.py`) and

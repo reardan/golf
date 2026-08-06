@@ -265,6 +265,33 @@ echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotati
   && ok "pipeline: 5 threaded through [′d, ′i]" || no "pipeline"
 [ "$(printf '%s' '5 1A 0&\store\pipe N E' | gc)" = "5" ] \
   && ok "pipeline over an empty quotation list is the identity" || no "empty pipeline"
+# The arena is BOUNDED, and the bound is enforced.  0x4D0000..0x4DFFFF is 65536
+# bytes = EXACTLY 1680 thunks at 39 bytes each; the 1681st would start at
+# 0x4E0017, which is inside the user variable bank at 0x4E0000 (REGISTRY.md §3).
+# Until this check existed, a program that composed in a loop overwrote its own
+# →x/←x cells with machine code and ran on to exit 0 — silent corruption of user
+# data.  Nothing can be freed (a thunk's address may have escaped anywhere), so
+# ∘ stops instead.  The canary below is a variable whose cell the overrun reaches.
+arena(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" \
+           > "$TMP/ar" 2>/dev/null; chmod +x "$TMP/ar"
+         "$TMP/ar" >"$TMP/ar.out" 2>"$TMP/ar.err"; echo "$?"; }
+compose_n(){ printf ':d\\dbl;:i\\inc;1234\\setv 0{\\refd\\refi\\comp_ 1\\radd"%s\\rlt1\\radd}_ \\getv N E' "$1"; }
+[ "$(compose_n 1680 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
+  && ok "1680 composes fit the arena exactly, and the canary is intact" || no "arena 1680"
+[ "$(compose_n 1681 | arena)" = "1" ] \
+  && ok "the 1681st compose exits 1 instead of writing into the variable bank" || no "arena 1681 status"
+[ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] \
+  && ok "... and says so on fd 2, leaving fd 1 (the program's output) clean" || no "arena 1681 message"
+[ ! -s "$TMP/ar.out" ] && ok "... with nothing written to fd 1" || no "arena 1681 stdout"
+# Why the arena is not simply brk-grown, the way the list heap was at M-MEM:
+# brk memory is R+W but NOT executable, and a thunk is code.  (A bare 0xC3 is a
+# valid GOLF callee — ⍎ does `call rax` and `ret` pops that address right back —
+# so this distinguishes "cannot execute" from "bad address".)
+[ "$(printf '%s' '1\alloc\seth 195\geth, \geth?N E' | gc)" = "195" ] \
+  && ok "a heap byte written through the allocator reads back" || no "heap rw"
+[ "$(printf '%s' '1\alloc\seth 195\geth, \geth\exec' | arena)" != "0" ] \
+  && ok "... but calling it dies: brk memory is not executable, so the arena cannot grow" \
+  || no "heap nx"
 tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
 [ "$("$TMP/chain" 2>/dev/null)" = "$(printf '11\n2\n11')" ] && ok "golfc examples/chain.golfj" || no "chain.golfj"
 [ "$(oracle chain)" = "$(printf '11\n2\n11')" ] \
@@ -1067,6 +1094,33 @@ python3 boot/golfref.py < <(cat "$TMP/pre.gb" <(python3 tools/codepage.py encode
 cmp -s "$TMP/chd.g2" "$TMP/chd.ref" \
   && ok "oracle: identical bytes for a program of chain definitions" || no "oracle chain bytes"
 # W8B --------------------------------------------------------------------------
+
+echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero"
+# v1's `e` emitted `call rel32` with rel32 = dict[name] - (p+4) without ever
+# looking at dict[name].  For a name that was never defined that cell is
+# BSS-zero, so the call targeted a wild address: the COMPILE reported success
+# and the binary died with SIGSEGV the moment the word was reached.  A word name
+# is a single byte, so that was the symptom of every typo — and, since a word
+# must be defined before use, of every attempt at mutual recursion.
+und(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/u.src"
+       "$TMP/golf2" < "$TMP/u.src" > "$TMP/u.out" 2>"$TMP/u.err"; echo "$?"; }
+[ "$(printf '%s' '5qN' | und)" = "2" ] \
+  && ok "a call to an undefined word exits 2 instead of emitting the call" || no "undefined word status"
+[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+  && ok "... naming the offending byte, on fd 2" || no "undefined word message"
+[ ! -s "$TMP/u.out" ] \
+  && ok "... and no partial binary reaches fd 1" || no "undefined word stdout"
+# The forward reference is what mutual recursion needs and cannot have; the
+# diagnostic now names it rather than leaving a segfault to be debugged.
+[ "$(printf '%s' ':a"0-[_0^]1-b;:b"0-[_1^]1-a;5aN' | und)" = "2" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word b" ] \
+  && ok "mutual recursion names the forward reference (b), not a SIGSEGV" || no "mutual recursion"
+# The check must not fire on anything legitimate: every word the prelude and the
+# examples define is defined before use, and an ATOM has a template, so it never
+# reaches the dictionary lookup at all.
+[ "$(printf '%s' '100\range\sum N E' | und)" = "0" ] && [ -s "$TMP/u.out" ] \
+  && ok "a valid program still compiles, exit 0" || no "valid program regression"
+[ -z "$(cat "$TMP/u.err")" ] && ok "... with fd 2 silent" || no "valid program stderr"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

@@ -264,10 +264,12 @@ statically laid out. A retargetable IR is also M9.
 
 ## 3. Defects found while writing this
 
-Three of these are unrecorded anywhere in the repo. All were reproduced against
-a compiler built by `tools/golfc`.
+Three, none of them recorded anywhere in the repo when this file was written.
+All were reproduced against a compiler built by `tools/golfc`. **The first two
+are now fixed** — the descriptions below are kept as the record of what the
+behaviour was, each with its resolution. The third is now queued.
 
-### 3.1 `∘` overruns its arena into the user variable bank (unrecorded)
+### 3.1 `∘` overran its arena into the user variable bank — FIXED
 
 [`REGISTRY.md`](REGISTRY.md) §3 documents the code arena as
 `0x4D0000`–`0x4DFFFF`, "1680 thunks; never freed". **Nothing enforces the upper
@@ -280,23 +282,52 @@ bank at `0x4E0000` — so the 1681st `∘` starts writing machine code over
 1234→v 0{′⊕′⊗∘_ 1﹢"2000﹤1+}_ ←vṄ   ->  -13230423417028608      # clobbered
 ```
 
-The thunks stay callable and the program exits 0; only the variables are
+The thunks stayed callable and the program exited 0; only the variables were
 destroyed, silently. Note this is *not* M-MEM2: that item is about the list heap
 allocator `A`. This is a different arena with a different failure mode — data
-corruption rather than growth — and it needs its own row. The cheap fix is a
-bounds check in `∘` that dies rather than wrapping; the real fix is that the
-arena should be `brk`-grown like the list heap was at M-MEM.
+corruption rather than growth.
 
-### 3.2 An undefined word compiles to a jump to zero (unrecorded)
+**Fixed.** `∘` now tests the bump pointer before it writes: `65536 - 39 = 65497`
+is the last legal offset, so an offset of 65498 or more writes
+`GOLF: compose arena exhausted` to fd 2 and exits 1 rather than wrapping into
+user data. 1680 composes still succeed, the 1681st dies, and `run2.sh` pins both
+ends plus the canary variable. Growing the arena with `brk` instead was
+considered and rejected: `brk` memory is not executable, and thunks are code.
+Nothing can be freed either — a thunk's address may have escaped anywhere — so
+stopping is the only honest answer.
 
-§2.3. Compile succeeds, binary segfaults, no diagnostic. This is the mechanism
-that makes mutual recursion impossible *and* makes any typo in a word name a
-runtime crash with no clue attached.
+### 3.2 An undefined word compiled to a jump to zero — FIXED
 
-### 3.3 Nested lists have no support above the storage layer (unrecorded)
+§2.3. Compile succeeded, binary segfaulted, no diagnostic. This was the
+mechanism that made mutual recursion impossible *and* made any typo in a word
+name a runtime crash with no clue attached.
+
+**Fixed.** Both compilers now test `dict[name]` before emitting `call rel32` and
+exit 2 when it is zero; `golf2` also writes `GOLF: undefined word <name>` to
+fd 2. Neither leaves a partial binary on fd 1. The check cost the reordering of
+two ops — `232o` moved below the lookup so the slot could be tested before a
+byte was written — and `rel32` is unchanged, so the fixpoint and the
+byte-for-byte `seed == golf2` agreement both hold.
+
+One asymmetry, deliberate and gated by `selfcheck.sh`: the seed exits 2 without
+a message. It cannot do otherwise — `seed.golf`'s source is v1 GOLF, compiled by
+the frozen `v1c`, whose entire output surface is `)` (one byte to fd 1) and `.`
+(exit), and fd 1 is carrying the binary. The two agree on the decision and the
+status; only the explanation is golf2's, and the seed's error path is unreachable
+in the build anyway.
+
+*Still open, and a different bug:* the `′` path does not get this check. `X`
+already treats a name with no dictionary entry as an **atom** (that is how
+`′atom` auto-wrapping works), so `′typo` builds a thunk around a template that
+does not exist rather than reporting anything. Worth its own fix; it is not the
+same code path and not the same failure.
+
+### 3.3 Nested lists have no support above the storage layer — now queued
 
 §1.1. Not a crash, but `⍕` printing pointers is a wrong answer, and it is the
-gap that most limits what can be written.
+gap that most limits what can be written. Now recorded as the second
+justification for the tag bit ([`NEXT_STEPS.md`](NEXT_STEPS.md) §1), which is its
+prerequisite.
 
 Already recorded and confirmed accurate: the `T` range-test misclassification
 (DESIGN.md known limits, queue §1), the global-bank recursion footgun (queue §2),
@@ -322,24 +353,31 @@ Worth stating, because the gaps above are all one-directional by construction:
 
 ---
 
-## 5. Suggested deltas to the queue
+## 5. Deltas to the queue — all five applied
 
-Ordered by (severity × how cheap the fix is), and stated as suggestions —
+Ordered by (severity × how cheap the fix is) when this file was written.
 [`NEXT_STEPS.md`](NEXT_STEPS.md) remains the queue of record.
 
-1. **Bound the `∘` arena** (§3.1). Silent corruption of user data, and the fix is
-   a compare-and-die in one prelude word. Should not wait behind anything.
-2. **Diagnose an undefined word** (§3.2). Turns every name typo from a segfault
-   into a message, and unblocks nothing else — but it is small and it is the
-   first thing a new user will hit.
+1. **Bound the `∘` arena** (§3.1) — **done.** Silent corruption of user data, and
+   the fix was a compare-and-die in one prelude word.
+   `lib/prelude.golfj`; four assertions in `run2.sh`.
+2. **Diagnose an undefined word** (§3.2) — **done.** Turns every name typo, and
+   every attempt at mutual recursion, from a segfault into a message that names
+   the byte. `self/golf2.golfj` + `mkblob2.py`'s v1-GOLF seed; six assertions in
+   `run2.sh` and three in `selfcheck.sh`.
 3. **Record the nested-list gap, and make it the second justification for the tag
-   bit** (§1.1). Item 1 of the queue is currently sold on correctness alone; it
-   is also the prerequisite for depth, rank, recursive `⍕`, and deep
-   vectorization. That reframing probably moves it up rather than changing it.
-4. **Reconsider M2's position** (§1.3). It is filed as "nothing above needs it",
-   but with two uppercase letters left, the library cannot grow past two more
-   words — so M6b (§5) and every list word in §1.3 are gated behind it.
-5. **Add a "deliberate non-goals" section to DESIGN.md** for the numeric tower
-   (§1.2), arity checking (§1.4), and diagnostics (§2.4). All three are currently
-   *implied* decisions; a reader comparing GOLF to Jelly cannot tell whether they
-   are unbuilt or refused, and they are refused for good reasons.
+   bit** (§1.1) — **done.** [`NEXT_STEPS.md`](NEXT_STEPS.md) §1 now carries it:
+   the tag bit is the prerequisite for depth, rank, recursive `⍕` and deep
+   vectorization, not only the fix for a misclassification.
+4. **Reconsider M2's position** (§1.3) — **done.** Its "nothing above needs it"
+   is retired: with two uppercase letters left, every remaining library word and
+   M6b are gated behind it, and it is now sequenced after the tag bit rather than
+   last.
+5. **Add a "deliberate non-goals" section to DESIGN.md** (§1.2, §1.4, §2.4) —
+   **done.** The numeric tower, arity and general diagnostics are recorded as
+   refused, with the reason, so they read as decisions rather than omissions.
+
+What that leaves as the top of the real queue: the tag bit (correctness *and*
+nested data), then M2 (the letter shortage), then per-call locals — whose
+silent-wrong-answer on recursion, §2.2, is the worst remaining defect in the
+language. The `′`-path variant of §3.2 is a small unclaimed fix.

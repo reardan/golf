@@ -90,7 +90,9 @@ spellings are compiled and output-checked by the suite, as
 
 The design, the shipped record and the known limits live in
 [`expanded/DESIGN.md`](expanded/DESIGN.md); the prioritized queue of what's next
-is [`expanded/NEXT_STEPS.md`](expanded/NEXT_STEPS.md).
+is [`expanded/NEXT_STEPS.md`](expanded/NEXT_STEPS.md). What the language still
+lacks measured against the two it sits between — and which of that is refused
+rather than unbuilt — is [`expanded/GAPS.md`](expanded/GAPS.md).
 
 ```sh
 cd expanded
@@ -101,7 +103,7 @@ python3 tools/codepage.py table                        # atoms + library glyphs
 tools/golfc -j examples/capstone.golfj out && ./out    # compile a glyph program
 ```
 
-`bash test/run2.sh` is **274 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **286 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

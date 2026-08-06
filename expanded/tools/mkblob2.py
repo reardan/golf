@@ -303,6 +303,31 @@ SEMI_OLD = '"59-[_94Ek^]'
 SEMI_CASE = ('"59-[_ m32+@1-[0m32+! m36+@1-[m40+@e] m36+@2-[m40+@e m44+@e]] '
              '94Ek^]')
 
+# --- The undefined-word check (mirrors `e` in self/golf2.golfj) --------------
+# v1's `e` emits `call rel32` with rel32 = dict[name] - (p+4) and never looks at
+# dict[name].  For a name that was never defined that cell is BSS-zero, so the
+# call targets a wild address: the compile reports success and the binary dies
+# with SIGSEGV when the word is reached.  Both compilers now test the slot first
+# and exit(2) instead.
+#
+# ASYMMETRY, deliberate and gated by test/selfcheck.sh: golf2 also writes
+# `GOLF: undefined word <name>` to fd 2, and this seed does not.  It cannot —
+# seed.golf's SOURCE is v1 GOLF, compiled by the frozen v1c, whose entire output
+# surface is `)` (one byte to fd 1) and `.` (exit).  There is no way to reach fd
+# 2 from v1 GOLF, and fd 1 is carrying the binary.  The two compilers therefore
+# agree on every byte they EMIT and on the exit status they reject with; they
+# differ only in whether the rejection is explained.  selfcheck.sh asserts both
+# halves of that.  The seed's error path is also unreachable in the build: its
+# one job is to compile self/golf2.golf, which is valid by construction.
+#
+# `e` is v1's own, from the frozen minimal tree, so the check goes in by the
+# same splice mechanism as the cases above.  The reordering is load-bearing:
+# `232o` has to move BELOW the lookup so the slot can be tested before a byte is
+# written, and `m4+@` is read after `232o` in both forms, so rel32 is unchanged.
+E_OLD = ':e"f"?[_232o m2048+\\4*+@m4+@4+-w^]\\_C;'
+E_NEW = ':e"f"?[_ m2048+\\4*+@"[2.] 232o m4+@4+-w^]\\_C;'
+
+assert mkblob.WORDS.count(E_OLD) == 1, "v1 `e` anchor not unique"
 assert mkblob.WORDS.count("w^]e;") == 1, "anchor not unique"
 assert mkblob.WORDS.count(SEMI_OLD) == 1, "';' case not unique"
 assert mkblob.WORDS.count(":t ") == 1, "':t' anchor not unique"
@@ -310,6 +335,7 @@ WORDS2 = mkblob.WORDS.replace(
     "w^]e;", "w^]" + REF_CASE + STR_CASE + SET_CASE + GET_CASE
              + CHAIN_CASE + LINK_CASE + "e;")
 WORDS2 = WORDS2.replace(SEMI_OLD, SEMI_CASE)
+WORDS2 = WORDS2.replace(E_OLD, E_NEW)
 # X is called from inside `t`, so it has to be defined before it — and after
 # everything it calls itself (o, w, E, and the templates), which `h` is the last
 # of.  v1's own words are unchanged; this is an addition, like the cases above.

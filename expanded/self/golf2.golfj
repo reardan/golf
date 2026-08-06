@@ -43,6 +43,9 @@
 # Runtime memory (the compiler's own process; a compiled program never sees it)
 # ---------------------------------------------------------------------------
 #
+#   0x410034   (m+52) a 4-byte staging cell: `e` builds the two bytes of its
+#              undefined-word diagnostic here (the name, then a newline), the
+#              only fixed address this compiler writes outside the three below
 #   0x410800   dictionary: the body address of the word named x is at +4*x
 #   0x411000   output buffer B: the byte at file offset f is stored at B+f
 #   0x4E0000   variable bank: cell for name x is at 0x4E0000+8*x  (→x / ←x)
@@ -74,6 +77,7 @@
 #   l  the address of a “ block's length field              was D+24
 #   x  a “ block's byte count                               was D+28
 #   y  `Z`'s digit temporary                                (new)
+#   S  `e`'s undefined-word message block                   (new)
 #   u  1 while compiling a chain body, 0 otherwise           (M-CHAIN2)
 #   K  how many links the chain has taken so far             (M-CHAIN2)
 #   F  the 1st buffered link byte                            (M-CHAIN2)
@@ -275,10 +279,37 @@ f           # look the byte up in the template blob
 ?
 [           # the sentinel: no template, so this is a word call
 _           #   drop the sentinel's address
-232o        #   0xE8 = call rel32
 ←b
 Y
-@           #   the word's body address, from the dictionary
+@           #   the word's body address, from the dictionary ...
+"
+[           #   ... which is 0 for a name that was never defined.  Emitting the
+            #   call anyway is what v1 did: rel32 = 0 - (p+4) is a jump to a
+            #   wild address, so the compile REPORTS SUCCESS and the binary
+            #   dies with SIGSEGV the moment the word is reached.  A name is
+            #   always a single byte here, so this is what every typo looks
+            #   like — and, since a word must be defined before use, what
+            #   mutual recursion looks like too.
+“GOLF: undefined word “
+→S          #     park the block; its address is needed twice
+2           #     fd 2 — fd 1 is carrying the binary
+←S
+4+          #     the bytes start after the block's 4-byte length field ...
+←S
+@           #     ... which is the length
+1⎈          #     write(2, msg, len)
+_
+←b
+2560+       #     the offending byte, with a newline (10<<8) stacked above it
+4259892!    #     staged in the compiler's own scratch cell at m+52
+2
+4259892
+2
+1⎈          #     write(2, m+52, 2) — the name, then the newline
+_
+2.          #     exit(2).  No output file is worth completing.
+]
+232o        #   0xE8 = call rel32
 ←p
 4+
 -           #   rel32 = body - (p + 4)

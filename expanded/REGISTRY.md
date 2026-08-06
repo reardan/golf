@@ -285,7 +285,8 @@ both forms are given here and the decimal is the one you type.
 | `m+20`, `m+24`, `m+28` | | golf2 compiler scratch: `′` jmp-site / thunk addr, `“` len-site / count | shipped |
 | `m+32`, `m+36` | | M-CHAIN2 chain state in the **seed** only: the in-a-chain flag, the link count | shipped |
 | `m+40`, `m+44`, `m+48` | | M-CHAIN2 in the **seed** only: the first three buffered link bytes | shipped |
-| `m+52` | | **first free compiler scratch** | free |
+| `m+52` | 4259892 | `e`'s undefined-word diagnostic: the offending name byte with a newline stacked above it (`name + 10<<8`), staged for one `write(2, m+52, 2)`. Compiler-only — a compiled program never sees this address | shipped |
+| `m+56` | | **first free compiler scratch** | free |
 | `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
