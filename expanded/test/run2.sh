@@ -516,6 +516,14 @@ W7SC=$(bash test/selfcheck.sh 2>/dev/null | sed -n 's/^Result: \([0-9]*\) passed
 [ "$W7SC" = "$(w7num DESIGN.md 'assertions in the selfcheck suite') 0" ] \
   && ok "DESIGN.md quotes test/selfcheck.sh's real total (${W7SC% *} passed, 0 failed)" \
   || no "DESIGN.md selfcheck count vs actual: '$(w7num DESIGN.md 'assertions in the selfcheck suite') 0' vs '$W7SC'"
+# Same for the M-TOOL differential suite.  It is the slowest of the three (it
+# compiles five GOLF programs and walks the ladder twice), which is why it is
+# asked for its total rather than having it counted statically — and why this is
+# the only place run2.sh pays for it.
+W7GT=$(bash test/gtools.sh 2>/dev/null | sed -n 's/^Result: \([0-9]*\) passed, \([0-9]*\) failed$/\1 \2/p')
+[ "$W7GT" = "$(w7num DESIGN.md 'assertions in the gtools differential suite') 0" ] \
+  && ok "DESIGN.md quotes test/gtools.sh's real total (${W7GT% *} passed, 0 failed)" \
+  || no "DESIGN.md gtools count vs actual: '$(w7num DESIGN.md 'assertions in the gtools differential suite') 0' vs '$W7GT'"
 
 [ "$(w7num DESIGN.md 'the generated bootstrap seed')" = "$(wc -c < self/seed.golf)" ] \
   && ok "DESIGN.md's self/seed.golf size matches wc -c ($(wc -c < self/seed.golf) bytes)" \

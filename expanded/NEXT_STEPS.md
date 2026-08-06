@@ -15,7 +15,10 @@ tacit combinators built at runtime, 64-bit values with big literals, and the
 compiler's own source migrated to v2 GOLF — all shipped, with `run2.sh` and
 `selfcheck.sh` green. Since then: a 64-bit variable bank (M3W) and chain
 definitions (M-CHAIN2), the first compiler logic authored in `golf2.golfj` as
-the primary source. (The current counts and sizes live in DESIGN.md's table,
+the primary source; and M-TOOL, which gave the language syscalls (`⎈`), argv,
+three tool libraries on the lowercase letters, and the repo's own build scripts
+rewritten in GOLF under `gtools/` — each one gated against its Python twin for
+byte-identical output. (The current counts and sizes live in DESIGN.md's table,
 where the suite asserts them.)
 
 Four facts about the implementation shape everything below:
@@ -145,23 +148,24 @@ M2 is what makes it unnecessary.
 the compiler's front end — best done when the language has stopped moving under
 it.
 
-### 5. M6b — input, and a number parser (small)
+### 5. M6b — a number parser and line-oriented input for USER programs (small)
 
-*What.* GOLF can print but not read: there is no `read` atom and no way to turn
-digits into a number. That is the difference between "a compiler demo" and "a
-language you can point at a puzzle input".
+*What.* The syscall half of this item shipped with M-TOOL: `⎈` (`\sys`, `0xA7`)
+is the read atom it asked for, and `lib/tio.golfj` already has buffered input,
+a slurp and argv, while `lib/ttext.golfj` has the decimal and hex parsers. What
+is *not* done is making any of that reachable from an ordinary program:
+`lib/t*.golfj` is prepended only by `gtools/build`, for the repo's own tools.
 
-*How.* One atom (`0x97` or `0xA7`, both spare — REGISTRY.md §1) for the read
-syscall, then pure prelude: a line reader over a fixed buffer, a decimal parser,
-and a split-on-whitespace that yields a list. `U` already turns bytes into a
-list of codes, so the parser is a fold over that.
+*How.* Decide what a user program should get, then move exactly that into
+`lib/prelude.golfj` — most likely a line reader, a decimal parser, and a
+split-on-whitespace yielding a list. The cost is the constraint the tool
+libraries were invented to dodge: the prelude's uppercase pool is down to `B`
+and `C`, so anything that moves needs a high byte from `0xC8`–`0xCF`, and the
+prelude may never use `→x`/`←x` (the bank is user space). Do not simply prepend
+`lib/t*.golfj` to user programs — it claims lowercase `a`–`z` wholesale and
+would shadow half of any program's own words.
 
 *Tests.* Pipe `1 2 3` in, sum it, print `6`; empty input yields the empty list.
-
-*Coordinate first.* M-TOOL (the wave porting the build scripts to GOLF) is
-taking `0xA7` for a general `\sys` syscall atom and is building its own I/O
-words. Whoever gets there second should use that atom rather than allocate a
-second one — check REGISTRY.md §1 before writing any code here.
 
 ## As needed
 
@@ -208,9 +212,20 @@ back on the queue with a corrected design rather than shipping a regression, and
 it is now item 1. Items 3 and the shape checks stay behind it, as they always
 were.
 
-**Parallel work.** M-TOOL — the repo's build scripts rewritten in expanded GOLF
-— is in flight on its own branch. It owns `0xA7 \sys`, the entry-`rsp` cell at
-`0x4F0040`, the lowercase library letters and everything under `gtools/`; the
-wave above owned the compiler's front end and touched none of them. The one
-shared file is `tools/mkblob2.py`, where the two waves edit different halves (its
-`ATOMS` table versus its spliced compiler cases).
+**M-TOOL landed.** The build scripts rewritten in expanded GOLF are shipped:
+`0xA7 ⎈ \sys`, the entry-`rsp` cell at `0x4F0040`, the lowercase library letters
+`a`–`z`, and `gtools/`. It ran as a parallel wave against the compiler front-end
+work above and the two never contended — the only shared file was
+`tools/mkblob2.py`, where they edited different halves (the `ATOMS` table versus
+the spliced compiler cases). The one real collision was semantic rather than
+textual: M3W widened the variable bank while M-TOOL was documenting the old
+4-byte truncation as a hazard, which turned three pieces of prose into history
+and one test into a regression case.
+
+What it deliberately did **not** do, and why it should stay that way:
+`mkblob2.build_seed()` remains Python. It reuses `minimal/tools/mkblob.py`'s
+`WORDS` — the v1 compiler's own source text — and its `golf()` substring-rewrite
+pass, so a GOLF port would have to carry a second copy of source that lives in
+the frozen tree. And the GOLF tools **shadow** rather than replace: `tools/*.py`
+is still the build path, so the repo stays buildable from Python alone and
+`test/gtools.sh` is what makes the GOLF side trustworthy.
