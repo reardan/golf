@@ -266,6 +266,11 @@ the golf2 fixpoint included. In order:
 These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
+For the limits that only show up when GOLF is held against another language —
+what Python and Jelly have that this does not, which of it is refused rather than
+unbuilt, and three defects this list does not yet cover — see
+[`GAPS.md`](GAPS.md).
+
 - **The heap-bounds cells are 32-bit too.** `0x4F0034`/`0x4F0038` are read by
   `T` and are baked into all five M-VEC templates as a 32-bit compare operand.
   The break is ASLR-shifted but far below 4 GB in practice; a program that grew
@@ -317,3 +322,4 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 | `test/gtools.sh` | M-TOOL: every GOLF tool matches its Python counterpart byte for byte |
 | `REGISTRY.md` | the allocation ledger: op bytes, mnemonics, glyphs, prelude letters, memory |
 | `NEXT_STEPS.md` | the forward queue |
+| `GAPS.md` | the audit against Python and Jelly: what is missing, what is refused, what is broken |

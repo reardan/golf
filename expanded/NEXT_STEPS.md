@@ -2,8 +2,9 @@
 
 The prioritized queue for the expanded language. [`DESIGN.md`](DESIGN.md) holds
 the vision, the bootstrap ladder, the record of what shipped and the known
-limits; this file is the forward plan: what to build next, in what order, and
-why. Every step keeps the two invariants: `test/run2.sh` stays green **including
+limits; [`GAPS.md`](GAPS.md) audits the language against Python and Jelly and
+proposes deltas to this queue (three defects it found are not yet items here);
+this file is the forward plan: what to build next, in what order, and why. Every step keeps the two invariants: `test/run2.sh` stays green **including
 the golf2 self-hosting fixpoint**, and `../minimal/` is never touched.
 
 ## Where we are
