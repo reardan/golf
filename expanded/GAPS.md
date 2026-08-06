@@ -202,9 +202,14 @@ key on but integers.
   :f"0-[_0^]→n←n1-f←n+;3fṄ   ->  3        # should be 6 (3+2+1)
   ```
 
-  This is queued as M-FRAME (§2) and correctly described. Worth noting it is a
-  *silent wrong answer*, not a crash, which makes it the highest-severity item
-  in the queue for anyone actually writing programs.
+  A *silent wrong answer*, not a crash, which made it the highest-severity item
+  in the queue for anyone actually writing programs. **Fixed by M-FRAME**, opt in
+  per definition: `⊡f"0-[_0^]⇒a⇐a1-f⇐a+;3fṄ` is `6`. The global spelling still
+  behaves exactly as above — it is not deprecated, and the suite pins both.
+  Locals are eight slots named `a`–`h`; sizing a frame per definition is
+  [`NEXT_STEPS.md`](NEXT_STEPS.md) §2, and the reason it is not free is that `^`
+  is a template that ends a word, so a single-pass compiler cannot know a frame's
+  size until `;`.
 
 ### 2.3 Functions
 
@@ -377,7 +382,10 @@ Ordered by (severity × how cheap the fix is) when this file was written.
    **done.** The numeric tower, arity and general diagnostics are recorded as
    refused, with the reason, so they read as decisions rather than omissions.
 
-What that leaves as the top of the real queue: the tag bit (correctness *and*
-nested data), then M2 (the letter shortage), then per-call locals — whose
-silent-wrong-answer on recursion, §2.2, is the worst remaining defect in the
-language. The `′`-path variant of §3.2 is a small unclaimed fix.
+Since then **M-FRAME** shipped too, which was §2.2's silent-wrong-answer on
+recursion — the worst remaining defect this file found. That leaves, as the top
+of the real queue: the tag bit (correctness *and* nested data), then M2 (the
+letter shortage, which now also gates naming more than eight locals), then
+sizing a `⊡` frame per definition. Two small unclaimed fixes remain: the
+`′`-path variant of §3.2, and a guard on the return stack, which has none and
+which M-FRAME made easier to reach (DESIGN.md, known limits).

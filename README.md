@@ -72,7 +72,10 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
 - **strings** as `“...“` byte blocks that convert to code lists, so every list op
   works on them: `“Hello“U1+J` maps +1 → `Ifmmp` (long form: `“Hello“U′⊕€J`).
 - **named variables** `→x`/`←x` over a 64-bit-per-name bank, so `←a←b+←a←b-*` is
-  `(a+b)*(a-b)` with no juggling.
+  `(a+b)*(a-b)` with no juggling — and, since M-FRAME, **per-call locals**:
+  that bank is global, so `⊡name … ;` defines a word owning a frame of eight
+  slots reached by `⇒x`/`⇐x`, and `⊡s"0-[_0^]⇒a⇐a1-s⇐a+;` sums `1..n` correctly
+  at depth where the global spelling quietly returns `n`.
 - **syscalls and files** — `⎈` (`\sys`) is a raw three-argument syscall and
   `STARTUP` stashes the entry `rsp`, so a GOLF program can open a file and read
   its own `argv` instead of being a stdin-to-stdout filter forever.
@@ -103,7 +106,7 @@ python3 tools/codepage.py table                        # atoms + library glyphs
 tools/golfc -j examples/capstone.golfj out && ./out    # compile a glyph program
 ```
 
-`bash test/run2.sh` is **286 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **298 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

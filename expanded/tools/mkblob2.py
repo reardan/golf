@@ -204,6 +204,62 @@ def _poly(byte, scalar):
     assert len(tpl) == 38 + len(scalar) <= 255, (byte, len(tpl))
     return tpl
 
+# --- M-FRAME: every definition gets a private slab of locals ----------------
+# The variable bank at 0x4E0000 is GLOBAL — one cell per name for the whole
+# program — so a recursive word does not get fresh copies and `→n` inside
+# recursion silently returns the wrong number (NEXT_STEPS.md §2).  M-FRAME adds
+# a second pair of prefixes that resolve a name to a slot in the CURRENT call's
+# frame instead of a bank index.
+#
+# Locals are OPT-IN, per definition: `⊡name … ;` reserves a frame, `:name … ;`
+# is exactly what it was.  That is not fussiness, it is forced, and the reason is
+# worth writing down because NEXT_STEPS.md's sketch ("give a definition a
+# prologue that reserves n cells below rbp and a matching epilogue") does not
+# survive contact with `^`.
+#
+# Whatever the prologue does to rbp, the epilogue must undo — and `^` (early
+# return) IS an epilogue, is a plain template, and may appear anywhere in a body.
+# A single-pass compiler does not know a definition's frame size until `;`, long
+# after the `^`s have been emitted. So there are only three ways out:
+#
+#   1. Every word reserves the same fixed frame.  Then `^`'s template is fixed
+#      and nothing needs backpatching — but EVERY word pays, including the ones
+#      with no locals.  At eight slots a frame is 72 bytes instead of 8, so the
+#      return stack holds ~15k frames instead of ~138k, and test/run2.sh's
+#      50,000-deep recursion case dies.  Measured, not estimated: the cliff is at
+#      15,728 frames.  Regressing a tested property 3x to add a feature is not a
+#      trade this repo makes.
+#   2. Size the frame per definition and backpatch every `^`.  There can be many
+#      per word, so it needs a patch-site chain threaded through the unpatched
+#      immediates, and `^` has to become compiler logic anyway.  Strictly better
+#      language, materially bigger change; left in NEXT_STEPS.md.
+#   3. Make the frame opt-in.  `^` still becomes compiler logic — it has to test
+#      a flag — but the flag is all it tests, the frame stays one fixed size, and
+#      a word that does not ask for locals emits byte-for-byte what it always
+#      did.  Nothing regresses, and 50,000-deep recursion still passes.
+#
+# This is 3.  The one asymmetry it buys is that `⊡` words recurse ~15k deep
+# where `:` words still go ~138k, which is the honest price of a frame and is
+# paid only by the words that use one.
+#
+# Layout, with R the address the return address is stored at:
+#
+#     [rbp+0] .. [rbp+56]   the eight local slots, a..h
+#     [rbp+64] = R          the return address
+#
+# A slot's displacement is 8*(name-'a') and does not depend on how many slots
+# the word actually uses, which is what lets `⇒`/`⇐` be fixed-size templates.
+# Eight slots is the compromise: the compiler's own busiest word holds five
+# variables at once, so eight is comfortable, while a slot per letter would cost
+# 216 bytes a frame.
+FRAME_SLOTS = 8
+FRAME_BYTES = 8 * FRAME_SLOTS
+FRAME_RESERVE = bytes([0x48, 0x83, 0xED, FRAME_BYTES])   # sub rbp, 64
+FRAME_RELEASE = bytes([0x48, 0x83, 0xC5, FRAME_BYTES])   # add rbp, 64
+# The same two, as the `o` calls the v1-GOLF seed cases below emit them with.
+_RESERVE = " ".join(f"{b}o" for b in FRAME_RESERVE)
+_RELEASE = " ".join(f"{b}o" for b in FRAME_RELEASE)
+
 _ATOM_TPL = {b: tpl for b, _mn, _gl, tpl, _d in ATOMS}
 # byte -> replacement template.  build_blob2 emits the override INSTEAD of the
 # original record (the compiler's `f` returns the FIRST record for a key, so
@@ -301,7 +357,41 @@ LINK_CASE = ('m32+@1-[m36+@1+m36+!'
 # epilogue and backpatch, which are the same for both kinds of definition.
 SEMI_OLD = '"59-[_94Ek^]'
 SEMI_CASE = ('"59-[_ m32+@1-[0m32+! m36+@1-[m40+@e] m36+@2-[m40+@e m44+@e]] '
-             '94Ek^]')
+             'm56+@1-[0m56+! ' + _RELEASE + '] 94Ek^]')
+
+# M-FRAME (bytes 0xB1/0xB2/0xB3): per-call locals.
+#
+#   ⊡name … ;   define a word WITH a frame of eight local slots
+#   ⇒x          pop TOS into local x   (x in a..h)
+#   ⇐x          push local x
+#
+# `⊡` is `:`'s case plus two things: the frame reservation right after the
+# prologue, and a flag saying "this definition has a frame" — which `^` and `;`
+# read to decide whether to release it.  Seed-side flag: m56 (../REGISTRY.md §3);
+# golf2.golfj holds the same flag in its variable bank as `J`.
+#
+# `^` was a plain template until now; it becomes a case purely so it can test
+# that flag.  With the flag clear it emits `94E` — the same template `e` would
+# have copied — so every existing program compiles to the same bytes it did
+# before, which is what keeps the ladder and the fixpoint undisturbed.
+FRAME_BYTE = 0xB1   # ⊡  define-with-locals
+LSET_BYTE = 0xB2    # ⇒  store to a local slot
+LGET_BYTE = 0xB3    # ⇐  load a local slot
+# `:`'s header (jmp over the body, dict[name] = body, leave the patch site for
+# `;`, emit the prologue) then the reservation, then set the flag.
+FRAME_CASE = ('"177-[_(233o m4+@4+\\m2048+\\4*+! m4+@0w1E '
+              + _RESERVE + ' 1m56+!^]')
+# A local slot is [rbp + 8*(name-'a')], so the displacement fits in a disp8 and
+# `⇒`/`⇐` are five bytes each: pop rax; mov [rbp+d],rax  /  mov rax,[rbp+d]; push.
+# `"8<[2.]` is the eight-slot range check: unchecked, ⇒z would be displacement
+# 200 — a NEGATIVE disp8 (-56), landing in the frame of a word not yet called —
+# and ⇒A would wrap to 0 and silently alias slot a.  golf2 names the byte on
+# fd 2; the seed, in v1 GOLF, can only exit(2).  Same status, gated by
+# test/selfcheck.sh, exactly as for the undefined-word check below.
+LSET_CASE = '"178-[_(97-"8<[2.]8*88o 72o 137o 69o o^]'
+LGET_CASE = '"179-[_(97-"8<[2.]8*72o 139o 69o o 80o^]'
+# `^` — release the frame first when there is one, then the ordinary epilogue.
+CARET_CASE = '"94-[_ m56+@1-[' + _RELEASE + '] 94E^]'
 
 # --- The undefined-word check (mirrors `e` in self/golf2.golfj) --------------
 # v1's `e` emits `call rel32` with rel32 = dict[name] - (p+4) and never looks at
@@ -333,6 +423,7 @@ assert mkblob.WORDS.count(SEMI_OLD) == 1, "';' case not unique"
 assert mkblob.WORDS.count(":t ") == 1, "':t' anchor not unique"
 WORDS2 = mkblob.WORDS.replace(
     "w^]e;", "w^]" + REF_CASE + STR_CASE + SET_CASE + GET_CASE
+             + FRAME_CASE + LSET_CASE + LGET_CASE + CARET_CASE
              + CHAIN_CASE + LINK_CASE + "e;")
 WORDS2 = WORDS2.replace(SEMI_OLD, SEMI_CASE)
 WORDS2 = WORDS2.replace(E_OLD, E_NEW)

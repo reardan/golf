@@ -114,26 +114,39 @@ the one that guards the fix: `0 1-T` is still an int, and so is every negative a
 program can produce. Every existing polymorphic test unchanged;
 `0x4F0034`/`0x4F0038` deleted from REGISTRY.md §3 in the same commit.
 
-### 2. M-FRAME — per-call locals (medium)
+### 2. M-FRAME2 — size the frame per definition (medium)
 
-*What.* The variable bank is **global**: a recursive word does not get fresh
-copies, so `→x` inside recursion is a footgun. This is the one M3 shortcut that
-users will actually trip over once programs have recursive words with state.
+**M-FRAME shipped** (DESIGN.md): `⊡name … ;` owns a frame of eight slots and
+`⇒x`/`⇐x` reach them, so recursion through a local is correct. What it did *not*
+do is size the frame, and the reason is the part of the original plan that did
+not survive contact with the compiler.
 
-*Note.* M3W widened the bank but did not un-globalize it: `→x` is still one cell
-per name for the whole program, 8 bytes wide instead of 4.
+*What went wrong with the sketch.* This entry used to say "give a definition a
+prologue that reserves *n* cells below `rbp` and a matching epilogue". Whatever
+the prologue does to `rbp` the epilogue must undo — and `^` **is** an epilogue,
+is a plain template, and can appear anywhere in a body. A single-pass compiler
+does not know *n* until `;`, long after the `^`s were emitted. The sketch also
+proposed "a fixed 26-slot frame indexed by the letter", which is 216 bytes a
+frame; even at eight slots an unconditional frame is 72 bytes and drops the
+return stack from ~138k frames to ~15k, killing run2.sh's 50,000-deep recursion
+case. Both were measured, not argued.
 
-*How.* The return stack is already a private, rbp-relative stack that `X`/`Y`
-push frames on. Give a definition a prologue that reserves *n* cells below `rbp`
-and a matching epilogue, and add a second pair of prefixes (two bytes from
-`0xB0`–`0xBF`) that resolve a name to a frame slot rather than a bank index. The
-cheap version needs no symbol table: a fixed 26-slot frame indexed by the letter,
-allocated per definition. The good version wants M2's name arena (item 4), which
-is why this sits behind the tag but ahead of the allocator. M-CHAIN2 took `0xB0`
-from that range, so the two frame prefixes come from `0xB1`–`0xBF`.
+*What shipped instead.* Opt-in. `^` became compiler logic, but only to test one
+flag, so a `:` word still emits byte-for-byte what it did before and nothing
+regressed. The frame is a fixed eight slots, `a`–`h`.
 
-*Tests.* A recursive word that stores to a local and still returns the right
-answer at depth; globals via `→x`/`←x` unchanged; fixpoint green.
+*What is left.* Per-definition sizing, which is strictly the better language: a
+word using two locals should pay for two. It needs `⊡` to emit `sub rbp, imm32`
+with a patchable immediate, and every `^` in the body to emit `add rbp, imm32`
+the same way — many sites per word, so the patch sites have to be threaded as a
+linked list through their own unpatched immediates and walked at `;`. That is a
+well-understood assembler technique and costs one compiler variable (definitions
+do not nest), but it is real work and M-FRAME already removed the wrong answer.
+
+*Also still open.* Eight slots means eight *names*, `a`–`h`; a real symbol table
+(M2, item 4) would let a `⊡` word name its locals anything and let the count fall
+out of the name arena. And the return stack still has no guard — see DESIGN.md's
+known limits, where M-FRAME's ~15k-frame ceiling now makes it easier to reach.
 
 ### 3. M-MEM2 — a free list for the allocator (small-medium)
 
@@ -227,6 +240,15 @@ would shadow half of any program's own words.
   change moves one of them, the suite tells you which doc to edit.
 
 ## The wave just landed
+
+**M-FRAME — per-call locals, opt in.** The worst remaining defect in the
+language: `→x` inside recursion returned a quietly wrong number, and now `⊡` +
+`⇒x`/`⇐x` do not. Its design changed under implementation — see item 2 above,
+which is now about what M-FRAME *deferred* rather than about locals themselves.
+The one-line version: `^` is a template that ends a word, so a single-pass
+compiler cannot size a frame per definition, and an unconditional frame costs the
+suite's 50,000-deep recursion. Opt-in was the only shape that added the feature
+without regressing something already tested.
 
 **M-DIAG — the audit's two fixes.** [`GAPS.md`](GAPS.md) measured the language
 against Python and Jelly and turned up three defects nothing in the repo

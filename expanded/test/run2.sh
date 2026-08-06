@@ -1095,6 +1095,52 @@ cmp -s "$TMP/chd.g2" "$TMP/chd.ref" \
   && ok "oracle: identical bytes for a program of chain definitions" || no "oracle chain bytes"
 # W8B --------------------------------------------------------------------------
 
+und(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/u.src"
+       "$TMP/golf2" < "$TMP/u.src" > "$TMP/u.out" 2>"$TMP/u.err"; echo "$?"; }
+echo "Per-call locals (M-FRAME): ⊡name … ; owns a frame, ⇒x / ⇐x reach its slots"
+# The bug this fixes: the variable bank behind →x/←x is GLOBAL, one cell per
+# name for the whole program, so a recursive word's frames overwrite each other
+# and the answer is quietly wrong.  sum-1..n is the shortest thing that shows it.
+[ "$(printf '%s' '\dlocs"0-[_0^]\lseta\lgeta1-s\lgeta+;10sN E' | gc)" = "55" ] \
+  && ok "recursion through a local is correct at depth (sum 1..10 = 55)" || no "local recursion"
+[ "$(printf '%s' ':g"0-[_0^]\setn\getn1-g\getn+;10gN E' | gc)" = "10" ] \
+  && ok "... and the global bank still gives the old wrong answer (10)" || no "global recursion regression"
+# Eight slots, a..h, each its own cell.  Pushed 1..8, so a=8 (popped first) and
+# h=1 (popped last); a+h is 9 only if no two names share a slot.
+[ "$(printf '%s' '\dlocf\lseta\lsetb\lsetc\lsetd\lsete\lsetf\lsetg\lseth\lgeta\lgeth+;1 2 3 4 5 6 7 8 fN E' | gc)" = "9" ] \
+  && ok "all eight slots a..h are distinct" || no "eight slots"
+# A frame belongs to the CALL, so locals nest through higher-order words.
+[ "$(printf '%s' '\dlocd\lseta\lgeta\lgeta+;3R\refdMQE' | gc)" = "0 2 4 " ] \
+  && ok "a ⊡ word works as a mapped function" || no "local in map"
+# `^` is why ⊡ is a separate definition form: an early return has to release the
+# frame, and a single-pass compiler cannot size one per definition (see
+# tools/mkblob2.py's M-FRAME note).  Both exits of the same word:
+[ "$(printf '%s' '\dlocc\lseta\lgeta0\slt1+[42^]\lgeta;0 5-cN E' | gc)" = "42" ] \
+  && ok "^ inside a ⊡ word releases the frame and returns" || no "caret in frame word"
+[ "$(printf '%s' '\dlocc\lseta\lgeta0\slt1+[42^]\lgeta;7cN E' | gc)" = "7" ] \
+  && ok "... and the ordinary exit of that same word still works" || no "frame word normal exit"
+# Opt-in is the whole design: a `:` word must be untouched, or 50,000-deep
+# recursion (asserted above) would not still pass.  A ⊡ frame is 72 bytes.
+[ "$(printf '%s' ':r"[^]\dec r;50000 r N E' | gc)" = "0" ] \
+  && ok "a plain : word is unchanged — 50,000 deep still works" || no "opt-in regression"
+# Unchecked, ⇒z is displacement 200 — a NEGATIVE disp8 (-56), landing in the
+# frame of a word not yet called — and ⇒A wraps to 0 and silently aliases slot a.
+[ "$(printf '%s' '\dlocf\lsetz;1fN' | und)" = "2" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range z" ] \
+  && ok "a slot name past h is refused, not silently wrapped" || no "lset range"
+[ "$(printf '%s' '\dlocf\lgetA;1fN' | und)" = "2" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range A" ] \
+  && ok "... and one before a, which would have aliased slot a" || no "lget range"
+tools/golfc -j examples/locals.golfj "$TMP/loc" 2>/dev/null
+[ "$("$TMP/loc" 2>/dev/null)" = "$(printf '55\n10\n0 2 4 6 8 \nneg\n0\n7')" ] \
+  && ok "golfc examples/locals.golfj" || no "locals.golfj"
+[ "$(oracle locals)" = "$(printf '55\n10\n0 2 4 6 8 \nneg\n0\n7')" ] \
+  && ok "oracle: locals.golfj behaves identically" || no "oracle locals.golfj"
+"$TMP/golf2" < <(cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < examples/locals.golfj)) > "$TMP/loc.g2" 2>/dev/null
+python3 boot/golfref.py < <(cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < examples/locals.golfj)) > "$TMP/loc.ref" 2>/dev/null
+cmp -s "$TMP/loc.g2" "$TMP/loc.ref" \
+  && ok "oracle: identical bytes for a program using locals" || no "oracle locals bytes"
+
 echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero"
 # v1's `e` emitted `call rel32` with rel32 = dict[name] - (p+4) without ever
 # looking at dict[name].  For a name that was never defined that cell is
@@ -1102,8 +1148,6 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
 # and the binary died with SIGSEGV the moment the word was reached.  A word name
 # is a single byte, so that was the symptom of every typo — and, since a word
 # must be defined before use, of every attempt at mutual recursion.
-und(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/u.src"
-       "$TMP/golf2" < "$TMP/u.src" > "$TMP/u.out" 2>"$TMP/u.err"; echo "$?"; }
 [ "$(printf '%s' '5qN' | und)" = "2" ] \
   && ok "a call to an undefined word exits 2 instead of emitting the call" || no "undefined word status"
 [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \

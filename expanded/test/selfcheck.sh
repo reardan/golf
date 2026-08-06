@@ -77,7 +77,8 @@ sys.path.insert(0, "tools")
 import codepage, mkblob2
 data = codepage.encode(open("self/golf2.golfj", encoding="utf-8").read())
 known = {mkblob2.REF_BYTE, mkblob2.STR_BYTE, mkblob2.SET_BYTE, mkblob2.GET_BYTE,
-         mkblob2.CHAIN_BYTE}
+         mkblob2.CHAIN_BYTE, mkblob2.FRAME_BYTE, mkblob2.LSET_BYTE,
+         mkblob2.LGET_BYTE}
 known |= {b for b, _mn, _gl, _tpl, _d in mkblob2.ATOMS}
 used = sorted({b for b in data if b >= 0x80})
 sys.stderr.write("       high bytes used: "
@@ -118,7 +119,7 @@ both fizz "$MIN/examples/fizzbuzz.golf"
 
 echo "It compiles the v2 language (prelude + examples, via the code page)"
 python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"
-for ex in lists strings vars vectorize capstone chaindef; do
+for ex in lists strings vars vectorize capstone chaindef locals; do
   cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < "examples/$ex.golfj") > "$TMP/src.$ex"
   both "$ex" "$TMP/src.$ex"
   o=$("$TMP/old.$ex" 2>/dev/null); n=$("$TMP/new.$ex" 2>/dev/null)
@@ -127,7 +128,7 @@ for ex in lists strings vars vectorize capstone chaindef; do
 done
 
 echo "Byte-for-byte agreement: the two source forms are the same compiler"
-for t in hello fizz lists strings vars vectorize capstone chaindef; do
+for t in hello fizz lists strings vars vectorize capstone chaindef locals; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }

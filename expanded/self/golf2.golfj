@@ -78,6 +78,7 @@
 #   x  a “ block's byte count                               was D+28
 #   y  `Z`'s digit temporary                                (new)
 #   S  `e`'s undefined-word message block                   (new)
+#   J  1 while compiling a ⊡ definition, 0 otherwise         (M-FRAME)
 #   u  1 while compiling a chain body, 0 otherwise           (M-CHAIN2)
 #   K  how many links the chain has taken so far             (M-CHAIN2)
 #   F  the 1st buffered link byte                            (M-CHAIN2)
@@ -271,6 +272,31 @@ C
 # Compiling one ordinary token
 # ---------------------------------------------------------------------------
 
+:V          # V : report a compile error and stop            [ msgblock -> !!! ]
+            # Writes `<msg> <the byte in b>` to fd 2 and exits 2.  fd 2, never
+            # fd 1: fd 1 is carrying the binary.  Every caller has already put
+            # the offending byte in `b`, which is where the handlers keep the
+            # name they are working on anyway.  A word rather than three copies
+            # of the same fifteen ops — the compiler is small on purpose.
+→S          # park the block; its address is needed twice
+2           # fd 2
+←S
+4+          # the bytes start after the block's 4-byte length field ...
+←S
+@           # ... which is the length
+1⎈          # write(2, msg, len)
+_
+←b
+2560+       # the offending byte, with a newline (10<<8) stacked above it
+4259892!    # staged in the compiler's own scratch cell at m+52
+2
+4259892
+2
+1⎈          # write(2, m+52, 2) — the byte, then the newline
+_
+2.          # exit(2).  No output file is worth completing.
+;
+
 :e          # e : compile a table op, or a call to a defined word  [ ch -> ]
 →b
 ←b
@@ -291,23 +317,7 @@ Y
             #   like — and, since a word must be defined before use, what
             #   mutual recursion looks like too.
 “GOLF: undefined word “
-→S          #     park the block; its address is needed twice
-2           #     fd 2 — fd 1 is carrying the binary
-←S
-4+          #     the bytes start after the block's 4-byte length field ...
-←S
-@           #     ... which is the length
-1⎈          #     write(2, msg, len)
-_
-←b
-2560+       #     the offending byte, with a newline (10<<8) stacked above it
-4259892!    #     staged in the compiler's own scratch cell at m+52
-2
-4259892
-2
-1⎈          #     write(2, m+52, 2) — the name, then the newline
-_
-2.          #     exit(2).  No output file is worth completing.
+V           #     report it against the byte in `b`, and exit(2)
 ]
 232o        #   0xE8 = call rel32
 ←p
@@ -513,6 +523,15 @@ e
 e
 ]
 ]
+←J
+1-
+[           #   a ⊡ definition: release its locals frame before the epilogue,
+0→J         #   and stop claiming one, so the next ':' word is an ordinary word
+72o         #   0x48 0x83 0xC5 0x40  add rbp, 64
+131o
+197o
+64o
+]
 94E         #   the epilogue: blob record 94, the template of '^'
 k           #   backpatch the ':' or '⊚' jmp to land after it
 ^
@@ -666,6 +685,95 @@ w
 80o         #   0x50                 push rax
 ^
 ]
+
+"
+177-
+[           # 0xB1 ⊡ : define a word WITH a frame of eight per-call locals.
+_           #   The header is ':'s exactly; the frame is what it adds.  Locals
+(           #   are opt-in because `^` is an epilogue that can appear anywhere
+→b          #   in a body and a single-pass compiler cannot know a frame size
+233o        #   until ';' — so the only frame that costs nothing to the words
+←p          #   that do not want one is a frame nobody else reserves.
+4+
+←b
+Y
+!           #   dict[name] = body address
+←p
+0
+w           #   the jmp displacement, left on the stack for ';'
+1E          #   the word prologue (blob record 1)
+72o         #   0x48 0x83 0xED 0x40  sub rbp, 64 — the eight slots, below the
+131o        #   return address, which is therefore at [rbp+64] from here on
+237o
+64o
+1→J         #   this definition has a frame; '^' and ';' release it
+^
+]
+
+"
+178-
+[           # 0xB2 ⇒ : pop TOS into a local slot
+_
+(           #   the name is the next byte
+→b          #   keep it for the diagnostic below
+←b
+97-         #   'a' is slot 0 ...
+"
+8<          #   ... and there are only eight.  Unchecked, ⇒z would be disp 200,
+[           #   which is a NEGATIVE disp8 (-56) and would land in the frame of
+            #   a word not yet called; ⇒A would wrap to disp 0 and silently
+            #   alias slot a.  Both are the kind of quiet corruption M-DIAG
+            #   exists to refuse, so an out-of-range name stops the compile.
+“GOLF: local out of range “
+V
+]
+8*          #   a slot is 8 bytes, so this is the displacement off rbp
+88o         #   0x58                 pop rax
+72o         #   0x48 0x89 0x45 disp  mov [rbp+disp], rax
+137o
+69o
+o           #   the displacement, which fits a disp8 for every legal slot
+^
+]
+
+"
+179-
+[           # 0xB3 ⇐ : push a local slot
+_
+(
+→b
+←b
+97-
+"
+8<          #   the same eight-slot range check as ⇒
+[
+“GOLF: local out of range “
+V
+]
+8*
+72o         #   0x48 0x8B 0x45 disp  mov rax, [rbp+disp]
+139o
+69o
+o
+80o         #   0x50                 push rax
+^
+]
+
+"
+94-
+[           # '^' : return early.  A plain template until M-FRAME; it is a case
+_           #   now only so that it can ask whether there is a frame to release.
+←J
+1-
+[           #   there is: undo the ⊡ prologue's reservation first
+72o         #   0x48 0x83 0xC5 0x40  add rbp, 64
+131o
+197o
+64o
+]
+94E         #   the epilogue itself (blob record 94).  With the flag clear this
+^           #   is byte-for-byte what `e` used to copy, which is why every
+]           #   program that predates M-FRAME still compiles to the same bytes
 
 "
 176-

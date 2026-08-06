@@ -20,9 +20,11 @@ Two useful languages hide inside GOLF:
 
 The plan was (1) then (2); what actually happened was (2) then most of (1). The
 code page removed the pressure that multi-character names were supposed to
-relieve, so the golf surface, the library and 64-bit values came first, and the
-two pieces of (1) still outstanding — real names and per-call locals — are items
-6 and 4 of [`NEXT_STEPS.md`](NEXT_STEPS.md).
+relieve, so the golf surface, the library and 64-bit values came first. Per-call
+locals landed with M-FRAME (`⊡name … ;`, slots `a`–`h`), which leaves **real
+multi-character names** as the last piece of (1) still outstanding — item 4 of
+[`NEXT_STEPS.md`](NEXT_STEPS.md), and now also what a `⊡` word needs to name more
+than eight locals.
 
 Bytes 128..255 were entirely unused and the compiler's `e` word already
 dispatches *any* byte it finds in the template blob, so the code page costs
@@ -111,10 +113,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **714** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1685** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **4788** bytes |
-| assertions in the run2 suite | **286** |
-| assertions in the selfcheck suite | **35** |
+| the generated bootstrap seed (`self/seed.golf`) | **1865** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **5611** bytes |
+| assertions in the run2 suite | **298** |
+| assertions in the selfcheck suite | **37** |
 | assertions in the gtools differential suite | **42** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -257,6 +259,29 @@ the golf2 fixpoint included. In order:
   than letting it drift. The `′` path is *not* covered: `X` already reads a name
   with no dictionary entry as an atom, which is how `′atom` auto-wrapping works,
   so `′typo` is a different bug and still open.
+- **M-FRAME — per-call locals, opt in.** `⊡name … ;` defines a word that owns a
+  frame of eight slots; `⇒x` and `⇐x` reach them. It closes the last M3 shortcut:
+  the variable bank behind `→x`/`←x` is **global**, one cell per name for the
+  whole program, so a recursive word's frames overwrote each other and returned a
+  quietly wrong number — `sum 1..10` came back 10 instead of 55.
+  **Why it is opt-in, which the plan did not anticipate:** whatever a prologue
+  does to `rbp`, the epilogue must undo — and `^` *is* an epilogue, is a plain
+  template, and can appear anywhere in a body. A single-pass compiler does not
+  know a definition's frame size until `;`, long after its `^`s were emitted.
+  Giving *every* word a frame makes `^` fixed-size again, but at eight slots a
+  frame is 72 bytes instead of 8 and the return stack holds ~15k frames instead
+  of ~138k — measured, and it kills the suite's 50,000-deep recursion case.
+  Sizing the frame per definition needs a backpatch chain threaded through every
+  `^`'s unpatched immediate (still queued, and still the better language). So the
+  frame is opt-in: `^` became compiler logic, but only to test one flag, and a
+  `:` word emits byte-for-byte what it always did — which is why the ladder, the
+  fixpoint and 50,000-deep recursion were all undisturbed.
+  Slots are `a`–`h` at `[rbp + 8*(name-'a')]`, with the return address above them
+  at `[rbp+64]`; the displacement does not depend on how many slots a word uses,
+  which is what keeps `⇒`/`⇐` fixed-size. An out-of-range name is refused rather
+  than wrapped: `⇒z` would be displacement 200, a *negative* disp8 landing in the
+  frame of a word not yet called, and `⇒A` would wrap to 0 and silently alias
+  slot `a`.
 - **The capstone shrank.** `examples/capstone.golfj` went from **54** op bytes to
   **46** by letting the bare polymorphic operators do the looping; the pre-M-VEC
   spellings are kept verbatim and output-checked as
@@ -344,6 +369,18 @@ unbuilt, and three defects this list does not yet cover — see
   it nominally had ~917k frames but shared them with a bump heap growing up from
   `0x500000` — every 8 bytes allocated cost a frame, and the two met without
   complaint. Deterministic and smaller beats large and shared.
+- **KNOWN ISSUE — the return stack has no guard, and a `⊡` word reaches it
+  sooner.** Nothing checks `rbp` against the bottom of the return-stack region.
+  Past its capacity a program does not fault: it grows straight down through the
+  `0x4F` runtime cells, the variable bank and the code arena, corrupting them
+  silently, and only faults once it walks below the load address. Measured: a
+  plain `:` word recursing 200,000 deep — well past the ~138k the region holds —
+  still exits 0 with the right answer, having overwritten all of it. This is
+  **pre-existing and not M-FRAME's**, but M-FRAME makes it reachable ~9x sooner
+  for a word that owns a frame (~15k frames rather than ~138k), so it is worth
+  writing down now. A guard costs a compare in every prologue, on the hottest
+  path there is; the honest fix is probably a guard page rather than an
+  instruction.
 - **KNOWN ISSUE — an integer inside the heap window looks like a list.** `T` is
   a range test (`v - base <u span`), so any *integer* whose value happens to
   land in `[base, base+span)` is dispatched as a list by `D` and by the five

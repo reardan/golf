@@ -54,6 +54,9 @@ STR_BYTE = mkblob2.STR_BYTE   # “  string literal delimiter (open and close)
 SET_BYTE = mkblob2.SET_BYTE   # →  pop TOS into a named variable
 GET_BYTE = mkblob2.GET_BYTE   # ←  push a named variable
 CHAIN_BYTE = mkblob2.CHAIN_BYTE  # ⊚  define a word as a tacit chain of links
+FRAME_BYTE = mkblob2.FRAME_BYTE  # ⊡  define a word with a frame of locals
+LSET_BYTE = mkblob2.LSET_BYTE    # ⇒  pop TOS into a local slot
+LGET_BYTE = mkblob2.LGET_BYTE    # ⇐  push a local slot
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -73,6 +76,7 @@ def compile_bytes(src: bytes) -> bytes:
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)
     chain = None        # M-CHAIN2: the link bytes taken so far, or None
+    frame = False       # M-FRAME: inside a ⊡ definition, which owns a slab
     i, n = 0, len(src)
 
     def emit(bs):
@@ -165,15 +169,23 @@ def compile_bytes(src: bytes) -> bytes:
             stack.append(('def', patch))
             emit(golf0.PROLOGUE)
             continue
-        if ch == ';':                                # end definition (either kind)
+        if ch == ';':                                # end definition (any kind)
             if chain is not None:                    # 1 or 2 links never forked
                 for b in chain[:2] if len(chain) < 3 else []:
                     call_or_template(b)
                 chain = None
+            if frame:                                # M-FRAME: release the slab
+                frame = False
+                emit(mkblob2.FRAME_RELEASE)
             emit(golf0.EPILOGUE)
             kind, patch = stack.pop()
             assert kind == 'def', "; without :"
             patch32(patch, len(out))
+            continue
+        if ch == '^':                                # M-FRAME: early return.  A
+            if frame:                                # plain template until now;
+                emit(mkblob2.FRAME_RELEASE)          # it is a case only so it
+            emit(TEMPLATES['^'])                     # can release a ⊡ frame.
             continue
         if ch == '[':                                # if (execute when TOS==0)
             emit([0x58, 0x48, 0x85, 0xC0, 0x0F, 0x85]); patch = len(out); emit(b"\0\0\0\0")
@@ -234,6 +246,25 @@ def compile_bytes(src: bytes) -> bytes:
         if c == GET_BYTE:                            # ←x : mov rax,[x]; push rax
             emit([0x48, 0x8B, 0x04, 0x25])
             emit_u32(VARBANK + VARSTRIDE * take()); emit([0x50])
+            continue
+
+        if c == FRAME_BYTE:                          # ⊡name … ; : with locals
+            name = take()                            # the header is ':'s, plus
+            emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
+            dict_[name] = len(out)
+            stack.append(('def', patch))
+            emit(golf0.PROLOGUE)
+            emit(mkblob2.FRAME_RESERVE)              # ... the eight-slot slab
+            frame = True                             # which '^' and ';' release
+            continue
+        if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
+            slot = take() - ord('a')
+            if not 0 <= slot < mkblob2.FRAME_SLOTS:
+                raise SystemExit(f"golfref: local out of range at byte {i-1}")
+            if c == LSET_BYTE:                       # pop rax; mov [rbp+d],rax
+                emit([0x58, 0x48, 0x89, 0x45, 8 * slot])
+            else:                                    # mov rax,[rbp+d]; push rax
+                emit([0x48, 0x8B, 0x45, 8 * slot, 0x50])
             continue
 
         if c == CHAIN_BYTE:                          # ⊚name … ; : a tacit chain
