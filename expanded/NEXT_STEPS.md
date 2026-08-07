@@ -271,7 +271,7 @@ message it can afford — see DESIGN.md's non-goals.
 (`self/golf2.golfj`, `mkblob2.py`'s v1-GOLF seed cases, `boot/golfref.py`) and
 neither touched a representation, so they composed: the bank widening went first
 because every later tag scheme depends on it, and the chain sugar landed on top.
-`run2.sh` is 213 green, `selfcheck.sh` 31, the fixpoint intact.
+`run2.sh` is 273 green, `selfcheck.sh` 32, the fixpoint intact.
 
 The tag bit was *not* in that wave. It was the better engineering right up until
 the specified scheme turned out to misclassify every negative integer; it went
