@@ -20,9 +20,11 @@ Two useful languages hide inside GOLF:
 
 The plan was (1) then (2); what actually happened was (2) then most of (1). The
 code page removed the pressure that multi-character names were supposed to
-relieve, so the golf surface, the library and 64-bit values came first, and the
-two pieces of (1) still outstanding — real names and per-call locals — are items
-6 and 4 of [`NEXT_STEPS.md`](NEXT_STEPS.md).
+relieve, so the golf surface, the library and 64-bit values came first. Per-call
+locals landed with M-FRAME (`⊡name … ;`, slots `a`–`h`), which leaves **real
+multi-character names** as the last piece of (1) still outstanding — item 4 of
+[`NEXT_STEPS.md`](NEXT_STEPS.md), and now also what a `⊡` word needs to name more
+than eight locals.
 
 Bytes 128..255 were entirely unused and the compiler's `e` word already
 dispatches *any* byte it finds in the template blob, so the code page costs
@@ -111,10 +113,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **714** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1680** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **4523** bytes |
-| assertions in the run2 suite | **274** |
-| assertions in the selfcheck suite | **32** |
+| the generated bootstrap seed (`self/seed.golf`) | **1865** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **5611** bytes |
+| assertions in the run2 suite | **298** |
+| assertions in the selfcheck suite | **37** |
 | assertions in the gtools differential suite | **42** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -232,6 +234,54 @@ the golf2 fixpoint included. In order:
   `mkblob2.build_seed()` deliberately stays Python — it reuses the frozen
   `minimal/` tree's own `WORDS` source text, and a second copy of that string
   is the drift this repo's whole test discipline exists to prevent.
+- **M-DIAG — the two silent failures got names.** GOLF reported nothing, ever;
+  these are the first two diagnostics in the language, and both were audited into
+  existence by [`GAPS.md`](GAPS.md) rather than hit in normal use.
+  **The compose arena is bounded.** `0x4D0000`–`0x4DFFFF` holds exactly 1680
+  39-byte thunks, and nothing enforced it: the 1681st `∘` started at `0x4E0017`,
+  inside the user variable bank, so a program that composed in a loop overwrote
+  its own `→x`/`←x` cells with machine code and ran on to exit 0. `∘` now tests
+  the bump pointer and dies at offset 65498. `brk`-growing the arena instead is
+  not available — `brk` memory is not executable and a thunk is code — and
+  nothing can be freed, since a thunk's address may have escaped anywhere.
+  **An undefined word is reported.** `e` emitted `call rel32` with
+  `rel32 = dict[name] - (p+4)` without ever reading `dict[name]`; for a
+  never-defined name that cell is BSS-zero, so the *compile* succeeded and the
+  binary died with SIGSEGV when the word was reached — the symptom of every typo,
+  and of every attempt at mutual recursion. Both compilers now test the slot and
+  exit 2; golf2 also writes `GOLF: undefined word <name>` to fd 2, and neither
+  leaves a partial binary on fd 1. The whole cost was moving `232o` below the
+  lookup so the slot could be tested before a byte was written; `rel32` is
+  unchanged, so the fixpoint and `seed == golf2` both held with no adjustment.
+  The seed exits 2 *without* a message — v1 GOLF has no way to reach fd 2, and
+  fd 1 is carrying the binary — which is the one deliberate divergence between
+  the two source forms, and `test/selfcheck.sh` asserts both halves of it rather
+  than letting it drift. The `′` path is *not* covered: `X` already reads a name
+  with no dictionary entry as an atom, which is how `′atom` auto-wrapping works,
+  so `′typo` is a different bug and still open.
+- **M-FRAME — per-call locals, opt in.** `⊡name … ;` defines a word that owns a
+  frame of eight slots; `⇒x` and `⇐x` reach them. It closes the last M3 shortcut:
+  the variable bank behind `→x`/`←x` is **global**, one cell per name for the
+  whole program, so a recursive word's frames overwrote each other and returned a
+  quietly wrong number — `sum 1..10` came back 10 instead of 55.
+  **Why it is opt-in, which the plan did not anticipate:** whatever a prologue
+  does to `rbp`, the epilogue must undo — and `^` *is* an epilogue, is a plain
+  template, and can appear anywhere in a body. A single-pass compiler does not
+  know a definition's frame size until `;`, long after its `^`s were emitted.
+  Giving *every* word a frame makes `^` fixed-size again, but at eight slots a
+  frame is 72 bytes instead of 8 and the return stack holds ~15k frames instead
+  of ~138k — measured, and it kills the suite's 50,000-deep recursion case.
+  Sizing the frame per definition needs a backpatch chain threaded through every
+  `^`'s unpatched immediate (still queued, and still the better language). So the
+  frame is opt-in: `^` became compiler logic, but only to test one flag, and a
+  `:` word emits byte-for-byte what it always did — which is why the ladder, the
+  fixpoint and 50,000-deep recursion were all undisturbed.
+  Slots are `a`–`h` at `[rbp + 8*(name-'a')]`, with the return address above them
+  at `[rbp+64]`; the displacement does not depend on how many slots a word uses,
+  which is what keeps `⇒`/`⇐` fixed-size. An out-of-range name is refused rather
+  than wrapped: `⇒z` would be displacement 200, a *negative* disp8 landing in the
+  frame of a word not yet called, and `⇒A` would wrap to 0 and silently alias
+  slot `a`.
 - **The capstone shrank.** `examples/capstone.golfj` went from **54** op bytes to
   **46** by letting the bare polymorphic operators do the looping; the pre-M-VEC
   spellings are kept verbatim and output-checked as
@@ -261,10 +311,45 @@ the golf2 fixpoint included. In order:
   by `test/run2.sh` against what they describe. Change the thing, change the doc,
   or the suite fails.
 
+## Deliberate non-goals
+
+Three things a reader coming from Python or Jelly will look for and not find.
+None of them is queued, because none of them is unbuilt — they are refused, and
+[`GAPS.md`](GAPS.md) measures what the refusal costs. Recorded here so the next
+person does not have to guess whether they were forgotten.
+
+- **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
+  no rationals, no complex, and no character distinct from its code. This is
+  what lets an atom be a raw one-instruction template, which is what keeps the
+  blob at 714 bytes, which is what keeps the compiler re-derivable in an
+  afternoon. Floats would put an SSE calling convention in every arithmetic
+  template; bignums would put an allocator on the arithmetic path. Either ends
+  the property this project exists to demonstrate.
+- **Arity.** GOLF has no notion of how many arguments a word takes; words are
+  variadic by stack discipline and nothing checks them, so a word that
+  under-pops silently eats its caller's values. Jelly's compression comes from
+  a parse-time arity algebra, and matching it means a real front end — a
+  different project, not a milestone. `⊚` chain definitions are as far as the
+  single-pass model goes.
+- **Diagnostics, in general.** The compiler is single-pass with no symbol table
+  and no source positions; it cannot say "line 4" because it does not know what
+  a line is. The two failures worth naming are named (an undefined word, an
+  exhausted compose arena) and both cost a byte-count that had to be justified.
+  A general error-reporting layer is not coming; it would be a large fraction of
+  a 4.8 KB compiler.
+
+The first two are permanent. The third is a budget, not a principle — a
+specific silent failure can earn its diagnostic, as those two did.
+
 ## Known limits
 
 These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+For the limits that only show up when GOLF is held against another language —
+what Python and Jelly have that this does not, which of it is refused rather than
+unbuilt, and three defects this list does not yet cover — see
+[`GAPS.md`](GAPS.md).
 
 - **The heap-bounds cells are 32-bit too.** `0x4F0034`/`0x4F0038` are read by
   `T` and are baked into all five M-VEC templates as a 32-bit compare operand.
@@ -284,6 +369,18 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   it nominally had ~917k frames but shared them with a bump heap growing up from
   `0x500000` — every 8 bytes allocated cost a frame, and the two met without
   complaint. Deterministic and smaller beats large and shared.
+- **KNOWN ISSUE — the return stack has no guard, and a `⊡` word reaches it
+  sooner.** Nothing checks `rbp` against the bottom of the return-stack region.
+  Past its capacity a program does not fault: it grows straight down through the
+  `0x4F` runtime cells, the variable bank and the code arena, corrupting them
+  silently, and only faults once it walks below the load address. Measured: a
+  plain `:` word recursing 200,000 deep — well past the ~138k the region holds —
+  still exits 0 with the right answer, having overwritten all of it. This is
+  **pre-existing and not M-FRAME's**, but M-FRAME makes it reachable ~9x sooner
+  for a word that owns a frame (~15k frames rather than ~138k), so it is worth
+  writing down now. A guard costs a compare in every prologue, on the hottest
+  path there is; the honest fix is probably a guard page rather than an
+  instruction.
 - **KNOWN ISSUE — an integer inside the heap window looks like a list.** `T` is
   a range test (`v - base <u span`), so any *integer* whose value happens to
   land in `[base, base+span)` is dispatched as a list by `D` and by the five
@@ -317,3 +414,4 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 | `test/gtools.sh` | M-TOOL: every GOLF tool matches its Python counterpart byte for byte |
 | `REGISTRY.md` | the allocation ledger: op bytes, mnemonics, glyphs, prelude letters, memory |
 | `NEXT_STEPS.md` | the forward queue |
+| `GAPS.md` | the audit against Python and Jelly: what is missing, what is refused, what is broken |

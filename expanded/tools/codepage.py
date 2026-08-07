@@ -73,6 +73,10 @@ COMPILER = [
     (mkblob2.GET_BYTE, "get", "←", "prefix: ←x pushes variable x"),
     (mkblob2.CHAIN_BYTE, "chain", "⊚",
      "prefix: ⊚name f g h; defines a tacit chain (a train of links)"),
+    (mkblob2.FRAME_BYTE, "dloc", "⊡",
+     "prefix: ⊡name ... ; defines a word with a frame of 8 per-call locals"),
+    (mkblob2.LSET_BYTE, "lset", "⇒", "prefix: ⇒x pops TOS into local x (a..h)"),
+    (mkblob2.LGET_BYTE, "lget", "⇐", "prefix: ⇐x pushes local x (a..h)"),
 ]
 
 def lib_byte(key) -> int:

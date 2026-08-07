@@ -1,0 +1,19 @@
+# M-FRAME: per-call locals.  ⊡name … ; defines a word that owns a frame of
+# eight slots, and ⇒x / ⇐x reach them.  The point is recursion.
+#
+# The variable bank behind →x / ←x is GLOBAL — one cell per name for the whole
+# program — so a recursive word does not get fresh copies: every frame writes
+# over the one below it and the answer is quietly wrong.  The two spellings of
+# sum-1..n below are the same algorithm; only the storage differs.
+⊡s"0-[_0^]⇒a⇐a1-s⇐a+;   # locals: each call keeps its own `a`
+10sṄ␤                    # 55 — correct
+:g"0-[_0^]→n←n1-g←n+;   # globals: one cell named `n`, shared by every frame
+10gṄ␤                    # 10 — wrong, and nothing says so
+# Locals nest through higher-order words, because a frame belongs to the call.
+⊡d⇒a⇐a⇐a+;              # double, via a local
+5⍳′d€⍕␤                  # 0 2 4 6 8
+# `^` works inside a ⊡ word: it releases the frame before returning, which is
+# the whole reason ⊡ exists as a separate definition form — see DESIGN.md.
+⊡c⇒a⇐a0≺1+[“neg“🗲␤0^]⇐a; # early return out of a word that owns a frame
+0 5-cṄ␤                  # neg, then 0  (≺ yields -1 for true; [ runs on zero)
+7cṄ␤                     # 7 — the same word taking the ordinary exit

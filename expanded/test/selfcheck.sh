@@ -77,7 +77,8 @@ sys.path.insert(0, "tools")
 import codepage, mkblob2
 data = codepage.encode(open("self/golf2.golfj", encoding="utf-8").read())
 known = {mkblob2.REF_BYTE, mkblob2.STR_BYTE, mkblob2.SET_BYTE, mkblob2.GET_BYTE,
-         mkblob2.CHAIN_BYTE}
+         mkblob2.CHAIN_BYTE, mkblob2.FRAME_BYTE, mkblob2.LSET_BYTE,
+         mkblob2.LGET_BYTE}
 known |= {b for b, _mn, _gl, _tpl, _d in mkblob2.ATOMS}
 used = sorted({b for b in data if b >= 0x80})
 sys.stderr.write("       high bytes used: "
@@ -118,7 +119,7 @@ both fizz "$MIN/examples/fizzbuzz.golf"
 
 echo "It compiles the v2 language (prelude + examples, via the code page)"
 python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"
-for ex in lists strings vars vectorize capstone chaindef; do
+for ex in lists strings vars vectorize capstone chaindef locals; do
   cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < "examples/$ex.golfj") > "$TMP/src.$ex"
   both "$ex" "$TMP/src.$ex"
   o=$("$TMP/old.$ex" 2>/dev/null); n=$("$TMP/new.$ex" 2>/dev/null)
@@ -127,11 +128,32 @@ for ex in lists strings vars vectorize capstone chaindef; do
 done
 
 echo "Byte-for-byte agreement: the two source forms are the same compiler"
-for t in hello fizz lists strings vars vectorize capstone chaindef; do
+for t in hello fizz lists strings vars vectorize capstone chaindef locals; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
 done
+
+echo "Both compilers reject an undefined word, with the same status"
+# This is the ONE place the two source forms deliberately differ, so it is
+# asserted here rather than left to drift.  Both test dict[name] before emitting
+# `call rel32` and both exit(2) when it is zero — that is the decision, and it
+# has to match or they are not the same compiler.  Only golf2 also writes
+# `GOLF: undefined word <name>` to fd 2: seed.golf's source is v1 GOLF, compiled
+# by the frozen v1c, whose entire output surface is `)` (one byte to fd 1) and
+# `.` (exit), and fd 1 is carrying the binary.  The seed's error path is
+# unreachable in the build anyway — its one job is self/golf2.golf, which is
+# valid by construction.
+cat "$TMP/pre.gb" <(printf '%s' '5qN' | python3 tools/codepage.py encode) > "$TMP/bad.src"
+"$TMP/seed"  < "$TMP/bad.src" > "$TMP/bad.old" 2>"$TMP/bad.olderr"; sst=$?
+"$TMP/golf2" < "$TMP/bad.src" > "$TMP/bad.new" 2>"$TMP/bad.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] \
+  && ok "seed and golf2 both exit 2 on an undefined word" \
+  || no "undefined-word status differs (seed $sst, golf2 $gst)"
+[ ! -s "$TMP/bad.old" ] && [ ! -s "$TMP/bad.new" ] \
+  && ok "neither leaves a partial binary on fd 1" || no "partial binary on rejection"
+[ "$(cat "$TMP/bad.newerr")" = "GOLF: undefined word q" ] && [ ! -s "$TMP/bad.olderr" ] \
+  && ok "golf2 explains it on fd 2; the seed, in v1 GOLF, cannot" || no "diagnostic text"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

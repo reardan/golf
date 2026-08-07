@@ -210,7 +210,24 @@
 # classifies as an int like every other ′ address.  ∘ is X/Y-wrapped (it parks f,
 # g and the thunk's start address in s1/s2/s3) so it may be called from inside a
 # map or a fold; each call bumps the arena by 39 bytes.
-:∘X5177456\store5177448\store5046272 5177404@\radd"5177464\store
+#
+# The arena is BOUNDED and the bound is enforced here.  0x4D0000..0x4DFFFF is
+# 65536 bytes = 1680 thunks at 39 bytes each; the 1681st would start at
+# 0x4E0017, which is inside the USER VARIABLE BANK at 0x4E0000 (../REGISTRY.md
+# §3).  Without this check a program that composes in a loop silently overwrites
+# its own →x/←x cells with machine code and keeps running — the thunks stay
+# callable and the exit status stays 0, so the corruption is invisible.  Nothing
+# can be freed (a thunk's address may have escaped anywhere), so the only honest
+# answer is to stop: 65536-39 = 65497 is the last legal offset, so an offset of
+# 65498 or more dies here rather than wrapping into user data.
+# The message goes to fd 2 via ⎈ and the status is 1 — a compiled program writes
+# its real output to fd 1, so a diagnostic must never land there.
+:∘5177404@65498\rlt[
+ “GOLF: compose arena exhausted“5177440\store
+ 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
+ 10 5177448\store 2 5177448 1 1\sys_
+ 1.]
+ X5177456\store5177448\store5046272 5177404@\radd"5177464\store
  72&,1\radd131&,1\radd237&,1\radd8&,1\radd143&,1\radd69&,1\radd0&,1\radd
  72&,1\radd184&,1\radd5177448\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
  72&,1\radd184&,1\radd5177456\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd

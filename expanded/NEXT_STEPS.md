@@ -2,8 +2,9 @@
 
 The prioritized queue for the expanded language. [`DESIGN.md`](DESIGN.md) holds
 the vision, the bootstrap ladder, the record of what shipped and the known
-limits; this file is the forward plan: what to build next, in what order, and
-why. Every step keeps the two invariants: `test/run2.sh` stays green **including
+limits; [`GAPS.md`](GAPS.md) audits the language against Python and Jelly and
+proposes deltas to this queue (three defects it found are not yet items here);
+this file is the forward plan: what to build next, in what order, and why. Every step keeps the two invariants: `test/run2.sh` stays green **including
 the golf2 self-hosting fixpoint**, and `../minimal/` is never touched.
 
 ## Where we are
@@ -18,8 +19,10 @@ definitions (M-CHAIN2), the first compiler logic authored in `golf2.golfj` as
 the primary source; and M-TOOL, which gave the language syscalls (`⎈`), argv,
 three tool libraries on the lowercase letters, and the repo's own build scripts
 rewritten in GOLF under `gtools/` — each one gated against its Python twin for
-byte-identical output. (The current counts and sizes live in DESIGN.md's table,
-where the suite asserts them.)
+byte-identical output. Most recently M-DIAG, the first two diagnostics the
+language has ever had, both found by the [`GAPS.md`](GAPS.md) audit rather than
+in use. (The current counts and sizes live in DESIGN.md's table, where the suite
+asserts them.)
 
 Four facts about the implementation shape everything below:
 
@@ -54,6 +57,20 @@ that happens to land in `[base, base+span)` is dispatched as a list — the one
 outright incorrect behavior in the language (DESIGN.md, known limits). Range
 tagging also forces the two 32-bit bounds cells at `0x4F0034`/`0x4F0038`, which
 put a hard 4 GB ceiling on the break.
+
+*Why it is also the gate on nested data.* This item used to be sold on
+correctness alone, which undersells it. GOLF's list cells hold whatever you put
+in them, so a list of lists **stores** fine — but nothing above the storage layer
+knows: `⍕` prints inner lists as raw pointers, and M-VEC's five operators
+dispatch on the shapes of their two operands exactly once, never recursing into
+elements. Jelly's core data structure is the arbitrarily nested list, so this is
+the single largest gap to it ([`GAPS.md`](GAPS.md) §1.1). Every fix for it —
+a recursive `⍕`, depth, rank, vectorization to arbitrary depth, a structural
+`≡` — has to ask "is this cell a list?" of *every element*, which is exactly the
+question `T` currently answers with a heuristic that is wrong in principle.
+Asking it once per operand is survivable; asking it per element, at every depth,
+is not. **The tag bit is the prerequisite for all of it**, and that is a better
+reason to do it than the misclassification bug on its own.
 
 *Why the bit-63 plan cannot ship.* This entry used to say: hand the address to
 user code with **bit 63** set, and `T` becomes `v >> 63`. That is exact for
@@ -97,26 +114,39 @@ the one that guards the fix: `0 1-T` is still an int, and so is every negative a
 program can produce. Every existing polymorphic test unchanged;
 `0x4F0034`/`0x4F0038` deleted from REGISTRY.md §3 in the same commit.
 
-### 2. M-FRAME — per-call locals (medium)
+### 2. M-FRAME2 — size the frame per definition (medium)
 
-*What.* The variable bank is **global**: a recursive word does not get fresh
-copies, so `→x` inside recursion is a footgun. This is the one M3 shortcut that
-users will actually trip over once programs have recursive words with state.
+**M-FRAME shipped** (DESIGN.md): `⊡name … ;` owns a frame of eight slots and
+`⇒x`/`⇐x` reach them, so recursion through a local is correct. What it did *not*
+do is size the frame, and the reason is the part of the original plan that did
+not survive contact with the compiler.
 
-*Note.* M3W widened the bank but did not un-globalize it: `→x` is still one cell
-per name for the whole program, 8 bytes wide instead of 4.
+*What went wrong with the sketch.* This entry used to say "give a definition a
+prologue that reserves *n* cells below `rbp` and a matching epilogue". Whatever
+the prologue does to `rbp` the epilogue must undo — and `^` **is** an epilogue,
+is a plain template, and can appear anywhere in a body. A single-pass compiler
+does not know *n* until `;`, long after the `^`s were emitted. The sketch also
+proposed "a fixed 26-slot frame indexed by the letter", which is 216 bytes a
+frame; even at eight slots an unconditional frame is 72 bytes and drops the
+return stack from ~138k frames to ~15k, killing run2.sh's 50,000-deep recursion
+case. Both were measured, not argued.
 
-*How.* The return stack is already a private, rbp-relative stack that `X`/`Y`
-push frames on. Give a definition a prologue that reserves *n* cells below `rbp`
-and a matching epilogue, and add a second pair of prefixes (two bytes from
-`0xB0`–`0xBF`) that resolve a name to a frame slot rather than a bank index. The
-cheap version needs no symbol table: a fixed 26-slot frame indexed by the letter,
-allocated per definition. The good version wants M2's name arena (item 4), which
-is why this sits behind the tag but ahead of the allocator. M-CHAIN2 took `0xB0`
-from that range, so the two frame prefixes come from `0xB1`–`0xBF`.
+*What shipped instead.* Opt-in. `^` became compiler logic, but only to test one
+flag, so a `:` word still emits byte-for-byte what it did before and nothing
+regressed. The frame is a fixed eight slots, `a`–`h`.
 
-*Tests.* A recursive word that stores to a local and still returns the right
-answer at depth; globals via `→x`/`←x` unchanged; fixpoint green.
+*What is left.* Per-definition sizing, which is strictly the better language: a
+word using two locals should pay for two. It needs `⊡` to emit `sub rbp, imm32`
+with a patchable immediate, and every `^` in the body to emit `add rbp, imm32`
+the same way — many sites per word, so the patch sites have to be threaded as a
+linked list through their own unpatched immediates and walked at `;`. That is a
+well-understood assembler technique and costs one compiler variable (definitions
+do not nest), but it is real work and M-FRAME already removed the wrong answer.
+
+*Also still open.* Eight slots means eight *names*, `a`–`h`; a real symbol table
+(M2, item 4) would let a `⊡` word name its locals anything and let the count fall
+out of the name arena. And the return stack still has no guard — see DESIGN.md's
+known limits, where M-FRAME's ~15k-frame ceiling now makes it easier to reach.
 
 ### 3. M-MEM2 — a free list for the allocator (small-medium)
 
@@ -144,9 +174,20 @@ forward-declaration handling so mutual recursion needs no pending-char hack.
 The high-byte word range `0xC0`–`0xCF` is the stopgap the prelude already uses;
 M2 is what makes it unnecessary.
 
-*Why not sooner.* Nothing above needs it, and it is the largest single change to
-the compiler's front end — best done when the language has stopped moving under
-it.
+*Why not sooner.* It is the largest single change to the compiler's front end,
+and best done when the language has stopped moving under it.
+
+*But it is no longer independent.* This entry used to say "nothing above needs
+it", and that is now false. The uppercase pool is down to `B` and `C` — two
+letters — and the library is missing, at minimum, sort, concatenate, take/drop,
+member, index-of, unique and a structural `≡` ([`GAPS.md`](GAPS.md) §1.3). Item
+5 (M6b) needs letters too, for a line reader and a number parser. Two letters do
+not cover either list, so **every remaining library item is gated behind this
+one** or behind spending the eight high bytes at `0xC8`–`0xCF` on words that
+should have had names. That does not automatically move M2 to the front — the
+tag bit is still the thing that makes the *language* correct, and it is cheaper —
+but "nothing needs it" is no longer the reason to defer it. Sequencing it right
+after the tag bit, and before the allocator, is the honest ordering.
 
 ### 5. M6b — a number parser and line-oriented input for USER programs (small)
 
@@ -199,6 +240,32 @@ would shadow half of any program's own words.
   change moves one of them, the suite tells you which doc to edit.
 
 ## The wave just landed
+
+**M-FRAME — per-call locals, opt in.** The worst remaining defect in the
+language: `→x` inside recursion returned a quietly wrong number, and now `⊡` +
+`⇒x`/`⇐x` do not. Its design changed under implementation — see item 2 above,
+which is now about what M-FRAME *deferred* rather than about locals themselves.
+The one-line version: `^` is a template that ends a word, so a single-pass
+compiler cannot size a frame per definition, and an unconditional frame costs the
+suite's 50,000-deep recursion. Opt-in was the only shape that added the feature
+without regressing something already tested.
+
+**M-DIAG — the audit's two fixes.** [`GAPS.md`](GAPS.md) measured the language
+against Python and Jelly and turned up three defects nothing in the repo
+recorded; two of them were small enough to fix in the same pass. The compose
+arena is now bounded (it was silently overwriting the user variable bank after
+1680 composes, exit status 0), and an undefined word is now reported instead of
+compiling to a jump through a zeroed dictionary slot. Both are in DESIGN.md's
+record. The third — nested lists having no support above the storage layer — is
+item 1's second justification above, because the tag bit is its prerequisite.
+
+Two things that wave did **not** do. The `′` path still reads an undefined name
+as an atom (`X`'s auto-wrapping cannot tell a typo from `′⊗`), which is a
+separate small fix. And no diagnostic gained a source position: the compiler is
+single-pass with no notion of a line, so "undefined word `b`" is the whole
+message it can afford — see DESIGN.md's non-goals.
+
+## Earlier waves
 
 **M3W then M-CHAIN2.** Both lived entirely in the compiler's front end
 (`self/golf2.golfj`, `mkblob2.py`'s v1-GOLF seed cases, `boot/golfref.py`) and
