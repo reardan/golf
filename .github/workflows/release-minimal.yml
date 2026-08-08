@@ -3,8 +3,10 @@ name: Release (minimal)
 # Build the frozen v1 compiler and publish it as a GitHub release, so `main`
 # can consume it as a pinned binary seed instead of carrying this tree.
 #
-# A tag push publishes; workflow_dispatch is a dry run — everything builds and
-# is verified, the publish job is skipped (it is gated on the tag).
+# Two ways in.  Push a `minimal-v*` tag and it publishes at that tag.  Or run it
+# by hand: leave `publish_tag` empty for a dry run — everything builds and is
+# verified, nothing is published — or set it to the tag you want, and the
+# publish job creates that tag at this commit along with the release.
 #
 # Nothing here is allowed to produce a seed that is not a verified fixpoint:
 # minimal/test/run.sh runs the milestone suite AND the self-hosting fixpoint,
@@ -15,6 +17,11 @@ on:
     tags:
       - 'minimal-v*'
   workflow_dispatch:
+    inputs:
+      publish_tag:
+        description: 'Tag to create and publish (e.g. minimal-v1.0). Empty = dry run.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -103,11 +110,14 @@ jobs:
   publish:
     name: Publish release
     needs: [build]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.publish_tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      # A tag push carries the tag in ref_name; a dispatch names it explicitly.
+      TAG: ${{ inputs.publish_tag || github.ref_name }}
 
     steps:
       - name: Download artifacts
@@ -123,10 +133,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          # --target creates the tag at this commit when it does not exist yet
+          # (the dispatch path) and is a no-op when the tag push already made it.
+          gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --title "GOLF minimal $GITHUB_REF_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "GOLF minimal $TAG" \
             --notes-file - <<'NOTES'
           The frozen minimal (v1) GOLF compiler.
 
