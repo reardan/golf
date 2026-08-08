@@ -1,0 +1,183 @@
+name: Release (minimal)
+
+# Build the frozen v1 compiler and publish it as a GitHub release, so `main`
+# can consume it as a pinned binary seed instead of carrying this tree.
+#
+# Two ways in.  Push a `minimal-v*` tag and it publishes at that tag.  Or run it
+# by hand: leave `publish_tag` empty for a dry run — everything builds and is
+# verified, nothing is published — or set it to the tag you want, and the
+# publish job creates that tag at the built commit along with the release.
+#
+# Nothing here is allowed to produce a seed that is not a verified fixpoint:
+# minimal/test/run.sh runs the milestone suite AND the self-hosting fixpoint,
+# and the published v1c is the stage-2 compiler that reproduced itself.
+#
+# WHY THIS FILE IS ON THE DEFAULT BRANCH.  It builds the `minimal` branch and
+# has a twin there, which is the copy a `minimal-v*` tag push runs (a tag push
+# uses the workflow files at the tagged commit).  But GitHub only offers a
+# workflow for workflow_dispatch — in the UI and through the API — when it is
+# present on the DEFAULT branch, so dispatching a release needs a copy here.
+# This one pins its checkout to `minimal` rather than trusting the dispatched
+# ref, so running it from `main` still builds the frozen v1 tree.
+
+on:
+  push:
+    tags:
+      - 'minimal-v*'
+  workflow_dispatch:
+    inputs:
+      publish_tag:
+        description: 'Tag to create and publish (e.g. minimal-v1.0). Empty = dry run.'
+        required: false
+        default: ''
+      source_ref:
+        description: 'Branch or tag to build the v1 compiler from.'
+        required: false
+        default: 'minimal'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify v1c
+    runs-on: ubuntu-latest   # x86-64 Linux: the compiler emits and runs ELF64 binaries
+    timeout-minutes: 10
+    outputs:
+      # The commit the seed was actually built from — the tag must land there,
+      # not on whatever ref dispatched this.
+      built_sha: ${{ steps.src.outputs.sha }}
+
+    steps:
+      # Explicitly the `minimal` branch, never whatever ref dispatched this.
+      # This workflow lives on the DEFAULT branch, because GitHub only lists a
+      # workflow for workflow_dispatch if it is present there — that is the
+      # whole reason for this copy.  A dispatch from `main` must still build the
+      # frozen v1 tree, which is only on `minimal`.
+      - name: Check out the minimal branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || 'minimal' }}
+
+      - name: Record the built commit
+        id: src
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Milestones + self-hosting fixpoint
+        run: bash minimal/test/run.sh
+
+      - name: Build v1c and prove it is the fixpoint
+        run: |
+          set -eux
+          cd minimal
+          # golf0.py (the Python reference) -> stage 1 -> stage 2 -> stage 3.
+          python3 boot/golf0.py < self/golf.golf > s1 && chmod +x s1
+          ./s1 < self/golf.golf > s2 && chmod +x s2
+          ./s2 < self/golf.golf > s3 && chmod +x s3
+          # The published binary is the one that reproduced itself byte for byte.
+          cmp s2 s3
+          # v1 has always held the STRICT fixpoint too; report rather than gate,
+          # since test/run.sh only ever required stage2 == stage3.
+          cmp s1 s2 || echo "note: strict fixpoint (s1 == s2) does not hold"
+          mkdir -p ../dist
+          cp s2 ../dist/v1c-x86_64-linux
+          cp self/golf.golf ../dist/golf.golf
+
+      # main carries two frozen artifacts derived from THIS tree (see the branch
+      # README).  A release is the moment to prove they still match their origin:
+      # the binary alone cannot say so, and neither branch's CI can see both
+      # trees at once.
+      - name: Check out main alongside
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .main
+
+      # Both checks below skip on a main that has not adopted the seed yet —
+      # which is only true for the FIRST release, the one that has to exist
+      # before main can pin it.  After that they are hard gates.
+      - name: main's frozen v1 artifacts still match this tree
+        run: |
+          set -eu
+          if [ ! -f .main/expanded/boot/v1.py ]; then
+            echo "main has not migrated to the pinned seed yet; skipping"
+            exit 0
+          fi
+          python3 - <<'PY'
+          import sys
+          sys.path[:0] = ["minimal/boot", "minimal/tools", ".main/expanded/boot"]
+          import mkblob     # this branch: the generator that defines the blob
+          import v1         # main: the frozen data file it reads instead
+          if v1.build_blob() != mkblob.build_blob():
+              sys.exit("main's expanded/data/v1.hex has drifted from "
+                       "minimal/tools/mkblob.py — refusing to publish")
+          print("ok  main's expanded/data/v1.hex == mkblob.build_blob()")
+          PY
+
+      - name: This v1c bootstraps main, as committed, to its fixpoint
+        run: |
+          set -eu
+          if [ ! -f .main/expanded/boot/v1.py ]; then
+            echo "main has not migrated to the pinned seed yet; skipping"
+            exit 0
+          fi
+          set -x
+          cd .main/expanded
+          ../../dist/v1c-x86_64-linux < self/seed.golf > /tmp/seed && chmod +x /tmp/seed
+          /tmp/seed  < self/golf2.golf > /tmp/golf2  && chmod +x /tmp/golf2
+          /tmp/golf2 < self/golf2.golf > /tmp/golf2p && chmod +x /tmp/golf2p
+          cmp /tmp/golf2 /tmp/golf2p
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish release
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/') || inputs.publish_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      # A tag push carries the tag in ref_name; a dispatch names it explicitly.
+      TAG: ${{ inputs.publish_tag || github.ref_name }}
+      BUILT_SHA: ${{ needs.build.outputs.built_sha }}
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Generate SHA256SUMS
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # --target creates the tag at the BUILT commit when it does not exist
+          # yet (the dispatch path) and is a no-op when a tag push already made
+          # it.  The built commit is on `minimal`, which is not where a dispatch
+          # from the default branch would otherwise land the tag.
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$BUILT_SHA" \
+            --title "GOLF minimal $TAG" \
+            --notes-file - <<'NOTES'
+          The frozen minimal (v1) GOLF compiler.
+
+          `v1c-x86_64-linux` is the self-hosted compiler at its fixpoint: it
+          compiled itself from `golf.golf` to a byte-identical binary before
+          being published. It reads GOLF source on stdin and writes a standalone
+          ELF64 x86-64 Linux executable on stdout.
+
+          `main` consumes this binary as its bootstrap seed. To point it at this
+          release, set the tag and the sha256 from `SHA256SUMS` in `main`'s
+          `SEEDS` file.
+          NOTES
