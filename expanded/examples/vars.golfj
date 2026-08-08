@@ -1,4 +1,0 @@
-# Named variables: →x stores TOS into variable x, ←x loads it (a global,
-# name-indexed register bank).  Compute (a+b)*(a-b) with no stack juggling.
-7→a3→b               # a = 7, b = 3
-←a←b+←a←b-*Ṅ␤        # (a+b)*(a-b) = 40

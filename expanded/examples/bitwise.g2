@@ -1,8 +1,0 @@
-# New operators in the expanded language (not available in v1):
-#   $ AND   | OR   = XOR   ~ NOT   > shift-right
-12 10$48+)   # AND  1100 & 1010 = 1000 = 8
-13 10=48+)   # XOR  1101 ^ 1010 = 0111 = 7
-4 1|48+)     # OR    100 | 001 =  101 = 5
-40 3>48+)    # SHR  101000 >> 3 =  101 = 5
-0~1+48+)     # NOT  ~0 = -1, +1 = 0
-10)          # newline  -> prints "87550"

@@ -1,7 +1,0 @@
-# Strings are “...“ byte blocks. U turns one into a list of char codes, so every
-# list op works on strings; O prints a byte block, J prints a code list.  That
-# "every list op" now includes the polymorphic + - * ⌈ ⌊, so a Caesar shift is
-# an addition: the shape of the operands already says to do it once per letter.
-“Hello, world!“O10)      # puts a literal                 -> Hello, world!
-“stressed“UVJ10)          # reverse, via chars->rev->join  -> desserts
-“Hello“U1+J10)            # +1 on every character code     -> Ifmmp
