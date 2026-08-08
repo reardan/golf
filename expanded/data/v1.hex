@@ -1,0 +1,43 @@
+# expanded/data/v1.hex -- the FROZEN v1 machine-code substrate, as data.
+#
+# Same [key][len][data] record format and same spelling as data/blob.hex, and
+# the same terminating-sentinel convention: the 0 byte is not in the file, the
+# reader appends it.  This one is an INPUT, not an output: data/blob.hex is
+# generated from the v2 tables, this is the v1 table the v2 blob is built on.
+#
+# Keys 1-5 are the fixed sections -- 1 prologue, 2 cond, 3 startup, 4 the ELF
+# header's non-zero (offset,value) pairs, 5 autoexit -- and every record after
+# them is one v1 op byte's machine-code template, keyed by that byte.
+#
+# This is the whole of what expanded/ used to reach into minimal/boot/golf0.py
+# for.  Everything that module exposed is recoverable from these records:
+# EPILOGUE is the template for '^', and BASE and FILESZ are p_vaddr and
+# p_filesz inside record 4.  boot/v1.py does that reconstruction.
+#
+# FROZEN.  v1 is frozen (branch `minimal`, tag v1.0-minimal), so this file can
+# never legitimately change; .github/workflows/release-minimal.yml re-derives
+# it from minimal/tools/mkblob.py on that branch and fails if it differs.
+# 23 records, 229 bytes with the sentinel, longest template 46.
+01 07 48 83 ED 08 8F 45 00
+02 05 58 48 85 C0 0F
+03 05 BD 00 00 C0 00
+04 2E 00 7F 01 45 02 4C 03 46 04 02 05 01 06 01 10 02 12 3E 14 01 18 78 1A 40 20 40 34 40 36 38 38 01 40 01 44 07 52 40 5A 40 62 01 6A 80 71 10
+05 07 31 FF 6A 3C 58 0F 05
+22 03 FF 34 24
+5F 01 58
+5C 04 58 59 50 51
+26 04 FF 74 24 08
+2B 05 58 48 01 04 24
+2D 05 58 48 29 04 24
+2A 07 59 58 48 0F AF C1 50
+2F 08 59 58 31 D2 48 F7 F1 50
+25 08 59 58 31 D2 48 F7 F1 52
+3C 09 59 58 48 29 C8 48 19 C0 50
+40 04 58 8B 00 50
+21 04 58 59 89 08
+3F 05 58 0F B6 00 50
+2C 04 58 59 88 08
+28 0E 6A 00 31 C0 31 FF 48 89 E6 6A 01 5A 0F 05
+29 0D 6A 01 58 89 C7 48 89 E6 89 C2 0F 05 58
+2E 06 5F 6A 3C 58 0F 05
+5E 08 FF 75 00 48 83 C5 08 C3

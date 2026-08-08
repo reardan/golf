@@ -70,10 +70,17 @@ literals either — a `“...“` block cannot contain byte `0x8E`). Regenerate 
 `python3 tools/mktables.py` after touching either table; `test/selfcheck.sh`
 fails if what is committed is stale.
 
-## Not ported, on purpose
+## Not ported — no longer on purpose
 
-`mkblob2.build_seed()` stays Python. It reuses `minimal/tools/mkblob.py`'s
-`WORDS` — the v1 compiler's own source text — and its `golf()` substring-rewrite
-pass. Porting it would mean duplicating source that lives in the frozen
-`minimal/` tree, and a second copy of that string is exactly the kind of drift
-this repo's whole test discipline exists to prevent.
+`mkblob2.build_seed()` is still Python, but the reason it *had* to be is gone.
+It used to reuse `minimal/tools/mkblob.py`'s `WORDS` — the v1 compiler's own
+source text — and its `golf()` substring-rewrite pass, so porting it would have
+duplicated source that lived in the frozen `minimal/` tree, and a second copy of
+that string is exactly the kind of drift this repo's whole test discipline
+exists to prevent.
+
+Since the minimal language moved to its own branch, the seed's source is
+`self/seed.golfv1` in this tree and `build_seed()` does what `mkgolf2` already
+does — strip comments and whitespace, splice the blob in at `@BLOB@`. The only
+difference is which comment syntax it strips. It is now an ordinary candidate
+for the next rung rather than a standing exception.

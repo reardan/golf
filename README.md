@@ -4,23 +4,23 @@ A tiny **concatenative, stack-based language** whose compiler is written in
 itself and emits standalone **ELF64 x86-64 Linux** executables — no assembler,
 no linker, no libc. One ASCII byte per operation.
 
-This repo holds two versions:
+## The minimal language — frozen, and on its own branch
 
-## [`minimal/`](minimal/) — the frozen minimal language
+The original is a **760-byte self-hosted compiler** that compiles itself to a
+byte-identical binary (strict fixpoint): deliberately tiny, a complete and
+readable example of a self-compiling compiler. It is **frozen**, and it lives on
+the [**`minimal`**](../../tree/minimal) branch (tag `v1.0-minimal`) rather than
+in this tree.
 
-The original: a **760-byte self-hosted compiler** that compiles itself to a
-byte-identical binary (strict fixpoint). Deliberately tiny; a complete, readable
-example of a self-compiling compiler. This version is **frozen** (git tag
-`v1.0-minimal`) and won't change.
+This branch consumes it as a **pinned release binary**. [`SEEDS`](SEEDS) names a
+release tag, an asset and a sha256; `expanded/tools/seed.sh` downloads `v1c` on
+first use and refuses to run it if the hash does not match. That is the only
+thing here that comes from outside the tree, and the only network the build ever
+needs.
 
 ```sh
-cd minimal
-python3 boot/golf0.py < self/golf.golf > golf && chmod +x golf
-./golf < examples/hello.golf > hello && chmod +x hello && ./hello   # Hello, world!
-bash test/run.sh
+git checkout minimal        # the frozen v1 language, its spec and its tests
 ```
-
-See [`minimal/README.md`](minimal/README.md) for the full language spec.
 
 ## [`expanded/`](expanded/) — the "fully featured" language (in progress)
 
@@ -30,9 +30,10 @@ bootstrap ladder: the frozen minimal compiler (v1) compiles the expanded
 compiler's seed, which then self-hosts.
 
 ```
-golf0.py --> v1c --> seed --> golf2 --> golf2' --> your v2 programs
-                              ^^^^^^^^^^^^^^^^
-                              fixpoint: golf2 == golf2'
+v1c --> seed --> golf2 --> golf2' --> your v2 programs
+ ^               ^^^^^^^^^^^^^^^^
+ |               fixpoint: golf2 == golf2'
+ pinned release binary (SEEDS)
 ```
 
 The compiler's logic is written in **v2 GOLF** (`expanded/self/golf2.golfj` —
@@ -41,7 +42,8 @@ fixpoint: golf2 compiles its own source back to itself, byte for byte, and
 **golf2 == golf2'** gates the build.
 
 `self/seed.golf` is the bootstrap rung only: the same compiler written in v1
-GOLF, so that `v1c` — which has never heard of v2 — can build something able to
+GOLF (hand-edited as `self/seed.golfv1`), so that `v1c` — which has never heard
+of v2 — can build something able to
 compile `golf2.golf`. v1c carries *v1's* template blob and so emits different
 code, but that divergence stops at the v1c→seed rung; `seed` is only ever used to
 produce golf2. That the two source forms really are one compiler is gated
@@ -104,6 +106,16 @@ bash test/selfcheck.sh                                 # seed and golf2 are one 
 bash test/gtools.sh                                    # the GOLF tools match their Python twins
 python3 tools/codepage.py table                        # atoms + library glyphs
 tools/golfc -j examples/capstone.golfj out && ./out    # compile a glyph program
+```
+
+The first of those downloads `v1c` per [`SEEDS`](SEEDS) and leaves it at `./v1c`
+(gitignored); everything after is offline. To build the seed yourself instead of
+trusting the release, check out the `minimal` branch, run its
+`python3 minimal/boot/golf0.py < minimal/self/golf.golf`, and point at the
+result:
+
+```sh
+GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
 `bash test/run2.sh` is **298 assertions green**, the fixpoint included. Every

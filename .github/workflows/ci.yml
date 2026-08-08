@@ -7,13 +7,22 @@ on:
 
 jobs:
   test:
-    name: Bootstrap ladders + test suites
+    name: Bootstrap ladder + test suites
     runs-on: ubuntu-latest   # x86-64 Linux: the compilers emit and run ELF64 binaries
     steps:
       - uses: actions/checkout@v4
 
-      - name: Minimal (v1) — self-hosting fixpoint + tests
-        run: bash minimal/test/run.sh
+      # The ladder's first rung, v1c, is not built here.  It is the frozen
+      # minimal compiler, pinned by ./SEEDS to a release built and verified on
+      # the `minimal` branch, and downloaded and sha256-checked by
+      # expanded/tools/seed.sh.  Fetch it once up front so a network or pin
+      # failure is its own red step rather than three confusing ones.
+      - name: Fetch the pinned v1c bootstrap seed
+        run: |
+          SEED_ROOT=$PWD
+          . expanded/tools/seed.sh
+          ensure_seed v1c
+          echo "v1c: $SEED"
 
       - name: Expanded (v2) — bootstrap ladder + tests
         run: bash expanded/test/run2.sh
@@ -32,3 +41,10 @@ jobs:
       # neither checked-in file may drift from what the generator produces.
       - name: Checked-in compiler sources match the generator
         run: git diff --exit-code -- expanded/self/golf2.golf expanded/self/seed.golf
+
+      # data/v1.hex is the frozen v1 substrate the v2 blob is built on.  It came
+      # from the `minimal` branch and can never legitimately change; this only
+      # catches a local edit.  That it still matches its ORIGIN is checked where
+      # both trees are visible at once — the release workflow on that branch.
+      - name: The frozen v1 substrate parses and is self-consistent
+        run: python3 expanded/boot/v1.py | sha256sum
