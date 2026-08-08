@@ -4,3 +4,8 @@ __pycache__/
 *.swo
 expanded/build/
 .claude/worktrees/
+
+# Bootstrap seed binaries: not committed.  Downloaded from GitHub Releases per
+# ./SEEDS by expanded/tools/seed.sh, or pointed at with GOLF_V1C.
+/v1c
+*.download
