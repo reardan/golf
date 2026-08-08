@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Expanded GOLF (v2) test suite + bootstrap ladder.
 #
-#   golf0.py  --compiles-->  v1c      (the frozen minimal compiler)
+#   ../SEEDS  --pins------->  v1c      (the frozen minimal compiler, a release binary)
 #   v1c       --compiles-->  seed     ; self/seed.golf,  compiler logic in v1 GOLF
 #   seed      --compiles-->  golf2    ; self/golf2.golf, compiler logic in v2 GOLF
 #   golf2     --compiles-->  golf2'   ; same source — require golf2 == golf2'
@@ -23,7 +23,8 @@
 # self-hosted compiler has already converged.
 set -u
 cd "$(dirname "$0")/.."
-EXP=$(pwd); MIN="$EXP/../minimal"
+EXP=$(pwd); SEED_ROOT=$(cd "$EXP/.." && pwd)
+. "$EXP/tools/seed.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok(){ printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass+1)); }
@@ -33,9 +34,8 @@ echo "Regenerate the generated compiler sources (self/seed.golf, self/golf2.golf
 python3 tools/mkblob2.py 2>&1 | sed 's/^/  /'
 
 echo "Bootstrap ladder"
-python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$TMP/v1c" 2>/dev/null && chmod +x "$TMP/v1c" \
-  && ok "build v1c (minimal compiler)" || no "build v1c"
-"$TMP/v1c" < self/seed.golf > "$TMP/seed" 2>/dev/null && chmod +x "$TMP/seed" \
+ensure_seed v1c && ok "v1c (pinned release binary, ../SEEDS)" || { no "v1c unavailable"; exit 1; }
+"$SEED" < self/seed.golf > "$TMP/seed" 2>/dev/null && chmod +x "$TMP/seed" \
   && ok "v1c compiles self/seed.golf -> seed" || no "v1c compiles seed.golf"
 # The rung M-SELF bought: the compiler's own logic, written in v2 GOLF, built by
 # the bootstrap seed.
@@ -48,9 +48,9 @@ cmp -s "$TMP/golf2" "$TMP/golf2p" \
 cp -f "$TMP/golf2p" "$TMP/golf2"
 
 echo "The v2 compiler still handles all of v1"
-"$TMP/golf2" < "$MIN/examples/hello.golf" > "$TMP/h" 2>/dev/null && chmod +x "$TMP/h"
+"$TMP/golf2" < examples/v1/hello.golf > "$TMP/h" 2>/dev/null && chmod +x "$TMP/h"
 [ "$("$TMP/h" 2>/dev/null)" = "Hello, world!" ] && ok "golf2 compiles v1 hello.golf" || no "golf2 hello"
-"$TMP/golf2" < "$MIN/examples/fizzbuzz.golf" > "$TMP/fb" 2>/dev/null && chmod +x "$TMP/fb"
+"$TMP/golf2" < examples/v1/fizzbuzz.golf > "$TMP/fb" 2>/dev/null && chmod +x "$TMP/fb"
 [ "$("$TMP/fb" 2>/dev/null | sed -n '15p')" = "FizzBuzz" ] && ok "golf2 compiles v1 fizzbuzz.golf" || no "golf2 fizzbuzz"
 
 echo "New operators (Milestone 1): \$ AND | OR = XOR ~ NOT > SHR"

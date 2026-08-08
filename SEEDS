@@ -1,0 +1,26 @@
+# Pinned bootstrap seeds.  expanded/tools/seed.sh downloads a missing seed
+# binary from https://github.com/reardan/golf/releases/download/<tag>/<asset>
+# and verifies its sha256 against the pin, refusing to run it on a mismatch.
+#
+# v1c is the frozen minimal (v1) GOLF compiler — the first rung of the ladder:
+#
+#     v1c  -->  seed  -->  golf2  -->  golf2'      (fixpoint: golf2 == golf2')
+#
+# It is not built from source in this tree.  The tree it comes from is frozen on
+# the `minimal` branch, which builds it, verifies its self-hosting fixpoint and
+# publishes it; see that branch's README for how to cut a release.  Bump the tag
+# and the sha256 here to adopt a new one.
+#
+# The sha256 below is not a guess: v1 holds the STRICT fixpoint, so compiling
+# the frozen self/golf.golf with boot/golf0.py and then with its own output
+# gives the same bytes every time, on any machine.  Reproduce it yourself from
+# the `minimal` branch:
+#
+#     python3 minimal/boot/golf0.py < minimal/self/golf.golf > s1 && chmod +x s1
+#     ./s1 < minimal/self/golf.golf | sha256sum
+#
+# If a release ever disagrees with this line, seed.sh refuses to run the binary
+# rather than trusting it, which is the whole point of pinning it.
+#
+# file  tag           asset               sha256
+v1c     minimal-v1.0  v1c-x86_64-linux    36841823a4f73ca55649e957c4aee71e9cc0212d7cd1e0767e2f0a97654200c0

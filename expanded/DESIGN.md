@@ -1,7 +1,8 @@
 # Expanded GOLF (v2) — design & roadmap
 
 This is the evolving, "fully featured" version of GOLF. The minimal 760-byte
-self-hosting compiler is frozen in `../minimal/` (tag `v1.0-minimal`); nothing
+self-hosting compiler is frozen on the `minimal` branch (tag `v1.0-minimal`) and
+reaches this tree as a pinned release binary (`../SEEDS`); nothing
 here changes it. The goal here is a language you'd actually write real programs
 in, grown one testable milestone at a time while **never breaking the
 self-hosting bootstrap**.
@@ -59,7 +60,7 @@ compiler that can build the current source, and the bootstrap reaches a
 byte-identical fixpoint.** The chain is:
 
 ```
-golf0.py  --compiles-->  v1c      # the frozen minimal compiler (../minimal)
+../SEEDS  --pins------>  v1c      # the frozen minimal compiler, a release binary
 v1c       --compiles-->  seed     # self/seed.golf,  compiler logic in v1 GOLF
 seed      --compiles-->  golf2    # self/golf2.golf, compiler logic in v2 GOLF
 golf2     --compiles-->  golf2'   # same source — require golf2 == golf2'
@@ -76,14 +77,37 @@ The gate is **golf2 == golf2'**. Both are built from `self/golf2.golf`, so they
 embed the same template blob and emit the same code for the same source: the
 self-hosted compiler has already converged at iterate 1.
 
-`self/seed.golf` is the **bootstrap rung and nothing more**. It carries the same
-compiler written in v1 GOLF (v1's `mkblob.WORDS` plus the four spliced compiler
-cases `′ “ → ←`), purely so `v1c` — which has never heard of v2 — can build
+`self/seed.golf` is the **bootstrap rung and nothing more**. It is generated from
+`self/seed.golfv1`, the same compiler written in v1 GOLF, purely so `v1c` —
+which has never heard of v2 — can build
 something able to compile `golf2.golf`. Because v1c embeds *v1's* blob it emits
 different bytes than golf2 would, but **that divergence is absorbed at the
 v1c→seed rung**: `seed` is only ever used to produce golf2 and is never compared
 against anything. (Before M-SELF this showed up as the `seed-stable:`
 informational line; there is nothing left to report, so it is retired.)
+
+### Where v1 stops and this tree starts
+
+v1 is frozen and is not a source tree here. It crosses into this one at exactly
+three places, and nowhere else:
+
+| what | how it arrives | why it cannot be anything else |
+|---|---|---|
+| the `v1c` **binary** | pinned in `../SEEDS`, downloaded and sha256-checked by `tools/seed.sh` | it is the one rung nothing in this tree can build; a binary is the whole interface |
+| v1's **op templates + ELF header** | `data/v1.hex`, read by `boot/v1.py` | the v2 blob is v1's table plus atoms and overrides, so the table is a build *input*, and a binary cannot hand it over |
+| the **seed's compiler source** | `self/seed.golfv1`, hand-edited here | it is v2 logic in v1's language — v1 never had these cases, so this was never v1's to own |
+
+`boot/v1.py` reconstructs everything the old `import golf0` supplied out of those
+229 bytes of records: `EPILOGUE` is the template for `^`, and `BASE`/`FILESZ` are
+`p_vaddr`/`p_filesz` inside the header record. So the tree builds offline once
+the seed is fetched, and no Python from the minimal language is vendored.
+
+The frozen copies cannot drift from their origin unnoticed. Neither branch's CI
+can see both trees at once, so the check lives in the one place that does: the
+`minimal` branch's release workflow re-derives `data/v1.hex` from
+`minimal/tools/mkblob.py` and refuses to publish if the bytes differ, and it
+verifies that the `v1c` it is about to publish still walks *this* tree, as
+committed, to `golf2 == golf2'`.
 
 Two sources for one compiler is a real risk of drift, so `test/selfcheck.sh`
 gates what the ladder cannot see: that `seed` and `golf2` emit **byte-identical
@@ -231,9 +255,12 @@ the golf2 fixpoint included. In order:
   block cannot contain byte `0x8E`). The end of it: `mkblob | encode |
   mkgolf2` regenerates `self/golf2.golf` byte for byte with no Python in the
   pipeline, and that source still walks the ladder to `golf2 == golf2'`.
-  `mkblob2.build_seed()` deliberately stays Python — it reuses the frozen
-  `minimal/` tree's own `WORDS` source text, and a second copy of that string
-  is the drift this repo's whole test discipline exists to prevent.
+  `mkblob2.build_seed()` deliberately stayed Python at the time, because it
+  reused the frozen minimal tree's own `WORDS` source text and a second copy of
+  that string was the drift this repo's whole test discipline exists to prevent.
+  That reason has since expired: the seed's source is `self/seed.golfv1` in this
+  tree, and `build_seed()` is now the same strip-and-splice `mkgolf2` already
+  does, so a GOLF port is available whenever it is worth the rung.
 - **M-DIAG — the two silent failures got names.** GOLF reported nothing, ever;
   these are the first two diagnostics in the language, and both were audited into
   existence by [`GAPS.md`](GAPS.md) rather than hit in normal use.
@@ -292,7 +319,9 @@ the golf2 fixpoint included. In order:
 
 - `test/run2.sh` stays green, **including the golf2 self-hosting fixpoint**
   (`golf2 == golf2'`), at every commit.
-- `../minimal/` is never touched; it remains the ground-truth bootstrap root.
+- The frozen v1 substrate is never touched: `data/v1.hex` (v1's templates and
+  ELF header) and the `v1c` binary `../SEEDS` pins are ground truth, and the
+  tree they came from is frozen on the `minimal` branch.
 - `self/golf2.golf` and `self/seed.golf` are **generated** — never hand-edited.
   Run `python3 tools/mkblob2.py` from `expanded/` and commit the result;
   `test/selfcheck.sh` fails if what is committed is not what it emits.

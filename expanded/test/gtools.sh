@@ -21,7 +21,8 @@
 #   bash test/gtools.sh          (also run by CI, after run2.sh and selfcheck.sh)
 set -u
 cd "$(dirname "$0")/.."
-EXP=$(pwd); MIN="$EXP/../minimal"
+EXP=$(pwd); SEED_ROOT=$(cd "$EXP/.." && pwd)
+. "$EXP/tools/seed.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok(){ printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass+1)); }
@@ -481,10 +482,10 @@ if build gtools/mkblob.golfj  pmkblob  \
     && ok "the whole pipeline, no Python: mkblob + encode + mkgolf2 rebuild self/golf2.golf" \
     || no "the GOLF-only pipeline does not reproduce self/golf2.golf"
 
-  # golf0.py -> v1c -> seed -> golf2 -> golf2', but with the GOLF-generated
-  # source at the golf2 rung instead of the committed one.
-  python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$TMP/pv1c" 2>/dev/null; chmod +x "$TMP/pv1c"
-  "$TMP/pv1c"  < self/seed.golf  > "$TMP/pseed"  2>/dev/null; chmod +x "$TMP/pseed"
+  # v1c -> seed -> golf2 -> golf2', but with the GOLF-generated source at the
+  # golf2 rung instead of the committed one.
+  ensure_seed v1c || { no "v1c unavailable"; exit 1; }
+  "$SEED"      < self/seed.golf  > "$TMP/pseed"  2>/dev/null; chmod +x "$TMP/pseed"
   "$TMP/pseed" < "$TMP/p.golf2"  > "$TMP/pg2"    2>/dev/null; chmod +x "$TMP/pg2"
   "$TMP/pg2"   < "$TMP/p.golf2"  > "$TMP/pg2p"   2>/dev/null; chmod +x "$TMP/pg2p"
   cmp -s "$TMP/pg2" "$TMP/pg2p" \

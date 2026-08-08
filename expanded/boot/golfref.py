@@ -2,8 +2,8 @@
 """Python reference compiler (oracle) for expanded GOLF (v2).
 
 Reads a v2 GOLF program (raw code-page bytes) on stdin and writes a standalone
-ELF64 x86-64 Linux executable to stdout — the same contract as v1's
-minimal/boot/golf0.py, but for the *full* v2 language.
+ELF64 x86-64 Linux executable to stdout — the same contract the frozen v1
+reference compiler had, but for the *full* v2 language.
 
 This is a full oracle, not a shim:
 
@@ -13,9 +13,9 @@ This is a full oracle, not a shim:
   * **Compiler ops are implemented natively** here: ′ ref (0x8C), “ str (0x8E),
     → set (0x8F), ← get (0x90) and ⊚ chain (0xB0).  These change the compiler's
     *logic*, not just its template table, so they cannot be inherited — they are
-    transcribed from the authoritative v1-GOLF case strings REF_CASE / STR_CASE /
-    SET_CASE / GET_CASE / CHAIN_CASE in tools/mkblob2.py.
-  * **Off the bootstrap path.**  The real ladder is golf0.py -> v1c ->
+    transcribed from the authoritative cases in self/seed.golfv1 and
+    self/golf2.golfj, whose byte allocations tools/mkblob2.py owns.
+  * **Off the bootstrap path.**  The real ladder is v1c -> self/seed.golf ->
     self/golf2.golf (see DESIGN.md); nothing here is ever compiled or trusted by
     it.  This file exists to cross-check the self-hosted golf2 differentially:
     the two compilers agree on *behaviour*, not necessarily on byte layout.
@@ -29,17 +29,17 @@ the two must emit the same program prologue.
 import os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "..", "minimal", "boot"))
-sys.path.insert(0, os.path.join(HERE, "..", "tools"))
-import golf0     # frozen v1: ELF header, prologue/epilogue, v1 op templates
+sys.path.insert(0, HERE)                                # boot/v1.py
+sys.path.insert(0, os.path.join(HERE, "..", "tools"))    # tools/mkblob2.py
+import v1        # frozen v1: ELF header, prologue/epilogue, v1 op templates
 import mkblob2   # v2: the atom table (byte -> template) and v2's STARTUP2
 
-BASE = golf0.BASE          # ELF load address; file offset f maps to VA BASE+f
-FILESZ = golf0.FILESZ      # fixed p_filesz (binary must stay under this)
+BASE = v1.BASE          # ELF load address; file offset f maps to VA BASE+f
+FILESZ = v1.FILESZ      # fixed p_filesz (binary must stay under this)
 
 # v1's op templates plus every v2 atom.  A local copy: the frozen module is read
 # from, never written to.
-TEMPLATES = dict(golf0.TEMPLATES)
+TEMPLATES = dict(v1.TEMPLATES)
 TEMPLATES.update({chr(b): list(tpl) for b, _mn, _gl, tpl, _d in mkblob2.ATOMS})
 # M-VEC: the bare + - * ⌈ ⌊ are polymorphic — a hook-cell shape dispatch in front
 # of the unchanged scalar body (see mkblob2._poly).  Applied LAST: dict update
@@ -64,7 +64,7 @@ VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
 
 # --------------------------------------------------------------------- compile
 def compile_bytes(src: bytes) -> bytes:
-    out = bytearray(golf0.HEADER)
+    out = bytearray(v1.HEADER)
     # M-MEM: v2 binaries shrink p_memsz and seed rbp below the smaller BSS.
     # Both values come from mkblob2 so the oracle and golf2 cannot drift.
     out[mkblob2.MEMSZ_OFF:mkblob2.MEMSZ_OFF + 8] = mkblob2.MEMSZ.to_bytes(8, "little")
@@ -89,7 +89,7 @@ def compile_bytes(src: bytes) -> bytes:
         out[at:at + 4] = rel.to_bytes(4, "little", signed=True)
 
     def emit_lit(v):
-        # Local (not golf0's) so v2 literals can grow past 32 bits (M4).  Mirrors
+        # Local (not v1's) so v2 literals can grow past 32 bits (M4).  Mirrors
         # the `W` word in self/golf2.golfj byte for byte: `push imm32` sign-
         # extends, so it only reproduces 0..2^31-1; anything wider goes through
         # rax, the only x86-64 form carrying a full 64-bit immediate.  Below 2^31
@@ -120,9 +120,9 @@ def compile_bytes(src: bytes) -> bytes:
                 f"golfref: ′ on unknown word 0x{name:02x} at byte {i-1}")
         emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
         thunk = len(out)
-        emit(golf0.PROLOGUE)
+        emit(v1.PROLOGUE)
         emit(TEMPLATES[chr(name)])
-        emit(golf0.EPILOGUE)
+        emit(v1.EPILOGUE)
         patch32(patch, len(out))                     # land on the push below
         emit([0x68]); emit_u32(BASE + thunk)
 
@@ -167,7 +167,7 @@ def compile_bytes(src: bytes) -> bytes:
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")  # jmp over body
             dict_[name] = len(out)                   # body = prologue address
             stack.append(('def', patch))
-            emit(golf0.PROLOGUE)
+            emit(v1.PROLOGUE)
             continue
         if ch == ';':                                # end definition (any kind)
             if chain is not None:                    # 1 or 2 links never forked
@@ -177,7 +177,7 @@ def compile_bytes(src: bytes) -> bytes:
             if frame:                                # M-FRAME: release the slab
                 frame = False
                 emit(mkblob2.FRAME_RELEASE)
-            emit(golf0.EPILOGUE)
+            emit(v1.EPILOGUE)
             kind, patch = stack.pop()
             assert kind == 'def', "; without :"
             patch32(patch, len(out))
@@ -253,7 +253,7 @@ def compile_bytes(src: bytes) -> bytes:
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
             dict_[name] = len(out)
             stack.append(('def', patch))
-            emit(golf0.PROLOGUE)
+            emit(v1.PROLOGUE)
             emit(mkblob2.FRAME_RESERVE)              # ... the eight-slot slab
             frame = True                             # which '^' and ';' release
             continue
@@ -272,7 +272,7 @@ def compile_bytes(src: bytes) -> bytes:
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
             dict_[name] = len(out)
             stack.append(('def', patch))
-            emit(golf0.PROLOGUE)
+            emit(v1.PROLOGUE)
             chain = []                               # links from here to ';'
             continue
         if chain is not None:
@@ -294,7 +294,7 @@ def compile_bytes(src: bytes) -> bytes:
 
     if stack:
         raise SystemExit(f"golfref: unbalanced blocks: {stack}")
-    emit(golf0.AUTOEXIT)
+    emit(v1.AUTOEXIT)
     if len(out) >= FILESZ:
         raise SystemExit(f"golfref: output {len(out)} bytes exceeds p_filesz {FILESZ}")
     return bytes(out)

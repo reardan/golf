@@ -16,7 +16,7 @@
 #      consulted again, so a divergence between the two source forms would go
 #      unnoticed there.
 #
-#   golf0.py --compiles--> v1c  --compiles--> seed    # logic in v1 GOLF
+#   ../SEEDS --pins------> v1c  --compiles--> seed    # logic in v1 GOLF
 #                                seed --compiles--> golf2   # logic in v2 GOLF
 #   seed and golf2 must emit IDENTICAL bytes for the same input
 #
@@ -24,7 +24,8 @@
 # self/*.golf sources are used exactly as committed.
 set -u
 cd "$(dirname "$0")/.."
-EXP=$(pwd); MIN="$EXP/../minimal"
+EXP=$(pwd); SEED_ROOT=$(cd "$EXP/.." && pwd)
+. "$EXP/tools/seed.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok(){ printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass+1)); }
@@ -87,9 +88,8 @@ sys.exit(1 if set(used) - known else 0)
 PY
 
 echo "Walking the ladder: v1c -> seed (v1 GOLF) -> golf2 (v2 GOLF)"
-python3 "$MIN/boot/golf0.py" < "$MIN/self/golf.golf" > "$TMP/v1c" 2>/dev/null \
-  && chmod +x "$TMP/v1c" && ok "golf0.py compiles minimal/self/golf.golf -> v1c" || no "build v1c"
-"$TMP/v1c" < self/seed.golf > "$TMP/seed" 2>/dev/null \
+ensure_seed v1c && ok "v1c (pinned release binary, ../SEEDS)" || { no "v1c unavailable"; exit 1; }
+"$SEED" < self/seed.golf > "$TMP/seed" 2>/dev/null \
   && chmod +x "$TMP/seed" && [ -s "$TMP/seed" ] \
   && ok "v1c compiles self/seed.golf -> seed ($(wc -c < "$TMP/seed") bytes)" || no "build seed"
 "$TMP/seed" < self/golf2.golf > "$TMP/golf2" 2>/dev/null \
@@ -108,12 +108,12 @@ both(){ # both <name> <source file> — compile with each compiler, require iden
 }
 
 echo "The v2-GOLF compiler still compiles all of v1"
-both hello "$MIN/examples/hello.golf"
+both hello examples/v1/hello.golf
 [ "$("$TMP/new.hello" 2>/dev/null)" = "Hello, world!" ] \
-  && ok "golf2 compiles minimal/examples/hello.golf" || no "golf2 hello"
-both fizz "$MIN/examples/fizzbuzz.golf"
+  && ok "golf2 compiles examples/v1/hello.golf" || no "golf2 hello"
+both fizz examples/v1/fizzbuzz.golf
 [ "$("$TMP/new.fizz" 2>/dev/null | sed -n '15p')" = "FizzBuzz" ] \
-  && ok "golf2 compiles minimal/examples/fizzbuzz.golf" || no "golf2 fizzbuzz"
+  && ok "golf2 compiles examples/v1/fizzbuzz.golf" || no "golf2 fizzbuzz"
 [ "$("$TMP/new.fizz" 2>/dev/null)" = "$("$TMP/old.fizz" 2>/dev/null)" ] \
   && ok "fizzbuzz output matches seed's build exactly" || no "fizzbuzz output differs"
 

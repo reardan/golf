@@ -1,0 +1,213 @@
+# The GOLF/2 bootstrap seed, written in v1 GOLF.
+#
+# THIS IS A SOURCE FILE.  It carries the same compiler as self/golf2.golfj,
+# written in the language v1 could read, purely so v1c — which has never heard
+# of v2 — can build something able to compile golf2.golf.  Same token dispatch
+# order, same backpatch discipline, same emitted bytes for every input;
+# test/selfcheck.sh gates that byte for byte, so a change to compiler logic must
+# land in BOTH this file and self/golf2.golfj or selfcheck goes red.
+#
+# Build: tools/mkblob2.py strips the comments and whitespace below and splices
+# the template blob in at the @BLOB@ marker (a backtick, the byte count, one
+# space, the raw bytes), producing the GENERATED self/seed.golf.  Never
+# hand-edit that file; run `python3 tools/mkblob2.py` from expanded/.
+#
+#     v1c -> seed (self/seed.golf) -> golf2 (self/golf2.golf) -> golf2'
+#                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#                                     fixpoint: golf2 == golf2'
+#
+# v1c is the frozen minimal compiler.  It is not built from source here any
+# more: it is a pinned release binary, downloaded and sha256-checked by
+# tools/seed.sh per the ../SEEDS pin.  The minimal tree it was built from lives
+# on the `minimal` branch (tag v1.0-minimal).
+#
+# Lexically this is v1 GOLF with two additions this file's reader handles, both
+# stripped before v1c ever sees them: `#` comments run to end of line, and
+# whitespace is insignificant (the one load-bearing space, after the blob's byte
+# count, is inside the @BLOB@ splice).
+#
+# Everything up to the `#` in each line is one v1-GOLF word or token case, in
+# definition-before-use order.  The single-letter accessor words defined on the
+# first line (P B S Q U Y Z, and L below) are the size-reducing rewrites v1's
+# own build applied: P = m4+@ the output pointer, B = m4096+ the output buffer,
+# S = m12+ scratch, Q = m16+ the pushed-back char, U = 48-10< the is-digit test,
+# Y = m2048+\4*+ the dict slot for the key on top, Z = 48-\10*+ fold a decimal
+# digit, L = 104o emit the push-imm32 opcode.
+#
+# FROZEN IN SHAPE.  This is the bootstrap rung and nothing more; new compiler
+# features go in self/golf2.golfj, and only reach here when they must (a case
+# the seed has to understand to compile golf2.golf).  See ../DESIGN.md.
+
+:m4259840;:Pm4+@;:Bm4096+;:Sm12+;:Qm16+;:U48-10<;:Ym2048+\4*+;:Z48-\10*+; # m: data base D, then the accessors
+:am4+\&@+\!;                                            # a: advance P by n
+:oP!1a;:L104o;                                          # o: emit byte  ·  L: emit push-imm32 (0x68)
+:wP!4a;                                                 # w: emit dword
+:k"P\-4-\!;                                             # k: backpatch pop site
+:c{\"?o1+\1-"1<}__;                                     # c: copy n bytes -> out
+:C"1+?\2+\c;                                            # C: copy template @rec
+:fS!m8+@{"?"[_^]S@-[^]"1+?2++0};                        # f: find record for key
+:EfC;                                                   # E: emit template for key
+# e — the default: emit a table op, or compile a call to a user word.
+#
+# v1's `e` emitted `call rel32` with rel32 = dict[name] - (P+4) and never looked
+# at dict[name].  For a name that was never defined that cell is BSS-zero, so the
+# call targeted a wild address: the compile reported success and the binary died
+# with SIGSEGV when the word was reached.  Both compilers now test the slot first
+# and exit(2) instead.
+#
+# ASYMMETRY, deliberate and gated by test/selfcheck.sh: golf2 also writes
+# `GOLF: undefined word <name>` to fd 2, and this seed does not.  It cannot —
+# this source is v1 GOLF, compiled by the frozen v1c, whose entire output surface
+# is `)` (one byte to fd 1) and `.` (exit).  There is no way to reach fd 2 from
+# v1 GOLF, and fd 1 is carrying the binary.  The two compilers therefore agree on
+# every byte they EMIT and on the exit status they reject with; they differ only
+# in whether the rejection is explained.  selfcheck.sh asserts both halves.  The
+# seed's error path is also unreachable in the build: its one job is to compile
+# self/golf2.golf, which is valid by construction.
+#
+# The reordering against v1 is load-bearing: `232o` has to sit BELOW the lookup
+# so the slot can be tested before a byte is written, and `P` is read after
+# `232o` in both forms, so rel32 is unchanged.
+:e"f"?[_Y@"[2.]232oP4+-w^]\_C;                          # e: table op or call (undefined word -> exit 2)
+:D0{("U[_^]Z0};                                         # D: read decimal
+:gQ@"[_(^]0Q!;                                          # g: get char (pending Q)
+:h{("10-[_^]"[_^]_0};                                   # h: skip comment line
+# X — push the address of the word or atom named by the byte on top.
+#
+# If the name is a defined word, push its VA.  If it is an ATOM (a template in
+# the blob, not a word), emit a thunk [prologue][template][epilogue] inline,
+# jumped over, and push the thunk's VA — so ′+ works without wrapping.  Compiler
+# scratch: m20 the jmp-site, m24 the thunk address.
+#
+# This is the body of the `′` case, lifted into a word of its own by M-CHAIN2,
+# which needs the very same "push the address of the word or atom named by this
+# byte" three times over.  It has to be defined before `t` (which calls it) and
+# after everything it calls itself — o, w, E and the templates — which `h` is the
+# last of, so it lands exactly here.
+:X"Y@"[_233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+:t"33<1+[_^]                                            # whitespace
+"35-[_h^]                                               # '#' comment
+"U1+[48-{("U[Q!Lw^]Z0}]                                 # digit -> number
+"39-[_(Lw^]                                             # "'" char literal
+"58-[_(233oP4+\Y!P0w1E^]                                # ':' define word
+# `;` closes a chain and a frame as well as a definition: a 1- or 2-link chain
+# never reached the fork, so its links are emitted here as plain calls, and a ⊡
+# word releases its frame.  Then the ordinary epilogue and backpatch, which are
+# the same for every kind of definition.
+"59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!72o131o197o64o]94Ek^] # ';' end def -- and close a chain
+"91-[_2E133oP0w^]                                       # '[' if
+"93-[_k^]                                               # ']' end if
+"'{-[_P^]                                               # '{' loop start ('{ = 123)
+"'}-[_2E132oP4+-w^]                                     # '}' loop end  ('} = 125)
+"96-[_D233o"wP69632-S!{(o1-"1<}_LS@w^]                  # '`' blob
+# ---------------------------------------------------------------------------
+# Everything from here to the `e;` fallthrough is v2's, not v1's: the compiler
+# cases the seed has to understand because self/golf2.golfj uses them.  Each is
+# written in pure v1 GOLF, because v1c is what compiles this file.  Byte
+# allocations come from ../REGISTRY.md; tools/mkblob2.py owns the constants.
+# ---------------------------------------------------------------------------
+
+# ′ (0x8C) — a quotation: a compiler PREFIX.  Read the next byte, a word name,
+# and emit `push <that word's runtime address>` instead of a call.  This is the
+# first change to compiler logic over v1, and what makes higher-order functions
+# possible: ′f pushes a callable and ⍎ calls it, so map and fold work.
+"140-[_(X^]                                             # 0x8C  ′  quotation: push a word's address
+
+# “ (0x8E) — a string literal.  “...“ emits a length-prefixed byte block
+# [len(4)][bytes], jumped over, and pushes its address.  A string is thus a byte
+# block; `chars` converts it to a list of codes so every list op applies.
+# Compiler scratch: m20 jmp-site, m24 len-site, S push-VA, m28 count.
+# golf2's own source never uses this — it is here for the programs golf2 compiles.
+"142-[_233oPm20+!0wPm24+!P69632-S!0w0m28+!{("142-[_m28+@m24+@!Pm20+@4+-m20+@!LS@w^]om28+@1+m28+!0}] # 0x8E  “  string literal -> inline byte block
+
+# →x (0x8F) / ←x (0x90) — named variables.  Compiler prefixes: read the name
+# byte and emit an absolute 64-bit store/load against a per-program variable
+# bank at 0x4E0000, where name c owns the cell at 0x4E0000 + 8*c.
+#
+# These are GLOBAL — one cell per name, not per call — so recursion does not get
+# fresh copies.  That is what ⊡/⇒/⇐ below exist to fix, and why both spellings
+# survive: `←a←b+←a←b-*` is still the right way to say (a+b)*(a-b) at top level.
+#
+# M3W: the bank was 4 bytes per name and `←x` was a `mov eax`, which zero-
+# extended — `4294967296→x←x` came back 0, and `0 5-→x←x` came back 4294967291.
+# Every other place a value can sit had been 64 bits since M4/W4A; this was the
+# last narrow one.  The fix is stride 4 -> 8 and a REX.W on both templates.
+# 256 names x 8 bytes = 2 KB, still inside the 0x4E0000-0x4F0000 hole, so no
+# address had to be reallocated.  Widening in place was impossible for the same
+# reason the scratch bank could not be: at a 4-byte stride x's high half IS the
+# cell of name x+1.
+"143-[_(8*5111808+88o72o137o4o37ow^]                    # 0x8F  →x store TOS to the global variable bank
+"144-[_(8*5111808+72o139o4o37ow80o^]                    # 0x90  ←x load from the global variable bank
+
+# ⊡ (0xB1) / ⇒x (0xB2) / ⇐x (0xB3) — M-FRAME, per-call locals.
+#
+#   ⊡name … ;   define a word WITH a frame of eight local slots
+#   ⇒x          pop TOS into local x   (x in a..h)
+#   ⇐x          push local x
+#
+# ⊡ is `:`'s case plus two things: the frame reservation right after the
+# prologue (`sub rbp,64`), and a flag in m56 saying "this definition has a
+# frame" — which `^` and `;` read to decide whether to release it.  Layout, with
+# R the address the return address is stored at:
+#
+#     [rbp+0] .. [rbp+56]   the eight local slots, a..h
+#     [rbp+64] = R          the return address
+#
+# A slot's displacement is 8*(name-'a') and does not depend on how many slots the
+# word actually uses, which is what lets ⇒/⇐ be fixed-size five-byte templates.
+# Eight slots is the compromise: the compiler's own busiest word holds five
+# variables at once, while a slot per letter would cost 216 bytes a frame.
+#
+# `"8<[2.]` is the eight-slot range check.  Unchecked, ⇒z would be displacement
+# 200 — a NEGATIVE disp8 (-56), landing in the frame of a word not yet called —
+# and ⇒A would wrap to 0 and silently alias slot a.  golf2 names the offending
+# byte on fd 2; this seed, in v1 GOLF, can only exit(2).  Same status, same
+# asymmetry as `e` above, gated by test/selfcheck.sh.
+"177-[_(233oP4+\Y!P0w1E72o131o237o64o1m56+!^]           # 0xB1  ⊡  define a word owning a frame of 8 locals
+"178-[_(97-"8<[2.]8*88o72o137o69oo^]                    # 0xB2  ⇒x pop TOS into local slot x (a..h)
+"179-[_(97-"8<[2.]8*72o139o69oo80o^]                    # 0xB3  ⇐x push local slot x
+
+# `^` was a plain template until M-FRAME; it becomes a case purely so it can test
+# that flag.  With the flag clear it emits `94E` — the same template `e` would
+# have copied — so every existing program compiles to the bytes it did before,
+# which is what keeps the ladder and the fixpoint undisturbed.
+"94-[_m56+@1-[72o131o197o64o]94E^]                      # '^' early return: release the frame first when there is one
+
+# ⊚ (0xB0) — M-CHAIN2, a CHAIN definition.  `⊚name f g h;` is the tacit train the
+# explicit spelling builds, with the compiler supplying every ′:
+#
+#     links   the chain is                       compiles to
+#     0       identity                           nothing
+#     1       f x                                a plain call
+#     2       g(f x)          — atop             two plain calls
+#     3       h(f x, g x)     — a fork           ′f ′g ′h ⑂
+#     n>3     the fork, then the rest in turn    ′f ′g ′h ⑂ then plain calls
+#
+# So the count decides the shape and only the first three link bytes have to be
+# buffered: the third emits the three pushes and the ⑂ call (byte 199, an
+# ordinary prelude word — `199e` compiles the call to it), a fourth or later link
+# is an ordinary token, and `;` flushes a 1- or 2-link chain.  No driver word, no
+# new prelude state, no runtime list of quotations.
+#
+# The header is `:`'s, plus the two state cells: jmp over the body, dict[name] =
+# body address, leave the jmp site on the stack for `;`, emit the prologue.
+# Seed-side state, ../REGISTRY.md §3:  m32 in-a-chain flag · m36 link count ·
+# m40/m44/m48 the buffered link bytes.  (self/golf2.golfj holds the same five in
+# its variable bank as u K F G I — it owns that bank; see its header.)
+"176-[_(233oP4+\Y!P0w1E1m32+!0m36+!^]                   # 0xB0  ⊚  chain definition header
+
+# A token inside a chain is a LINK.  This case must sit LAST, just before the
+# `e;` fallthrough: everything `t` recognizes earlier — whitespace, comments,
+# digits, the structural bytes — keeps its ordinary meaning inside a chain body.
+m32+@1-[m36+@1+m36+!m36+@1-[m40+!^]m36+@2-[m44+!^]m36+@3-[m48+!m40+@Xm44+@Xm48+@X199e^]e^] # LINK: buffer or emit a chain link
+e;                                                      # default: e
+# H: write the ELF header from (offset,value) pairs (record key 4) over the
+# zeroed output buffer.  end kept in S; store each value byte at B+offset.
+:H4f"1+?\2+\&+S!{"?B+&1+?\,2+"S@<1+}_;
+
+# The template blob, spliced in here by tools/mkblob2.py.
+@BLOB@
+
+# main: store the blob address, write the ELF header, set P = B+120, emit
+# the startup stub, run the token loop, exit, then flush the output buffer.
+m8+!HB120+m4+!3E{g"m!tm@1<}5EB{"?)1+"P<1+}_

@@ -5,7 +5,8 @@ the vision, the bootstrap ladder, the record of what shipped and the known
 limits; [`GAPS.md`](GAPS.md) audits the language against Python and Jelly and
 proposes deltas to this queue (three defects it found are not yet items here);
 this file is the forward plan: what to build next, in what order, and why. Every step keeps the two invariants: `test/run2.sh` stays green **including
-the golf2 self-hosting fixpoint**, and `../minimal/` is never touched.
+the golf2 self-hosting fixpoint**, and the frozen v1 substrate (`data/v1.hex`,
+the `v1c` binary pinned by `../SEEDS`) is never touched.
 
 ## Where we are
 
@@ -289,10 +290,14 @@ textual: M3W widened the variable bank while M-TOOL was documenting the old
 4-byte truncation as a hazard, which turned three pieces of prose into history
 and one test into a regression case.
 
-What it deliberately did **not** do, and why it should stay that way:
-`mkblob2.build_seed()` remains Python. It reuses `minimal/tools/mkblob.py`'s
-`WORDS` — the v1 compiler's own source text — and its `golf()` substring-rewrite
-pass, so a GOLF port would have to carry a second copy of source that lives in
-the frozen tree. And the GOLF tools **shadow** rather than replace: `tools/*.py`
+What it deliberately did **not** do: `mkblob2.build_seed()` remained Python,
+because it reused `minimal/tools/mkblob.py`'s `WORDS` — the v1 compiler's own
+source text — and its `golf()` substring-rewrite pass, so a GOLF port would have
+carried a second copy of source that lived in the frozen tree. Splitting the
+minimal language onto its own branch removed that obstacle: the seed's source is
+now `self/seed.golfv1` here, and `build_seed()` is a strip-and-splice that
+`gtools/mkgolf2.golfj` already implements for the other source. Porting it is a
+candidate rung, no longer a refusal. The GOLF tools still **shadow** rather than
+replace, though: `tools/*.py`
 is still the build path, so the repo stays buildable from Python alone and
 `test/gtools.sh` is what makes the GOLF side trustworthy.
