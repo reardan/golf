@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **31** are now spent, leaving **80** free. It is partitioned as follows
+space; **32** are now spent, leaving **79** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -125,6 +125,12 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | shipped |
 | `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | shipped |
 | `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | shipped |
+| `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | reserved |
+| `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | reserved |
+| `0xCA` | `\free` | `⌫` | `list ->`: release a list (tagged) or raw `A` block to the allocator's size-classed free list; explicit only (W9-3C, M-MEM2) | shipped |
+| `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | reserved |
+| `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | reserved |
+| `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | reserved |
 | `0xCE` | `\sort` | `⍋` | ascending signed sort, returns a new list (W9-4B) | reserved |
 | `0xCF` | `\memb` | `∊` | `list x -> f`: 0 if x is an element (zero-is-true, like `T`), 1 otherwise (W9-4B) | reserved |
 
@@ -310,9 +316,9 @@ both forms are given here and the decimal is the one you type.
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
 | `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
-| `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
+| `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp (`A` and `⌫` only), `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
 | `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
-| `0x4F00C0` | 5177536 | W9-3C free-list head(s) for `A`/`⌫`: up to eight 8-byte cells `0x4F00C0`–`0x4F00F8` (one per size class), owned by W9-3C | reserved |
+| `0x4F00C0`–`0x4F00F8` | 5177536 · 5177544 · … · 5177592 | **free-list heads** for `A`/`⌫` (W9-3C, M-MEM2), **stride 8**, one per size class: class `k` = 0…6 at `5177536+8k` holds blocks of exactly `4<<k` cells (4, 8, … 256); class 7 at 5177592 holds every larger block (`max(c, 512)` cells, popped only when the head fits). Each head is a raw payload address or 0 (BSS) = empty; a free block's payload cell 0 links to the next. See the note below on the block header | shipped |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
 | `0x4F1000`–`0x4F1FFF` | 5181440–5185535 | **return-stack guard page** — `PROT_NONE`, set by `STARTUP2`'s `mprotect` (`mkblob2.GUARD_LO`); the return stack bottoms out at `0x4F2000` (`mkblob2.RSTACK_FLOOR`), so overflow faults here instead of corrupting the bank below. Not in `seed` (built by v1c with v1's startup) (W9-2C) | shipped |
@@ -358,8 +364,16 @@ Notes:
   onto the data stack first, since `Y` is stack-neutral), so higher-order words
   nest: a mapped function may itself call `R`/`S`/`M`/… . `X` and `Y` touch no
   scratch themselves — only the data stack and absolute addresses. `A` is the
-  one exception: `s5` is A-only and never held across a call, so `A` needs no
-  frame, and `I` is scratch-free.
+  one exception: `s5` is A-only (and `⌫`'s, since W9-3C — the other leaf of
+  the allocator) and never held across a call, so neither needs a frame, and
+  `I` is scratch-free.
+- **Every `A` block has a header cell (W9-3C, M-MEM2).** `A` returns the
+  payload address `p`; the cell at `p-8` holds the block's capacity in cells
+  (the request rounded up to its size class), or **minus** that capacity while
+  the block sits on a free list (that sign is `⌫`'s double-free guard). Every
+  caller — the prelude, `lib/t*.golfj`, `gtools/` — only ever touches the
+  payload, so the header changed no caller; it costs 8 bytes per block plus
+  the rounding (at most 2x, and only for blocks of ≤ 256 cells).
 - **The heap/return-stack collision is gone.** Until M-MEM a bump heap grew up
   from `0x500000` while the return stack grew down from `0xC00000` inside the
   same 8 MB BSS: a list of ~917k cells met the stack and the program died. The

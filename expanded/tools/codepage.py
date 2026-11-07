@@ -70,6 +70,8 @@ LIB = [
     (0xCB, "cat",  "⧺", "concatenate: l1 l2 -> new list (l1 then l2)"),
     (0xCC, "take", "↑", "take: list n -> first n (n<0: last |n|; clamped to len)"),
     (0xCD, "drop", "↓", "drop: list n -> all but first n (n<0: all but last |n|)"),
+    # --- W9-3C LIB row ---
+    (0xCA, "free", "⌫", "free(list|block): release an A block to the free list"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

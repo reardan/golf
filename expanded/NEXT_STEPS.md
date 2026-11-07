@@ -161,20 +161,22 @@ out of the name arena. The return stack's missing guard, which M-FRAME's
 ~15k-frame ceiling made easier to reach, is fixed: W9-2C's guard page turns an
 overflow into a SIGSEGV instead of silent corruption (DESIGN.md, known limits).
 
-### 3. M-MEM2 — a free list for the allocator (small-medium)
+### 3. M-MEM2 — a free list for the allocator — **SHIPPED (W9-3C)**
 
-*What.* `A` bump-allocates and nothing is ever freed. Since `M`, `W`, `V`, `Z`,
-`K` and `G` each allocate a fresh list per call, a map inside a loop leaks
-linearly — the heap grows with `brk` now, so it does not crash, it just climbs.
+*What it was.* `A` bump-allocated and nothing was ever freed, so `M`, `W`, `V`,
+`Z`, `K` and `G` in a loop leaked linearly.
 
-*How.* Keep the bump pointer as the fast path and give each block a header cell
-carrying its size (the length header nearly is one already). Add a `free` word
-that threads a released block onto a size-classed free list; `A` checks the
-matching class before bumping. A first cut can be one list and exact-fit only —
-the allocation pattern here is overwhelmingly "same-size list, over and over".
+*What shipped.* `⌫` (`\free`, 0xCA), explicit only: `list ->` releases a
+tagged list or a raw `A` block. Every `A` block has a header cell `[cap]` in
+front of the payload; eight free-list heads at `0x4F00C0`–`0x4F00F8` are size
+classes (4, 8, … 256 cells exactly, then one list for everything larger, checked
+at the head only). `A` pops the matching head before bumping and stays a
+loop-free `s5` leaf. A map-and-free loop now keeps the program break flat
+(run2.sh, W9-3C). Double free and freeing a non-heap value exit 1 with a message.
 
-*Why here.* It is invisible until a program is long-running, and it wants the
-tag bit (item 1) first so a header cell can never be mistaken for a value.
+*Still open.* No splitting or coalescing, no walk of the large class, and no
+automatic freeing — a word that consumed its input, or a scope that released
+everything it allocated, would want ownership rules GOLF does not have.
 
 ### 4. M2 — multi-character identifiers (medium)
 

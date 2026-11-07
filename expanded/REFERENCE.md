@@ -245,6 +245,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xCB` | `⧺` | `\cat` | — | concatenate: l1 l2 -> new list (l1 then l2) |
 | `0xCC` | `↑` | `\take` | — | take: list n -> first n (n<0: last \|n\|; clamped to len) |
 | `0xCD` | `↓` | `\drop` | — | drop: list n -> all but first n (n<0: all but last \|n\|) |
+| `0xCA` | `⌫` | `\free` | — | free(list\|block): release an A block to the free list |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
