@@ -65,13 +65,16 @@ nothing in the language knows it:
 - M-VEC's five polymorphic operators dispatch on the shapes of their two
   operands, once. They do not recurse into elements.
 - `T` cannot tell "list of ints" from "list of lists"; there is no depth or rank
-  anywhere in the representation.
+  anywhere in the representation. (Since M-TAG2 an element *can* be asked
+  exactly — an inner list is a tagged value, `v >> 48 == 1` — but nothing asks
+  yet.)
 
 This is the single largest gap to Jelly, and unlike the tag bit
 ([`NEXT_STEPS.md`](NEXT_STEPS.md) §1) **it is not in the queue at all.** Note the
 dependency: a recursive `⍕`, or vectorization to arbitrary depth, needs to ask
 "is this cell a list?" of *every element* — which is precisely the question `T`
-answers with a range heuristic that DESIGN.md admits is wrong in principle. So
+answered with a range heuristic that was wrong in principle (fixed by M-TAG2,
+W9-2A: the question is now an exact tag test). So
 the tag bit is not just a correctness fix; it is the prerequisite for the whole
 nested-data story. That is worth saying explicitly in the queue, because item 1
 is currently justified only by the misclassification bug.
@@ -337,7 +340,7 @@ justification for the tag bit ([`NEXT_STEPS.md`](NEXT_STEPS.md) §1), which is i
 prerequisite.
 
 Already recorded and confirmed accurate: the `T` range-test misclassification
-(DESIGN.md known limits, queue §1), the global-bank recursion footgun (queue §2),
+(queue §1 — **fixed** by M-TAG2, W9-2A), the global-bank recursion footgun (queue §2),
 allocator leaks (queue §3), the letter shortage (REGISTRY §2), and the
 seed/golf2 divergence above 2³¹ (DESIGN.md known limits).
 

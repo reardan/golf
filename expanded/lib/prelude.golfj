@@ -3,8 +3,14 @@
 # It is encoded to raw bytes and prepended to programs by tools/golfc.
 #
 # A list is a heap block [ len, e0, e1, ... ] of **64-bit cells** (M4/W4A; they
-# were 4 bytes through W3, which truncated every negative or >= 2^32 element);
-# a list value is its address.  Header and elements alike are read with \fetch
+# were 4 bytes through W3, which truncated every negative or >= 2^32 element).
+# A list VALUE is its address TAGGED with bit 48 — addr | 2^48 (M-TAG2, W9-2A) —
+# so `v >> 48 == 1` is exactly "is a list" (see T).  Every word below that takes
+# a list masks the tag off on entry with `16\shl16>` ((v<<16)>>16, idempotent,
+# so a raw untagged block from A is accepted too) and every word that returns a
+# list tags it on exit with `1 48\shl|` (a shift, not the literal 2^48: the seed
+# truncates literals >= 2^31 and selfcheck compiles this file with it).  A list
+# of lists therefore holds tagged inner lists.  Header and elements alike are read with \fetch
 # and written with \store, so element i of `l` lives at l + 8 + 8*i and A hands
 # out cells*8 bytes.  Reserved runtime memory — ../REGISTRY.md §3 is
 # authoritative:
@@ -12,7 +18,7 @@
 #                        (the address word H pushes; BSS-zero at start)
 #   0x4F0010..0x4F002C   RETIRED — the old 4-byte scratch bank, now free
 #   0x4F0030             spill-stack pointer (a byte OFFSET; BSS-zero at start)
-#   0x4F0034 / 0x4F0038  heap base / span cells (the M-TAG bounds)
+#   0x4F0034 / 0x4F0038  heap base / span cells (A's state; T no longer reads them)
 #   0x4F003C             code-arena bump pointer (M-CHAIN's ∘)
 #   0x4F0040..0x4F005F   free scratch
 #   0x4F0060..0x4F0098   scratch s0..s7 — stride EIGHT, all eight in use:
@@ -29,8 +35,8 @@
 # Do not touch any of it from your program.
 #
 # The four cells at 0x4F0030..0x4F003C did NOT move and did NOT widen: they are
-# forever pointer-valued (all < 2^31), the heap-base cell is BAKED INTO the
-# M-VEC templates as a 32-bit compare operand, and their 4-byte stride is what
+# forever pointer-valued (all < 2^31) — the heap-base cell was baked into the
+# M-VEC templates until M-TAG2 dropped the range filter — and their 4-byte stride is what
 # makes the plain `@`/`!` on them correct.  Widening the scratch bank in place
 # was impossible for the same reason its cells were 4 apart — s0's 64-bit value
 # would land on top of s1 — so W4A RELOCATED the bank to an 8-byte stride
@@ -104,28 +110,29 @@
 # the "W6 allocator" block near the bottom for the whole story).  s5 = the byte
 # size; H is still the bump OFFSET from the heap base, so the block starts at
 # base+H; when the new offset would pass the break, extend the break and
-# republish the span so the M-TAG range test keeps covering every live list.
+# republish the span.  A is an ALLOCATOR, not a list word: it returns a RAW
+# address (no tag), because the tool libraries hand its blocks to syscalls.
 # \brk is an atom, not a call, so s5 is never held across one and A still needs
 # no spill frame.
 :A8\rmul5177480\store 5177396@H@\radd H@5177480\fetch\radd"5177400@\rlt[
   "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!;
-:L\fetch;                                           # L: len(list)
-:I8\rmul\radd8\radd\fetch;                          # I: index(list,i)
-:R X"1\radd A"5177440\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177448\fetch"8\rmul5177440\fetch\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177440\fetch Y;
-:S X5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch+5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
+:L16\shl16>\fetch;                                           # L: len(list)
+:I8\rmul\radd16\shl16>8\radd\fetch;                          # I: index(list,i)
+:R X"1\radd A"5177440\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177448\fetch"8\rmul5177440\fetch\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177440\fetch1 48\shl| Y;
+:S X16\shl16>5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch+5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
 # N: print signed decimal.  W4A added the sign check — cells hold negatives now,
 # so `-5 N` must print -5 and not 2^64-5.  `"0\slt1\radd[…]` runs the block only
 # when n <s 0: emit '-' (45) and \neg, then fall into the unsigned recursion.
 # The recursive call sees n/10 >= 0, so the check costs one compare per digit.
 :N"0\slt1\radd[45)\neg]"10\rlt1\radd[48\radd)^]"10/N10%48\radd);
 :E10);                                              # E: newline
-:M X5177464\store"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
-:F X5177464\store5177472\store5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177472\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
-:Q X5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I N 32)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
+:M X5177464\store16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
+:F X5177464\store5177472\store16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177472\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
+:Q X16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I N 32)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
 # P product(list)   V reverse(list)->list   W filter(list pred)->list  (keep where pred==0)
-:P X5177440\store1 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch*5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
-:V X"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177472\fetch5177440\fetch\fetch5177448\fetch\rsub8\rmul\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
-:W X5177464\store"5177440\store\fetch"1\radd A"5177472\store__0 5177488\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I"5177456\store5177464\fetch\exec[5177488\fetch1\radd5177488\store5177456\fetch5177472\fetch5177488\fetch8\rmul\radd\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177488\fetch5177472\fetch\store5177472\fetch Y;
+:P X16\shl16>5177440\store1 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch*5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
+:V X16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177472\fetch5177440\fetch\fetch5177448\fetch\rsub8\rmul\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
+:W X5177464\store16\shl16>"5177440\store\fetch"1\radd A"5177472\store__0 5177488\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I"5177456\store5177464\fetch\exec[5177488\fetch1\radd5177488\store5177456\fetch5177472\fetch5177488\fetch8\rmul\radd\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177488\fetch5177472\fetch\store5177472\fetch1 48\shl| Y;
 # O puts(str): print a “...“ byte block.  U chars(str)->list: byte block to code
 # list (so list ops apply).  J join(list): print a code list as text (cell->byte).
 # A STRING IS NOT A LIST: STR_CASE emits [len:4][bytes], a 4-byte length prefix
@@ -133,28 +140,31 @@
 # with the 32-bit `@` and the bytes with `?` at str+4+i.  Only U's OUTPUT is a
 # list, and it is an ordinary 8-byte-cell one.  J's input is a real list.
 :O X5177440\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]Y;
-:U X5177440\store5177440\fetch@"1\radd A"5177472\store\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]5177472\fetch Y;
-:J X5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
+:U X5177440\store5177440\fetch@"1\radd A"5177472\store\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]5177472\fetch1 48\shl| Y;
+:J X16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
 # Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
 # shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved in s7, the common length
 # min(≢l1, ≢l2) in s2.
-:Z X5177464\store5177496\store5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"5177456\store"1\radd A"5177472\store\store0 5177448\store5177456\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177456\fetch\rlt1\radd}]5177472\fetch Y;
+:Z X5177464\store16\shl16>5177496\store16\shl16>5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"5177456\store"1\radd A"5177472\store\store0 5177448\store5177456\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177456\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
 # --- W2-TAG words ---
-# M-TAG — shape polymorphism.  A GOLF value is a LIST iff it is an address inside
-# the heap; everything else is an INT, including the -1/0 flags \eq/\rlt produce
-# (0xFFFF… is far above the heap) and every small literal (far below it).  The
-# two bounds live in runtime cells — heap base 0x4F0034, span 0x4F0038 — so W6
-# can move or grow the heap by rewriting two stores and nothing else.
+# M-TAG — shape polymorphism.  Since M-TAG2 (W9-2A) a GOLF value is a LIST iff
+# its top 16 bits are exactly 0x0001 — a heap address with bit 48 set, which is
+# what every list word returns; everything else is an INT, including the -1/0
+# flags \eq/\rlt produce (top bits 0xFFFF), every negative number and every
+# value below 2^48 — in particular a raw heap address.  The integers sacrificed
+# are [2^48, 2^49).  Until M-TAG2 this was a RANGE test against the heap-bounds
+# cells, which classified an integer that happened to equal a heap address as a
+# list; the cells are now A's alone.
 # Top-level init: the prelude is prepended source, so plain tokens run at program
 # start, before any user code.  W6/M-MEM moved that init to the "W6 allocator"
 # block below, where it asks the kernel for the bounds instead of naming them —
 # both cells are still written before anything can allocate or call T, because
 # every allocation happens in a word body and user code runs last.
 # T  v -> 0 (list) / 1 (int).  Zero-is-true, so `T[…]` runs the LIST path.
-# (v-base) <u span is -1 exactly for a heap address and 0 otherwise; 1\radd maps
-# that to 0/1.  A leaf: no scratch, hence no spill frame, hence callable anywhere
+# v>>48 (logical) is 1 exactly for a tagged list; \eq makes that -1/0 and 1\radd
+# maps it to 0/1.  A leaf: no scratch, hence no spill frame, hence callable anywhere
 # — including from inside D's own dispatch, where scratch is live.
-:T5177396@\rsub 5177400@\rlt 1\radd;
+:T48>1\eq1\radd;
 # K  list s fn -> list   new[i] = fn(list[i], s)      broadcast list ⊙ scalar
 # G  s list fn -> list   new[i] = fn(s, list[i])      broadcast scalar ⊙ list
 # Two words rather than one plus an argument swap, because fn need not commute —
@@ -165,8 +175,8 @@
 # W4A: s7 is a 64-bit cell now, so the parked scalar keeps its full width — the
 # old wart where `-3 ⍳4 +` broadcast 4294967293 (a 32-bit round trip through
 # scratch) is GONE, and a negative or >= 2^32 broadcast scalar survives intact.
-:K X5177464\store5177496\store5177440\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
-:G X5177464\store5177440\store5177496\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177496\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
+:K X5177464\store5177496\store16\shl16>5177440\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
+:G X5177464\store16\shl16>5177440\store5177496\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177496\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
 # D  a b fn -> c   the binary shape dispatcher, and the calling convention M-VEC
 # will route the bare + - * ⌈ ⌊ templates through: fn is a quotation address.
 # a and b are NEVER parked in scratch — they stay on the data stack, so the
@@ -210,11 +220,10 @@
 # three scratch slots moved to the new bank.
 #
 # Thunks come from a dedicated CODE ARENA at 0x4D0000 (bump pointer 0x4F003C),
-# never from the list heap: an address inside the heap bounds would be
-# indistinguishable from a list to the shape test, whereas 0x4D0000 sits below
-# the variable bank and above the compiler's ceiling — and, since W6/M-MEM,
-# below the program break, i.e. below the heap base — so a composed quotation
-# classifies as an int like every other ′ address.  ∘ is X/Y-wrapped (it parks f,
+# never from the list heap; 0x4D0000 sits below the variable bank and above the
+# compiler's ceiling.  A composed quotation is an untagged address, so it
+# classifies as an int like every other ′ address (that once depended on the
+# arena lying outside the heap window; since M-TAG2 it is simply untagged).  ∘ is X/Y-wrapped (it parks f,
 # g and the thunk's start address in s1/s2/s3) so it may be called from inside a
 # map or a fold; each call bumps the arena by 39 bytes.
 #
@@ -277,28 +286,19 @@
 # The base is NOT 0x600000 and must never be written down: the kernel ASLR-shifts
 # the initial break by up to 32 MB.  That is the point of the two bounds cells —
 # 0x4F0034 base and 0x4F0038 span — which W2 introduced precisely so W6 could
-# fill them from the kernel.  Everything downstream reads them: `T`, the shape
-# dispatcher D behind ∔ ∸ ⨰ ⩌ ⩍, and the M-VEC templates' cheap 32-bit
-# `cmp eax,[0x4F0034]` filter.  A value is a list iff (v - base) <u span, so:
-#
-#   * span must always COVER every live list.  A never hands out a block whose
-#     end offset exceeds the span — it extends the break first and republishes
-#     the span, which only ever grows, so lists allocated before a growth stay
-#     inside the (now wider) window.
-#   * everything that is not a list must stay OUTSIDE the window.  It does, by
-#     construction: the whole static image — code and word addresses at
-#     0x400000+, the compiler's own pointers at 0x410000+, the M-CHAIN thunk
-#     arena at 0x4D0000, the variable bank, the scratch bank and the spill stack
-#     — lives BELOW the break, and negative flags like -1 are far above it.
+# fill them from the kernel.  Through W8 `T` and the M-VEC templates read them
+# too (a value was a list iff (v - base) <u span); since M-TAG2 a list carries
+# its own tag and the two cells are A's alone: base + H is the next block, and
+# H passing span is what makes A move the break.
 #
 # Span is taken from what brk RETURNS rather than what it was asked for, so a
 # refusal cannot leave the cell claiming memory the process does not own.
 # The standing assumption is that the break stays below 2^32: both cells are
-# 4 bytes and the M-VEC filter compares against 0x4F0034 with a 32-bit `cmp`.
+# 4 bytes (only A reads them; widening them would be a prelude-only change).
 # `@`/`!` zero-extend, so the full unsigned 32-bit range round-trips exactly;
 # observed breaks here run from ~0x1C00000 to ~0x3B000000, three orders of
 # magnitude of headroom.  What would NOT survive is a >= 4 GB break, which
-# needs the bounds cells (and the template operand) widened first.
+# needs the two cells (and H) widened first.
 # Stack-neutral; 32-bit `!` is right for both cells (each is < 2^31 and BSS
 # leaves the high half zero).  1 MB is the initial chunk and also A's growth
 # increment: A extends to (needed + 1 MB), so one oversized allocation still
@@ -329,9 +329,10 @@
 # Cell = 0x4F0100 + 8*op byte (REGISTRY.md §3, stride 8 because the call reads a
 # full 64-bit cell):  '+' 0x2B -> 5177944 · '-' 0x2D -> 5177960 ·
 # '*' 0x2A -> 5177936 · ⌈ max 0x88 -> 5178688 · ⌊ min 0x89 -> 5178696.
-# Each hook is the address of the matching ∔ ∸ ⨰ ⩌ ⩍ word, so the template's
-# cheap `(a|b) <u heap base` filter only has to be CONSERVATIVE: a false
-# positive (a -1 flag looks like a big address) lands in D, which re-tests both
-# operands exactly and falls back to the raw scalar op.  32-bit `!` is enough —
+# Each hook is the address of the matching ∔ ∸ ⨰ ⩌ ⩍ word.  Since M-TAG2 the
+# template's filter is EXACT — `cmp word [rsp+6],1` / `[rsp+14]`, the same high-
+# word test as T — so only a real list operand reaches D; D still re-tests both
+# operands and falls back to the raw scalar op, so the hooks would stay correct
+# behind a looser filter too.  32-bit `!` is enough —
 # BSS leaves each cell's high half zero.  Must stay last: ′ needs the words.
 \ref\vadd 5177944!\ref\vsub 5177960!\ref\vmul 5177936!\ref\vmax 5178688!\ref\vmin 5178696!

@@ -305,8 +305,8 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
-| `0x4F0034` | 5177396 | **heap base cell** — the `brk` the prelude's init was handed, published for `T` and the five M-VEC templates. ASLR-shifted every run, so it is never spelled out anywhere | shipped |
-| `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `T` is `v - base <u span` | shipped |
+| `0x4F0034` | 5177396 | **heap base cell** — the `brk` the prelude's init was handed; `A` adds the bump offset `H` to it. ASLR-shifted every run, so it is never spelled out anywhere. Since M-TAG2 (W9-2A) it is **allocator state only**: `T` and the M-VEC templates test the list tag and no longer read it | shipped |
+| `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `A` grows the break when a block would pass it. Allocator state only since M-TAG2 (it was `T`'s `v - base <u span` bound) | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
 | `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
@@ -337,10 +337,11 @@ Notes:
   widened in place (at a 4-byte stride `s0`'s high half is `s1`). All scratch
   access is `⊙`/`⊛` (`\fetch`/`\store`). The four cells at `0x4F0030`–`0x4F003C`
   deliberately did **not** move or widen: they hold pointers and byte offsets
-  that are < 2^31 in practice, plain `@`/`!` on them is therefore exact, and
-  `0x4F0034` in particular is baked into every M-VEC template as a 32-bit
-  compare operand. That is a real 4 GB ceiling on the break (DESIGN.md, known
-  limits) — widening the cells means widening five templates with them.
+  that are < 2^31 in practice, and plain `@`/`!` on them is therefore exact.
+  Until M-TAG2 `0x4F0034` was also baked into every M-VEC template as a 32-bit
+  compare operand; it no longer is — the templates test a value's high word for
+  the list tag (`addr | 2^48`) and read no cell but their hook — so the base and
+  span are now private to `A`, and widening them would touch only the prelude.
   The **user variable bank at `0x4E0000` was 4 bytes per name for the same
   reason and is now 8** (M3W): unlike the four fixed cells, no template hard-codes
   a bank address — the compiler computes `0x4E0000 + 8*name` when it emits the
@@ -363,7 +364,13 @@ Notes:
   heap is now the kernel's, grown with `brk` (`0xA6`) above the load segment, so
   `p_memsz` reserves only what is statically addressed (`0x200000`) and the
   return stack has its 1.08 MB — ≈138k frames — entirely to itself. That is why
-  `0x4F0034`/`0x4F0038` exist: the base cannot be a constant any more.
+  `0x4F0034`/`0x4F0038` exist: the base cannot be a constant any more, and `A`
+  needs both it and the span to know when to move the break.
+- **A list value is tagged (M-TAG2).** What a list word hands user code is
+  `addr | 2^48` — the heap address with bit 48 set, so `v >> 48 == 1` — and
+  every list word masks it back off (`(v<<16)>>16`, idempotent, so a raw `A`
+  block is accepted too). The tag is a property of the *value*, not an address:
+  it needs no cell, and nothing in this table records it.
   **Do not add a fixed heap-base row to this table.**
 - The M-VEC hook table is at stride 8 (not 4) so it stayed correct when M4
   widened list cells to 64 bits — which W4A has now done, with no change to the

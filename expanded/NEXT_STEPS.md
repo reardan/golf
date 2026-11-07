@@ -34,10 +34,11 @@ Four facts about the implementation shape everything below:
 2. **The whole load segment is RWX** and a quotation is just an address, so the
    prelude can write machine code at runtime. `∘` already does; anything that
    wants to synthesize a closure can too, with no compiler change.
-3. **`T` is a range test, not a tag.** Everything polymorphic rests on "is this
-   value inside the heap window", which is cheap, correct for every value the
-   suite exercises, and wrong in principle. Item 1 below is the fix — and
-   the scheme this file used to specify for it was not.
+3. **`T` is a tag test (since M-TAG2).** A list value is `addr | 2^48`, so
+   "is this a list?" is `v >> 48 == 1` — exact, cell-free, and cheap enough to
+   ask of every element, which is what nested data needs. It used to be a range
+   test against the heap window; item 1 below records why, and why the first
+   scheme specified to replace it (bit 63) was wrong.
 4. **The compiler binary never runs the prelude**, so its M-VEC hook cells stay
    zero and it always takes the scalar path. That is the reason implicit
    vectorization did not disturb the fixpoint, and the same argument covers any
@@ -51,7 +52,15 @@ DESIGN.md: **M3W** (the variable bank is 64 bits per name) and **M-CHAIN2**
 it specified turns out to be wrong for a reason worth writing down — it is now
 item 1, with the counterexample and a corrected design.
 
-### 1. M-TAG2 — a real tag bit (medium — **the specified scheme is wrong**)
+### 1. M-TAG2 — a real tag bit (**shipped**, W9-2A)
+
+**Shipped as option 1 below** (DESIGN.md records it): a list value is
+`addr | 2^48`, `T` is a shift and a compare, the M-VEC filter tests each
+operand's high word exactly, and every list word masks on entry and tags on
+exit. One correction to the plan: the two bounds cells did **not** go away —
+`A` still needs the base and the span to know when to move the break — but
+nothing except `A` reads them now, so the 4 GB ceiling is an allocator detail
+that a prelude-only change can lift. The rest of this entry is the history.
 
 *What.* Retire the range test. `T` is `v - base <u span` today, so an *integer*
 that happens to land in `[base, base+span)` is dispatched as a list — the one
