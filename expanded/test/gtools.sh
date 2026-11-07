@@ -501,6 +501,43 @@ if build gtools/mkblob.golfj  pmkblob  \
     || no "the GOLF-generated compiler miscompiles"
 fi
 
+# @@ W9-1B-STRINGS @@
+# String literals are literal: both encoders copy the text between two
+# delimiters verbatim (one escape, \“; 0x8E fatal), and both decoders copy a
+# literal's bytes back out raw.  The corpus above already holds every literal
+# the repo's sources use; these fixtures add the cases no real source has —
+# mnemonic and glyph text inside a literal, `#`, the escape, `\str` as either
+# delimiter, an unclosed literal, and the 0x8E error (status and message too).
+if [ -x "$TMP/gencode" ] && [ -x "$TMP/gdecode" ]; then
+  mkdir -p "$TMP/lit"
+  printf '%s' '“a\nb \sqr ⊕ # not a comment“🗲 # a comment “x' > "$TMP/lit/1"
+  printf '%s' '“say \“hi\““🗲 \strx\“y\str “q\str \strr“ “é\\str' > "$TMP/lit/2"
+  printf '%s' '““ “\“\““ 1 “unclosed \sqr ⊕' > "$TMP/lit/3"
+  printf '%s' '“ok“ “Ď“' > "$TMP/lit/4"
+  bad=""
+  for f in "$TMP"/lit/*; do
+    "$TMP/gencode" < "$f" > "$TMP/l.g" 2> "$TMP/l.ge"; gs=$?
+    python3 tools/codepage.py encode < "$f" > "$TMP/l.p" 2> "$TMP/l.pe"; ps=$?
+    { [ "$gs" = "$ps" ] && cmp -s "$TMP/l.g" "$TMP/l.p" && cmp -s "$TMP/l.ge" "$TMP/l.pe"; } \
+      || bad="$bad $(basename "$f")"
+  done
+  grep -q 'cannot contain byte 0x8E' "$TMP/l.ge" || bad="$bad no-0x8E-error"
+  [ -z "$bad" ] && ok "gencode == codepage.py on literal strings (verbatim, \\“, \\str, the 0x8E error)" \
+                || no "gencode literal strings differ on:$bad"
+  bad=""
+  python3 -c 'import sys;sys.stdout.buffer.write(bytes(range(256))*2+b"\x8ea\\\x8e\x8e\\\x8e x\x8e\\\xe2\x80\x9c\xe2\x80")' > "$TMP/lit/raw.gb"
+  for f in "$TMP"/lit/[123] "$TMP"/lit/raw.gb; do
+    case $f in *.gb) g=$f ;; *) g=$f.gb; python3 tools/codepage.py encode < "$f" > "$g" ;; esac
+    for m in "" -m; do
+      "$TMP/gdecode" $m < "$g" > "$TMP/l.g" 2>/dev/null
+      python3 tools/codepage.py decode $m < "$g" > "$TMP/l.p" 2>/dev/null
+      cmp -s "$TMP/l.g" "$TMP/l.p" || bad="$bad $(basename "$g")$m"
+    done
+  done
+  [ -z "$bad" ] && ok "gdecode == codepage.py decode on literal strings, raw bytes included" \
+                || no "gdecode literal strings differ on:$bad"
+fi
+
 echo
 echo "Result: $pass passed, $fail failed"
 [ "$fail" = 0 ]

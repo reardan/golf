@@ -109,6 +109,28 @@ for _key, _mn, _gl, _doc in LIB:
         BYTE2MNEM[_b] = _mn
 
 
+# String literals (../REGISTRY.md "W9", shipped by W9-1B).  Between two
+# delimiters the source is LITERAL: its UTF-8 is copied verbatim — no mnemonics,
+# no glyph encoding, `#` is not a comment.  Either spelling of the delimiter
+# opens a literal, and either closes it: the glyph `“` or the exact text `\str`.
+# The one escape is `\“`, which stands for the UTF-8 bytes of `“` (E2 80 9C).
+# Consequences: the text `\str` cannot appear inside a literal (it closes it),
+# and neither can any character whose UTF-8 holds byte 0x8E — the compiler
+# copies bytes up to the next 0x8E — so such a literal is an encode error.
+STR_GLYPH = "“"
+STR_MNEM = "\\str"
+STR_ESC = "\\“"
+STR_ESC_BYTES = STR_GLYPH.encode("utf-8")      # E2 80 9C
+STR_ERR = "codepage: a string literal cannot contain byte 0x8E (the string delimiter)"
+
+
+def _delim(text: str, i: int) -> int:
+    """Length of the string delimiter starting at text[i], or 0."""
+    if text[i] == STR_GLYPH:
+        return 1
+    return len(STR_MNEM) if text.startswith(STR_MNEM, i) else 0
+
+
 def encode(text: str) -> bytes:
     """Turn glyph/mnemonic/ASCII source into raw code-page bytes."""
     out = bytearray()
@@ -119,6 +141,21 @@ def encode(text: str) -> bytes:
             while i < n and text[i] != "\n":
                 i += 1
             continue
+        d = _delim(text, i)
+        if d:                                      # a string literal: verbatim
+            out.append(mkblob2.STR_BYTE); i += d
+            while i < n:
+                if text.startswith(STR_ESC, i):    # \“ -> the bytes of “
+                    out += STR_ESC_BYTES; i += len(STR_ESC); continue
+                d = _delim(text, i)
+                if d:                              # the closing delimiter
+                    out.append(mkblob2.STR_BYTE); i += d
+                    break
+                b = text[i].encode("utf-8")
+                if mkblob2.STR_BYTE in b:
+                    raise SystemExit(STR_ERR)
+                out += b; i += 1
+            continue                               # (an unclosed literal runs to EOF)
         if c == "\\":                              # \name mnemonic escape
             if i + 1 < n and text[i + 1] == "\\":  # \\ -> literal backslash (swap)
                 out.append(0x5C); i += 2; continue
@@ -142,14 +179,41 @@ def encode(text: str) -> bytes:
 
 
 def decode(data: bytes, mnemonic: bool = False) -> str:
+    """Raw bytes -> glyph (or `-m` mnemonic) source.
+
+    Byte 0x8E toggles "inside a literal".  Inside one, bytes are copied RAW (as
+    surrogate-escaped str, so even invalid UTF-8 survives to stdout byte for
+    byte), except E2 80 9C, which is written as the escape `\\“`.  The closer is
+    `“`, or `\\str` when the literal's last byte is a backslash (`\\“` would read
+    back as the escape).  This is a byte-level rule on purpose: gtools/decode
+    applies the same one without a UTF-8 decoder.
+    """
     out = []
-    for b in data:
-        if b in BYTE2GLYPH and b >= 0x80:
-            out.append(f"\\{BYTE2MNEM[b]}" if mnemonic else BYTE2GLYPH[b])
-        elif b in (9, 10) or 32 <= b < 127:
-            out.append(chr(b))
+    in_str = False
+    i, n = 0, len(data)
+    while i < n:
+        b = data[i]
+        if b == mkblob2.STR_BYTE:
+            if mnemonic:
+                out.append(STR_MNEM)
+            elif in_str and data[i - 1] == 0x5C:
+                out.append(STR_MNEM)
+            else:
+                out.append(STR_GLYPH)
+            in_str = not in_str; i += 1
+        elif in_str:
+            if data[i:i + 3] == STR_ESC_BYTES:
+                out.append(STR_ESC); i += 3
+            else:
+                out.append(bytes([b]).decode("utf-8", "surrogateescape")); i += 1
         else:
-            out.append(f"\\x{b:02X}")               # exact round-trip fallback
+            if b in BYTE2GLYPH and b >= 0x80:
+                out.append(f"\\{BYTE2MNEM[b]}" if mnemonic else BYTE2GLYPH[b])
+            elif b in (9, 10) or 32 <= b < 127:
+                out.append(chr(b))
+            else:
+                out.append(f"\\x{b:02X}")           # exact round-trip fallback
+            i += 1
     return "".join(out)
 
 
@@ -238,7 +302,8 @@ def main(argv):
         sys.stdout.buffer.write(encode(sys.stdin.buffer.read().decode("utf-8")))
     else:
         mnem = "-m" in argv[2:]
-        sys.stdout.write(decode(sys.stdin.buffer.read(), mnemonic=mnem))
+        sys.stdout.buffer.write(decode(sys.stdin.buffer.read(), mnemonic=mnem)
+                                .encode("utf-8", "surrogateescape"))
 
 
 if __name__ == "__main__":

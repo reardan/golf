@@ -382,7 +382,9 @@ integrator; it does not pick it.
 String literals (W9-1B): the encoder copies everything between two `“` as
 UTF-8 bytes, verbatim — no mnemonics, no glyph encoding — except the escape
 `\“`, which stands for the UTF-8 bytes of `“` itself. A string whose UTF-8
-contains the raw byte `0x8E` (the delimiter) is an encode error.
+contains the raw byte `0x8E` (the delimiter) is an encode error. **Shipped**
+(W9-1B): `\str` opens and closes a literal too, and either spelling closes
+either; the decoders copy a literal's bytes back out raw.
 
 ## 4. Adding something
 

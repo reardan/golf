@@ -139,9 +139,9 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **714** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **1865** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5611** bytes |
-| assertions in the run2 suite | **298** |
+| assertions in the run2 suite | **305** |
 | assertions in the selfcheck suite | **37** |
-| assertions in the gtools differential suite | **42** |
+| assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
 | the v2 p_memsz (`mkblob2.MEMSZ`) | **0x200000** |
@@ -171,7 +171,11 @@ the golf2 fixpoint included. In order:
   `map`, `fold`, `filter`, `zip` are ordinary library words.
 - **M5 — strings.** `“...“` emits a length-prefixed byte block; `U` turns one
   into a list of char codes, so every list op works on text, and `J` prints a
-  code list back.
+  code list back. Since W9-1B the encoder treats a literal as *text*: between
+  two delimiters (`“` or `\str`, either closes either) the UTF-8 is copied
+  verbatim — no mnemonics, no glyph bytes, `#` is not a comment — with `\“` as
+  the one escape (the bytes of `“`). The compiler did not change; it still
+  copies bytes up to the next `0x8E`.
 - **M3 — named variables.** `→x` / `←x` over a name-indexed **global** bank at
   `0x4E0000`: `(a+b)*(a-b)` is `←a←b+←a←b-*`. Global, not per-frame (see limits).
 - **M-SOUND — a total list runtime.** Every prelude loop is guarded, so the empty
@@ -380,6 +384,12 @@ what Python and Jelly have that this does not, which of it is refused rather tha
 unbuilt, and three defects this list does not yet cover — see
 [`GAPS.md`](GAPS.md).
 
+- **Two things cannot be written inside a string literal.** The text `\str`
+  (it closes the literal — the ASCII spelling of the delimiter), and any
+  character whose UTF-8 contains byte `0x8E` (e.g. `Ď`, `C4 8E`), since the
+  compiler ends a literal at the first `0x8E`; the encoder rejects the latter
+  with an error rather than emit a broken block. A byte block that needs either
+  must be built at run time.
 - **The heap-bounds cells are 32-bit too.** `0x4F0034`/`0x4F0038` are read by
   `T` and are baked into all five M-VEC templates as a 32-bit compare operand.
   The break is ASLR-shifted but far below 4 GB in practice; a program that grew
