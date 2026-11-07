@@ -321,11 +321,13 @@ the frozen `v1c`, whose entire output surface is `)` (one byte to fd 1) and `.`
 status; only the explanation is golf2's, and the seed's error path is unreachable
 in the build anyway.
 
-*Still open, and a different bug:* the `′` path does not get this check. `X`
-already treats a name with no dictionary entry as an **atom** (that is how
-`′atom` auto-wrapping works), so `′typo` builds a thunk around a template that
-does not exist rather than reporting anything. Worth its own fix; it is not the
-same code path and not the same failure.
+*A different bug, fixed later (W9-1C):* the `′` path did not get this check.
+`X` treated a name with no dictionary entry as an **atom** (that is how `′atom`
+auto-wrapping works), so `′typo` built a thunk around a template that does not
+exist, and `3⍳′q€⍕` compiled clean and died with SIGILL. `X` now also checks the
+blob and hands a byte that is neither word nor atom to `e`, which is already the
+diagnostic: `GOLF: undefined word q`, exit 2, nothing on fd 1 (the seed exits 2
+silently, as above). Chain links go through `X`, so they are covered too.
 
 ### 3.3 Nested lists have no support above the storage layer — now queued
 

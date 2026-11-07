@@ -1173,6 +1173,24 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
 # @@ W9-1B-STRINGS @@
 
 # @@ W9-1C-REFDIAG @@
+echo "Diagnostics: ′name of an undefined name is reported, not wrapped as an atom"
+# `X` (the ′ case, and every chain link) read a name with no dictionary entry as
+# an ATOM and wrapped its template in a thunk — so `′typo` built a thunk around a
+# template that does not exist, the compile reported success, and the binary
+# died with SIGILL.  X now checks the blob too and hands a byte that is neither
+# to `e`, which is the undefined-word diagnostic already.
+[ "$(printf '%s' '3⍳′q€⍕' | und)" = "2" ] \
+  && ok "′ of an undefined name exits 2 instead of building a thunk" || no "ref undefined status"
+[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+  && ok "... with the same message as a plain call, on fd 2" || no "ref undefined message"
+[ ! -s "$TMP/u.out" ] && ok "... and no partial binary on fd 1" || no "ref undefined stdout"
+[ "$(printf '%s' '⊚mq≢÷;5⍳mṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+  && ok "a chain link to an undefined name is reported the same way" || no "chain link undefined"
+# Atoms and defined words keep compiling, to the bytes they did before.
+[ "$(printf '%s' '3⍳′⊗€⍕' | gc)" = "0 2 4 " ] && ok "′⊗ still auto-wraps the atom"  || no "ref ⊗"
+[ "$(printf '%s' '3⍳′²€⍕' | gc)" = "0 1 4 " ] && ok "′² still auto-wraps the atom"  || no "ref ²"
+[ "$(printf '%s' '3 4\ref+\exec48+)' | atom)" = "7" ] && ok "′+ still auto-wraps (bare, no prelude)" || no "ref +"
+[ "$(printf '%s' ':d2*;3⍳′d€⍕' | gc)" = "0 2 4 " ] && ok "′ of a defined word still pushes its body" || no "ref word"
 
 # @@ W9-1D-REFERENCE @@
 

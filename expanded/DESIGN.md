@@ -137,10 +137,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **714** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1865** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **5611** bytes |
-| assertions in the run2 suite | **298** |
-| assertions in the selfcheck suite | **37** |
+| the generated bootstrap seed (`self/seed.golf`) | **1872** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **5672** bytes |
+| assertions in the run2 suite | **306** |
+| assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **42** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -283,9 +283,14 @@ the golf2 fixpoint included. In order:
   The seed exits 2 *without* a message — v1 GOLF has no way to reach fd 2, and
   fd 1 is carrying the binary — which is the one deliberate divergence between
   the two source forms, and `test/selfcheck.sh` asserts both halves of it rather
-  than letting it drift. The `′` path is *not* covered: `X` already reads a name
-  with no dictionary entry as an atom, which is how `′atom` auto-wrapping works,
-  so `′typo` is a different bug and still open.
+  than letting it drift. The `′` path was a separate bug, fixed in W9-1C: `X`
+  read any name with no dictionary entry as an atom (that is how `′atom`
+  auto-wrapping works), so `′typo` wrapped a template that does not exist and
+  the binary died with SIGILL. `X` now also reads the blob, and hands a byte that
+  is neither word nor atom to `e` — whose own lookups then fail and give the same
+  `GOLF: undefined word <name>`, exit 2 (the seed: exit 2, silently). It covers
+  chain links too, since they go through `X`. Cost: 7 bytes of seed, 61 of golf2;
+  every program that compiled before compiles to the same bytes.
 - **M-FRAME — per-call locals, opt in.** `⊡name … ;` defines a word that owns a
   frame of eight slots; `⇒x` and `⇐x` reach them. It closes the last M3 shortcut:
   the variable bank behind `→x`/`←x` is **global**, one cell per name for the

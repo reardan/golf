@@ -389,6 +389,8 @@ _           # any other byte: drop it and keep skipping
 # template is wrapped in a thunk [prologue][template][epilogue], emitted inline
 # and jumped over, and the thunk's address is pushed instead.  That is what
 # makes ′+ and a chain link like ÷ work without the user wrapping anything.
+# A byte that is neither (`′typo`) is rejected exactly as a plain call to it
+# would be — `GOLF: undefined word <name>`, exit 2 — by handing it to `e` (W9-1C).
 
 :X          # X : emit `push <the address of the word or atom named b>` [ b -> ]
 →b
@@ -396,9 +398,16 @@ _           # any other byte: drop it and keep skipping
 Y
 @           # dict[name]: a defined word's body address, or 0
 "
-[           # 0 -> not a word but an atom:
-_           #   wrap its template in a thunk and push the thunk instead
-233o        #   0xE9 = jmp over the thunk
+[           # 0 -> not a word, so it had better be an atom:
+_
+←b
+f
+?           #   its blob record's key byte, 0 for the sentinel
+[           #   neither a word nor an atom — a typo.  Wrapping the template
+←b          #   anyway built a thunk around whatever followed the sentinel, and
+e           #   the binary died with SIGILL.  `e` on this byte is the undefined-
+]           #   word diagnostic already (no template, dict slot 0): it exits 2
+233o        #   0xE9 = jmp over the thunk, around the atom's own template
 ←p
 →j          #   the jmp's placeholder site
 0

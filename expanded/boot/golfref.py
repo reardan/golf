@@ -115,9 +115,8 @@ def compile_bytes(src: bytes) -> bytes:
         if name in dict_:                            # a defined word: its body VA
             emit([0x68]); emit_u32(BASE + dict_[name])
             return
-        if chr(name) not in TEMPLATES:
-            raise SystemExit(
-                f"golfref: ′ on unknown word 0x{name:02x} at byte {i-1}")
+        if chr(name) not in TEMPLATES:               # neither: `X` hands it to `e`,
+            call_or_template(name)                   # i.e. the undefined-word exit
         emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
         thunk = len(out)
         emit(v1.PROLOGUE)

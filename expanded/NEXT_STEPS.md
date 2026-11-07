@@ -260,9 +260,10 @@ compiling to a jump through a zeroed dictionary slot. Both are in DESIGN.md's
 record. The third — nested lists having no support above the storage layer — is
 item 1's second justification above, because the tag bit is its prerequisite.
 
-Two things that wave did **not** do. The `′` path still reads an undefined name
-as an atom (`X`'s auto-wrapping cannot tell a typo from `′⊗`), which is a
-separate small fix. And no diagnostic gained a source position: the compiler is
+Two things that wave did **not** do. The `′` path still read an undefined name
+as an atom (`X`'s auto-wrapping could not tell a typo from `′⊗`) — since fixed
+by W9-1C, which has `X` check the blob and pass a byte that is neither to `e`'s
+undefined-word diagnostic. And no diagnostic gained a source position: the compiler is
 single-pass with no notion of a line, so "undefined word `b`" is the whole
 message it can afford — see DESIGN.md's non-goals.
 

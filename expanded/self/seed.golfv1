@@ -84,7 +84,11 @@
 # byte" three times over.  It has to be defined before `t` (which calls it) and
 # after everything it calls itself — o, w, E and the templates — which `h` is the
 # last of, so it lands exactly here.
-:X"Y@"[_233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+#
+# A name that is neither a word nor an atom (`′typo`) is handed to `e`, which
+# already rejects it — no template, dict slot 0 — with exit(2).  Before W9-1C it
+# was wrapped like an atom, around a template that does not exist (SIGILL).
+:X"Y@"[_"f?["e]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
 :t"33<1+[_^]                                            # whitespace
 "35-[_h^]                                               # '#' comment
 "U1+[48-{("U[Q!Lw^]Z0}]                                 # digit -> number

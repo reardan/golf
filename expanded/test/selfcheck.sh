@@ -154,6 +154,15 @@ cat "$TMP/pre.gb" <(printf '%s' '5qN' | python3 tools/codepage.py encode) > "$TM
   && ok "neither leaves a partial binary on fd 1" || no "partial binary on rejection"
 [ "$(cat "$TMP/bad.newerr")" = "GOLF: undefined word q" ] && [ ! -s "$TMP/bad.olderr" ] \
   && ok "golf2 explains it on fd 2; the seed, in v1 GOLF, cannot" || no "diagnostic text"
+# W9-1C: `′q` reaches the same rejection through X, which hands a name that is
+# neither a word nor an atom to `e` — in both source forms.
+cat "$TMP/pre.gb" <(printf '%s' '3⍳′q€⍕' | python3 tools/codepage.py encode) > "$TMP/badref.src"
+"$TMP/seed"  < "$TMP/badref.src" > "$TMP/badref.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badref.src" > "$TMP/badref.new" 2>"$TMP/badref.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badref.old" ] && [ ! -s "$TMP/badref.new" ] \
+  && [ "$(cat "$TMP/badref.newerr")" = "GOLF: undefined word q" ] \
+  && ok "both reject ′ of an undefined name the same way (W9-1C)" \
+  || no "′undefined rejection differs (seed $sst, golf2 $gst)"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"
