@@ -350,7 +350,7 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
 [ "$(printf '%s' ':m2\rsub;5R\refmMSNE' | gc)" = "0" ] \
   && ok "sum crossing zero (-2-1+0+1+2)" || no "sum crossing zero"
 # Regressions through the widened cells: M-VEC broadcast, an M-CHAIN fork, and a
-# mapped word that itself loops (spill frames are 64 bytes now, 28 deep).
+# mapped word that itself loops (spill frames are 64 bytes now, 4096 deep since W10-C).
 [ "$(printf '%s' '4R3+QE' | gc)" = "3 4 5 6 " ] \
   && ok "regression: M-VEC broadcast through widened cells" || no "widened vec broadcast"
 [ "$(printf '%s' '5R\refS\refL\ref\sdv\fork NE' | gc)" = "2" ] \
@@ -1704,7 +1704,7 @@ W94UB=$(printf '%s' '200000⍳"⧺‹unique›≢N' > "$TMP/u10k.golfj"; tools/g
     = "$(printf '0\n0 1 2 3 4 \n0\n1\n0\n0 1 2 3 4 ')" ] \
   && ok "‹flatten›: empty, already flat (a copy), only empty inner lists, depth 1, tagged, input untouched" || no "flatten edges"
 [ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
-  && ok "‹flatten› of a list nested 201 deep (far past the 28 spill frames)" || no "flatten deep"
+  && ok "‹flatten› of a list nested 201 deep (no recursion, so no spill frames per level)" || no "flatten deep"
 [ "$(printf '%s' ':s⍳′⍳€;4⍳′s€"‹flatten›_⍕E' | gc)" = "[] [[]] [[] [0]] [[] [0] [0 1]] " ] \
   && ok "‹flatten› leaves its nested input intact" || no "flatten input"
 # The prelude's long names cost one-byte programs nothing: compiled after the

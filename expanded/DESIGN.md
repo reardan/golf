@@ -495,7 +495,7 @@ the golf2 fixpoint included. In order:
   splices one level and notes whether a spliced cell was itself a list, and
   passes repeat (freeing every intermediate) until none was. That is
   O(size · depth) in one `X`/`Y` frame, so a list nested 200 deep flattens
-  where the recursive `⍕`/`⍤` would then exhaust the 28 spill frames (4096
+  at any depth, while the recursive `⍕`/`⍤` are bounded by the spill stack (4096 frames
   since W10-C, so they reach ~4,000 levels now). The four
   take 4 of the 256 long-name slots, so a program now has 252. None of them
   uses swap, because `decode -m` writes the swap byte as a bare `\`, which
