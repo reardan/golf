@@ -1303,6 +1303,44 @@ done
 # @@ W9-2A-TAG2 @@
 
 # @@ W9-2B-CHECKS @@
+echo "Runtime checks (W9-2B): I bounds, ÷ ∣ divide by zero — message on fd 2, exit 1"
+# Before W9-2B `3⍳9⊇Ṅ` printed whatever cell lay past the block (0) and exit 0,
+# and `7 0÷` died of SIGFPE (status 136).  w92b runs a prelude program and
+# prints its status; stdout and stderr land in $TMP/c.out / $TMP/c.err.
+w92b(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/c" 2>/dev/null \
+          && chmod +x "$TMP/c" && "$TMP/c" > "$TMP/c.out" 2> "$TMP/c.err"; echo "$?"; }
+w92bdied(){ [ "$1" = 1 ] && [ "$(cat "$TMP/c.err")" = "GOLF: $2" ] && [ "$(cat "$TMP/c.out")" = "$3" ]; }
+w92bdied "$(printf '%s' '7N E 3R 9 I N E' | w92b)" "index out of range" "7" \
+  && ok "3⍳ then ⊇9: exit 1, message on fd 2, only the earlier 7 on fd 1" || no "index past the end"
+w92bdied "$(printf '%s' '3R 3 I N E' | w92b)" "index out of range" "" \
+  && ok "index == len is out of range" || no "index == len"
+w92bdied "$(printf '%s' '3R 0 1- I N E' | w92b)" "index out of range" "" \
+  && ok "a negative index is out of range (one unsigned compare)" || no "negative index"
+w92bdied "$(printf '%s' '0R 0 I N E' | w92b)" "index out of range" "" \
+  && ok "any index into the empty list is out of range" || no "empty-list index"
+[ "$(printf '%s' '5R 0 I N E 5R 4 I N E 5R2*3 I N E' | gc)" = "$(printf '0\n4\n6')" ] \
+  && ok "valid indexes unchanged (first, last, a computed list)" || no "valid index"
+[ "$(printf '%s' '4R\ref\dblM S N E 3R 4R \ref\radd Z Q E 6R V Q E' | gc)" = "$(printf '12\n0 2 4 \n5 4 3 2 1 0 ')" ] \
+  && ok "map / zip / reverse (I in their loops) unchanged" || no "loops over I"
+w92bdied "$(printf '%s' '7 0\sdv N E' | w92b)" "divide by zero" "" \
+  && ok "7 0÷: exit 1 with the message, not SIGFPE" || no "÷ by zero"
+w92bdied "$(printf '%s' '5N E 7 0\smd N E' | w92b)" "divide by zero" "5" \
+  && ok "7 0∣: exit 1 with the message, earlier output kept" || no "∣ by zero"
+w92bdied "$(printf '%s' '7 0\ref\sdv\exec N E' | w92b)" "divide by zero" "" \
+  && ok "′÷ (the auto-wrapped thunk) checks too" || no "′÷ by zero"
+[ "$(printf '%s' '7 0\sdv' | atom 2>&1; echo "rc=$?")" = "$(printf 'GOLF: divide by zero\nrc=1')" ] \
+  && ok "the bare ÷ template checks without the prelude" || no "bare ÷ by zero"
+[ "$(printf '%s' '7 2\sdv N E 0 7-2\sdv N E 7 0 2-\sdv N E 0 7- 0 2-\sdv N E' | gc)" = "$(printf -- '3\n-3\n-3\n3')" ] \
+  && ok "÷ signed, truncating, unchanged: 7/2 -7/2 7/-2 -7/-2 = 3 -3 -3 3" || no "÷ signs"
+[ "$(printf '%s' '7 2\smd N E 0 7-2\smd N E 7 0 2-\smd N E 0 7- 0 2-\smd N E' | gc)" = "$(printf -- '1\n-1\n1\n-1')" ] \
+  && ok "∣ signed, sign of the dividend, unchanged: 1 -1 1 -1" || no "∣ signs"
+# INT64_MIN ÷ -1 is the other x86 #DE.  Defined, wrapping: ÷ is INT64_MIN, ∣ is 0.
+[ "$(printf '%s' '1 63\shl 0 1-\sdv N E 1 63\shl 0 1-\smd N E 5 0 1-\sdv N E 5 0 1-\smd N E' | gc)" \
+    = "$(printf -- '-9223372036854775808\n0\n-5\n0')" ] \
+  && ok "INT64_MIN ÷ -1 = INT64_MIN and ∣ -1 = 0 (no trap); 5 ÷ -1 = -5" || no "INT64_MIN / -1"
+[ "$(printf '%s' '5N E 7 0\sdv N E' | gref; echo "rc=$?")" = "$(printf '5\nrc=1')" ] \
+  && [ "$(printf '%s' '7 0 2-\sdv N E 1 63\shl 0 1-\smd N E' | gref)" = "$(printf -- '-3\n0')" ] \
+  && ok "oracle: golfref emits the same checked ÷ ∣" || no "oracle ÷ ∣"
 
 # @@ W9-2C-GUARD @@
 echo "Return-stack guard (W9-2C): the page below the return stack is PROT_NONE"

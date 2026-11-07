@@ -137,10 +137,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **729** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1887** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **5687** bytes |
-| assertions in the run2 suite | **337** |
+| the template blob itself | **854** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2012** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **5812** bytes |
+| assertions in the run2 suite | **351** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -332,6 +332,21 @@ the golf2 fixpoint included. In order:
   negative int straight back to the hook — so they compute int,int in place as
   `⊔`/`⊓` on operands xor `2^63`, and pass themselves to `D` for every list
   shape, which makes lists (and their elements) signed too.
+- **W9-2B — runtime checks for `⊇`, `÷`, `∣`.** `3⍳9⊇Ṅ` used to print whatever
+  cell lay past the block and exit 0, and `7 0÷` died of SIGFPE (status 136).
+  Both now write a `GOLF: …` line to fd 2 and exit 1, leaving fd 1 exactly as
+  it was. `I` opens with `&⊙&»[…]` — one *unsigned* `len > i` rejects `i ≥ len`
+  and every negative `i` at once — and keeps its address arithmetic untouched
+  after it; no prelude or tool-library code indexed out of range, so nothing
+  needed a raw accessor. `÷`/`∣` embed their check: `test rcx,rcx`, then a
+  position-independent write/exit with the 21-byte message addressed
+  rip-relative, so it survives being copied inline, into `′` thunks and into
+  chain links. A shared stub at a fixed address would save ~40 bytes per use but
+  couple every template to the emitter's layout; most programs use `÷` once or
+  never. **INT64_MIN ÷ -1** (x86's other `#DE`) is *defined*, not an error: a
+  divisor of `-1` skips `idiv`, `÷` negates (wrapping, so INT64_MIN ÷ -1 is
+  INT64_MIN, like `*`) and `∣` gives 0. Cost: the two templates grew from 8 to
+  71/70 bytes, the blob from 714 to 839.
 
 ## Invariants we do not break
 
@@ -368,7 +383,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 714 bytes, which is what keeps the compiler re-derivable in an
+  blob at 839 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
@@ -398,6 +413,11 @@ what Python and Jelly have that this does not, which of it is refused rather tha
 unbuilt, and three defects this list does not yet cover — see
 [`GAPS.md`](GAPS.md).
 
+- **v1's unsigned `/` and `%` still trap on zero.** They are v1 templates from
+  the frozen `data/v1.hex` (`xor edx,edx; div rcx`), so `7 0/` still dies of
+  SIGFPE. Only the signed `÷`/`∣` are checked (W9-2B); use them when a divisor
+  can be 0. Nothing else is bounds-checked either: `⊙`/`⊛`/`@`/`!` are raw
+  memory access by design.
 - **Two things cannot be written inside a string literal.** The text `\str`
   (it closes the literal — the ASCII spelling of the delimiter), and any
   character whose UTF-8 contains byte `0x8E` (e.g. `Ď`, `C4 8E`), since the
