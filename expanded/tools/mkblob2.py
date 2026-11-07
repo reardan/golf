@@ -355,12 +355,26 @@ LNAME_BYTE = 0xB4   # ‹  opens a long name: ‹name› (M2, W9-3A)
 RNAME_BYTE = 0xB5   # ›  closes it
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
-# their one-byte formulas unchanged (0x410800 + 4*name, 0x4E0000 + 8*name).
+# their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).
+# W10-A raised the cap from 256 to 1024 and moved the dictionary and the
+# forward-reference heads, with the larger name table, up to 0x480000.. —
+# clear of W10-C's spill stack at 0x440000..0x47FFFF; every name,
+# one-byte ones included, may now be forward-referenced.
 LONG_BASE = 256           # the first long name's number
-LONG_MAX = 256            # how many long names a program may have
+LONG_MAX = 1024           # how many long names a program may have
 LONG_LEN = 60             # the longest long name, in bytes
-LONG_TABLE = 0x430000     # entry for name E is LONG_TABLE + 64*E: [len:4][bytes]
-LONG_HEADS = 0x438000     # forward-reference head for name E at LONG_HEADS + 4*E
+LONG_TABLE = 0x47C000     # entry for name E is LONG_TABLE + 64*E: [len:4][bytes]
+LONG_HEADS = 0x490400     # forward-reference head for ANY name N at LONG_HEADS + 4*N
+NAME_DICT = 0x492000      # the compiler's dictionary: body of name N at NAME_DICT + 4*N
+NAME_END = LONG_BASE + LONG_MAX          # one past the last name number (1280)
+assert LONG_TABLE + 64 * LONG_BASE >= 0x480000, "long-name table below 0x480000 (W10-C spill stack)"
+# ‹readname› reads every long name into the NEXT free entry before it knows
+# whether the name is new, so one entry past the last (E = 1280, 0x490000) is
+# scratch and must stay clear of the heads.
+assert LONG_TABLE + 64 * (NAME_END + 1) <= LONG_HEADS, "long-name table (+1 scratch entry) overlaps the heads"
+assert LONG_HEADS + 4 * NAME_END <= NAME_DICT, "forward heads overlap the dictionary"
+assert NAME_DICT + 4 * NAME_END <= 0x4D0000, "dictionary runs into the thunk arena"
+assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime cells"
 
 # --- M-MEM (W6): v2's BSS stops reserving the static list heap ---------------
 # v1 asks for p_memsz = 0x800000, i.e. [0x400000, 0xC00000).  The bottom megabyte
@@ -375,8 +389,9 @@ LONG_HEADS = 0x438000     # forward-reference head for name E at LONG_HEADS + 4*
 #
 #   0x400000..0x421000   image: code, compiler data base 0x410000, output buffer
 #   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
-#   0x4E0000..0x4E0400   →x/←x variable bank
 #   0x440000..0x480000   X/Y scratch spill stack, 4096 frames (W10-C)
+#   0x4E0000..0x4E2800   →x/←x variable bank, 8 bytes per name: 256 one-byte
+#                        names, then 1024 long ones (W10-A)
 #   0x4F0000..0x4F0900   runtime cells, M-VEC hook table (0x4F0900.. retired)
 #   0x4F1000..0x4F2000   W9-2C guard page, PROT_NONE (mprotect in STARTUP2)
 #   ..0x600000           return stack, growing DOWN from the end of the segment

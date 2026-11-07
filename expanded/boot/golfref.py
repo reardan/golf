@@ -87,7 +87,7 @@ def compile_bytes(src: bytes) -> bytes:
     fsites = []         # M-FRAME2: its frame-size immediates, patched at ';'
     longs = []          # M2: long names in order of first appearance; name
                         # number LONG_BASE + i, exactly as golf2 interns them
-    pending = {}        # M2: long name -> call/jmp sites awaiting its body
+    pending = {}        # M2/W10-A: name -> call/jmp sites awaiting its body
     i, n = 0, len(src)
 
     def emit(bs):
@@ -126,14 +126,13 @@ def compile_bytes(src: bytes) -> bytes:
         if name in dict_:                            # a defined word: its body VA
             emit([0x68]); emit_u32(BASE + dict_[name])
             return
-        if name >= mkblob2.LONG_BASE:                # M2: a long name defined later —
-            emit([0xE9]); emit_u32(5)                # a thunk [jmp rel32] to it,
-            thunk = len(out)                         # jumped over; the rel32 is a
+        if name >= mkblob2.LONG_BASE or chr(name) not in TEMPLATES:
+            # Not an atom: a word defined later (M2, W10-A) — a thunk
+            emit([0xE9]); emit_u32(5)                # [jmp rel32] to it, jumped
+            thunk = len(out)                         # over; the rel32 is a
             forward(0xE9, name)                      # forward site like any call
             emit([0x68]); emit_u32(BASE + thunk)
             return
-        if chr(name) not in TEMPLATES:               # neither: `X` hands it to `e`,
-            call_or_template(name)                   # i.e. the undefined-word exit
         emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
         thunk = len(out)
         emit(v1.PROLOGUE)
@@ -143,7 +142,7 @@ def compile_bytes(src: bytes) -> bytes:
         emit([0x68]); emit_u32(BASE + thunk)
 
     def forward(op, name):
-        """M2: `op rel32` to a long name not defined yet; its definition
+        """M2/W10-A: `op rel32` to a name not defined yet; its definition
         patches the site (golf2 threads the same sites through the placeholders,
         so once patched the bytes are identical)."""
         emit([op]); pending.setdefault(name, []).append(len(out))
@@ -182,11 +181,9 @@ def compile_bytes(src: bytes) -> bytes:
         if b < 256 and chr(b) in TEMPLATES:
             emit(TEMPLATES[chr(b)])
             return
-        if b not in dict_ and b >= mkblob2.LONG_BASE:
-            forward(0xE8, b)
-            return
-        if b not in dict_:
-            raise SystemExit(f"golfref: undefined word 0x{b:02x} at byte {i-1}")
+        if b not in dict_:                           # not defined yet: a forward
+            forward(0xE8, b)                         # call (M2; one-byte names
+            return                                   # too since W10-A)
         emit([0xE8]); site = len(out); emit(b"\0\0\0\0")
         patch32(site, dict_[b])
 
@@ -367,6 +364,9 @@ def compile_bytes(src: bytes) -> bytes:
 
     if stack:
         raise SystemExit(f"golfref: unbalanced blocks: {stack}")
+    for b in range(mkblob2.LONG_BASE):               # W10-A: a one-byte name
+        if b in pending:                             # called, never defined
+            raise SystemExit(f"golfref: undefined word 0x{b:02x}")
     for k, name in enumerate(longs):                 # M2: called, never defined
         if mkblob2.LONG_BASE + k in pending:
             raise SystemExit(f"golfref: undefined word ‹{name.decode()}›")

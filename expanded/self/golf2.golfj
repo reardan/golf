@@ -46,17 +46,24 @@
 #   0x410034   (m+52) a 4-byte staging cell: `e` builds the two bytes of its
 #              undefined-word diagnostic here (the name, then a newline), the
 #              only fixed address this compiler writes outside the three below
-#   0x410800   dictionary: the body address of the word named x is at +4*x
 #   0x411000   output buffer B: the byte at file offset f is stored at B+f
 #   0x4E0000   variable bank: cell for name x is at 0x4E0000+8*x  (→x / ←x)
-#   0x434000   long-name table (M2): the name with index E (256..511) has a
-#              64-byte entry at 0x430000+64*E — [length:4][up to 60 bytes]
-#   0x438400   forward-reference heads (M2): the cell for name E is at
-#              0x438000+4*E and holds the last unpatched site, 0 = none
+#   0x480000   long-name table (M2): the name with number E (256..1279) has
+#              a 64-byte entry at 0x47C000+64*E — [length:4][up to 60 bytes];
+#              E = 1280 (0x490000) is scratch: ‹readname› reads a name into
+#              the next free entry before it knows the name is new
+#   0x490400   forward-reference heads: the cell for name N (0..1279, one-byte
+#              names included since W10-A) is at 0x490400+4*N and holds the
+#              last unpatched site, 0 = none
+#   0x492000   dictionary: the body address of the word named N is at
+#              0x492000+4*N, N = 0..1279 (W10-A moved it up from v1's D+2048,
+#              where 256 one-byte and 256 long slots were all that fit below
+#              the output buffer)
 #
-# Both fixed addresses are the ones v1 documents as D+2048 and D+4096 with
-# D = 0x410000, so the compiled binary keeps exactly today's memory map.  A
-# target virtual address is bufaddr - 69632 (= file offset + 0x400000).
+# The output buffer is the one v1 documents as D+4096 with D = 0x410000.  None
+# of these regions is ever seen by a compiled program, so moving one changes
+# no emitted byte.  A target virtual address is bufaddr - 69632 (= file offset
+# + 0x400000).
 #
 # The compiler's scalar state lives in the variable bank instead of v1's D+0..
 # D+28 cells.  It owns its whole process — user programs are *compiled*, never
@@ -128,16 +135,19 @@
 # `‹sq›`, `′‹sq›`, `→‹n›`, `←‹n›`.  `‹readname›` interns it to a NAME NUMBER 256+index,
 # and from there on it is just a name that does not fit a byte: the dictionary
 # slot `Y` computes and the variable cell `→`/`←` compute are the same formulas,
-# one past the byte-indexed ranges (0x410C00.. and 0x4E0800..).  So a program
-# that never writes ‹ compiles to exactly the bytes it always did.
+# one past the byte-indexed ranges (0x492400.. and 0x4E0800..).  So a program
+# that never writes ‹ compiles to exactly the bytes it always did.  Up to 1024
+# long names per program (W10-A; it was 256).
 #
-# What a long name has that a one-byte name does not is a FORWARD REFERENCE:
-# a call to a long name not yet defined emits `call rel32` with the name's
+# FORWARD REFERENCES, for every name (M2 for long names, W10-A for one-byte
+# ones): a call to a name not yet defined emits `call rel32` with the name's
 # pending-site list threaded through the placeholder (‹forward›), the definition
 # walks and patches that list (‹resolve›), and anything still pending at end of
-# input is `GOLF: undefined word ‹name›`, exit 2, before a byte is written
-# (‹undefined›).  So
-# mutual recursion between long names needs no declaration.
+# input is `GOLF: undefined word <name>`, exit 2, before a byte is written
+# (‹undefined›).  So mutual recursion needs no declaration.  A name only goes
+# forward when it is not defined yet: a template byte is still a template, and
+# a call after a definition binds to it directly, so a word redefined later
+# keeps its earlier callers on the earlier body.
 #
 # Every value the compiler handles is an address inside the load segment (under
 # 0x600000) or a small integer, and it installs no vectorization hooks (its hook
@@ -159,7 +169,7 @@
 
 :Y          # Y : the dictionary slot of a word name            [ name -> addr ]
 4*          # one 4-byte cell per name ...
-4261888+    # ... in the byte-indexed table at 0x410800
+4792320+    # ... in the table at 0x492000 (W10-A; v1's was at 0x410800)
 ;
 
 :Z          # Z : fold one decimal digit into an accumulator  [ acc, ch -> acc' ]
@@ -350,11 +360,11 @@ _
 # Long names (M2): ‹name›
 # ---------------------------------------------------------------------------
 #
-# A long name is interned into a 256-entry table at its first appearance and is
-# a NAME NUMBER 256+index from then on.  Entry E (E = 256..511) is the 64 bytes
-# at 0x430000 + 64*E — [length:4][the name, at most 60 bytes] — and E's
-# forward-reference head is the cell at 0x438000 + 4*E.  Both regions are
-# compiler-only (../REGISTRY.md §3); a compiled program never sees them.
+# A long name is interned into a 1024-entry table at its first appearance and
+# is a NAME NUMBER 256+index from then on.  Entry E (E = 256..1279) is the 64
+# bytes at 0x47C000 + 64*E — [length:4][the name, at most 60 bytes] — and any
+# name N's forward-reference head is the cell at 0x490400 + 4*N.  Both regions
+# are compiler-only (../REGISTRY.md §3); a compiled program never sees them.
 
 :‹die›      # ‹die› : `<msg>‹name›` + newline to fd 2, exit 2   [ msg entry -> !!! ]
 →‹other›    # the name's table entry
@@ -424,7 +434,7 @@ _           # drop the last byte difference (0, or the dummy)
 ←‹count›
 256﹢
 64﹡
-4390912﹢
+4702208﹢
 →‹entry›    # read it straight into the next free entry: a new name is then
 0           # interned just by counting it, with no copy
 →‹len›
@@ -449,8 +459,8 @@ _
 ﹣
 [           #     not one of them: a new name
 ←‹count›
-256<
-[           #       256 long names fill the table
+1024<
+[           #       1024 long names fill the table
 “GOLF: too many long names “
 ←‹entry›
 ‹die›
@@ -465,7 +475,7 @@ _
 ←‹idx›
 256﹢
 64﹡
-4390912﹢
+4702208﹢
 →‹other›
 ‹same›
 [           #     the same name: its number
@@ -534,7 +544,7 @@ _
 o           # the opcode: 0xE8 call, or 0xE9 inside a ′ thunk
 ←b
 4﹡
-4423680﹢
+4785152﹢
 →‹head›     # name b's list of pending sites
 ←p          # this site joins it: the placeholder holds the old head ...
 ←‹head›
@@ -545,9 +555,9 @@ w
 ;
 
 :‹resolve›  # ‹resolve› : patch name b's pending sites to its body [ -> ]
-←b          # A one-byte name never has any — it is define-before-use, so its
-4﹡          # head is always 0 and this is a no-op: every program without a
-4423680﹢    # long name compiles to exactly the bytes it did before M2.
+←b          # A program that only calls backwards never has any, so this is a
+4﹡          # no-op for it: it compiles to exactly the bytes it did before
+4785152﹢    # forward references existed (M2, W10-A).
 →‹head›
 ←‹head›
 @
@@ -578,27 +588,34 @@ Y
 ;
 
 :‹undefined› # ‹undefined› : reject a name still pending at end of input [ -> ]
-0
-→‹idx›
+0           # walk every name number: the 256 one-byte names, then the long
+→‹idx›      # names interned so far (W10-A; M2 walked only the long ones)
 {
 ←‹idx›
 ←‹count›
+256﹢
 ﹣
-[           # every long name checked
+[           # every name checked
 ^
 ]
 ←‹idx›
-256﹢
 4﹡
-4423680﹢
+4785152﹢
 @           # its pending-site list
 1<
 [           # not empty: called, but never defined
 “GOLF: undefined word “
 ←‹idx›
-256﹢
+256<
+1﹢
+[           #   a one-byte name: V shows the byte, as the old immediate check did
+←‹idx›
+→b
+V
+]
+←‹idx›      #   a long name: ‹die› shows it in full
 64﹡
-4390912﹢
+4702208﹢
 ‹die›
 ]
 ←‹idx›
@@ -620,23 +637,17 @@ _           #   drop the sentinel's address
 Y
 @           #   the word's body address, from the dictionary ...
 "
-[           #   ... which is 0 for a name that was never defined.  Emitting the
-            #   call anyway is what v1 did: rel32 = 0 - (p+4) is a jump to a
-            #   wild address, so the compile REPORTS SUCCESS and the binary
-            #   dies with SIGSEGV the moment the word is reached.  For a
-            #   one-byte name, which must be defined before use, this is what
-            #   every typo looks like.  A long name (M2) may come later: that is
-            #   how mutual recursion is written, so it is checked at the end.
+[           #   ... which is 0 for a name not defined YET.  Emitting the call
+            #   anyway is what v1 did: rel32 = 0 - (p+4) is a jump to a wild
+            #   address, so the compile REPORTED SUCCESS and the binary died
+            #   with SIGSEGV the moment the word was reached.  M-DIAG made it
+            #   an immediate error; M2 (long names) and W10-A (one-byte names)
+            #   let the name come later instead — that is how mutual recursion
+            #   is written — and ‹undefined› rejects it at end of input if it
+            #   never does.
 _
-←b
-256<
-1﹢
-[           #     A ONE-BYTE name: that is an error, reported against the
-“GOLF: undefined word “
-V           #     byte in `b` — exit(2)
-]
-232         #     a LONG name may be defined later (M2): call it through
-‹forward›   #     its pending-site list, which its definition patches
+232         #     call it through its pending-site list, which its
+‹forward›   #     definition patches
 ^
 ]
 232o        #   0xE8 = call rel32
@@ -709,8 +720,10 @@ _           # any other byte: drop it and keep skipping
 # template is wrapped in a thunk [prologue][template][epilogue], emitted inline
 # and jumped over, and the thunk's address is pushed instead.  That is what
 # makes ′+ and a chain link like ÷ work without the user wrapping anything.
-# A byte that is neither (`′typo`) is rejected exactly as a plain call to it
-# would be — `GOLF: undefined word <name>`, exit 2 — by handing it to `e` (W9-1C).
+# A name that is neither may be a word defined further down (M2 for long names,
+# W10-A for one-byte ones): push a forward thunk, patched by its definition.  If
+# it never comes (`′typo`) it is rejected exactly as a plain call to it would
+# be — `GOLF: undefined word <name>`, exit 2, at end of input (W9-1C, W10-A).
 
 :X          # X : emit `push <the address of the word or atom named b>` [ b -> ]
 →b
@@ -718,12 +731,13 @@ _           # any other byte: drop it and keep skipping
 Y
 @           # dict[name]: a defined word's body address, or 0
 "
-[           # 0 -> not a word, so it had better be an atom:
+[           # 0 -> not a word (yet), so an atom or a word defined further down:
 _
 ←b
-256<
-[           #   ... or a LONG name defined further down (M2).  Its address is
-233o        #   not known yet, so push the address of a thunk that jumps to
+f
+?           #   its blob record's key byte, 0 for the sentinel — always, for
+[           #   a long name.  Not an atom: a word defined further down (M2,
+233o        #   W10-A).  Its address is not known yet, so push a thunk that jumps to
 5w          #   it instead: jmp over [jmp rel32], with that rel32 on the name's
 ←p          #   pending list.  ⍎ calling the thunk lands in the word through a
 →r          #   tail jump, so it behaves exactly like the word itself.
@@ -735,14 +749,7 @@ L
 w
 ^
 ]
-←b
-f
-?           #   its blob record's key byte, 0 for the sentinel
-[           #   neither a word nor an atom — a typo.  Wrapping the template
-←b          #   anyway built a thunk around whatever followed the sentinel, and
-e           #   the binary died with SIGILL.  `e` on this byte is the undefined-
-]           #   word diagnostic already (no template, dict slot 0): it exits 2
-233o        #   0xE9 = jmp over the thunk, around the atom's own template
+233o        #   an atom: 0xE9 = jmp over the thunk, around its own template
 ←p
 →j          #   the jmp's placeholder site
 0
@@ -788,7 +795,7 @@ V
 ]
 ←b          # a long name: ‹die› shows it in full
 64﹡
-4390912﹢
+4702208﹢
 ‹die›
 ;
 
@@ -1364,8 +1371,8 @@ t           #   compile it
 1<          #   loop while it is not 0, i.e. until EOF
 }
 
-‹undefined› # a long name called but never defined stops here, before a byte
-            # of output exists (M2)
+‹undefined› # a name called but never defined stops here, before a byte of
+            # output exists (M2, W10-A)
 5E          # blob record 5: exit(0)
 
 B
