@@ -138,11 +138,11 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **844** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2722** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **8512** bytes |
-| assertions in the run2 suite | **471** |
-| assertions in the selfcheck suite | **44** |
+| the template blob itself | **948** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2807** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8579** bytes |
+| assertions in the run2 suite | **494** |
+| assertions in the selfcheck suite | **50** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -353,8 +353,9 @@ the golf2 fixpoint included. In order:
   list (a `′` gets a jumped-over `jmp rel32` thunk on the same list), the
   definition patches the list, and anything still pending at end of input is
   `GOLF: undefined word ‹name›`, exit 2, before a byte is written. So mutual
-  recursion needs no declaration. One-byte names stay define-before-use: their
-  pending lists are always empty, and their error stays at the call. The
+  recursion needs no declaration. One-byte names stayed define-before-use: their
+  pending lists were always empty, and their error stayed at the call (until
+  W10-A, below). The
   compiler's own M2 words and state carry long names (`‹readname›`,
   `‹count›`, …) — every letter was already taken in `golf2.golfj` — so the seed
   implements them too, and the fixpoint now exercises them. Cost: `golf2`'s
@@ -387,6 +388,18 @@ the golf2 fixpoint included. In order:
   divisor of `-1` skips `idiv`, `÷` negates (wrapping, so INT64_MIN ÷ -1 is
   INT64_MIN, like `*`) and `∣` gives 0. Cost: the two templates grew from 8 to
   71/70 bytes, the blob from 714 to 839.
+- **W10-B — v1's `/` `%` checked too.** They are v1's *unsigned* templates from
+  the frozen `data/v1.hex` (`xor edx,edx; div rcx`), so `7 0/` still died of
+  SIGFPE after W9-2B. `v1.hex` stays untouched: the v2 blob now `OVERRIDES` the
+  two records (`mkblob2._udivchk`) with W9-2B's zero check — the shared
+  `_DIV0_GUARD` head, rip-relative message included — in front of v1's own
+  `xor edx,edx; div rcx; push` tail. Unsigned `div` has no other `#DE`, so
+  every nonzero divisor gives exactly v1's result (`0 1-2/` is still 2^63-1).
+  The compiler, prelude, tool libraries and gtools only ever divide by nonzero
+  constants, so nothing changed behaviour; every v2-built binary (golf2
+  included) carries the checked templates, and only the throwaway seed rung,
+  built by the frozen v1c, keeps v1's. Cost: 52 bytes per template, the blob
+  from 844 to 948.
 - **M-MEM2 (W9-3C) — a free list for the allocator.** `A` bump-allocated and
   nothing was ever freed, so `M` in a loop climbed the break forever (a
   1,000,000-iteration map over `5⍳` took ~71 MB). New word `⌫` (`\free`, 0xCA):
@@ -447,8 +460,8 @@ the golf2 fixpoint included. In order:
 - **W9-4B — `⍋` sort and `∊` member.** Prelude words at `0xCE`/`0xCF`. `⍋`
   returns a NEW tagged list in ascending SIGNED order and leaves its input
   alone; it is an iterative bottom-up merge sort (stable, O(n log n), one
-  `X`/`Y` frame whatever the length — no recursion to exhaust the 28-frame spill
-  stack), ping-ponging between a `0↓` copy of the input and one block from `A`,
+  `X`/`Y` frame whatever the length — no recursion to exhaust the spill
+  stack, 28 frames then, 4096 since W10-C), ping-ponging between a `0↓` copy of the input and one block from `A`,
   with a branch-free merge step that reads both run heads at clamped indices.
   100,000 elements sort in well under a second. It is meant for int lists: an
   inner list compares by its tagged value (after every int below 2^48, and by
@@ -483,12 +496,33 @@ the golf2 fixpoint included. In order:
   splices one level and notes whether a spliced cell was itself a list, and
   passes repeat (freeing every intermediate) until none was. That is
   O(size · depth) in one `X`/`Y` frame, so a list nested 200 deep flattens
-  where the recursive `⍕`/`⍤` would exhaust the 28 spill frames. The four
+  at any depth, while the recursive `⍕`/`⍤` are bounded by the spill stack (4096 frames
+  since W10-C, so they reach ~4,000 levels now). The four
   take 4 of the 256 long-name slots, so a program now has 252. None of them
   uses swap, because `decode -m` writes the swap byte as a bare `\`, which
   does not encode back (gtools' prelude round trip caught it). A one-byte
   program's own code compiles to the same bytes as before; only the prelude
   part of the binary grows (run2 checks this).
+- **W10-A — forward references for every name; 1024 long names.** M2's
+  pending-site lists were already indexed by name number, so a one-byte name
+  needed no new mechanism, only permission: `e` and `X` now send any name that
+  is not a template and not defined *yet* down the same `call rel32` /
+  `jmp rel32`-thunk path, and the end-of-input check walks the 256 one-byte
+  names before the long ones (`GOLF: undefined word b`, exit 2, no binary — the
+  M-DIAG message, now at end of input instead of at the call). Templates still
+  dispatch first, and a call after a definition binds to it directly, so a
+  redefinition keeps its earlier callers. Programs that only call backwards
+  compile to the same bytes. The long-name cap went 256 → 1024: the name table
+  keeps its `64*E` formula but now sits at `0x47C000 + 64*E` (entries
+  `0x480000`–`0x48FFFF`, plus one scratch entry `‹readname›` reads into), the
+  heads moved to `0x490400 + 4*N` and the dictionary — for every name, one-byte
+  ones too, since `m+2048` had room for only 512 — to `0x492000 + 4*N`, all
+  compiler-only and clear of W10-C's spill stack at `0x440000`–`0x47FFFF`. The
+  variable bank keeps `0x4E0000 + 8*name`, now through `0x4E27FF`, so a
+  long-named variable's address did not move. The compiler got smaller: `e`
+  and `X` lost their special cases. Cost (measured before W10-B/C merged): `golf2`'s
+  binary −74 bytes (11841 → 11767), `seed`'s −97 (8722 → 8625); `golf2.golf`
+  −37, `seed.golf` −19.
 
 ## Invariants we do not break
 
@@ -525,7 +559,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 844 bytes, which is what keeps the compiler re-derivable in an
+  blob at 948 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
@@ -551,10 +585,10 @@ specific silent failure can earn its diagnostic, as those two did.
 These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
-- **Long names (M2) are bounded and global.** 256 per program (the prelude's
-  count too — eight since W9-4C's input words), at most 60 bytes each, interned in a fixed compiler table; a 257th
-  is refused. Only long names can be forward-referenced — a one-byte name is
-  still define-before-use. Locals take long names too (W9-4D), up to 16 per
+- **Long names (M2) are bounded and global.** 1024 per program since W10-A
+  (the prelude's 12 count too), at most 60 bytes each, interned in a fixed
+  compiler table; a 1025th is refused. Every name, one-byte or long, may be
+  forward-referenced (W10-A). Locals take long names too (W9-4D), up to 16 per
   `⊡` word. And there are no scopes: a long name, like a letter, is
   one dictionary entry and one variable cell for the whole program.
 - **`(` and the input words are two readers.** `‹readall›`, `‹readline›`,
@@ -568,11 +602,9 @@ what Python and Jelly have that this does not, which of it is refused rather tha
 unbuilt, and three defects this list does not yet cover — see
 [`GAPS.md`](GAPS.md).
 
-- **v1's unsigned `/` and `%` still trap on zero.** They are v1 templates from
-  the frozen `data/v1.hex` (`xor edx,edx; div rcx`), so `7 0/` still dies of
-  SIGFPE. Only the signed `÷`/`∣` are checked (W9-2B); use them when a divisor
-  can be 0. Nothing else is bounds-checked either: `⊙`/`⊛`/`@`/`!` are raw
-  memory access by design.
+- **Raw memory access is unchecked.** `⊙`/`⊛`/`@`/`!` are raw memory access
+  by design; only `⊇` (prelude `I`) bounds-checks, and only `/ % ÷ ∣` check
+  their divisor.
 - **Two things cannot be written inside a string literal.** The text `\str`
   (it closes the literal — the ASCII spelling of the delimiter), and any
   character whose UTF-8 contains byte `0x8E` (e.g. `Ď`, `C4 8E`), since the
@@ -597,12 +629,16 @@ unbuilt, and three defects this list does not yet cover — see
   shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
   deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
   M-TAG2); negatives and everything below `2^48` are ints.
-- **Nesting depth is bounded by the spill stack.** Every looping word frames
-  its scratch with `X`/`Y`, and the stack holds 28 frames; recursive `⍕`, `≣`
-  and `⍤` take one per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`), so
-  about 13 levels of nested arithmetic and 27 of printing. `X` does not check:
-  past that it writes into the W9-2C guard page and the program dies of SIGSEGV
-  rather than corrupting memory.
+- **Nesting depth is bounded by the spill stack, now generously (W10-C).**
+  Every looping word frames its scratch with `X`/`Y`; recursive `⍕`, `≣` and
+  `⍤` take one frame per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`).
+  The stack was 28 frames at `0x4F0900` (about 13 levels of nested arithmetic,
+  27 of printing, then a bare SIGSEGV in the guard page); W10-C moved it to
+  free BSS at `0x440000`–`0x47FFFF` (REGISTRY §3), 4096 frames = 256 KB, so
+  about 2,000 levels of nested arithmetic and 4,000 of `⍕`/`≣`/`⍤`. Untouched
+  BSS pages cost no RAM. `X` checks the bound with one compare-and-branch and,
+  past it, writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like the
+  compose arena); `Y` needs no check.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different

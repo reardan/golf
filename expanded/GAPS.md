@@ -65,8 +65,10 @@ shift-and-compare. W9-3B asks it of every element:
 What is still missing against Jelly: the rest of the list vocabulary is
 one-level (`∑` folds with the deep `+`, but `⌽`, `⌿`, `⊇` see only the top
 level), there is no rank or reshape, and `Z` truncates silently on a length
-mismatch at every depth. Nesting depth is bounded by the 28-frame scratch spill
-stack (DESIGN.md, known limits).
+mismatch at every depth. Nesting depth is bounded by the scratch spill stack —
+4096 frames since W10-C (it was 28), so ~2,000 levels of nested arithmetic and
+~4,000 of `⍕`/`≣`/`⍤`, past which `X` exits with `GOLF: spill stack
+exhausted` (DESIGN.md, known limits).
 
 ### 1.2 The numeric tower
 
@@ -196,8 +198,8 @@ key on but integers.
 
 - **Single-byte identifiers.** 256 word slots in a flat byte-indexed table, and
   the readable letters are gone (§1.3). **Fixed by M2 (W9-3A):** `‹name›` adds
-  256 long names per program, usable as words, quotations, chain links and
-  variables. Locals still take one-byte slot names `a`–`h`.
+  long names, usable as words, quotations, chain links, variables and (since
+  W9-4D) locals — 256 per program at first, 1024 since W10-A.
 - **No lexical scope, and no closures.** The variable bank is one global cell per
   name. The "closure" idiom in `examples/legacy_capstone.golfj`
   (`10→k:f←k+;… ′f€`) is a global read at call time, not a capture:
@@ -232,8 +234,10 @@ named first — and no generators, decorators, or comprehensions.
 **No forward references or mutual recursion.** *(Fixed for long names by M2,
 W9-3A: a `‹name›` may be called or quoted before its definition, the call sites
 are patched when it arrives, and one never defined is `GOLF: undefined word
-‹name›`, exit 2. One-byte names stay define-before-use, now with M-DIAG's
-diagnostic instead of the segfault below.)* A word must be defined before use.
+‹name›`, exit 2. **Fixed for one-byte names by W10-A**, the same way:
+`:a"0-[_0^]1-b;:b"0-[_1^]1-a;5aṄ` prints `1`, and a name never defined is
+`GOLF: undefined word b` at end of input. What follows is the history.)* A
+word had to be defined before use.
 Self-recursion works (the dictionary slot is live inside the body), but two words
 that call each other cannot be written at all — and the failure is a compile that
 *succeeds* and a binary that segfaults:

@@ -350,7 +350,7 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
 [ "$(printf '%s' ':m2\rsub;5R\refmMSNE' | gc)" = "0" ] \
   && ok "sum crossing zero (-2-1+0+1+2)" || no "sum crossing zero"
 # Regressions through the widened cells: M-VEC broadcast, an M-CHAIN fork, and a
-# mapped word that itself loops (spill frames are 64 bytes now, 28 deep).
+# mapped word that itself loops (spill frames are 64 bytes now, 4096 deep since W10-C).
 [ "$(printf '%s' '4R3+QE' | gc)" = "3 4 5 6 " ] \
   && ok "regression: M-VEC broadcast through widened cells" || no "widened vec broadcast"
 [ "$(printf '%s' '5R\refS\refL\ref\sdv\fork NE' | gc)" = "2" ] \
@@ -1158,11 +1158,12 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
   && ok "... naming the offending byte, on fd 2" || no "undefined word message"
 [ ! -s "$TMP/u.out" ] \
   && ok "... and no partial binary reaches fd 1" || no "undefined word stdout"
-# The forward reference is what mutual recursion needs and cannot have; the
-# diagnostic now names it rather than leaving a segfault to be debugged.
-[ "$(printf '%s' ':a"0-[_0^]1-b;:b"0-[_1^]1-a;5aN' | und)" = "2" ] \
-  && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word b" ] \
-  && ok "mutual recursion names the forward reference (b), not a SIGSEGV" || no "mutual recursion"
+# The forward reference is what mutual recursion needs.  M-DIAG made it exit 2
+# naming b; since W10-A a one-byte name may be defined later, like a long one
+# (M2), so this now compiles and runs — b's call site is patched by :b.
+[ "$(printf '%s' ':a"0-[_0^]1-b;:b"0-[_1^]1-a;5aN' | und)" = "0" ] && [ -z "$(cat "$TMP/u.err")" ] \
+  && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1" ] \
+  && ok "mutual recursion between one-byte words compiles and runs (W10-A)" || no "mutual recursion"
 # The check must not fire on anything legitimate: every word the prelude and the
 # examples define is defined before use, and an ATOM has a template, so it never
 # reaches the dictionary lookup at all.
@@ -1474,19 +1475,20 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
 [ "$(printf '%s' ':‹f›‹g›;1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹g›" ] \
   && ok "... reported at end of input, even from inside a definition" || no "undefined long name in a body"
 [ "$(printf '%s' '5qṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
-  && ok "a one-byte name is still define-before-use, same message as before" || no "one-byte undefined regression"
+  && ok "a one-byte name never defined: same message as before (at end of input since W10-A)" || no "one-byte undefined regression"
 [ "$(printf '%s' '‹a b›' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: bad long name ‹a›" ] \
   && ok "a byte outside 0-9 A-Z a-z _ - is rejected" || no "bad long-name byte"
 [ "$(printf '%s' '‹›' | und)" = "2" ] && [ "$(printf '%s' '‹abc' | und)" = "2" ] \
   && [ "$(printf '%s' '‹abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk›' | und)" = "2" ] \
   && ok "an empty, unterminated or 61-byte long name is rejected" || no "empty/unterminated/long"
-# The prelude's own long names (W9-4C on) share the 256: und compiles with the
-# prelude, so the user program's first refused name is number 257 - P.
+# The prelude's own long names (W9-4C on) share the 1024 (256 until W10-A): und
+# compiles with the prelude, so the user program's first refused name is
+# number 1025 - P.
 w93p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
-w93n=""; for k in $(seq 1 $((257 - w93p))); do w93n="$w93n:‹w$k›;"; done
-[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((257 - w93p))›" ] \
+w93n=""; for k in $(seq 1 $((1025 - w93p))); do w93n="$w93n:‹w$k›;"; done
+[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((1025 - w93p))›" ] \
   && [ "$(printf '%s' "${w93n%:*}" | und)" = "0" ] \
-  && ok "the 257th long name is refused (256 fit the table; $w93p of them are the prelude's)" || no "too many long names"
+  && ok "the 1025th long name is refused (1024 fit the table; $w93p of them are the prelude's)" || no "too many long names"
 # The other half of the contract: a program without ‹ compiles to the bytes it
 # always did.  Against the compiler logic of the commit before M2 (rebuilt with
 # today's blob, so a template change elsewhere does not count) when this clone
@@ -1704,7 +1706,7 @@ W94UB=$(printf '%s' '200000⍳"⧺‹unique›≢N' > "$TMP/u10k.golfj"; tools/g
     = "$(printf '0\n0 1 2 3 4 \n0\n1\n0\n0 1 2 3 4 ')" ] \
   && ok "‹flatten›: empty, already flat (a copy), only empty inner lists, depth 1, tagged, input untouched" || no "flatten edges"
 [ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
-  && ok "‹flatten› of a list nested 201 deep (far past the 28 spill frames)" || no "flatten deep"
+  && ok "‹flatten› of a list nested 201 deep (no recursion, so no spill frames per level)" || no "flatten deep"
 [ "$(printf '%s' ':s⍳′⍳€;4⍳′s€"‹flatten›_⍕E' | gc)" = "[] [[]] [[] [0]] [[] [0] [0 1]] " ] \
   && ok "‹flatten› leaves its nested input intact" || no "flatten input"
 # The prelude's long names cost one-byte programs nothing: compiled after the
@@ -1828,6 +1830,105 @@ cat "$TMP/pre.gb" <(printf '%s' "$w94dsrc" | python3 tools/codepage.py encode) >
 python3 boot/golfref.py < "$TMP/w94d.src" > "$TMP/w94d.ref" 2>/dev/null
 cmp -s "$TMP/w94d.g2" "$TMP/w94d.ref" \
   && ok "oracle: identical bytes for sized frames (long, mixed, zero locals, ^)" || no "oracle sized-frame bytes"
+
+# W10 — the remaining-limits round: one anchor per task.
+# @@ W10-A-NAMES @@
+echo "W10-A: forward references for one-byte names; 1024 long names"
+# Mutual recursion between one-byte words: a = "is even", b = "is odd", zero is
+# true.  (The spelling with ≡ compiles too; ≡ is non-zero on EQUAL, so there the
+# `[` fires for n ≠ 0 and both calls return at once — 0, by its own logic.)
+[ "$(printf '%s' ':a"0-[_0^]1-b; :b"0-[_1^]1-a; 5aṄ 6aṄ 7bṄ' | gc)" = "100" ] \
+  && [ "$(printf '%s' ':a"0≡[_0^]1-b;:b"0≡[_1^]1-a;5aṄ' | gc)" = "0" ] \
+  && ok ":a…b; :b…a; mutual recursion between one-byte words" || no "one-byte mutual recursion"
+[ "$(printf '%s' '3′d⍎Ṅ 4⍳′d€⍕ :d⊗;' | gc)" = "60 2 4 6 " ] \
+  && ok "′x of a one-byte word defined further down (a jmp thunk, patched)" || no "one-byte forward quotation"
+[ "$(printf '%s' '⊚mq≢÷; :q∑; 5⍳mṄ' | gc)" = "2" ] \
+  && ok "a chain link to a one-byte word defined later" || no "one-byte forward chain link"
+# Redefinition keeps its meaning: a call after the first :d binds to it, a call
+# before any :d binds to the first, a call after the second to the second.
+[ "$(printf '%s' ':f d; :d1; :g d; :d2; :h d; fṄgṄhṄ' | gc)" = "112" ] \
+  && ok "forward calls bind to the FIRST definition; a redefinition rebinds only later calls" || no "one-byte redefinition"
+# Templates dispatch before words: an atom byte never goes forward, even if a
+# word of that byte is defined later.
+[ "$(printf '%s' '3⊗Ṅ :⊗99; 3⊗Ṅ' | gc)" = "66" ] \
+  && ok "an atom byte is still its template, never a forward call" || no "template before forward"
+[ "$(printf '%s' ':‹a›b;5‹a›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word b" ] \
+  && [ ! -s "$TMP/u.out" ] \
+  && ok "a one-byte name never defined: GOLF: undefined word b at end of input, exit 2, no binary" || no "one-byte undefined at end"
+[ "$(printf '%s' '′q_ 1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+  && ok "... and ′q of one never defined, the same" || no "one-byte undefined quotation at end"
+# The oracle agrees byte for byte on forward one-byte calls, ′ and chains.
+W10AP=':a"0≡[_0^]1-b; :b"0≡[_1^]1-a; 7aṄ 3′d⍎Ṅ ⊚mq≢÷; :q∑; 5⍳mṄ :d⊗;'
+cat "$TMP/pre.gb" <(printf '%s' "$W10AP" | python3 tools/codepage.py encode) > "$TMP/w10a.src"
+"$TMP/golf2" < "$TMP/w10a.src" > "$TMP/w10a.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w10a.src" > "$TMP/w10a.ref" 2>/dev/null
+[ -s "$TMP/w10a.g2" ] && cmp -s "$TMP/w10a.g2" "$TMP/w10a.ref" \
+  && ok "oracle: identical bytes for one-byte forward references" || no "oracle one-byte forward bytes"
+# 1024 long names: every one a word AND a variable (cells 0x4E0800..0x4E27F8),
+# two of them called forward, so the table, the heads and the bank all reach
+# their ends.  P are the prelude's, so the program adds 1024 - P.
+w10n=$((1024 - w93p)); w10s=""
+for k in $(seq 1 $w10n); do w10s="$w10s:‹v$k›$k→‹v$k›;"; done
+w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
+w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
+[ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z›" ] \
+  && ok "1024 long names fill the table: one more (‹z›) is refused" || no "1024 cap: $(cat "$TMP/u.err")"
+w10s="${w10s/:‹z›;/}"
+[ "$(printf '%s' "$w10s" | und)" = "0" ] && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1$((w10n-1))$w10n" ] \
+  && ok "$w10n user long names (+ $w93p prelude) as words and variables, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
+
+# @@ W10-B-V1DIV @@
+echo "v1's / % (W10-B): unsigned as ever, but a zero divisor is a clean error, not SIGFPE"
+# Before W10-B `7 0/` and `7 0%` died of SIGFPE (status 136): they are v1's
+# frozen `xor edx,edx; div rcx` templates.  The v2 blob now OVERRIDES them with
+# the W9-2B zero check in front of v1's own tail (tools/mkblob2.py _udivchk).
+w92bdied "$(printf '%s' '7 0/N E' | w92b)" "divide by zero" "" \
+  && ok "7 0/: exit 1 with the message on fd 2, not SIGFPE" || no "/ by zero"
+w92bdied "$(printf '%s' '5N E 7 0%N E' | w92b)" "divide by zero" "5" \
+  && ok "7 0%: exit 1 with the message, earlier output kept" || no "% by zero"
+w92bdied "$(printf '%s' '7 0\ref/\exec N E' | w92b)" "divide by zero" "" \
+  && ok "′/ (the auto-wrapped thunk) checks too" || no "′/ by zero"
+[ "$(printf '%s' '7 0%' | atom 2>&1; echo "rc=$?")" = "$(printf 'GOLF: divide by zero\nrc=1')" ] \
+  && ok "the bare % template checks without the prelude" || no "bare % by zero"
+[ "$(printf '%s' '7 2/N E 7 2%N E 0 1- 2/N E 0 1- 10%N E 0 1- 0 2-/N E 0 7- 2%N E' | gc)" \
+    = "$(printf '3\n1\n9223372036854775807\n5\n1\n1')" ] \
+  && ok "/ % still UNSIGNED for nonzero divisors (u64 max /2, %10, -1/-2 = 1)" || no "/ % unsigned"
+printf '%s' '100 7/N E 100 7%N E 0 1- 3/N E 0 1- 0 2-%N E 1 0/N E' | python3 tools/codepage.py encode \
+  | cat "$TMP/pre.gb" - > "$TMP/w10b.src"
+"$TMP/golf2" < "$TMP/w10b.src" > "$TMP/w10b.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w10b.src" > "$TMP/w10b.ref" 2>/dev/null
+cmp -s "$TMP/w10b.g2" "$TMP/w10b.ref" \
+  && ok "oracle: identical bytes for checked / %" || no "oracle / % bytes"
+chmod +x "$TMP/w10b.ref"
+[ "$("$TMP/w10b.ref" 2>&1; echo "rc=$?")" \
+    = "$(printf '14\n2\n6148914691236517205\n1\nGOLF: divide by zero\nrc=1')" ] \
+  && ok "oracle: the same results and the same clean exit" || no "oracle / % run"
+
+# @@ W10-C-SPILL @@
+echo "Spill stack (W10-C): 4096 frames at 0x440000, overflow checked in X"
+# X/Y's frames moved from 0x4F0900 (28 frames) to 0x440000..0x47FFFF (4096), so
+# nested-list recursion and nested higher-order words go hundreds deep; past the
+# end X writes `GOLF: spill stack exhausted` to fd 2 and exits 1.  `w10cn D K`
+# pushes K⍳ nested D deep (W10CW defines ‹wrap›: x -> a one-element list [x]).
+W10CW=':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;'
+w10cn(){ printf '%s⍳%s→i{‹wrap›←i1-"→i0\\eq}' "$2" "$1"; }
+[ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 200))0 1 2$(printf ']%.0s' $(seq 200)) " ] \
+  && ok "⍕ of a list nested 200 deep" || no "⍕ 200 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 100 3; printf '"+⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 100))0 2 4$(printf ']%.0s' $(seq 100)) " ] \
+  && ok "+ of a list nested 100 deep with itself" || no "+ 100 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '""≣N E⍤N E'; w10cn 200 3; w10cn 200 4; printf '≣N E'; } | gc)" \
+    = "$(printf -- '-1\n201\n0')" ] \
+  && ok "≣ and ⍤ at depth 200 (a list matches itself, not one differing at the core)" || no "≣/⍤ 200 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 3000 3; printf '⍤N E'; w10cn 1500 3; printf '"+⍤N E'; } | gc)" = "$(printf '3001\n1501')" ] \
+  && ok "⍤ at depth 3000 and + at depth 1500 (thousands of frames)" || no "⍤ 3000 / + 1500 deep"
+w10cerr=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+           && chmod +x "$TMP/p" && { "$TMP/p" > "$TMP/w10c.out" 2>&1; echo "rc=$?"; } 2>/dev/null)
+[ "$w10cerr" = "rc=1" ] && [ "$(cat "$TMP/w10c.out")" = "GOLF: spill stack exhausted" ] \
+  && ok "⍤ of a 100,000-deep nesting: 'GOLF: spill stack exhausted', exit 1" \
+  || no "spill exhaustion: $w10cerr, '$(head -c 80 "$TMP/w10c.out")'"
+grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REGISTRY.md \
+  && [ "$(grep -o '4456448\\radd' lib/prelude.golfj | wc -l)" = 2 ] && grep -q '"262144\\rlt\[' lib/prelude.golfj \
+  && ok "REGISTRY §3 and prelude X/Y agree on the spill region and its 4096-frame bound" || no "spill region docs/prelude"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
