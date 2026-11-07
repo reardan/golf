@@ -1520,6 +1520,7 @@ while i < len(b):
 if mkblob2.LNAME_BYTE in out: sys.exit(1)
 sys.stdout.buffer.write(out)
 PY
+cp "$TMP/pre-m1.gb" "$TMP/pre1.gb"   # W9-4B part 2 tests below use this name
 w93bad=""; w93n=0
 for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj; do
   case "$f" in *.golfj) grep -qF '‹' "$f" && continue;; esac
@@ -1656,6 +1657,70 @@ W94T=$(( ($(date +%s%N) - W94T) / 1000000 ))
   && ok "∊: hits (0) and misses (1), first/last element, negatives, empty list" || no "member"
 [ "$(printf '%s' ':m→v 3⍳←v∊;5⍳′m€⍕E 3⍳′⍳€"1⊇∊N 3⍳′⍳€2⍳∊N' | gc)" = "$(printf '0 0 0 1 1 \n01')" ] \
   && ok "∊ inside a map; an inner list is found only as the same (tagged) list" || no "member map/nested"
+echo "More list words (W9-4B part 2): ‹slice› ‹indexof› ‹unique› ‹flatten› (long-named prelude words)"
+[ "$(printf '%s' '5⍳1 3‹slice›⍕E 5⍳0 5‹slice›⍕E 5⍳3 9‹slice›⍕E 5⍳2 0‹slice›≢N E 5⍳1 0 1-‹slice›≢N E' | gc)" \
+    = "$(printf '1 2 3 \n0 1 2 3 4 \n3 4 \n0\n0')" ] \
+  && ok "‹slice›: middle, whole, n clamped to what is left, n=0, n<0 -> empty" || no "slice basic"
+[ "$(printf '%s' '5⍳5 1‹slice›≢N E 5⍳9 1‹slice›≢N E 5⍳0 1-1‹slice›⍕E 5⍳0 2-9‹slice›⍕E 5⍳0 9-2‹slice›⍕E 0⍳0 3‹slice›≢N E 0⍳0 1-3‹slice›≢N E' | gc)" \
+    = "$(printf '0\n0\n4 \n3 4 \n0 1 \n0\n0')" ] \
+  && ok "‹slice›: i=len / i>len empty; i<0 counts from the end, clamped to 0; empty input" || no "slice edges"
+[ "$(printf '%s' '5⍳→a ←a1 2‹slice›T N E ←a⍕E 3⍳′⍳€1 2‹slice›⍕E' | gc)" = "$(printf '0\n0 1 2 3 4 \n[0] [0 1] ')" ] \
+  && ok "‹slice›: tagged result, input untouched, inner lists carried" || no "slice tag/nested"
+[ "$(printf '%s' '5⍳0‹indexof›N 5⍳4‹indexof›N 5⍳2‹indexof›N 5⍳7‹indexof›N 0⍳0‹indexof›N' | gc)" = "042-1-1" ] \
+  && ok "‹indexof›: first, last, middle, absent -1, empty -1" || no "indexof basic"
+[ "$(printf '%s' '3⍳3⍳⧺2‹indexof›N E 5⍳0 3-+0 1-‹indexof›N E 3⍳′⍳€"1⊇‹indexof›N E 3⍳′⍳€1⍳‹indexof›N E' | gc)" = "$(printf '2\n2\n1\n-1')" ] \
+  && ok "‹indexof›: first of duplicates, negatives, an inner list only as the same tagged list" || no "indexof dup/neg/nested"
+[ "$(printf '%s' '0⍳‹unique›≢N E 1⍳5+‹unique›⍕E 5⍳‹unique›⍕E 5⍳"⧺"⧺⌽‹unique›⍕E' | gc)" = "$(printf '0\n5 \n0 1 2 3 4 \n4 3 2 1 0 ')" ] \
+  && ok "‹unique›: empty, one, all distinct, duplicates keep first-occurrence order" || no "unique basic"
+[ "$(printf '%s' '7⍳⌽7⍳⧺0 3-+‹unique›⍕E 1⍳1 63≪+1⍳0 1-+⧺1⍳1 63≪+⧺0⍳⧺1⍳0 1-+⧺‹unique›⍕E' | gc)" \
+    = "$(printf '3 2 1 0 -1 -2 -3 \n-9223372036854775808 -1 ')" ] \
+  && ok "‹unique›: negatives and duplicates; -1, -2^63 and an empty tail" || no "unique neg/dup"
+[ "$(printf '%s' ':h1024*;3000⍳′h€"⧺‹unique›"≢N E∑N E 5⍳→a ←a"⧺‹unique›T N E ←a⍕E' | gc)" = "$(printf '3000\n4606464000\n0\n0 1 2 3 4 ')" ] \
+  && ok "‹unique›: multiples of 1024 (hash spread), tagged result, input untouched" || no "unique hash/tag"
+W94U=$(date +%s)
+W94UO=$(printf '%s' ':h7∣;10000⍳′h€10000⍳⌽⧺10000⍳⧺‹unique›"≢N E"0⊇N E"9999⊇N E∑N E' | gc)
+W94U=$(( $(date +%s) - W94U ))
+[ "$W94UO" = "$(printf '10000\n0\n7\n49995000')" ] && [ "$W94U" -lt 10 ] \
+  && ok "‹unique› of 30,000 cells (10,000 distinct): first-seen order, compile+run ${W94U} s" || no "unique 10k (${W94U} s): $W94UO"
+W94UB=$(printf '%s' '200000⍳"⧺‹unique›≢N' > "$TMP/u10k.golfj"; tools/golfc -j "$TMP/u10k.golfj" "$TMP/u10k" 2>/dev/null; \
+        python3 -c 'import subprocess,sys,time; t=time.time(); r=subprocess.run([sys.argv[1]],capture_output=True); print(r.stdout.decode(), int((time.time()-t)*1000))' "$TMP/u10k")
+[ "${W94UB% *}" = "200000" ] && [ "${W94UB#* }" -lt 1000 ] \
+  && ok "‹unique› of 400,000 cells runs in ${W94UB#* } ms (hash set, not O(n²))" || no "unique 400k timing: $W94UB"
+[ "$(printf '%s' '3⍳′⍳€‹flatten›⍕E :s⍳′⍳€;4⍳′s€‹flatten›⍕E 2⍳3⍳′⍳€⧺‹flatten›⍕E' | gc)" = "$(printf '0 0 1 \n0 0 0 1 \n0 1 0 0 1 ')" ] \
+  && ok "‹flatten›: depth 2, depth 3, ints mixed with inner lists" || no "flatten nested"
+[ "$(printf '%s' '0⍳‹flatten›≢N E :z_0⍳;5⍳‹flatten›⍕E 3⍳′z€‹flatten›≢N E 3⍳′⍳€‹flatten›⍤N E 5⍳→a ←a‹flatten›T N E ←a⍕E' | gc)" \
+    = "$(printf '0\n0 1 2 3 4 \n0\n1\n0\n0 1 2 3 4 ')" ] \
+  && ok "‹flatten›: empty, already flat (a copy), only empty inner lists, depth 1, tagged, input untouched" || no "flatten edges"
+[ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
+  && ok "‹flatten› of a list nested 201 deep (far past the 28 spill frames)" || no "flatten deep"
+[ "$(printf '%s' ':s⍳′⍳€;4⍳′s€"‹flatten›_⍕E' | gc)" = "[] [[]] [[] [0]] [[] [0] [0 1]] " ] \
+  && ok "‹flatten› leaves its nested input intact" || no "flatten input"
+# The prelude's long names cost one-byte programs nothing: compiled after the
+# full prelude and after the prelude with the four definitions cut out (pre1.gb,
+# built by the M2 check above), a program differs only by the prelude's growth,
+# and the tail of the binary — at least the program's own code — is identical.
+# (A CALL into a prelude word is a rel32, so it moves by exactly that growth;
+# these three programs make none.)
+w94s=""
+for u in "'H)'i)10)" ':s"*;7s48+)' '7 3≻1+48+)9²⊕"→q←q*10%48+)'; do
+  python3 tools/codepage.py encode <<< "$u" > "$TMP/w94u.gb"
+  cat "$TMP/pre.gb" "$TMP/w94u.gb" | "$TMP/golf2" > "$TMP/w94a" 2>/dev/null
+  cat "$TMP/pre1.gb" "$TMP/w94u.gb" | "$TMP/golf2" > "$TMP/w94b" 2>/dev/null
+  "$TMP/golf2" < /dev/null > "$TMP/w94e" 2>/dev/null
+  "$TMP/golf2" < "$TMP/w94u.gb" > "$TMP/w94c" 2>/dev/null
+  w94s="$w94s $(python3 -c 'import sys; a,b,c,e=(open(f,"rb").read() for f in sys.argv[1:5]); n=0
+while n<min(len(a),len(b)) and a[-1-n]==b[-1-n]: n+=1
+print(len(a)-len(b), int(n>=len(c)-len(e)>0))' "$TMP/w94a" "$TMP/w94b" "$TMP/w94c" "$TMP/w94e")"
+done
+w94d=$(cat "$TMP/pre.gb" | "$TMP/golf2" 2>/dev/null | wc -c); w94d1=$(cat "$TMP/pre1.gb" | "$TMP/golf2" 2>/dev/null | wc -c)
+[ "$w94s" = " $((w94d-w94d1)) 1 $((w94d-w94d1)) 1 $((w94d-w94d1)) 1" ] \
+  && ok "one-byte programs: only the prelude part of the binary changes (+$((w94d-w94d1)) bytes), the program's code is identical" \
+  || no "long-named prelude words changed a one-byte program's code:$w94s (prelude +$((w94d-w94d1)))"
+w94ct=$(python3 -c 'import subprocess,sys,time; t=time.time(); subprocess.run([sys.argv[1]],stdin=open(sys.argv[2],"rb"),stdout=subprocess.DEVNULL); print(int((time.time()-t)*1000))' "$TMP/golf2" "$TMP/pre.gb")
+[ "$w94ct" -lt 1000 ] && ok "compiling the whole prelude (four long names included) takes ${w94ct} ms" || no "prelude compile time ${w94ct} ms"
+W94P=':s⍳′⍳€;5⍳1 3‹slice›⍕E 5⍳"⧺‹unique›⍕E 5⍳3‹indexof›N E 4⍳′s€‹flatten›⍕E'
+[ "$(printf '%s' "$W94P" | gref)" = "$(printf '%s' "$W94P" | gc)" ] \
+  && ok "oracle: golfref runs the four long-named words identically" || no "oracle long-named list words"
 
 # @@ W9-4C-INPUT @@
 echo "Input words (W9-4C): ‹readall› ‹readline› ‹words› ‹num› ‹ints› ‹args› ‹getc›"

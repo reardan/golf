@@ -210,6 +210,9 @@ letters — and the library is missing, at minimum, index-of,
 unique and a structural `≡` (concatenate and take/drop shipped in W9-4A as `⧺ ↑ ↓`; sort and member in W9-4B as `⍋ ∊`) ([`GAPS.md`](GAPS.md) §1.3). Item
 5 (M6b) needed letters too, for a line reader and a number parser (it shipped
 on long names once M2 landed, W9-4C). Two letters do
+letters — and the library was missing, at minimum, index-of,
+unique and a structural `≡`. *(All shipped now: concatenate and take/drop in W9-4A as `⧺ ↑ ↓`; sort and member in W9-4B as `⍋ ∊`; `≣` in W9-3B; and slice, index-of, unique and flatten in W9-4B part 2 as the long-named `‹slice› ‹indexof› ‹unique› ‹flatten›` — [`GAPS.md`](GAPS.md) §1.3.)* Item
+5 (M6b) needs letters too, for a line reader and a number parser. Two letters do
 not cover either list, so **every remaining library item is gated behind this
 one** or behind spending the eight high bytes at `0xC8`–`0xCF` on words that
 should have had names. That does not automatically move M2 to the front — the

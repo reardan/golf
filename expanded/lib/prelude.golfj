@@ -487,6 +487,94 @@
 :\memb X5177456\store16\shl16>5177440\store0 5177472\store0 5177448\store
  5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\fetch\eq5177472\fetch|5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177472\fetch~$1\radd}]
  5177472\fetch1\radd Y;
+# ‹slice›    l i n -> l   a NEW list of the n cells starting at index i.  i < 0
+#                         counts from the end (APL-ish: -1 is the last cell) and
+#                         is then clamped to 0; i >= len gives an empty list; n
+#                         is clamped to what is left, and n < 0 means 0.  Built
+#                         from ↓ then ↑ (each brings its own frame); the
+#                         intermediate list from ↓ is given back with ⌫.
+#                         s0 list, then the intermediate · s1 i · s2 n.  (No
+#                         swap anywhere in these four words: `decode -m` writes
+#                         the swap byte as a bare \, which does not re-encode.)
+:‹slice›X5177456\store5177448\store16\shl16>5177440\store
+ 5177448\fetch0\slt1\radd[5177440\fetch\fetch5177448\fetch\radd5177448\store]
+ 5177448\fetch0\slt1\radd[0 5177448\store]
+ 5177456\fetch0\slt1\radd[0 5177456\store]
+ 5177440\fetch5177448\fetch\drop"5177440\store5177456\fetch\take5177440\fetch\free Y;
+# ‹indexof›  l x -> i     index of the FIRST cell equal to x (≡: raw 64-bit
+#                         equality, like ∊ — an inner list matches only the very
+#                         same tagged list), or -1 when there is none (and for
+#                         the empty list).  s0 list · s2 x · s1 index · s4 the
+#                         answer (-1 until a hit); the loop runs while
+#                         (i < len) & (s4 == -1).
+:‹indexof›X5177456\store16\shl16>5177440\store0 1\rsub5177472\store0 5177448\store
+ 5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\fetch\eq1\radd[5177448\fetch5177472\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177472\fetch0 1\rsub\eq$1\radd}]
+ 5177472\fetch Y;
+# ‹unique›   l -> l       a NEW list of the first occurrence of each distinct
+#                         cell (≡ equality), in their original order.  O(n)
+#                         expected: an open-addressing hash set of 2^k >= 2n
+#                         slots (a raw A block, zeroed, given back by ⌫ at the
+#                         end) holds i+1 for the first occurrence of each value
+#                         (0 = empty slot).  The hash is Fibonacci hashing, the
+#                         top k bits of x * 0x9E3779B97F4A7C15 (the constant is
+#                         assembled from 16-bit pieces: the seed truncates
+#                         literals >= 2^31); a collision probes linearly.  The
+#                         result block is sized n+1 and its header set to the
+#                         count at the end.  s0 list · s1 i · s2 table ·
+#                         s3 64-k (the hash shift) · s4 result · s5 the slot's
+#                         content t (A and ⌫ use s5 only outside the loop) ·
+#                         s6 count · s7 slot h.  A probe step reads list[t-1]
+#                         even when t == 0: the list's own length cell (harmless).
+:‹unique›X16\shl16>5177440\store
+ 5177440\fetch\fetch1\radd A5177472\store
+ 63 5177464\store
+ {1 64 5177464\fetch\rsub\shl5177440\fetch\fetch2\rmul\rlt1\radd"[5177464\fetch1\rsub5177464\store]}
+ 1 64 5177464\fetch\rsub\shl A5177456\store
+ 0 5177496\store{0 5177456\fetch5177496\fetch8\rmul\radd\store5177496\fetch1\radd"5177496\store1 64 5177464\fetch\rsub\shl\rlt1\radd}
+ 0 5177448\store0 5177488\store
+ 5177440\fetch\fetch0\eq[{
+  5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch40503 48\shl31161 32\shl|32586 16\shl|31765|\rmul5177464\fetch>5177496\store
+  {5177456\fetch5177496\fetch8\rmul\radd\fetch5177480\store5177480\fetch[
+    5177448\fetch1\radd5177456\fetch5177496\fetch8\rmul\radd\store
+    5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177488\fetch8\rmul\radd8\radd\store
+    5177488\fetch1\radd5177488\store]
+   5177480\fetch0\eq5177480\fetch1\rsub8\rmul5177440\fetch\radd8\radd\fetch5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch\eq|
+   "[5177496\fetch1\radd1 64 5177464\fetch\rsub\shl1\rsub$5177496\store]}
+  5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
+ 5177488\fetch5177472\fetch\store5177456\fetch\free
+ 5177472\fetch1 48\shl| Y;
+# ‹flatten›  l -> l       a NEW flat list of every int in l, depth-first, at any
+#                         nesting depth (the tag test 48>1≡ per element).  No
+#                         recursion and no work stack: each pass splices ONE
+#                         level (an int is copied, an inner list's cells are
+#                         copied in its place) and notes whether a spliced cell
+#                         was itself a list; passes repeat until none was.
+#                         O(size · depth), one X/Y frame at any depth, so the
+#                         28-frame spill stack is never at risk.  Every pass but
+#                         the first frees the list it read (the input is never
+#                         written or freed).  A flat input takes one pass and
+#                         comes back as a copy.  A cell is "a list" exactly
+#                         when T says so, so an int whose top 16 bits are 1
+#                         (2^48 .. 2^49-1) is taken for a list, as everywhere.
+#                         s0 src · s1 i · s2 k (output cursor) · s3 0 while
+#                         src is the input · s4 result · s5 j (inner index;
+#                         A and ⌫ use s5 only outside that loop) · s6 count ·
+#                         s7 "another pass" flag.  Each element goes through
+#                         Q's two guards: a list splices and leaves 2^48
+#                         behind, which the int guard then skips.
+:‹flatten›X16\shl16>5177440\store0 5177464\store
+ {0 5177488\store0 5177448\store0 5177496\store
+  5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"48>1\eq"1\radd[_16\shl16>\fetch0 1\rsub][_1]5177488\fetch\radd5177488\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
+  5177488\fetch"1\radd A"5177472\store\store
+  0 5177448\store0 5177456\store
+  5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"48>1\eq1\radd[
+    16\shl16>"\fetch0\eq[0 5177480\store{"5177480\fetch8\rmul\radd8\radd\fetch"5177472\fetch5177456\fetch8\rmul\radd8\radd\store5177456\fetch1\radd5177456\store48>1\eq5177496\fetch|5177496\store5177480\fetch1\radd"5177480\store&\fetch\rlt1\radd}]_1 48\shl]
+   "48>1\eq["5177472\fetch5177456\fetch8\rmul\radd8\radd\store5177456\fetch1\radd5177456\store]_
+   5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
+  5177464\fetch0\eq[5177440\fetch\free]
+  5177472\fetch5177440\store1 5177464\store
+  5177496\fetch0\eq}
+ 5177440\fetch1 48\shl| Y;
 
 # @@ W9-4C-INPUT @@
 # Input for ordinary programs (NEXT_STEPS item 5, M6b): buffered stdin, lines,
