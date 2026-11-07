@@ -15,6 +15,8 @@ Usage:
   codepage.py decode <in.gb                 # raw bytes -> glyphs
   codepage.py decode -m <in.gb              # raw bytes -> ASCII \\mnemonic form
   codepage.py table                         # print the atom code-page reference
+  codepage.py reference                     # the same tables as Markdown (REFERENCE.md)
+  codepage.py reference --update FILE       # splice them between FILE's markers
   codepage.py check                         # assert the namespace invariants
 """
 import os, sys
@@ -38,7 +40,7 @@ LIB = [
     ("L", "len",   "≢", "len(list)"),
     ("I", "index", "⊇", "index(list, i)"),
     ("A", "alloc", "⍶", "alloc(cells) -> addr"),
-    ("N", "num",   "Ṅ", "print unsigned decimal"),
+    ("N", "num",   "Ṅ", "print signed decimal"),
     ("E", "nl",    "␤", "print newline"),
     ("M", "map",   "€", "map(list, fn) -> list"),
     ("F", "fold",  "⇤", "fold(list, init, fn) -> x"),
@@ -170,6 +172,62 @@ def print_table():
         print(f"0x{b:02X}   {gl:>2}     \\{mn:<7}  {word}     {doc}")
 
 
+# REFERENCE.md carries the output of `reference` between these two lines, and
+# run2.sh (W9-1D) requires it to equal the current output, so the generated half
+# of the language reference cannot drift from the tables above.
+REF_BEGIN = "<!-- BEGIN GENERATED: python3 tools/codepage.py reference -->"
+REF_END = "<!-- END GENERATED -->"
+
+
+def _md(text) -> str:
+    """One Markdown table cell: a pipe would end the cell, even in a code span."""
+    return str(text).replace("|", "\\|")
+
+
+def reference_md() -> str:
+    """The v2 atom / compiler-op / library tables, as Markdown."""
+    out = []
+    w = out.append
+    w("### Atoms\n")
+    w("Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): "
+      "the compiler copies each one's template inline.\n")
+    w("| byte | glyph | mnemonic | meaning |")
+    w("|---|---|---|---|")
+    for b, mn, gl, _t, doc in mkblob2.ATOMS:
+        w(f"| `0x{b:02X}` | `{_md(gl)}` | `\\{mn}` | {_md(doc)} |")
+    w("\n### Compiler ops\n")
+    w("Single-byte tokens the compiler handles itself (prefixes, delimiters, "
+      "definition headers) — there is no template behind them.\n")
+    w("| byte | glyph | mnemonic | meaning |")
+    w("|---|---|---|---|")
+    for b, mn, gl, doc in COMPILER:
+        w(f"| `0x{b:02X}` | `{_md(gl)}` | `\\{mn}` | {_md(doc)} |")
+    w("\n### Library words\n")
+    w("Words defined by the prelude (`lib/prelude.golfj`). A letter word is "
+      "called by its ASCII letter; its glyph and mnemonic are input aliases for "
+      "that letter. A high-byte word has no letter.\n")
+    w("| byte | glyph | mnemonic | word | meaning |")
+    w("|---|---|---|---|---|")
+    for key, mn, gl, doc in LIB:
+        b = lib_byte(key)
+        word = f"`{key}`" if isinstance(key, str) else "—"
+        w(f"| `0x{b:02X}` | `{_md(gl)}` | `\\{mn}` | {word} | {_md(doc)} |")
+    return "\n".join(out) + "\n"
+
+
+def reference_splice(path):
+    """Rewrite the generated block of `path` in place (between the markers)."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    a, z = text.find(REF_BEGIN), text.find(REF_END)
+    if a < 0 or z < a:
+        raise SystemExit(f"codepage: {path} lacks the reference markers")
+    a += len(REF_BEGIN)
+    new = text[:a] + "\n" + reference_md() + text[z:]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new)
+
+
 def all_rows():
     """Every allocated op byte, as (byte, mnemonic, glyph, table-name)."""
     rows  = [(b, mn, gl, "ATOMS")    for b, mn, gl, _t, _d in mkblob2.ATOMS]
@@ -227,11 +285,20 @@ def check():
 
 
 def main(argv):
-    if len(argv) < 2 or argv[1] not in ("encode", "decode", "table", "check"):
+    if len(argv) < 2 or argv[1] not in ("encode", "decode", "table", "check",
+                                        "reference"):
         sys.exit(__doc__)
     cmd = argv[1]
     if cmd == "table":
         print_table(); return
+    if cmd == "reference":
+        if argv[2:3] == ["--update"] and len(argv) == 4:
+            reference_splice(argv[3])
+        elif len(argv) == 2:
+            sys.stdout.write(reference_md())
+        else:
+            sys.exit(__doc__)
+        return
     if cmd == "check":
         check(); return
     if cmd == "encode":
