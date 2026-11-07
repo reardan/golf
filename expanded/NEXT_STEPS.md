@@ -10,6 +10,18 @@ the `v1c` binary pinned by `../SEEDS`) is never touched.
 
 ## Where we are
 
+**W9 — the gap-fix waves — closed the queue below.** Every numbered item
+(M-TAG2, M-FRAME2, M-MEM2, M2, M6b) has shipped, along with signed `⌈ ⌊`,
+literal strings, a `′undefined` diagnostic, index and divide-by-zero checks, a
+guard page under the return stack, nested-list support, the missing list words
+and [`REFERENCE.md`](REFERENCE.md). Each item below keeps its record of how it
+was built. What is genuinely left is the "As needed" list (modules/`include`,
+an object-file or C backend, a relocation pass for a peephole optimizer) and
+the smaller limits DESIGN.md still lists: one-byte names are still
+define-before-use, long names are capped at 256 per program (the prelude uses
+12), the X/Y spill stack bounds nesting depth, and v1's `/` `%` still trap on
+zero.
+
 The original roadmap is done. The code page, the atom set, lists on a `brk`-grown
 heap, quotations and higher-order words, strings, named variables, a total list
 runtime, shape polymorphism, *implicit* vectorization on the bare `+ - * ⌈ ⌊`,
