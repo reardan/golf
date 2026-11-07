@@ -224,7 +224,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0x45` | `␤` | `\nl` | `E` | print newline |
 | `0x4D` | `€` | `\map` | `M` | map(list, fn) -> list |
 | `0x46` | `⇤` | `\fold` | `F` | fold(list, init, fn) -> x |
-| `0x51` | `⍕` | `\show` | `Q` | print a list, space-separated |
+| `0x51` | `⍕` | `\show` | `Q` | print a list, space-separated; inner lists as [a b] |
 | `0x50` | `∏` | `\prod` | `P` | product(list) |
 | `0x56` | `⌽` | `\rev` | `V` | reverse(list) -> list |
 | `0x57` | `⌿` | `\filter` | `W` | filter(list, pred) -> list (keep where pred==0) |
@@ -240,6 +240,8 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xC5` | `∘` | `\comp` | — | compose: ′f ′g -> ′(x -> g(f x)) |
 | `0xC6` | `⇉` | `\pipe` | — | pipeline: x qlist -> y (apply each quotation in turn) |
 | `0xC7` | `⑂` | `\fork` | — | fork: x ′f ′g ′h -> h(f x, g x) |
+| `0xC8` | `≣` | `\match` | — | match: a b -> -1/0, structural equality into nested lists |
+| `0xC9` | `⍤` | `\depth` | — | depth: int 0, flat list 1, list of lists 2, ... |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -247,6 +249,11 @@ A few notes on what the tables leave out:
 - **Lists** are heap blocks `[len, e0, e1, …]` of 64-bit cells. A list value is
   the block's address. `⍳ ∑ ≢ ⊇ € ⇤ ⌿ ⌽ ∏ ⍕ ⊞` and the vectorized `+ - * ⌈ ⌊`
   all work on lists.
+- **Nested lists** (W9-3B). A list may hold lists. `⍕` prints an inner list in
+  brackets, so `3⍳′⍳€⍕` prints `[] [0] [0 1] `. The bare `+ - * ⌈ ⌊` recurse to
+  any depth: `3⍳′⍳€ 10+⍕` prints `[] [10] [10 11] `. `≣` tests structural
+  equality (`-1`/`0`, like `≡`) and `⍤` gives the nesting depth (an int is 0,
+  a flat list 1).
 - **Strings.** `“text“` pushes the address of a byte block
   `[len:u32][bytes]`. `🗲` prints one. `⊃` turns one into a list of codes, so
   list ops work on text, and `⊐` prints such a list back as text.

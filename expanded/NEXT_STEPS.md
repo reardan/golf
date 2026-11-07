@@ -60,7 +60,9 @@ operand's high word exactly, and every list word masks on entry and tags on
 exit. One correction to the plan: the two bounds cells did **not** go away —
 `A` still needs the base and the span to know when to move the break — but
 nothing except `A` reads them now, so the 4 GB ceiling is an allocator detail
-that a prelude-only change can lift. The rest of this entry is the history.
+that a prelude-only change can lift. The nested-data payoff
+followed as W9-3B: `⍕` recurses, `+ - * ⌈ ⌊` vectorize to any depth, and `≣`
+(structural match) and `⍤` (depth) exist. The rest of this entry is the history.
 
 *What.* Retire the range test. `T` is `v - base <u span` today, so an *integer*
 that happens to land in `[base, base+span)` is dispatched as a list — the one
@@ -267,8 +269,9 @@ recorded; two of them were small enough to fix in the same pass. The compose
 arena is now bounded (it was silently overwriting the user variable bank after
 1680 composes, exit status 0), and an undefined word is now reported instead of
 compiling to a jump through a zeroed dictionary slot. Both are in DESIGN.md's
-record. The third — nested lists having no support above the storage layer — is
-item 1's second justification above, because the tag bit is its prerequisite.
+record. The third — nested lists having no support above the storage layer — was
+item 1's second justification above, because the tag bit is its prerequisite;
+it shipped as W9-3B (recursive `⍕`, deep `+ - * ⌈ ⌊`, `≣` match, `⍤` depth).
 
 Two things that wave did **not** do. The `′` path still read an undefined name
 as an atom (`X`'s auto-wrapping could not tell a typo from `′⊗`) — since fixed

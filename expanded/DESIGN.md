@@ -140,7 +140,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **844** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
-| assertions in the run2 suite | **364** |
+| assertions in the run2 suite | **376** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -365,6 +365,17 @@ the golf2 fixpoint included. In order:
   hook cells stay zero, so the fixpoint held. A list of lists stores tagged
   inner lists, so the per-element "is this a list?" that nested data needs is
   now a shift and a compare rather than a heuristic.
+- **W9-3B — nested lists above the storage layer.** With the tag exact per
+  element, the prelude now asks it of every element and recurses. `⍕` prints an
+  inner list in brackets (`3⍳′⍳€⍕` → `[] [0] [0 1] `) while a flat top-level
+  list prints byte-for-byte as before; the inner call is `Q` itself, handed the
+  element with a second tag bit (`v | 2^49`) that its entry mask strips. The
+  bare `+ - *` now go to depth like `⌈ ⌊` always did: `∔ ∸ ⨰` answer int,int
+  in place and otherwise hand `D` the word *itself*, so `Z`/`K`/`G` re-enter it
+  per element (`3⍳′⍳€ 10+⍕` → `[] [10] [10 11] `). Two new high-byte words:
+  `≣` (`0xC8`) structural equality (`-1`/`0`, an int never matches a list) and
+  `⍤` (`0xC9`) depth (int 0, flat or empty list 1, then 1 + the deepest
+  element). Prelude only; the templates' scalar fast path is untouched.
 
 ## Invariants we do not break
 
@@ -452,6 +463,12 @@ unbuilt, and three defects this list does not yet cover — see
   shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
   deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
   M-TAG2); negatives and everything below `2^48` are ints.
+- **Nesting depth is bounded by the spill stack.** Every looping word frames
+  its scratch with `X`/`Y`, and the stack holds 28 frames; recursive `⍕`, `≣`
+  and `⍤` take one per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`), so
+  about 13 levels of nested arithmetic and 27 of printing. `X` does not check:
+  past that it writes into the W9-2C guard page and the program dies of SIGSEGV
+  rather than corrupting memory.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different

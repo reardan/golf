@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **26** are now spent, leaving **85** free. It is partitioned as follows
+space; **28** are now spent, leaving **83** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -119,8 +119,8 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xC5` | `\comp` | `∘` | compose two quotations (writes a 39-byte thunk into the code arena) | shipped |
 | `0xC6` | `\pipe` | `⇉` | pipeline (thread a value through a list of quotations) | shipped |
 | `0xC7` | `\fork` | `⑂` | fork: `x ′f ′g ′h -> h(f x, g x)` | shipped |
-| `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | reserved |
-| `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | reserved |
+| `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | shipped |
+| `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | shipped |
 | `0xCA` | `\free` | `⌫` | release a list block to the allocator's free list (W9-3C) | reserved |
 | `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | reserved |
 | `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | reserved |

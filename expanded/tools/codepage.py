@@ -44,7 +44,7 @@ LIB = [
     ("E", "nl",    "␤", "print newline"),
     ("M", "map",   "€", "map(list, fn) -> list"),
     ("F", "fold",  "⇤", "fold(list, init, fn) -> x"),
-    ("Q", "show",  "⍕", "print a list, space-separated"),
+    ("Q", "show",  "⍕", "print a list, space-separated; inner lists as [a b]"),
     ("P", "prod",  "∏", "product(list)"),
     ("V", "rev",   "⌽", "reverse(list) -> list"),
     ("W", "filter","⌿", "filter(list, pred) -> list (keep where pred==0)"),
@@ -64,6 +64,8 @@ LIB = [
     (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
     (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
     (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
+    (0xC8, "match", "≣", "match: a b -> -1/0, structural equality into nested lists"),
+    (0xC9, "depth", "⍤", "depth: int 0, flat list 1, list of lists 2, ..."),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
