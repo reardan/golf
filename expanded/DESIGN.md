@@ -373,6 +373,17 @@ the golf2 fixpoint included. In order:
   end is empty, and a negative `n` counts from the END, APL-style (`5⍳¯2↑` is
   `3 4`, `5⍳¯2↓` is `0 1 2`). `↓` is implemented as a `↑` of the kept count.
   Demo: `examples/listwords.golfj`.
+- **W9-3B — nested lists above the storage layer.** With the tag exact per
+  element, the prelude now asks it of every element and recurses. `⍕` prints an
+  inner list in brackets (`3⍳′⍳€⍕` → `[] [0] [0 1] `) while a flat top-level
+  list prints byte-for-byte as before; the inner call is `Q` itself, handed the
+  element with a second tag bit (`v | 2^49`) that its entry mask strips. The
+  bare `+ - *` now go to depth like `⌈ ⌊` always did: `∔ ∸ ⨰` answer int,int
+  in place and otherwise hand `D` the word *itself*, so `Z`/`K`/`G` re-enter it
+  per element (`3⍳′⍳€ 10+⍕` → `[] [10] [10 11] `). Two new high-byte words:
+  `≣` (`0xC8`) structural equality (`-1`/`0`, an int never matches a list) and
+  `⍤` (`0xC9`) depth (int 0, flat or empty list 1, then 1 + the deepest
+  element). Prelude only; the templates' scalar fast path is untouched.
 
 ## Invariants we do not break
 
