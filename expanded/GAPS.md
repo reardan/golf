@@ -65,8 +65,10 @@ shift-and-compare. W9-3B asks it of every element:
 What is still missing against Jelly: the rest of the list vocabulary is
 one-level (`∑` folds with the deep `+`, but `⌽`, `⌿`, `⊇` see only the top
 level), there is no rank or reshape, and `Z` truncates silently on a length
-mismatch at every depth. Nesting depth is bounded by the 28-frame scratch spill
-stack (DESIGN.md, known limits).
+mismatch at every depth. Nesting depth is bounded by the scratch spill stack —
+4096 frames since W10-C (it was 28), so ~2,000 levels of nested arithmetic and
+~4,000 of `⍕`/`≣`/`⍤`, past which `X` exits with `GOLF: spill stack
+exhausted` (DESIGN.md, known limits).
 
 ### 1.2 The numeric tower
 

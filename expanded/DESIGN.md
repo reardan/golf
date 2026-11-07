@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **948** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2826** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **8616** bytes |
-| assertions in the run2 suite | **478** |
+| assertions in the run2 suite | **484** |
 | assertions in the selfcheck suite | **44** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -459,8 +459,8 @@ the golf2 fixpoint included. In order:
 - **W9-4B — `⍋` sort and `∊` member.** Prelude words at `0xCE`/`0xCF`. `⍋`
   returns a NEW tagged list in ascending SIGNED order and leaves its input
   alone; it is an iterative bottom-up merge sort (stable, O(n log n), one
-  `X`/`Y` frame whatever the length — no recursion to exhaust the 28-frame spill
-  stack), ping-ponging between a `0↓` copy of the input and one block from `A`,
+  `X`/`Y` frame whatever the length — no recursion to exhaust the spill
+  stack, 28 frames then, 4096 since W10-C), ping-ponging between a `0↓` copy of the input and one block from `A`,
   with a branch-free merge step that reads both run heads at clamped indices.
   100,000 elements sort in well under a second. It is meant for int lists: an
   inner list compares by its tagged value (after every int below 2^48, and by
@@ -495,7 +495,8 @@ the golf2 fixpoint included. In order:
   splices one level and notes whether a spliced cell was itself a list, and
   passes repeat (freeing every intermediate) until none was. That is
   O(size · depth) in one `X`/`Y` frame, so a list nested 200 deep flattens
-  where the recursive `⍕`/`⍤` would exhaust the 28 spill frames. The four
+  where the recursive `⍕`/`⍤` would then exhaust the 28 spill frames (4096
+  since W10-C, so they reach ~4,000 levels now). The four
   take 4 of the 256 long-name slots, so a program now has 252. None of them
   uses swap, because `decode -m` writes the swap byte as a bare `\`, which
   does not encode back (gtools' prelude round trip caught it). A one-byte
@@ -607,12 +608,16 @@ unbuilt, and three defects this list does not yet cover — see
   shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
   deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
   M-TAG2); negatives and everything below `2^48` are ints.
-- **Nesting depth is bounded by the spill stack.** Every looping word frames
-  its scratch with `X`/`Y`, and the stack holds 28 frames; recursive `⍕`, `≣`
-  and `⍤` take one per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`), so
-  about 13 levels of nested arithmetic and 27 of printing. `X` does not check:
-  past that it writes into the W9-2C guard page and the program dies of SIGSEGV
-  rather than corrupting memory.
+- **Nesting depth is bounded by the spill stack, now generously (W10-C).**
+  Every looping word frames its scratch with `X`/`Y`; recursive `⍕`, `≣` and
+  `⍤` take one frame per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`).
+  The stack was 28 frames at `0x4F0900` (about 13 levels of nested arithmetic,
+  27 of printing, then a bare SIGSEGV in the guard page); W10-C moved it to
+  free BSS at `0x440000`–`0x47FFFF` (REGISTRY §3), 4096 frames = 256 KB, so
+  about 2,000 levels of nested arithmetic and 4,000 of `⍕`/`≣`/`⍤`. Untouched
+  BSS pages cost no RAM. `X` checks the bound with one compare-and-branch and,
+  past it, writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like the
+  compose arena); `Y` needs no check.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different

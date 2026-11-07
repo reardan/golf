@@ -21,6 +21,9 @@ the smaller limits DESIGN.md still lists: one-byte names are still
 define-before-use, long names are capped at 256 per program (the prelude uses
 12), and the X/Y spill stack bounds nesting depth. (v1's `/` `%` now report a
 zero divisor like `÷`/`∣` — W10-B.)
+12), and v1's `/` `%` still trap on
+zero. (W10-C retired the X/Y spill-stack depth limit: 4096 frames at
+`0x440000` instead of 28, with a checked `GOLF: spill stack exhausted` exit.)
 
 The original roadmap is done. The code page, the atom set, lists on a `brk`-grown
 heap, quotations and higher-order words, strings, named variables, a total list
