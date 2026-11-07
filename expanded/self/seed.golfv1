@@ -31,14 +31,15 @@
 # first line (P B S Q U Y Z, and L below) are the size-reducing rewrites v1's
 # own build applied: P = m4+@ the output pointer, B = m4096+ the output buffer,
 # S = m12+ scratch, Q = m16+ the pushed-back char, U = 48-10< the is-digit test,
-# Y = m2048+\4*+ the dict slot for the key on top, Z = 48-\10*+ fold a decimal
+# Y = 4*4792320+ the dict slot for the key on top (0x492000 + 4*name since
+# W10-A; v1's was m2048+\4*+, which had room for 512 names), Z = 48-\10*+ fold a decimal
 # digit, L = 104o emit the push-imm32 opcode.
 #
 # FROZEN IN SHAPE.  This is the bootstrap rung and nothing more; new compiler
 # features go in self/golf2.golfj, and only reach here when they must (a case
 # the seed has to understand to compile golf2.golf).  See ../DESIGN.md.
 
-:m4259840;:Pm4+@;:Bm4096+;:Sm12+;:Qm16+;:U48-10<;:Ym2048+\4*+;:Z48-\10*+; # m: data base D, then the accessors
+:m4259840;:Pm4+@;:Bm4096+;:Sm12+;:Qm16+;:U48-10<;:Y4*4792320+;:Z48-\10*+; # m: data base D, then the accessors
 :am4+\&@+\!;                                            # a: advance P by n
 :oP!1a;:L104o;                                          # o: emit byte  ·  L: emit push-imm32 (0x68)
 :wP!4a;                                                 # w: emit dword
@@ -50,11 +51,12 @@
 # ---------------------------------------------------------------------------
 # M2 — long names, ‹name› (0xB4 … 0xB5).  A long name is interned to a NAME
 # NUMBER 256+index at its first appearance, and from then on is a name that
-# does not fit a byte: Y (dict at m2048 + 4*name) and the variable bank
+# does not fit a byte: Y (dict at 0x492000 + 4*name) and the variable bank
 # (0x4E0000 + 8*name) take it with their one-byte formulas.  Tables, both
 # compiler-only (../REGISTRY.md §3):
-#     0x430000 + 64*E   entry for name E (256..511): [len:4][up to 60 bytes]
-#     0x438000 + 4*E    E's forward-reference head: the last unpatched site
+#     0x47C000 + 64*E   entry for name E (256..1279): [len:4][up to 60 bytes]
+#     0x490400 + 4*N    ANY name N's forward-reference head (one-byte names
+#                       too, since W10-A): the last unpatched site
 # Seed-side scratch:  m60 name count · m64 length being read · m68 entry being
 # read into · m72 entry compared against · m76 compare countdown · m80 index ·
 # m84 a body address.  (self/golf2.golfj names the same state ‹count› ‹len›
@@ -68,18 +70,19 @@
 # it among the names so far, else claim that entry.  -> its name number.  A name
 # byte must be 0-9 A-Z a-z _ or - : the five range tests sum to -1 for exactly
 # one of them and to 0 for anything else, EOF included.
-:Nm60+@256+64*4390912+m68+!0m64+!{("181-[_m64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@256<[2.]m60+@"1+m60+!256+^]m80+@256+64*4390912+m72+!x[m80+@256+^]m80+@1+m80+!0}]"48-10<&65-26<+&97-26<+&95-1<+&45-1<+[2.]m64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!0};
+:Nm60+@256+64*4702208+m68+!0m64+!{("181-[_m64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@1024<[2.]m60+@"1+m60+!256+^]m80+@256+64*4702208+m72+!x[m80+@256+^]m80+@1+m80+!0}]"48-10<&65-26<+&97-26<+&95-1<+&45-1<+[2.]m64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!0};
 :G("180-[_N];                                           # G: a prefix's operand -- one byte, or a whole ‹long name›
-:F\o4*4423680+"@P\w\!;                                  # F: op name -> emit `op rel32`, the site joining name's pending list
-:R"Y@m84+!4*4423680+"@\0\!{"[_^]"@\"m84+@\-4-\!0};       # R: name -> patch its pending sites to its (just stored) body
-:z0m80+!{m80+@m60+@-[^]m80+@256+4*4423680+@1<[2.]m80+@1+m80+!0}; # z: end of input -- a long name still pending is undefined
+:F\o4*4785152+"@P\w\!;                                  # F: op name -> emit `op rel32`, the site joining name's pending list
+:R"Y@m84+!4*4785152+"@\0\!{"[_^]"@\"m84+@\-4-\!0};       # R: name -> patch its pending sites to its (just stored) body
+:z0m80+!{m80+@m60+@256+-[^]m80+@4*4785152+@1<[2.]m80+@1+m80+!0}; # z: end of input -- any name (one-byte or long) still pending is undefined
 # e — the default: emit a table op, or compile a call to a user word.
 #
 # v1's `e` emitted `call rel32` with rel32 = dict[name] - (P+4) and never looked
 # at dict[name].  For a name that was never defined that cell is BSS-zero, so the
 # call targeted a wild address: the compile reported success and the binary died
 # with SIGSEGV when the word was reached.  Both compilers now test the slot first
-# and exit(2) instead.
+# (M-DIAG) and, since W10-A, call through the name's pending list instead, so z
+# can exit(2) at end of input if the name is never defined.
 #
 # ASYMMETRY, deliberate and gated by test/selfcheck.sh: golf2 also writes
 # `GOLF: undefined word <name>` to fd 2, and this seed does not.  It cannot —
@@ -94,9 +97,10 @@
 # The reordering against v1 is load-bearing: `232o` has to sit BELOW the lookup
 # so the slot can be tested before a byte is written, and `P` is read after
 # `232o` in both forms, so rel32 is unchanged.
-# M2: with dict[name] zero, a LONG name (>= 256) is not an error yet but a
-# forward call through its pending list (F); only a one-byte name exits 2.
-:e"f"?[_"Y@"[_"256<1+[2.]232\F^]\_232oP4+-w^]\_C;       # e: table op or call (undefined word -> exit 2)
+# M2 / W10-A: with dict[name] zero, a name is not an error yet but a forward
+# call through its pending list (F) — a long name since M2, a one-byte name
+# since W10-A; z rejects whatever is still pending at end of input.
+:e"f"?[_"Y@"[_232\F^]\_232oP4+-w^]\_C;                 # e: table op or call (undefined word -> forward, checked by z)
 :D0{("U[_^]Z0};                                         # D: read decimal
 :gQ@"[_(^]0Q!;                                          # g: get char (pending Q)
 :h{("10-[_^]"[_^]_0};                                   # h: skip comment line
@@ -113,14 +117,13 @@
 # after everything it calls itself — o, w, E and the templates — which `h` is the
 # last of, so it lands exactly here.
 #
-# M2: an undefined LONG name may be defined further down, so ′ pushes the address
-# of a thunk [jmp rel32] instead (jumped over), the rel32 on the name's pending
-# list; ⍎ on the thunk tail-jumps into the word.
-#
-# A name that is neither a word nor an atom (`′typo`) is handed to `e`, which
-# already rejects it — no template, dict slot 0 — with exit(2).  Before W9-1C it
+# M2 / W10-A: a name that is neither a word nor an atom (a long name always
+# is not an atom: f finds no record for it) may be defined further down, so ′
+# pushes the address of a thunk [jmp rel32] instead (jumped over), the rel32 on
+# the name's pending list; ⍎ on the thunk tail-jumps into the word.  If it never
+# comes (`′typo`), z rejects it at end of input with exit(2).  Before W9-1C it
 # was wrapped like an atom, around a template that does not exist (SIGILL).
-:X"Y@"[_"256<[233o5wPm24+!233&FLm24+@69632-w_^]"f?["e]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+:X"Y@"[_"f?[233o5wPm24+!233&FLm24+@69632-w_^]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
 # l — M-FRAME2: the rbp displacement of a local, from its name number.  A
 # one-byte local must be a..h.  Outside a ⊡ word (m56 clear) it keeps M-FRAME's
 # fixed slot name-'a', and a long name is refused.  Inside, the definition's

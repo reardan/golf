@@ -139,10 +139,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **844** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2722** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **8512** bytes |
-| assertions in the run2 suite | **471** |
-| assertions in the selfcheck suite | **44** |
+| the generated bootstrap seed (`self/seed.golf`) | **2703** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8475** bytes |
+| assertions in the run2 suite | **481** |
+| assertions in the selfcheck suite | **50** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -353,8 +353,9 @@ the golf2 fixpoint included. In order:
   list (a `′` gets a jumped-over `jmp rel32` thunk on the same list), the
   definition patches the list, and anything still pending at end of input is
   `GOLF: undefined word ‹name›`, exit 2, before a byte is written. So mutual
-  recursion needs no declaration. One-byte names stay define-before-use: their
-  pending lists are always empty, and their error stays at the call. The
+  recursion needs no declaration. One-byte names stayed define-before-use: their
+  pending lists were always empty, and their error stayed at the call (until
+  W10-A, below). The
   compiler's own M2 words and state carry long names (`‹readname›`,
   `‹count›`, …) — every letter was already taken in `golf2.golfj` — so the seed
   implements them too, and the fixpoint now exercises them. Cost: `golf2`'s
@@ -489,6 +490,26 @@ the golf2 fixpoint included. In order:
   does not encode back (gtools' prelude round trip caught it). A one-byte
   program's own code compiles to the same bytes as before; only the prelude
   part of the binary grows (run2 checks this).
+- **W10-A — forward references for every name; 1024 long names.** M2's
+  pending-site lists were already indexed by name number, so a one-byte name
+  needed no new mechanism, only permission: `e` and `X` now send any name that
+  is not a template and not defined *yet* down the same `call rel32` /
+  `jmp rel32`-thunk path, and the end-of-input check walks the 256 one-byte
+  names before the long ones (`GOLF: undefined word b`, exit 2, no binary — the
+  M-DIAG message, now at end of input instead of at the call). Templates still
+  dispatch first, and a call after a definition binds to it directly, so a
+  redefinition keeps its earlier callers. Programs that only call backwards
+  compile to the same bytes. The long-name cap went 256 → 1024: the name table
+  keeps its `64*E` formula but now sits at `0x47C000 + 64*E` (entries
+  `0x480000`–`0x48FFFF`, plus one scratch entry `‹readname›` reads into), the
+  heads moved to `0x490400 + 4*N` and the dictionary — for every name, one-byte
+  ones too, since `m+2048` had room for only 512 — to `0x492000 + 4*N`, all
+  compiler-only and clear of W10-C's spill stack at `0x440000`–`0x47FFFF`. The
+  variable bank keeps `0x4E0000 + 8*name`, now through `0x4E27FF`, so a
+  long-named variable's address did not move. The compiler got smaller: `e`
+  and `X` lost their special cases. Cost: `golf2`'s binary 11841 → 11767
+  bytes, `seed`'s 8722 → 8625; `golf2.golf` 8512 → 8475, `seed.golf`
+  2722 → 2703.
 
 ## Invariants we do not break
 
@@ -551,10 +572,10 @@ specific silent failure can earn its diagnostic, as those two did.
 These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
-- **Long names (M2) are bounded and global.** 256 per program (the prelude's
-  count too — eight since W9-4C's input words), at most 60 bytes each, interned in a fixed compiler table; a 257th
-  is refused. Only long names can be forward-referenced — a one-byte name is
-  still define-before-use. Locals take long names too (W9-4D), up to 16 per
+- **Long names (M2) are bounded and global.** 1024 per program since W10-A
+  (the prelude's 12 count too), at most 60 bytes each, interned in a fixed
+  compiler table; a 1025th is refused. Every name, one-byte or long, may be
+  forward-referenced (W10-A). Locals take long names too (W9-4D), up to 16 per
   `⊡` word. And there are no scopes: a long name, like a letter, is
   one dictionary entry and one variable cell for the whole program.
 - **`(` and the input words are two readers.** `‹readall›`, `‹readline›`,

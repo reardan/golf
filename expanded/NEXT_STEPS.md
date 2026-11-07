@@ -17,10 +17,12 @@ guard page under the return stack, nested-list support, the missing list words
 and [`REFERENCE.md`](REFERENCE.md). Each item below keeps its record of how it
 was built. What is genuinely left is the "As needed" list (modules/`include`,
 an object-file or C backend, a relocation pass for a peephole optimizer) and
-the smaller limits DESIGN.md still lists: one-byte names are still
-define-before-use, long names are capped at 256 per program (the prelude uses
-12), the X/Y spill stack bounds nesting depth, and v1's `/` `%` still trap on
-zero.
+the smaller limits DESIGN.md still lists: the X/Y spill stack bounds nesting
+depth, and v1's `/` `%` still trap on zero. W10-A closed two of them: one-byte
+names may now be forward-referenced like long ones (mutual recursion between
+`a` and `b` just works; a name never defined is still `GOLF: undefined word b`,
+now at end of input), and a program may have 1024 long names (the prelude uses
+12), up from 256.
 
 The original roadmap is done. The code page, the atom set, lists on a `brk`-grown
 heap, quotations and higher-order words, strings, named variables, a total list
@@ -205,10 +207,10 @@ references** for long names — call sites thread a per-name patch list, the
 definition patches it, and a name still pending at end of input is
 `GOLF: undefined word ‹name›`. Mutual recursion needs no declaration. Programs
 without `‹` compile to the same bytes as before. Named locals (`⇒‹x›`)
-followed with W9-4D (item 2). *Still open:* forward references for one-byte names (kept
-define-before-use on purpose — their error stays at the call), and the fixed
-table (256 names × 60 bytes). The rest of this entry is the case that was made
-for it.
+followed with W9-4D (item 2). *Since W10-A:* forward references for one-byte
+names too (same lists; the end-of-input check walks them first), and the table
+is 1024 names × 60 bytes, with the dictionary and the heads moved to make room
+(REGISTRY.md §3). The rest of this entry is the case that was made for it.
 
 *What.* Word names are single bytes and the uppercase prelude pool is down to
 `B` and `C` (REGISTRY.md §2). The code page removed the pressure on *operators*,

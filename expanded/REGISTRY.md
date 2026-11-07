@@ -176,11 +176,11 @@ Uppercase letters are the pool.
 **Free:** `B`, `C` — reserved, unassigned. That is the *entire* remaining
 uppercase pool. Anything after them needs a high byte from `0xC0`–`0xCF` (§1.2)
 or — since M2 (W9-3A) shipped — a **long name** `‹name›`, which costs nothing
-scarce: 256 per program, up to 60 bytes each, and a library word with a long
+scarce: 1024 per program (W10-A; 256 before), up to 60 bytes each, and a library word with a long
 name may even be defined after the words that call it. Long names need no
 allocation here, but a prelude long name is visible to every user program, so
 prelude long names should still be listed below their wave's anchor in
-`lib/prelude.golfj` and kept few: they count against the program's 256.
+`lib/prelude.golfj` and kept few: they count against the program's 1024.
 
 Prelude long names in use (all **shipped**):
 
@@ -315,12 +315,15 @@ both forms are given here and the decimal is the one you type.
 | `m+88`, `m+92` | 4259928 · 4259932 | M-FRAME2 in the **seed** only: the current `⊡` word's local count · the head of its frame-size patch list (`self/golf2.golfj` keeps both in its variable bank, as `‹locals›` and `‹frame›`) (W9-4D) | shipped |
 | `m+96`…`m+159` | 4259936–4259999 | M-FRAME2 slot table, **both** compilers: the name number of the current `⊡` word's local `i` (`i` < 16) at `m+96+4*i`, in order of first appearance. Compiler-only (W9-4D) | shipped |
 | `m+160` | | **first free compiler scratch** | free |
-| `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
-| `m+3072`–`m+4095` | 0x410C00–0x410FFF | M2: the dictionary's slots for long names, name numbers 256–511 — the byte-indexed table at `m+2048` extended by its own formula `m+2048 + 4*name`, up to the output buffer (W9-3A) | shipped |
-| `0x430000`–`0x43FFFF` | 4390912– | M2 compiler-only long-name region. Used: `0x434000`–`0x437FFF`, the name table — name `E` (256–511) has a 64-byte entry at `0x430000 + 64*E`, `[len:4][≤60 bytes]` — and `0x438400`–`0x4387FF`, the forward-reference heads — the last unpatched `call`/`jmp rel32` site for `E` at `0x438000 + 4*E` (4423680 + 4*E), each placeholder holding the next. Above the 64 KB output buffer; a compiled program never sees it (W9-3A) | shipped |
+| `m+2048`–`m+4095` | 0x410800–0x410FFF | **RETIRED** (W10-A) — v1's dictionary (`m+2048 + 4*name`; M2 ran its long names into `m+3072`…). Neither `golf2` nor `seed` touches it any more (v1c, a frozen binary, still uses it in its own process); do not encroach anyway, it is what v1 documents | free |
+| `m+4096` | 0x411000 | the output buffer, at most `p_filesz` = 64 KB | shipped |
+| `0x430000`–`0x43FFFF` | 4390912– | **RETIRED** (W10-A) — M2's long-name region (the 256-name table and its heads), moved up below | free |
+| `0x47C000`+ | 4702208 + 64*E | M2 long-name table, **compiler-only**: name `E` (256–1279) has a 64-byte entry at `0x47C000 + 64*E`, `[len:4][≤60 bytes]`, so the entries fill `0x480000`–`0x48FFFF` (E < 256 has no entry: nothing below `0x480000` is touched, which is W10-C's spill-stack range); `0x490000`–`0x49003F` (E = 1280) is scratch — `‹readname›` reads every name into the next free entry before it knows the name is new. 1024 names (W10-A; 256 at `0x430000` before) | shipped |
+| `0x490400`–`0x4917FF` | 4785152 + 4*N | forward-reference heads, **compiler-only**: the last unpatched `call`/`jmp rel32` site for ANY name `N` (0–1279, one-byte names included since W10-A), each placeholder holding the next (M2, W9-3A) | shipped |
+| `0x492000`–`0x4933FF` | 4792320 + 4*N | the compiler's **dictionary**, **compiler-only**: the body address of name `N` (0–1279). Moved here from `m+2048` by W10-A — that table had room for 512 names before it met the output buffer | shipped |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
-| `0x4E0800`–`0x4E0FFF` | 5113856–5115903 | long-named variables (`→‹name›`/`←‹name›`): the bank above, continued by its own formula `0x4E0000 + 8*name` for name numbers 256–511 — **user space** (W9-3A) | shipped |
+| `0x4E0800`–`0x4E27FF` | 5113856–5121023 | long-named variables (`→‹name›`/`←‹name›`): the bank above, continued by its own formula `0x4E0000 + 8*name` for name numbers 256–1279 — **user space** (W9-3A; W10-A extended it from `0x4E0FFF`, so no long-named variable moved) | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
@@ -418,8 +421,8 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 12 of the 256 long-name slots, leaving 244 for a program
-(run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
+prelude now uses 12 of the long-name slots — 1024 since W10-A, so 1012 are left
+for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 
 String literals (W9-1B): the encoder copies everything between two `“` as

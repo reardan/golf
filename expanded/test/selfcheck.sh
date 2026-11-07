@@ -146,7 +146,22 @@ both frames "$TMP/src.frames"
 [ "$("$TMP/new.frames" 2>/dev/null)" = "$(printf '5050\n-5\n61')" ] \
   && ok "prelude + a sized-frame program runs (M-FRAME2)" || no "sized-frame program output: $("$TMP/new.frames" 2>/dev/null)"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames; do
+# W10-A: one-byte forward references — calls, ′ and a chain link to words
+# defined further down — and a program with 1024 long names (the prelude's
+# included), through both source forms.
+printf '%s' ':a"0-[_0^]1-b;:b"0-[_1^]1-a;3′d⍎Ṅ⊚mq≢÷;:q∑;5⍳mṄ7aṄ:d⊗;' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.fwd1"
+both fwd1 "$TMP/src.fwd1"
+[ "$("$TMP/new.fwd1" 2>/dev/null)" = "621" ] \
+  && ok "prelude + one-byte forward references runs (W10-A)" || no "one-byte forward program output"
+w10p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
+python3 -c 'import sys; n=int(sys.argv[1]); sys.stdout.write("‹v%d›" % n + "".join(":‹v%d›%d→‹v%d›;" % (k, k, k) for k in range(1, n + 1)) + "←‹v%d›Ṅ" % n)' \
+  $((1024 - w10p)) | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.names1k"
+both names1k "$TMP/src.names1k"
+[ "$("$TMP/new.names1k" 2>/dev/null)" = "$((1024 - w10p))" ] \
+  && ok "prelude + 1024 long names in all runs (W10-A)" || no "1024 long-name program output"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -191,6 +206,25 @@ cat "$TMP/pre.gb" <(printf '%s' ':‹f›‹g›;' | python3 tools/codepage.py e
   && [ "$(cat "$TMP/badlong.newerr")" = "GOLF: undefined word ‹g›" ] \
   && ok "both reject an undefined long name at end of input (M2)" \
   || no "undefined long name rejection differs (seed $sst, golf2 $gst)"
+
+# W10-A: a one-byte name called (or quoted) but never defined is rejected at end
+# of input by both — no longer at the call — and only golf2 can say which.
+cat "$TMP/pre.gb" <(printf '%s' ':fq;′r_' | python3 tools/codepage.py encode) > "$TMP/badone.src"
+"$TMP/seed"  < "$TMP/badone.src" > "$TMP/badone.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badone.src" > "$TMP/badone.new" 2>"$TMP/badone.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badone.old" ] && [ ! -s "$TMP/badone.new" ] \
+  && [ "$(cat "$TMP/badone.newerr")" = "GOLF: undefined word q" ] \
+  && ok "both reject a one-byte name never defined, at end of input (W10-A)" \
+  || no "undefined one-byte name rejection differs (seed $sst, golf2 $gst)"
+# W10-A: the 1025th long name is refused by both.
+python3 -c 'import sys; sys.stdout.write("".join(":‹v%d›;" % k for k in range(1, int(sys.argv[1]) + 1)))' \
+  $((1025 - w10p)) | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/badmany.src"
+"$TMP/seed"  < "$TMP/badmany.src" > "$TMP/badmany.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badmany.src" > "$TMP/badmany.new" 2>"$TMP/badmany.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badmany.old" ] && [ ! -s "$TMP/badmany.new" ] \
+  && [ "$(cat "$TMP/badmany.newerr")" = "GOLF: too many long names ‹v$((1025 - w10p))›" ] \
+  && ok "both refuse the 1025th long name (W10-A)" \
+  || no "too-many-long-names rejection differs (seed $sst, golf2 $gst)"
 
 # M-FRAME2 (W9-4D): a 17th local in one ⊡ word is refused by both (16 keep
 # every slot a disp8), and only golf2 can say which.

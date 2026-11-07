@@ -312,24 +312,33 @@ a one-letter one past `h` is refused everywhere.
 100‹sum›Ṅ␤3 4‹hyp›Ṅ␤                # 5050, then 25
 ```
 
-**Forward references.** A long name may be called, or quoted with `′`, before
-its definition. That is all mutual recursion needs:
+**Forward references.** Any word — a long name or, since W10-A, a one-byte
+one — may be called, quoted with `′`, or used as a chain link before its
+definition. That is all mutual recursion needs:
 
 ```
 :‹even›"[_0^]⊖‹odd›;
 :‹odd›"[_1^]⊖‹even›;
 10‹even›Ṅ            # 0: zero is true, 10 is even
+:a"0-[_0^]1-b;       # the same with one-byte names
+:b"0-[_1^]1-a;
+5aṄ                  # 1: 5 is not even
 ```
 
-A long name that is called but never defined stops the compile at end of input
-with `GOLF: undefined word ‹name›` and exit status 2, and no binary is written.
-A one-byte name is still define-before-use, with the same error at the call.
+A name that is called but never defined stops the compile at end of input with
+`GOLF: undefined word ‹name›` (or `GOLF: undefined word q` for a one-byte name)
+and exit status 2, and no binary is written. Only a name not defined *yet*
+goes forward: a byte that is an atom is always its template, and once a word
+is defined a call binds to that definition, so redefining a word later
+changes only the calls after the redefinition (the forward calls made before
+the first definition bind to the first).
 
-**Limits.** A program may have 256 different long names of up to 60 bytes each.
+**Limits.** A program may have 1024 different long names (256 before W10-A) of
+up to 60 bytes each; the prelude's own long names count against them.
 Anything else between `‹` and `›` (a space, a glyph, an empty name, or a
-missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 257th name
-with `GOLF: too many long names ‹…›`, both exit status 2. Locals do not take
-long names: `⇒` and `⇐` still name one of the eight slots `a`–`h`.
+missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 1025th
+name with `GOLF: too many long names ‹…›`, both exit status 2. Locals take long
+names inside a `⊡` word (M-FRAME2), up to 16 per word.
 
 ### Input
 
@@ -379,8 +388,8 @@ one that returns a list returns a NEW tagged list and never writes its input.
 :s⍳′⍳€;4⍳′s€‹flatten›⍕  ->  0 0 0 1
 ```
 
-The four words use 4 of the 256 long names a program may have, so a program
-has 252 for itself.
+The four words use 4 of the 1024 long names a program may have (the prelude
+has 12 in all), so a program has 1012 for itself.
 
 ## 4. Tutorial
 
