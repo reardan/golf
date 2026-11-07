@@ -328,6 +328,37 @@
 # @@ W9-3C-FREE @@
 
 # @@ W9-4A-LISTWORDS1 @@
+# ⧺ cat   l1 l2 -> l   a NEW list: l1's cells then l2's.  Either may be empty.
+# ↑ take  l n -> l     n >= 0: the first n; n < 0: the LAST |n| (APL).  |n| is
+#                      clamped to len, so an over-take is the whole list (no
+#                      APL-style padding) and 0 takes nothing.
+# ↓ drop  l n -> l     n >= 0: all but the first n; n < 0: all but the last |n|.
+#                      |n| >= len drops everything.
+# All three mask their list inputs and tag their result; the inputs are never
+# written.  Cells are copied verbatim, so a list of lists keeps its tagged inner
+# lists (shared, not deep-copied).  Raw \fetch/\store on cells — no I: every
+# index is in range by construction.  X/Y-framed.
+# ⧺: s7 l2 · s0 l1 · s4 result · s1 index.  l2's i-th cell lands at ≢l1 + i.
+:\cat X16\shl16>5177496\store16\shl16>5177440\store
+ 5177440\fetch\fetch5177496\fetch\fetch\radd"1\radd A"5177472\store\store
+ 0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
+ 0 5177448\store5177496\fetch\fetch0\eq[{5177496\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177440\fetch\fetch5177448\fetch\radd8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177496\fetch\fetch\rlt1\radd}]
+ 5177472\fetch1 48\shl| Y;
+# ↑: s2 n · s0 list · s6 count c = min(|n|, len) · s7 start (0, or len-c when
+# n < 0) · s4 result · s1 index.  |n| via the N idiom; \neg of -2^63 is itself,
+# which \rmin (unsigned) still clamps to len.
+:\take X5177456\store16\shl16>5177440\store
+ 5177456\fetch"0\slt1\radd[\neg]5177440\fetch\fetch\rmin5177488\store
+ 0 5177496\store5177456\fetch0\slt1\radd[5177440\fetch\fetch5177488\fetch\rsub5177496\store]
+ 5177488\fetch"1\radd A"5177472\store\store
+ 0 5177448\store5177488\fetch0\eq[{5177440\fetch5177496\fetch5177448\fetch\radd8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177488\fetch\rlt1\radd}]
+ 5177472\fetch1 48\shl| Y;
+# ↓ is a take: keep m = len - min(|n|, len) cells, from the END when n >= 0
+# (take -m) and from the front when n < 0 (take m).  s1 len · s2 n; the list
+# stays on the data stack for ↑, which brings its own frame.
+:\drop X5177456\store"16\shl16>\fetch5177448\store
+ 5177448\fetch5177456\fetch"0\slt1\radd[\neg]5177448\fetch\rmin\rsub
+ 5177456\fetch0\slt[\neg]\take Y;
 
 # @@ W9-4B-LISTWORDS2 @@
 

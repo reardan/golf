@@ -64,6 +64,10 @@ LIB = [
     (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
     (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
     (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
+    # --- W9-4A LIB rows: list words (prelude anchor W9-4A-LISTWORDS1) ---
+    (0xCB, "cat",  "⧺", "concatenate: l1 l2 -> new list (l1 then l2)"),
+    (0xCC, "take", "↑", "take: list n -> first n (n<0: last |n|; clamped to len)"),
+    (0xCD, "drop", "↓", "drop: list n -> all but first n (n<0: all but last |n|)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
