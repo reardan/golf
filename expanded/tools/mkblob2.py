@@ -362,7 +362,8 @@ LONG_HEADS = 0x438000     # forward-reference head for name E at LONG_HEADS + 4*
 #   0x400000..0x421000   image: code, compiler data base 0x410000, output buffer
 #   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
 #   0x4E0000..0x4E0400   →x/←x variable bank
-#   0x4F0000..0x4F1000   runtime cells, M-VEC hook table, scratch spill stack
+#   0x440000..0x480000   X/Y scratch spill stack, 4096 frames (W10-C)
+#   0x4F0000..0x4F0900   runtime cells, M-VEC hook table (0x4F0900.. retired)
 #   0x4F1000..0x4F2000   W9-2C guard page, PROT_NONE (mprotect in STARTUP2)
 #   ..0x600000           return stack, growing DOWN from the end of the segment
 #
@@ -452,9 +453,9 @@ ARGV_STASH = bytes([0x48, 0x89, 0x24, 0x25, 0x40, 0x00, 0x4F, 0x00])
 #
 # Why this page, and why mprotect rather than the ELF header:
 #   * the page directly below 0x4F1000 holds live state (the runtime cells, the
-#     M-VEC hook table and the spill stack), so the guard has to come out of the
-#     return stack itself; that costs 4 KB = 512 frames of ~138.7k (≈138k still),
-#     and the spill stack, which ends at 0x4F0FFF, now has a fault above it too.
+#     M-VEC hook table and, until W10-C moved it to 0x440000, the spill stack),
+#     so the guard has to come out of the return stack itself; that costs
+#     4 KB = 512 frames of ~138.7k (≈138k still).
 #   * splitting the PT_LOAD so the page is simply never mapped needs a second
 #     56-byte program header, which moves the code start (the `120+` in
 #     golf2.golfj and seed), the entry point and every record-4 offset; the

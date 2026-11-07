@@ -104,13 +104,22 @@
 #   J  list ->             join: print a code list as text (cell -> byte)
 #   Z  l1 l2 fn -> list    zip elementwise over min(len l1, len l2)
 :H5177344;                                          # H: heap-pointer address
-# X/Y: callee-save spill of s0..s7 (64-byte frames at 0x4F0900, pointer at
-# 0x4F0030 — still a 32-bit cell, still a byte offset, now stepped by 64).  Data
+# X/Y: callee-save spill of s0..s7 (64-byte frames at 0x440000, pointer at
+# 0x4F0030 — still a 32-bit cell, still a byte offset, now stepped by 64).
+# W10-C: the stack is 0x440000..0x47FFFF = 256 KB = 4096 frames (it was 28 at
+# 0x4F0900), and X checks it: an offset of 262144 has no room for a frame, so it
+# writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like ∘'s arena check)
+# — one compare-and-branch on the hot path, and Y needs none.  Data
 # stack only: `&` (over) re-supplies the frame base for each store, `"` (dup) for
 # each load, so neither word needs a temporary.  Every slot is a full 64-bit
 # \fetch/\store, which is the whole point: a scratch cell may now hold -1.
-:X5177392@5179648\radd 5177440\fetch&\store5177448\fetch&8\radd\store5177456\fetch&16\radd\store5177464\fetch&24\radd\store5177472\fetch&32\radd\store5177480\fetch&40\radd\store5177488\fetch&48\radd\store5177496\fetch&56\radd\store_5177392@64\radd5177392!;
-:Y5177392@64\rsub"5177392!5179648\radd"\fetch5177440\store"8\radd\fetch5177448\store"16\radd\fetch5177456\store"24\radd\fetch5177464\store"32\radd\fetch5177472\store"40\radd\fetch5177480\store"48\radd\fetch5177488\store"56\radd\fetch5177496\store_;
+:X5177392@"262144\rlt[
+ “GOLF: spill stack exhausted“5177440\store
+ 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
+ 10 5177448\store 2 5177448 1 1\sys_
+ 1.]
+ 4456448\radd 5177440\fetch&\store5177448\fetch&8\radd\store5177456\fetch&16\radd\store5177464\fetch&24\radd\store5177472\fetch&32\radd\store5177480\fetch&40\radd\store5177488\fetch&48\radd\store5177496\fetch&56\radd\store_5177392@64\radd5177392!;
+:Y5177392@64\rsub"5177392!4456448\radd"\fetch5177440\store"8\radd\fetch5177448\store"16\radd\fetch5177456\store"24\radd\fetch5177464\store"32\radd\fetch5177472\store"40\radd\fetch5177480\store"48\radd\fetch5177488\store"56\radd\fetch5177496\store_;
 # A: alloc(cells) -> addr.  W9-3C/M-MEM2: a size-classed free list in front of
 # the bump allocator of W6/M-MEM (see the "W6 allocator" block near the bottom).
 # Every block now carries a HEADER cell in front of the address A returns:

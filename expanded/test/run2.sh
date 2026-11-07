@@ -1835,6 +1835,30 @@ cmp -s "$TMP/w94d.g2" "$TMP/w94d.ref" \
 # @@ W10-B-V1DIV @@
 
 # @@ W10-C-SPILL @@
+echo "Spill stack (W10-C): 4096 frames at 0x440000, overflow checked in X"
+# X/Y's frames moved from 0x4F0900 (28 frames) to 0x440000..0x47FFFF (4096), so
+# nested-list recursion and nested higher-order words go hundreds deep; past the
+# end X writes `GOLF: spill stack exhausted` to fd 2 and exits 1.  `w10cn D K`
+# pushes K⍳ nested D deep (W10CW defines ‹wrap›: x -> a one-element list [x]).
+W10CW=':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;'
+w10cn(){ printf '%s⍳%s→i{‹wrap›←i1-"→i0\\eq}' "$2" "$1"; }
+[ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 200))0 1 2$(printf ']%.0s' $(seq 200)) " ] \
+  && ok "⍕ of a list nested 200 deep" || no "⍕ 200 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 100 3; printf '"+⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 100))0 2 4$(printf ']%.0s' $(seq 100)) " ] \
+  && ok "+ of a list nested 100 deep with itself" || no "+ 100 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '""≣N E⍤N E'; w10cn 200 3; w10cn 200 4; printf '≣N E'; } | gc)" \
+    = "$(printf -- '-1\n201\n0')" ] \
+  && ok "≣ and ⍤ at depth 200 (a list matches itself, not one differing at the core)" || no "≣/⍤ 200 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 3000 3; printf '⍤N E'; w10cn 1500 3; printf '"+⍤N E'; } | gc)" = "$(printf '3001\n1501')" ] \
+  && ok "⍤ at depth 3000 and + at depth 1500 (thousands of frames)" || no "⍤ 3000 / + 1500 deep"
+w10cerr=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+           && chmod +x "$TMP/p" && { "$TMP/p" > "$TMP/w10c.out" 2>&1; echo "rc=$?"; } 2>/dev/null)
+[ "$w10cerr" = "rc=1" ] && [ "$(cat "$TMP/w10c.out")" = "GOLF: spill stack exhausted" ] \
+  && ok "⍤ of a 100,000-deep nesting: 'GOLF: spill stack exhausted', exit 1" \
+  || no "spill exhaustion: $w10cerr, '$(head -c 80 "$TMP/w10c.out")'"
+grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REGISTRY.md \
+  && [ "$(grep -o '4456448\\radd' lib/prelude.golfj | wc -l)" = 2 ] && grep -q '"262144\\rlt\[' lib/prelude.golfj \
+  && ok "REGISTRY §3 and prelude X/Y agree on the spill region and its 4096-frame bound" || no "spill region docs/prelude"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
