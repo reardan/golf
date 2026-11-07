@@ -443,6 +443,48 @@
  5177456\fetch0\slt[\neg]\take Y;
 
 # @@ W9-4B-LISTWORDS2 @@
+# ⍋ sort  l -> l   a NEW list, ascending by SIGNED compare of the raw cells;
+#                  the input is never written.  Stable.  Meant for lists of
+#                  ints: an inner list is compared by its TAGGED value (2^48 |
+#                  addr), so lists sort after every int below 2^48 and among
+#                  themselves by address — no structural ordering.
+# Iterative bottom-up merge sort, O(n log n), one X/Y frame however long the
+# list (no recursion, so the 28-frame spill stack is never at risk).  The input
+# is copied by `0↓` into src; dst is a second block from A of the same size;
+# each pass merges runs of width w from src into dst and the two swap; when w
+# reaches n the sorted cells are in src.  s0 src · s7 dst (both raw) · s2 n ·
+# s3 w · s1 i (left cursor) · s4 j (right cursor) · s5 mid · s6 hi.  The output
+# slot is k = i + j - mid, so no 9th cell is needed.  A merge step is branch-
+# free: both heads are read at CLAMPED indices min(i, mid-1) / min(j, hi-1) —
+# always inside [lo, hi), so an exhausted run is never read past — and
+#   F = (j < hi) & ((i >= mid) | (si >s sj))        (-1: take the right head)
+#   dst[k] = si + ((sj - si) & F);  j -= F;  i += 1 + F
+# Taking the left head on a tie is what makes it stable.
+:\sort X0\drop16\shl16>"5177440\store\fetch"5177456\store"1\radd A"5177496\store\store
+ 1 5177464\store
+ 1 5177456\fetch\rlt1\radd[{0 5177448\store{
+  5177448\fetch5177464\fetch\radd5177456\fetch\rmin"5177480\store"5177472\store5177464\fetch\radd5177456\fetch\rmin5177488\store
+  {5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
+   5177440\fetch5177472\fetch5177488\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
+   \sgt5177448\fetch5177480\fetch\rlt~|5177472\fetch5177488\fetch\rlt$
+   "5177440\fetch5177472\fetch5177488\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
+   5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
+   \rsub$5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch\radd
+   5177496\fetch5177448\fetch5177472\fetch\radd5177480\fetch\rsub8\rmul\radd8\radd\store
+   5177472\fetch&\rsub5177472\store5177448\fetch\radd1\radd5177448\store
+   5177448\fetch5177472\fetch\radd5177480\fetch\rsub5177488\fetch\rlt1\radd}
+  5177488\fetch5177448\store5177448\fetch5177456\fetch\rlt1\radd}
+ 5177440\fetch5177496\fetch5177440\store5177496\store
+ 5177464\fetch2\rmul5177464\store5177464\fetch5177456\fetch\rlt1\radd}]
+ 5177440\fetch1 48\shl| Y;
+# ∊ member  l x -> f   0 if some cell of l equals x (≡: raw 64-bit equality,
+# so an inner list matches only the very same tagged list), 1 otherwise —
+# zero-is-true like T, so `∊[…]` runs on a hit.  The empty list gives 1.
+# s0 list · s2 x · s1 index · s4 found flag (-1 once hit); the loop stops at the
+# first hit: it continues while (i < len) & ~found.
+:\memb X5177456\store16\shl16>5177440\store0 5177472\store0 5177448\store
+ 5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\fetch\eq5177472\fetch|5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177472\fetch~$1\radd}]
+ 5177472\fetch1\radd Y;
 
 # @@ W9-4C-INPUT @@
 

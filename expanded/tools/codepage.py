@@ -72,6 +72,9 @@ LIB = [
     (0xCD, "drop", "↓", "drop: list n -> all but first n (n<0: all but last |n|)"),
     # --- W9-3C LIB row ---
     (0xCA, "free", "⌫", "free(list|block): release an A block to the free list"),
+    # --- W9-4B LIB rows: list words (prelude anchor W9-4B-LISTWORDS2) ---
+    (0xCE, "sort", "⍋", "sort: list -> new list, ascending signed (stable merge sort)"),
+    (0xCF, "memb", "∊", "member: list x -> 0 if x is an element, else 1"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

@@ -1516,6 +1516,27 @@ LWOUT=$(printf '0 1 2 0 1 \n0 1 \n2 3 4 5 \n4 5 \n0 1 2 3 \n6\ngol is fun')
 [ "$(oracle listwords)" = "$LWOUT" ] && ok "oracle: listwords.golfj behaves identically" || no "oracle listwords.golfj"
 
 # @@ W9-4B-LISTWORDS2 @@
+echo "List words (W9-4B): ⍋ sort (new list, signed, O(n log n)), ∊ member"
+[ "$(printf '%s' '0⍳⍋≢N E 1⍳5+⍋⍕E 5⍳⍋⍕E 5⍳⌽⍋⍕E' | gc)" = "$(printf '0\n5 \n0 1 2 3 4 \n0 1 2 3 4 ')" ] \
+  && ok "⍋: empty, one element, already sorted, reverse sorted" || no "sort basic"
+[ "$(printf '%s' '6⍳⌽3- 4⍳⧺⍋⍕E 7⍳⌽7⍳⌽⧺0 5-+⍋⍕' | gc)" = "$(printf -- '-3 -2 -1 0 0 1 1 2 2 3 \n-5 -5 -4 -4 -3 -3 -2 -2 -1 -1 0 0 1 1 ')" ] \
+  && ok "⍋: duplicates and negatives sort signed" || no "sort dup/neg"
+[ "$(printf '%s' '1⍳1 63≪1-+ 1⍳0 1 63≪-+⧺ 1⍳0 1-+⧺ 1⍳5+⧺⍋⍕' | gc)" = "-9223372036854775808 -1 5 9223372036854775807 " ] \
+  && ok "⍋: the full signed 64-bit range, -2^63 .. 2^63-1" || no "sort extremes"
+[ "$(printf '%s' ':f7919*1000%500-;37⍳′f€⍋⍕' | gc)" = "$(python3 -c 'print(" ".join(str(x) for x in sorted(i*7919%1000-500 for i in range(37))), end=" ")')" ] \
+  && ok "⍋: 37 scrambled values (odd length, runs of unequal width) match Python's sorted" || no "sort scrambled"
+[ "$(printf '%s' '5⍳⌽→a ←a⍋_ ←a⍕E 5⍳⌽⍋T N E 3⍳⌽⍋10+⍕' | gc)" = "$(printf '4 3 2 1 0 \n0\n10 11 12 ')" ] \
+  && ok "⍋ leaves its input unchanged and returns a tagged list" || no "sort input/tag"
+[ "$(printf '%s' '3⍳′⍳€⌽′⍋€⍕' | gc)" = "[0 1] [0] [] " ] && ok "⍋ mapped over a list of lists" || no "sort in map"
+W94T=$(date +%s%N)
+W94B=$(printf '%s' '100000⍳"∑N E⌽"⍋"0⊇N E"99999⊇N E"∑N E≢N E 0⊇N E' | gc)
+W94T=$(( ($(date +%s%N) - W94T) / 1000000 ))
+[ "$W94B" = "$(printf '4999950000\n0\n99999\n4999950000\n100000\n99999')" ] && [ "$W94T" -lt 3000 ] \
+  && ok "⍋ of 100,000 reversed elements: first/last right, ∑ kept, input intact, under 3 s" || no "sort 100k (${W94T} ms): $W94B"
+[ "$(printf '%s' '5⍳3∊N 5⍳7∊N 5⍳0∊N 5⍳4∊N 0⍳0∊N 5⍳0 2-+0 2-∊N 5⍳0 2-+0 3-∊N 5⍳0 1-∊N' | gc)" = "01001011" ] \
+  && ok "∊: hits (0) and misses (1), first/last element, negatives, empty list" || no "member"
+[ "$(printf '%s' ':m→v 3⍳←v∊;5⍳′m€⍕E 3⍳′⍳€"1⊇∊N 3⍳′⍳€2⍳∊N' | gc)" = "$(printf '0 0 0 1 1 \n01')" ] \
+  && ok "∊ inside a map; an inner list is found only as the same (tagged) list" || no "member map/nested"
 
 # @@ W9-4C-INPUT @@
 

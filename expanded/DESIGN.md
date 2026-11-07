@@ -140,7 +140,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **844** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
-| assertions in the run2 suite | **401** |
+| assertions in the run2 suite | **410** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -405,6 +405,16 @@ the golf2 fixpoint included. In order:
   `≣` (`0xC8`) structural equality (`-1`/`0`, an int never matches a list) and
   `⍤` (`0xC9`) depth (int 0, flat or empty list 1, then 1 + the deepest
   element). Prelude only; the templates' scalar fast path is untouched.
+- **W9-4B — `⍋` sort and `∊` member.** Prelude words at `0xCE`/`0xCF`. `⍋`
+  returns a NEW tagged list in ascending SIGNED order and leaves its input
+  alone; it is an iterative bottom-up merge sort (stable, O(n log n), one
+  `X`/`Y` frame whatever the length — no recursion to exhaust the 28-frame spill
+  stack), ping-ponging between a `0↓` copy of the input and one block from `A`,
+  with a branch-free merge step that reads both run heads at clamped indices.
+  100,000 elements sort in well under a second. It is meant for int lists: an
+  inner list compares by its tagged value (after every int below 2^48, and by
+  address among lists). `∊` is `list x -> 0/1` — zero-is-true like `T`, raw
+  cell equality like `≡`, stopping at the first hit; the empty list gives 1.
 
 ## Invariants we do not break
 
