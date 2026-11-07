@@ -334,6 +334,16 @@ CHAIN_BYTE = 0xB0   # ⊚  define a word as a tacit chain of links
 FRAME_BYTE = 0xB1   # ⊡  define a word owning a frame of locals
 LSET_BYTE = 0xB2    # ⇒x pop TOS into a local slot
 LGET_BYTE = 0xB3    # ⇐x push a local slot
+LNAME_BYTE = 0xB4   # ‹  opens a long name: ‹name› (M2, W9-3A)
+RNAME_BYTE = 0xB5   # ›  closes it
+# M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
+# NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
+# their one-byte formulas unchanged (0x410800 + 4*name, 0x4E0000 + 8*name).
+LONG_BASE = 256           # the first long name's number
+LONG_MAX = 256            # how many long names a program may have
+LONG_LEN = 60             # the longest long name, in bytes
+LONG_TABLE = 0x430000     # entry for name E is LONG_TABLE + 64*E: [len:4][bytes]
+LONG_HEADS = 0x438000     # forward-reference head for name E at LONG_HEADS + 4*E
 
 # --- M-MEM (W6): v2's BSS stops reserving the static list heap ---------------
 # v1 asks for p_memsz = 0x800000, i.e. [0x400000, 0xC00000).  The bottom megabyte
@@ -395,7 +405,8 @@ def _check_atoms():
     bs = [b for b, _mn, _gl, _tpl, _doc in ATOMS]
     dup = sorted({b for b in bs if bs.count(b) > 1})
     assert not dup, "duplicate ATOMS byte: " + ", ".join(f"0x{b:02X}" for b in dup)
-    taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE, CHAIN_BYTE}
+    taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE, CHAIN_BYTE, FRAME_BYTE,
+             LSET_BYTE, LGET_BYTE, LNAME_BYTE, RNAME_BYTE}
     taken |= {ord(ch) for ch in v1.TEMPLATES}
     clash = sorted(set(bs) & taken)
     assert not clash, ("ATOMS byte already allocated: "

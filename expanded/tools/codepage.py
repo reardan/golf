@@ -79,6 +79,9 @@ COMPILER = [
      "prefix: ⊡name ... ; defines a word with a frame of 8 per-call locals"),
     (mkblob2.LSET_BYTE, "lset", "⇒", "prefix: ⇒x pops TOS into local x (a..h)"),
     (mkblob2.LGET_BYTE, "lget", "⇐", "prefix: ⇐x pushes local x (a..h)"),
+    (mkblob2.LNAME_BYTE, "lname", "‹",
+     "opens a long name: ‹name› stands wherever a one-byte name can"),
+    (mkblob2.RNAME_BYTE, "rname", "›", "closes a long name"),
 ]
 
 def lib_byte(key) -> int:

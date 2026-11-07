@@ -69,7 +69,8 @@ for n in bad:
 sys.exit(1 if bad else 0)
 PY
 # Only ops the SEED can compile may appear in golf2.golf's code: ASCII, plus the
-# four compiler prefixes (′ “ → ←) and the atom bytes.  Anything else and the
+# compiler ops (′ “ → ← ⊚ ⊡ ⇒ ⇐, and since M2 the long-name brackets ‹ ›, which
+# golf2.golfj's own M2 words are named with) and the atom bytes.  Anything else and the
 # compiler could never be built by the seed that bootstraps it.  Checked on the
 # encoded source before the splice — the blob is arbitrary raw bytes.
 python3 - <<'PY' && ok "golf2.golfj uses only ops the seed can compile" || no "unsupported op byte"
@@ -79,7 +80,7 @@ import codepage, mkblob2
 data = codepage.encode(open("self/golf2.golfj", encoding="utf-8").read())
 known = {mkblob2.REF_BYTE, mkblob2.STR_BYTE, mkblob2.SET_BYTE, mkblob2.GET_BYTE,
          mkblob2.CHAIN_BYTE, mkblob2.FRAME_BYTE, mkblob2.LSET_BYTE,
-         mkblob2.LGET_BYTE}
+         mkblob2.LGET_BYTE, mkblob2.LNAME_BYTE, mkblob2.RNAME_BYTE}
 known |= {b for b, _mn, _gl, _tpl, _d in mkblob2.ATOMS}
 used = sorted({b for b in data if b >= 0x80})
 sys.stderr.write("       high bytes used: "
@@ -128,7 +129,15 @@ for ex in lists strings vars vectorize capstone chaindef locals; do
 done
 
 echo "Byte-for-byte agreement: the two source forms are the same compiler"
-for t in hello fizz lists strings vars vectorize capstone chaindef locals; do
+# M2: long names — every place one can stand, forward calls and a forward ′,
+# mutual recursion — through both source forms.
+printf '%s' ':‹square›²;⊚‹mean›∑≢÷;⊡‹hyp›⇒a⇒b⇐a‹square›⇐b‹square›+;:‹even›"[_0^]⊖‹odd›;:‹odd›"[_1^]⊖‹even›;3 4‹hyp›Ṅ5⍳‹mean›Ṅ9‹odd›Ṅ7→‹count›←‹count›Ṅ3⍳′‹square›€⍕4′‹later›⍎Ṅ:‹later›⊕;' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.longnames"
+both longnames "$TMP/src.longnames"
+[ "$("$TMP/new.longnames" 2>/dev/null)" = "252070 1 4 5" ] \
+  && ok "prelude + a long-name program runs (M2)" || no "long-name program output"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -163,6 +172,16 @@ cat "$TMP/pre.gb" <(printf '%s' '3⍳′q€⍕' | python3 tools/codepage.py enc
   && [ "$(cat "$TMP/badref.newerr")" = "GOLF: undefined word q" ] \
   && ok "both reject ′ of an undefined name the same way (W9-1C)" \
   || no "′undefined rejection differs (seed $sst, golf2 $gst)"
+
+# M2: a long name called but never defined is rejected at end of input by both,
+# and only golf2 can say which one.
+cat "$TMP/pre.gb" <(printf '%s' ':‹f›‹g›;' | python3 tools/codepage.py encode) > "$TMP/badlong.src"
+"$TMP/seed"  < "$TMP/badlong.src" > "$TMP/badlong.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badlong.src" > "$TMP/badlong.new" 2>"$TMP/badlong.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badlong.old" ] && [ ! -s "$TMP/badlong.new" ] \
+  && [ "$(cat "$TMP/badlong.newerr")" = "GOLF: undefined word ‹g›" ] \
+  && ok "both reject an undefined long name at end of input (M2)" \
+  || no "undefined long name rejection differs (seed $sst, golf2 $gst)"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

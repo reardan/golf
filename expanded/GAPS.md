@@ -124,7 +124,9 @@ prelude's uppercase pool is down to `B` and `C`. Two letters, ten-plus wanted
 words. Everything else has to come from `0xC8`–`0xCF` (eight bytes) or wait for
 M2 multi-character identifiers (§4 of the queue). **This makes M2 more urgent
 than its current position suggests** — it is filed as "nothing above needs it",
-but the library cannot grow past two more words without it.
+but the library cannot grow past two more words without it. *(Since W9-3A:
+**shipped** — `‹name›` long names, so the blocker is gone; the library words
+themselves are still to be written.)*
 
 ### 1.4 Tacit programming: runtime library vs parse-time algebra
 
@@ -185,7 +187,9 @@ key on but integers.
 ### 2.2 Names and scope
 
 - **Single-byte identifiers.** 256 word slots in a flat byte-indexed table, and
-  the readable letters are gone (§1.3). Queued as M2 (§4).
+  the readable letters are gone (§1.3). **Fixed by M2 (W9-3A):** `‹name›` adds
+  256 long names per program, usable as words, quotations, chain links and
+  variables. Locals still take one-byte slot names `a`–`h`.
 - **No lexical scope, and no closures.** The variable bank is one global cell per
   name. The "closure" idiom in `examples/legacy_capstone.golfj`
   (`10→k:f←k+;… ′f€`) is a global read at call time, not a capture:
@@ -218,7 +222,11 @@ keyword arguments, no varargs, **no arity checking of any kind**, no anonymous
 functions — `′` quotes a *named* word, so every function must be defined and
 named first — and no generators, decorators, or comprehensions.
 
-**No forward references or mutual recursion.** A word must be defined before use.
+**No forward references or mutual recursion.** *(Fixed for long names by M2,
+W9-3A: a `‹name›` may be called or quoted before its definition, the call sites
+are patched when it arrives, and one never defined is `GOLF: undefined word
+‹name›`, exit 2. One-byte names stay define-before-use, now with M-DIAG's
+diagnostic instead of the segfault below.)* A word must be defined before use.
 Self-recursion works (the dictionary slot is live inside the body), but two words
 that call each other cannot be written at all — and the failure is a compile that
 *succeeds* and a binary that segfaults:
@@ -393,7 +401,7 @@ Ordered by (severity × how cheap the fix is) when this file was written.
 Since then **M-FRAME** shipped too, which was §2.2's silent-wrong-answer on
 recursion — the worst remaining defect this file found. That leaves, as the top
 of the real queue: the tag bit (correctness *and* nested data), then M2 (the
-letter shortage, which now also gates naming more than eight locals), then
-sizing a `⊡` frame per definition. Two small unclaimed fixes remain: the
+letter shortage — since shipped by W9-3A, though named locals are still open),
+then sizing a `⊡` frame per definition. Two small unclaimed fixes remain: the
 `′`-path variant of §3.2, and a guard on the return stack, which M-FRAME made
 easier to reach — since closed by W9-2C's guard page (DESIGN.md, known limits).

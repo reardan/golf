@@ -76,6 +76,8 @@ B0	ED	C	chain	E28A9A
 B1	ED	C	dloc	E28AA1
 B2	ED	C	lset	E28792
 B3	ED	C	lget	E28790
+B4	ED	C	lname	E280B9
+B5	ED	C	rname	E280BA
 52	E-	L	range	E28DB3
 53	E-	L	sum	E28891
 4C	E-	L	len	E289A2
