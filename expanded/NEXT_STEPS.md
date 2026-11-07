@@ -208,7 +208,8 @@ and best done when the language has stopped moving under it.
 it", and that is now false. The uppercase pool is down to `B` and `C` — two
 letters — and the library is missing, at minimum, index-of,
 unique and a structural `≡` (concatenate and take/drop shipped in W9-4A as `⧺ ↑ ↓`; sort and member in W9-4B as `⍋ ∊`) ([`GAPS.md`](GAPS.md) §1.3). Item
-5 (M6b) needs letters too, for a line reader and a number parser. Two letters do
+5 (M6b) needed letters too, for a line reader and a number parser (it shipped
+on long names once M2 landed, W9-4C). Two letters do
 not cover either list, so **every remaining library item is gated behind this
 one** or behind spending the eight high bytes at `0xC8`–`0xCF` on words that
 should have had names. That does not automatically move M2 to the front — the
@@ -216,24 +217,26 @@ tag bit is still the thing that makes the *language* correct, and it is cheaper 
 but "nothing needs it" is no longer the reason to defer it. Sequencing it right
 after the tag bit, and before the allocator, is the honest ordering.
 
-### 5. M6b — a number parser and line-oriented input for USER programs (small)
+### 5. M6b — a number parser and line-oriented input for USER programs — **shipped (W9-4C)**
 
-*What.* The syscall half of this item shipped with M-TOOL: `⎈` (`\sys`, `0xA7`)
-is the read atom it asked for, and `lib/tio.golfj` already has buffered input,
-a slurp and argv, while `lib/ttext.golfj` has the decimal and hex parsers. What
-is *not* done is making any of that reachable from an ordinary program:
-`lib/t*.golfj` is prepended only by `gtools/build`, for the repo's own tools.
+*What it was.* A user program could read one byte with `(` and nothing more;
+`lib/tio.golfj`/`lib/ttext.golfj` had buffered reads, a slurp, argv and decimal
+parsing, but only `gtools/build` prepends them, and they claim `a`–`z`.
 
-*How.* Decide what a user program should get, then move exactly that into
-`lib/prelude.golfj` — most likely a line reader, a decimal parser, and a
-split-on-whitespace yielding a list. The cost is the constraint the tool
-libraries were invented to dodge: the prelude's uppercase pool is down to `B`
-and `C`, so anything that moves needs a high byte from `0xC8`–`0xCF`, and the
-prelude may never use `→x`/`←x` (the bank is user space). Do not simply prepend
-`lib/t*.golfj` to user programs — it claims lowercase `a`–`z` wholesale and
-would shadow half of any program's own words.
+*What shipped.* Seven long-named prelude words (M2 made names free, so no
+letter or high byte was spent), under the `W9-4C-INPUT` anchor:
+`‹readall›` (stdin → code list), `‹readline›` (→ line without its `\n`, then a
+flag: 0 got a line, 1 end of input), `‹getc›` (→ byte or -1), `‹words›`
+(split a code list on ASCII whitespace), `‹num›` (signed decimal; stops at the
+first non-digit, no digits → 0), `‹ints›` (all of stdin as integers) and
+`‹args›` (argv[1..] as code lists). One 8 KB read buffer, made on first use and
+reached through the cell `0x4F0050` (REGISTRY §3), backs all the stdin words,
+so they interleave. `examples/input.golfj`; tests in run2.sh's W9-4C block,
+including `printf '1 2 3' | … ‹ints›∑Ṅ` → `6`, empty input, a 1.2 MB input.
 
-*Tests.* Pipe `1 2 3` in, sum it, print `6`; empty input yields the empty list.
+*Still open.* `(` bypasses the buffer, so a program should not mix the two.
+There is no hex or float parser, no number formatter into a list, and no
+output buffering for user programs (`)` is still one `write` per byte).
 
 ## As needed
 

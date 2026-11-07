@@ -152,19 +152,20 @@ Jelly needs no such escape hatch. Closing this properly is a front-end rewrite,
 not a milestone — worth recording as out of scope rather than leaving it as an
 implied someday.
 
-### 1.5 I/O and the program's shape
+### 1.5 I/O and the program's shape — input shipped (W9-4C)
 
 Jelly reads arguments from the command line, evaluates the last chain as `main`,
 and **auto-prints the result**. GOLF requires explicit printing every time
-(`Ṅ ⍕ ␤ 🗲 ⊐`) and, for an ordinary user program, has almost nothing to read
-*with*: `(` gets one byte from stdin, and that is the whole input surface.
+(`Ṅ ⍕ ␤ 🗲 ⊐`). Until W9-4C an ordinary user program also had almost nothing
+to read *with*: `(` got one byte from stdin, and that was the whole input
+surface (`lib/tio.golfj`/`lib/ttext.golfj` serve only the repo's own tools).
 
-The pieces exist — `⎈` (`\sys`) is an atom available to any program, and
-`lib/tio.golfj`/`lib/ttext.golfj` have buffered reads, a slurp, argv and decimal
-parsing — but those libraries are prepended only by `gtools/build`, for the
-repo's own tools. This is queued as item 5 (M6b) and correctly scoped there;
-the note that it cannot simply prepend `lib/t*.golfj` (they claim `a`–`z`
-wholesale) is the crux, and it runs into the same letter shortage as §1.3.
+W9-4C (NEXT_STEPS item 5, M6b) put the input half into the prelude under long
+names, so no letter was spent: `‹readall›`, `‹readline›`, `‹getc›`,
+`‹words›`, `‹num›`, `‹ints›` and `‹args›` (REFERENCE.md, "Input").
+`printf '1 2 3' | prog` with `‹ints›∑Ṅ` prints `6`. What remains of the gap is
+the program's *shape*: no implicit `main`, no auto-print, and the command line
+arrives as code lists the program must parse itself (`‹args›′‹num›€`).
 
 ---
 

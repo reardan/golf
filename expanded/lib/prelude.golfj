@@ -20,7 +20,9 @@
 #   0x4F0030             spill-stack pointer (a byte OFFSET; BSS-zero at start)
 #   0x4F0034 / 0x4F0038  heap base / span cells (A's state; T no longer reads them)
 #   0x4F003C             code-arena bump pointer (M-CHAIN's ∘)
-#   0x4F0040..0x4F005F   free scratch
+#   0x4F0040             the entry rsp (argc/argv; ‹args› reads it)
+#   0x4F0050             the stdin buffer block's raw address (W9-4C input)
+#   0x4F0048, 0x4F0058   free scratch
 #   0x4F0060..0x4F0098   scratch s0..s7 — stride EIGHT, all eight in use:
 #                        s0 list · s1 index · s2 accumulator · s3 fn addr ·
 #                        s4 result · s5 alloc temp · s6 filter count · s7 zip l2
@@ -487,6 +489,92 @@
  5177472\fetch1\radd Y;
 
 # @@ W9-4C-INPUT @@
+# Input for ordinary programs (NEXT_STEPS item 5, M6b): buffered stdin, lines,
+# words, decimal parsing and argv — the tio/ttext logic, re-cut for the prelude
+# (no →x/←x, X/Y frames, raw atoms, masked inputs, tagged results).  LONG names
+# only: no single-byte name is left, and the lowercase letters are the user's.
+#   ‹getc›     -> b          next stdin byte 0..255, or -1 at end of input
+#   ‹readall›  -> list       the rest of stdin as a list of byte codes
+#   ‹readline› -> list f     the next line without its '\n'; f 0 = got a line,
+#                            1 = end of input and nothing read (zero-is-true)
+#   ‹words›    list -> list  split on runs of ASCII whitespace (9-13, 32) into
+#                            a list of code lists; never an empty word
+#   ‹num›      list -> n     skip leading whitespace, optional + or -, then
+#                            decimal digits up to the first non-digit; no
+#                            digits -> 0; wraps mod 2^64 like every add
+#   ‹ints›     -> list       ‹readall›‹words›′‹num›€ — every word of stdin as
+#                            an integer (a non-numeric word counts as 0)
+#   ‹args›     -> list       argv[1..] as a list of code lists (0x4F0040)
+# All of them share ONE input buffer, so they interleave freely; the raw `(`
+# does not go through it and must not be mixed with them.  Buffer state lives
+# in a heap block whose raw address is the cell 0x4F0050 (5177424, REGISTRY §3),
+# made on first use: [pos][len][8192 bytes].  A failed read(2) counts as end of
+# input.  Names starting ‹_in› are reserved for these words' helpers.
+# ‹getc›: a leaf (no scratch, no frame).  Refill when pos >= len; on a read of
+# <= 0 bytes return -1 and leave pos/len as they are, so the next call reads
+# again.  Otherwise bump pos and return the byte at S+16+pos-1.
+:‹getc›5177424\fetch0\eq1\radd[1026 A"5177424\store0&\store0&8\radd\store_]
+ 5177424\fetch"\fetch&8\radd\fetch\rlt[0&16\radd8192 0\sys"1\slt1\radd[__0 1\rsub^]&8\radd\store0&\store]
+ "\fetch1\radd&\store"\fetch\radd15\radd?;
+# ‹_inread›  stop -> list f   bytes up to (not including) `stop` or end of
+# input.  f is 1 iff input ended with nothing read.  A growable block: s0
+# block · s2 capacity · s1 count · s4 the byte · s7 stop · s3 the new block and
+# s6 the copy index while doubling (the old block goes back via ⌫).  The loop
+# flag g = (b<0)|(b==stop) stays on the data stack across the append.
+:‹_inread›X5177496\store16"5177456\store1\radd A5177440\store0 5177448\store
+ {‹getc›"5177472\store0\slt5177472\fetch5177496\fetch\eq|"[
+  5177448\fetch5177456\fetch\eq1\radd[5177456\fetch2\rmul"5177456\store1\radd A5177464\store
+   0 5177488\store{5177440\fetch5177488\fetch8\rmul\radd8\radd\fetch5177464\fetch5177488\fetch8\rmul\radd8\radd\store5177488\fetch1\radd"5177488\store5177448\fetch\rlt1\radd}
+   5177440\fetch\free5177464\fetch5177440\store]
+  5177472\fetch5177440\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store]}
+ 5177448\fetch5177440\fetch\store5177440\fetch1 48\shl|5177472\fetch0\slt5177448\fetch0\eq$\neg Y;
+:‹readall›0 1\rsub‹_inread›_;
+:‹readline›10‹_inread›;
+# ‹words›: two passes over the code list.  Whitespace test, swap-free:
+# t = c + ((c==32) & -23) maps a space onto 9, then (t-9) <u 5 is -1 exactly
+# for 9..13 and 32.  Pass 1 counts word starts (s3 previous-was-space, s7
+# count); pass 2 runs i over 0..len INCLUSIVE, treating i == len as a space,
+# and at each word end copies src[start..i) into a fresh list stored straight
+# into result[k] (then tagged).  s0 src · s2 len · s1 i · s3 start (-1 = none)
+# · s4 result · s6 k · s7 copy index.
+:‹words›X16\shl16>"5177440\store\fetch5177456\store0 5177496\store0 1\rsub5177464\store0 5177448\store
+ 5177456\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt
+  "~5177464\fetch$\neg5177496\fetch\radd5177496\store5177464\store
+  5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
+ 5177496\fetch"1\radd A"5177472\store\store
+ 0 1\rsub5177464\store0 5177488\store0 5177448\store
+ {5177448\fetch5177456\fetch\eq"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt]
+  "5177464\fetch0\slt~$1\radd[
+   5177448\fetch5177464\fetch\rsub"1\radd A"5177472\fetch5177488\fetch8\rmul\radd8\radd\store\store
+   0 5177496\store{5177440\fetch5177464\fetch5177496\fetch\radd8\rmul\radd8\radd\fetch5177472\fetch5177488\fetch8\rmul\radd8\radd\fetch5177496\fetch8\rmul\radd8\radd\store5177496\fetch1\radd"5177496\store5177448\fetch5177464\fetch\rsub\rlt1\radd}
+   5177472\fetch5177488\fetch8\rmul\radd8\radd"\fetch1 48\shl|&\store_
+   5177488\fetch1\radd5177488\store0 1\rsub5177464\store]
+  ~5177464\fetch0\slt$1\radd[5177448\fetch5177464\store]
+  5177448\fetch1\radd"5177448\store5177456\fetch1\radd\rlt1\radd}
+ 5177472\fetch1 48\shl| Y;
+# ‹num›: three phases over s0 list · s2 len · s1 i — skip whitespace, read a
+# sign into s3 (-1 for '-'; '+' is skipped), accumulate digits in s4.  Each
+# phase's stop flag is (i >= len) | (not this phase's kind of byte), computed
+# without reading l[len]: `<i> <len> \rlt~"[_ …]` leaves -1 when out of range.
+:‹num›X16\shl16>"5177440\store\fetch5177456\store0 5177448\store0 5177464\store0 5177472\store
+ {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt~]"[5177448\fetch1\radd5177448\store]}
+ 5177448\fetch5177456\fetch\rlt1\radd[5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch45\eq"5177464\store
+  5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch43\eq|\neg5177448\fetch\radd5177448\store]
+ {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch48\rsub10\rlt~]"[
+  5177472\fetch10\rmul5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch48\rsub\radd5177472\store5177448\fetch1\radd5177448\store]}
+ 5177472\fetch5177464\fetch1\radd[\neg]Y;
+:‹ints›‹readall›‹words›\ref‹num›M;
+# ‹args›: argc-1 code lists.  argv[k+1] is at [rsp]+16+8k; its bytes are
+# copied up to the NUL.  s0 entry rsp · s2 n · s4 result · s1 k · s3 the
+# argument pointer · s6 its length · s7 copy index.
+:‹args›X5177408\fetch"5177440\store\fetch1\rsub"5177456\store"1\radd A"5177472\store\store0 5177448\store
+ 5177456\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd16\radd\fetch5177464\store
+  0 5177488\store5177464\fetch?0\eq[{5177488\fetch1\radd"5177488\store5177464\fetch\radd?0\eq}]
+  5177488\fetch"1\radd A"5177472\fetch5177448\fetch8\rmul\radd8\radd\store\store
+  5177488\fetch0\eq[0 5177496\store{5177464\fetch5177496\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\fetch5177496\fetch8\rmul\radd8\radd\store5177496\fetch1\radd"5177496\store5177488\fetch\rlt1\radd}]
+  5177472\fetch5177448\fetch8\rmul\radd8\radd"\fetch1 48\shl|&\store_
+  5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
+ 5177472\fetch1 48\shl| Y;
 
 # --- W3 hook installation (top-level init; must stay LAST) ---
 # M-VEC — implicit vectorization.  The bare + - * ⌈ ⌊ now compile to a

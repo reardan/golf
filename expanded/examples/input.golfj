@@ -1,0 +1,10 @@
+# Input (W9-4C): read stdin and the command line.  Try:
+#   printf 'a list\n3 -4 10\n' | ./input x y
+# prints the first line back, the sum of the numbers in the rest of the input
+# (a word that is not a number counts as 0), then the arguments one per line.
+#   ‹readline› -> codes flag (0 = got a line)   ‹ints› -> the numbers left
+#   ‹args› -> argv[1..] as code lists           ⊐ print codes as text
+‹readline›_⊐␤            # the first line, without its newline -> a list
+‹ints›∑Ṅ␤                # the rest, as integers, summed       -> 9
+:‹say›⊐␤0;               # print one code list; € wants a result back
+‹args›′‹say›€_           # each argument on its own line       -> x / y

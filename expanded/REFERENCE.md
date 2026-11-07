@@ -316,6 +316,33 @@ missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 257
 with `GOLF: too many long names ‹…›`, both exit status 2. Locals do not take
 long names: `⇒` and `⇐` still name one of the eight slots `a`–`h`.
 
+### Input
+
+The prelude's input words (W9-4C) have long names, so they take no letter
+from your program. Text arrives as a **code list**, one byte per element, which
+`⊐` prints back and every list word works on.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹readall›` | `-> list` | the rest of stdin as a code list; empty input gives the empty list |
+| `‹readline›` | `-> list flag` | the next line without its `\n`. `flag` is `0` for a line (an empty line too) and `1` at end of input with nothing read, zero-is-true like `[`. A last line with no `\n` still comes back with `0` |
+| `‹getc›` | `-> b` | the next byte, `0`–`255`, or `-1` at end of input |
+| `‹words›` | `list -> list` | split a code list on runs of ASCII whitespace (tab, `\n`, `\v`, `\f`, `\r`, space) into a list of code lists. Never yields an empty word |
+| `‹num›` | `list -> n` | parse a signed decimal: skip leading whitespace, one optional `+` or `-`, then digits up to the first non-digit. No digits gives `0` (`“12ab“⊃‹num›` is 12, `“x“⊃‹num›` is 0). Overflow wraps at 64 bits |
+| `‹ints›` | `-> list` | all of stdin as integers: `‹readall›‹words›′‹num›€`. A word that is not a number counts as `0` |
+| `‹args›` | `-> list` | the command-line arguments after the program name, as a list of code lists |
+
+```
+‹ints›∑Ṅ                 # printf '1 2 3' | ./sum   prints 6
+{‹readline›"[_⊐␤0]}      # echo stdin line by line, until end of input
+‹args›′‹num›€∑Ṅ          # ./add 2 40               prints 42
+```
+
+The stdin words share one 8 KB buffer, so `‹readline›`, `‹getc›` and
+`‹readall›` may be mixed freely. The raw `(` reads around that buffer: do not
+use it in a program that uses these words. Names that start with `‹_in` are
+the prelude's own helpers. See `examples/input.golfj`.
+
 ## 4. Tutorial
 
 Each example below is a complete program. Compile it with
