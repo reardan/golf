@@ -155,8 +155,8 @@ linked list through their own unpatched immediates and walked at `;`. That is a
 well-understood assembler technique and costs one compiler variable (definitions
 do not nest), but it is real work and M-FRAME already removed the wrong answer.
 
-*Also still open.* Eight slots means eight *names*, `a`–`h`; a real symbol table
-(M2, item 4) would let a `⊡` word name its locals anything and let the count fall
+*Also still open.* Eight slots means eight *names*, `a`–`h`; M2's name table
+(item 4, shipped) could let a `⊡` word name its locals anything and let the count fall
 out of the name arena. The return stack's missing guard, which M-FRAME's
 ~15k-frame ceiling made easier to reach, is fixed: W9-2C's guard page turns an
 overflow into a SIGSEGV instead of silent corruption (DESIGN.md, known limits).
@@ -178,7 +178,19 @@ loop-free `s5` leaf. A map-and-free loop now keeps the program break flat
 automatic freeing — a word that consumed its input, or a scope that released
 everything it allocated, would want ownership rules GOLF does not have.
 
-### 4. M2 — multi-character identifiers (medium)
+### 4. M2 — multi-character identifiers (medium) — **shipped (W9-3A)**
+
+*Shipped as* `‹name›` (`0xB4`/`0xB5`, DESIGN.md's record): long names for words,
+quotations, chain links and variables, interned to name numbers 256–511 so the
+dictionary and the variable bank extend by their own formulas, and **forward
+references** for long names — call sites thread a per-name patch list, the
+definition patches it, and a name still pending at end of input is
+`GOLF: undefined word ‹name›`. Mutual recursion needs no declaration. Programs
+without `‹` compile to the same bytes as before. *Still open:* named locals
+(`⇒‹x›` is refused; W9-4D), forward references for one-byte names (kept
+define-before-use on purpose — their error stays at the call), and the fixed
+table (256 names × 60 bytes). The rest of this entry is the case that was made
+for it.
 
 *What.* Word names are single bytes and the uppercase prelude pool is down to
 `B` and `C` (REGISTRY.md §2). The code page removed the pressure on *operators*,

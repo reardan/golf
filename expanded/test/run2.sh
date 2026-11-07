@@ -1419,6 +1419,99 @@ W9GS=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; print
   || no "STARTUP2 (with guard) not at offset 120 of golf2 / an emitted program"
 
 # @@ W9-3A-NAMES @@
+echo "Long names (M2): ‹name› wherever a one-byte name can stand, forward references"
+# Ten long-named words, defined with all three headers and used as calls,
+# quotations and chain links.  The digits after a name are a literal, not part
+# of the name: the › is what ends it.
+cat > "$TMP/m2ten.golfj" <<'EOF'
+:‹square›²;
+:‹cube›"‹square›*;
+:‹inc›⊕;
+:‹dec›⊖;
+:‹double›⊗;
+:‹half›⊘;
+⊚‹mean›∑≢÷;
+⊚‹sumsq›′‹square›€∑;
+⊡‹hyp›⇒a⇒b⇐a‹square›⇐b‹square›+;
+:‹ten›10;
+5‹square›Ṅ␤3‹cube›Ṅ␤‹ten›‹inc›‹double›‹half›‹dec›Ṅ␤
+5⍳‹mean›Ṅ␤4⍳‹sumsq›Ṅ␤3 4‹hyp›Ṅ␤
+EOF
+tools/golfc -j "$TMP/m2ten.golfj" "$TMP/m2ten" 2>/dev/null
+[ "$("$TMP/m2ten" 2>/dev/null | tr '\n' ' ')" = "25 27 10 2 14 25 " ] \
+  && ok "ten long-named words: :, ⊚ and ⊡ headers, calls, ′ inside a chain" || no "ten long names"
+python3 tools/codepage.py encode < "$TMP/m2ten.golfj" | cat "$TMP/pre.gb" - > "$TMP/m2ten.src"
+python3 boot/golfref.py < "$TMP/m2ten.src" > "$TMP/m2ten.ref" 2>/dev/null
+cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
+  && ok "oracle: identical bytes for the long-name program" || no "oracle long-name bytes"
+[ "$(printf '%s' ':\lnamesq\rname\sqr;7\lnamesq\rname N E' | gc)" = "49" ] \
+  && ok "the ASCII spelling \\lname…\\rname is the same token" || no "lname/rname mnemonics"
+# A long name's cell is 0x4E0000 + 8*(256+index) — past every one-byte name's —
+# so ‹a› and a, ‹count› and c are four different variables.
+[ "$(printf '%s' '1→a2→‹a›3→c4→‹count›←aṄ←‹a›Ṅ←cṄ←‹count›Ṅ' | gc)" = "1234" ] \
+  && ok "long-named variables never collide with one-byte ones" || no "long variables"
+[ "$(printf '%s' '0 7-→‹neg›←‹neg›Ṅ 4294967296→‹big›←‹big›Ṅ' | gc)" = "-74294967296" ] \
+  && ok "... and are full 64-bit cells, like the bank they extend" || no "long variables 64-bit"
+[ "$(printf '%s' ':‹twice›⊗;4⍳′‹twice›€⍕␤5′‹twice›⍎Ṅ' | gc)" = "$(printf '0 2 4 6 \n10')" ] \
+  && ok "′‹name› is a quotation for € and ⍎" || no "quotation of a long name"
+[ "$(printf '%s' '⊚‹avg›∑≢÷;6⍳‹avg›Ṅ:‹s›∑;:‹l›≢;⊚‹avg2›‹s›‹l›÷;8⍳‹avg2›Ṅ' | gc)" = "23" ] \
+  && ok "a chain definition with a long name, and with long-named links" || no "chain with a long name"
+# Mutual recursion: ‹even› calls ‹odd› before ‹odd› exists.  The call is emitted
+# with a placeholder on ‹odd›'s pending list and patched by its definition.
+# Zero is true, so 0 = yes.
+[ "$(printf '%s' ':‹even›"[_0^]⊖‹odd›;:‹odd›"[_1^]⊖‹even›;10‹even›Ṅ7‹even›Ṅ7‹odd›Ṅ1000‹odd›Ṅ' | gc)" = "0101" ] \
+  && ok "mutual recursion :‹even›…‹odd›…; :‹odd›…‹even›…; is correct" || no "mutual recursion"
+[ "$(printf '%s' '3′‹later›⍎Ṅ:‹later›⊗;′‹later›_' | gc)" = "6" ] \
+  && ok "′ of a long name defined further down (a jmp thunk, patched)" || no "forward quotation"
+[ "$(printf '%s' ':‹ab›1;:‹abc›2;:‹a›3;‹abc›Ṅ‹ab›Ṅ‹a›Ṅ' | gc)" = "213" ] \
+  && ok "‹ab› ‹abc› ‹a› are three names (no prefix collision)" || no "long-name prefixes"
+[ "$(printf '%s' '5‹nope›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹nope›" ] \
+  && [ ! -s "$TMP/u.out" ] \
+  && ok "a long name never defined: GOLF: undefined word ‹nope›, exit 2, no binary" || no "undefined long name"
+[ "$(printf '%s' ':‹f›‹g›;1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹g›" ] \
+  && ok "... reported at end of input, even from inside a definition" || no "undefined long name in a body"
+[ "$(printf '%s' '5qṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+  && ok "a one-byte name is still define-before-use, same message as before" || no "one-byte undefined regression"
+[ "$(printf '%s' '‹a b›' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: bad long name ‹a›" ] \
+  && ok "a byte outside 0-9 A-Z a-z _ - is rejected" || no "bad long-name byte"
+[ "$(printf '%s' '‹›' | und)" = "2" ] && [ "$(printf '%s' '‹abc' | und)" = "2" ] \
+  && [ "$(printf '%s' '‹abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk›' | und)" = "2" ] \
+  && ok "an empty, unterminated or 61-byte long name is rejected" || no "empty/unterminated/long"
+w93n=""; for k in $(seq 1 257); do w93n="$w93n:‹w$k›;"; done
+[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w257›" ] \
+  && ok "the 257th long name is refused (256 fit the table)" || no "too many long names"
+# The other half of the contract: a program without ‹ compiles to the bytes it
+# always did.  Against the compiler logic of the commit before M2 (rebuilt with
+# today's blob, so a template change elsewhere does not count) when this clone
+# has that commit; against the oracle's untouched one-byte path when it does not.
+W93BASE=102ab8c
+w93ref=""
+if git cat-file -e "$W93BASE^{commit}" 2>/dev/null \
+   && git show "$W93BASE:expanded/self/golf2.golfj" > "$TMP/pre-m2.golfj" 2>/dev/null; then
+  python3 - "$TMP/pre-m2.golfj" > "$TMP/pre-m2.golf" <<'PY'
+import sys; sys.path.insert(0, "tools"); import mkblob2, codepage
+enc = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
+sys.stdout.buffer.write(enc.replace(mkblob2.BLOB_MARKER, mkblob2.blob_escape()))
+PY
+  "$TMP/golf2" < "$TMP/pre-m2.golf" > "$TMP/pre-m2" 2>/dev/null && chmod +x "$TMP/pre-m2" && w93ref=pre-m2
+fi
+w93bad=""; w93n=0
+for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj; do
+  case "$f" in
+    *.golfj) { cat "$TMP/pre.gb"
+               case "$f" in gtools/*) for l in lib/t*.golfj; do python3 tools/codepage.py encode < "$l"; done;; esac
+               python3 tools/codepage.py encode < "$f"; } > "$TMP/w93.src";;
+    *.g2) cat "$TMP/pre.gb" "$f" > "$TMP/w93.src";;
+    *) cp "$f" "$TMP/w93.src";;
+  esac
+  "$TMP/golf2" < "$TMP/w93.src" > "$TMP/w93.new" 2>/dev/null
+  if [ "$w93ref" = pre-m2 ]; then "$TMP/pre-m2" < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null
+  else python3 boot/golfref.py < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null; fi
+  cmp -s "$TMP/w93.new" "$TMP/w93.old" || w93bad="$w93bad $f"; w93n=$((w93n+1))
+done
+[ -z "$w93bad" ] && [ "$w93n" -gt 20 ] \
+  && ok "every existing example and gtools program compiles to the same bytes as before M2 (${w93ref:-oracle}, $w93n programs)" \
+  || no "M2 changed the bytes of:$w93bad"
 
 # @@ W9-3B-NESTED @@
 echo "Nested lists (W9-3B): recursive ⍕, ≣ match, ⍤ depth, + - * ⌈ ⌊ to any depth"

@@ -22,18 +22,19 @@ Two useful languages hide inside GOLF:
 The plan was (1) then (2); what actually happened was (2) then most of (1). The
 code page removed the pressure that multi-character names were supposed to
 relieve, so the golf surface, the library and 64-bit values came first. Per-call
-locals landed with M-FRAME (`⊡name … ;`, slots `a`–`h`), which leaves **real
-multi-character names** as the last piece of (1) still outstanding — item 4 of
-[`NEXT_STEPS.md`](NEXT_STEPS.md), and now also what a `⊡` word needs to name more
-than eight locals.
+locals landed with M-FRAME (`⊡name … ;`, slots `a`–`h`), and **multi-character
+names** with M2 (W9-3A): `‹name›` stands wherever a one-byte name can, and may
+be used before its definition. What (1) still lacks is locals with real names —
+a `⊡` word still names its eight slots `a`–`h`.
 
 Bytes 128..255 were entirely unused and the compiler's `e` word already
 dispatches *any* byte it finds in the template blob, so the code page costs
 almost nothing on the compiler side. It is a better answer to "GOLF ran out of
 single-byte op slots" than multi-character identifiers, and it leans into the
-golf heritage. Multi-char identifiers (M2, now in [`NEXT_STEPS.md`](NEXT_STEPS.md))
-are *optional* — useful for readable user-defined names, but no longer required
-to grow the built-in op set.
+golf heritage. Multi-char identifiers (M2, shipped as `‹name›`) are *optional*
+— useful for readable user-defined names, but not required to grow the built-in
+op set; a program that never writes `‹` compiles to exactly the bytes it did
+before them.
 
 ## Code page (Jelly-style)
 
@@ -138,10 +139,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **844** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
-| assertions in the run2 suite | **410** |
-| assertions in the selfcheck suite | **38** |
+| the generated bootstrap seed (`self/seed.golf`) | **2539** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **7895** bytes |
+| assertions in the run2 suite | **427** |
+| assertions in the selfcheck suite | **41** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -320,6 +321,26 @@ the golf2 fixpoint included. In order:
   than wrapped: `⇒z` would be displacement 200, a *negative* disp8 landing in the
   frame of a word not yet called, and `⇒A` would wrap to 0 and silently alias
   slot `a`.
+- **M2 (W9-3A) — long names, with forward references.** `‹name›` (`0xB4` …
+  `0xB5`, bytes `0-9 A-Z a-z _ -`) works wherever a one-byte name does — `:`,
+  `⊚`, `⊡` headers, calls, `′`, chain links, `→`/`←`. The compiler interns each
+  long name at its first appearance to a **name number** 256 + index, and from
+  there on it is simply a name that does not fit a byte: the dictionary slot
+  (`m+2048 + 4*name`) and the variable cell (`0x4E0000 + 8*name`) are the
+  one-byte formulas, continued into `0x410C00…` and `0x4E0800…`. That is why
+  every program without `‹` compiles to the same bytes as before — checked by
+  run2.sh against the pre-M2 compiler logic on every example and gtools
+  program. What a long name adds is a **forward reference**: a call to one not
+  yet defined is `call rel32` whose placeholder threads the name's pending-site
+  list (a `′` gets a jumped-over `jmp rel32` thunk on the same list), the
+  definition patches the list, and anything still pending at end of input is
+  `GOLF: undefined word ‹name›`, exit 2, before a byte is written. So mutual
+  recursion needs no declaration. One-byte names stay define-before-use: their
+  pending lists are always empty, and their error stays at the call. The
+  compiler's own M2 words and state carry long names (`‹readname›`,
+  `‹count›`, …) — every letter was already taken in `golf2.golfj` — so the seed
+  implements them too, and the fixpoint now exercises them. Cost: `golf2`'s
+  binary 9292 → 11482 bytes, `seed`'s 5919 → 7970.
 - **The capstone shrank.** `examples/capstone.golfj` went from **54** op bytes to
   **46** by letting the bare polymorphic operators do the looping; the pre-M-VEC
   spellings are kept verbatim and output-checked as
@@ -461,10 +482,11 @@ person does not have to guess whether they were forgotten.
   a parse-time arity algebra, and matching it means a real front end — a
   different project, not a milestone. `⊚` chain definitions are as far as the
   single-pass model goes.
-- **Diagnostics, in general.** The compiler is single-pass with no symbol table
-  and no source positions; it cannot say "line 4" because it does not know what
-  a line is. The two failures worth naming are named (an undefined word, an
-  exhausted compose arena) and both cost a byte-count that had to be justified.
+- **Diagnostics, in general.** The compiler is single-pass with no source
+  positions; it cannot say "line 4" because it does not know what a line is.
+  The failures worth naming are named (an undefined word, an exhausted compose
+  arena, a local out of range, a malformed long name) and each cost a
+  byte-count that had to be justified.
   A general error-reporting layer is not coming; it would be a large fraction of
   a 4.8 KB compiler.
 
@@ -475,6 +497,13 @@ specific silent failure can earn its diagnostic, as those two did.
 
 These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+- **Long names (M2) are bounded and global.** 256 per program (the prelude's
+  count too), at most 60 bytes each, interned in a fixed compiler table; a 257th
+  is refused. Only long names can be forward-referenced — a one-byte name is
+  still define-before-use. `⇒`/`⇐` locals still name the slots `a`–`h`; named
+  locals are W9-4D's. And there are no scopes: a long name, like a letter, is
+  one dictionary entry and one variable cell for the whole program.
 
 For the limits that only show up when GOLF is held against another language —
 what Python and Jelly have that this does not, which of it is refused rather than

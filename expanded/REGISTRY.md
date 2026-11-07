@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **34** are now spent, leaving **77** free. It is partitioned as follows
+space; **36** are now spent, leaving **75** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -111,6 +111,8 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xB1` | `\dloc` | `⊡` | define a word WITH a frame of eight per-call locals: `⊡name … ;` (compiler logic, no template) | shipped |
 | `0xB2` | `\lset` | `⇒` | pop TOS into local slot `x`, `x` in `a`–`h` (compiler logic, no template) | shipped |
 | `0xB3` | `\lget` | `⇐` | push local slot `x`, `x` in `a`–`h` (compiler logic, no template) | shipped |
+| `0xB4` | `\lname` | `‹` | open a long name `‹name›` — a word, quotation, chain link or variable name of `0-9 A-Z a-z _ -` bytes (M2, W9-3A; compiler logic, no template) | shipped |
+| `0xB5` | `\rname` | `›` | close a long name (M2, W9-3A; only ever read by the `‹` case) | shipped |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
 | `0xC2` | `\vmul` | `⨰` | polymorphic mul | shipped |
@@ -173,7 +175,12 @@ Uppercase letters are the pool.
 
 **Free:** `B`, `C` — reserved, unassigned. That is the *entire* remaining
 uppercase pool. Anything after them needs a high byte from `0xC0`–`0xCF` (§1.2)
-or M2 multi-char identifiers.
+or — since M2 (W9-3A) shipped — a **long name** `‹name›`, which costs nothing
+scarce: 256 per program, up to 60 bytes each, and a library word with a long
+name may even be defined after the words that call it. Long names need no
+allocation here, but a prelude long name is visible to every user program, so
+prelude long names should still be listed below their wave's anchor in
+`lib/prelude.golfj` and kept few: they count against the program's 256.
 
 > **Rule: the prelude must NEVER use `→x` / `←x`.** The variable bank at
 > `0x4E0000` is user space — one global cell per name — so a prelude word that
@@ -298,10 +305,14 @@ both forms are given here and the decimal is the one you type.
 | `m+40`, `m+44`, `m+48` | | M-CHAIN2 in the **seed** only: the first three buffered link bytes | shipped |
 | `m+52` | 4259892 | `e`'s undefined-word diagnostic: the offending name byte with a newline stacked above it (`name + 10<<8`), staged for one `write(2, m+52, 2)`. Compiler-only — a compiled program never sees this address | shipped |
 | `m+56` | 4259896 | M-FRAME's in-a-`⊡`-definition flag, in the **seed** only — `^` and `;` read it to decide whether to release a locals frame (`self/golf2.golfj` holds the same flag in its variable bank, as `J`) | shipped |
-| `m+60` | | **first free compiler scratch** | free |
+| `m+60`…`m+84` | 4259900–4259924 | M2 long-name state in the **seed** only, seven 4-byte cells: name count · length being read · entry being read into · entry compared against · compare countdown · table index · a body address (`self/golf2.golfj` keeps the same state in its variable bank, under long names) (W9-3A) | shipped |
+| `m+88` | | **first free compiler scratch** | free |
 | `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
+| `m+3072`–`m+4095` | 0x410C00–0x410FFF | M2: the dictionary's slots for long names, name numbers 256–511 — the byte-indexed table at `m+2048` extended by its own formula `m+2048 + 4*name`, up to the output buffer (W9-3A) | shipped |
+| `0x430000`–`0x43FFFF` | 4390912– | M2 compiler-only long-name region. Used: `0x434000`–`0x437FFF`, the name table — name `E` (256–511) has a 64-byte entry at `0x430000 + 64*E`, `[len:4][≤60 bytes]` — and `0x438400`–`0x4387FF`, the forward-reference heads — the last unpatched `call`/`jmp rel32` site for `E` at `0x438000 + 4*E` (4423680 + 4*E), each placeholder holding the next. Above the 64 KB output buffer; a compiled program never sees it (W9-3A) | shipped |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
+| `0x4E0800`–`0x4E0FFF` | 5113856–5115903 | long-named variables (`→‹name›`/`←‹name›`): the bank above, continued by its own formula `0x4E0000 + 8*name` for name numbers 256–511 — **user space** (W9-3A) | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
@@ -392,7 +403,8 @@ Notes:
 
 Allocated up front (W9-0A) so the parallel tasks never contend. Every other
 W9 word — slice, unique, index-of, flatten, the input words — waits for W9-3A
-(multi-character names) and takes a *name*, not a byte; `0xC8`–`0xCF` is now
+(multi-character names, now **shipped** as `‹name›`, `0xB4`/`0xB5`) and takes a
+*name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

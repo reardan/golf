@@ -37,12 +37,14 @@ an equality test: it is `0` exactly when `a == b`. The comparison atoms
 convention, so add `1` before `[`: `a b<1+[ … ]` runs the block when `a < b`.
 
 **Words.** `:x … ;` defines a word named `x`. The name is any single byte (a
-letter, usually). Writing `x` later calls it. A word must be **defined before
-it is used**: the compiler makes one pass and looks a name up when it meets it.
-A call to a name that was never defined stops the compile with
-`GOLF: undefined word x` on stderr and exit status 2. A word may call itself,
-because its name is bound when its body starts. `^` returns early from the
-current word. `;` returns at the end.
+letter, usually), or a **long name** written `‹name›` (see "Long names" at the
+end of section 3). Writing `x` later calls it. A one-byte word must be
+**defined before it is used**: the compiler makes one pass and looks a name up
+when it meets it. A call to a name that was never defined stops the compile with
+`GOLF: undefined word x` on stderr and exit status 2. A long name may be used
+before its definition, which is how mutual recursion is written. A word may call
+itself, because its name is bound when its body starts. `^` returns early from
+the current word. `;` returns at the end.
 
 **The prelude.** `tools/golfc` puts `lib/prelude.golfj` in front of your
 program, so the library words in section 3 are already defined. The prelude
@@ -208,6 +210,8 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xB1` | `⊡` | `\dloc` | prefix: ⊡name ... ; defines a word with a frame of 8 per-call locals |
 | `0xB2` | `⇒` | `\lset` | prefix: ⇒x pops TOS into local x (a..h) |
 | `0xB3` | `⇐` | `\lget` | prefix: ⇐x pushes local x (a..h) |
+| `0xB4` | `‹` | `\lname` | opens a long name: ‹name› stands wherever a one-byte name can |
+| `0xB5` | `›` | `\rname` | closes a long name |
 
 ### Library words
 
@@ -272,6 +276,45 @@ A few notes on what the tables leave out:
 - **Chains.** `⊚name f g h;` defines a tacit train. One link is a call, two
   links are a composition, and three are a fork `h(f x, g x)`. A fourth or later
   link is an ordinary call made on the result.
+
+### Long names
+
+One-byte names run out: the prelude holds most uppercase letters, and a program
+with a dozen helpers is out of readable lowercase ones. A **long name** is any
+run of the bytes `0-9 A-Z a-z _ -` between `‹` (`0xB4`, `\lname`) and `›`
+(`0xB5`, `\rname`). It works everywhere a one-byte name does:
+
+| form | meaning |
+|---|---|
+| `:‹square›²;` | define a word (also `⊚‹mean›∑≢÷;` and `⊡‹fact›…;`) |
+| `5‹square›Ṅ` | call it |
+| `′‹square›` | quote it, for `€ ⇤ ⌿ ⊞ ⍎` and the combinators |
+| `⊚‹avg›‹total›‹count›÷;` | use it as a chain link |
+| `→‹count›` / `←‹count›` | store / load a variable |
+
+Because `›` ends the name, `5‹sq›3` is the call followed by the number 3, and
+the ASCII spelling `\lnamesq\rname` is the same token as `‹sq›`. `‹ab›` and
+`‹abc›` are different names, and so are `‹a›` and `a`: a long-named variable has
+its own cell, beyond the 256 one-byte ones.
+
+**Forward references.** A long name may be called, or quoted with `′`, before
+its definition. That is all mutual recursion needs:
+
+```
+:‹even›"[_0^]⊖‹odd›;
+:‹odd›"[_1^]⊖‹even›;
+10‹even›Ṅ            # 0: zero is true, 10 is even
+```
+
+A long name that is called but never defined stops the compile at end of input
+with `GOLF: undefined word ‹name›` and exit status 2, and no binary is written.
+A one-byte name is still define-before-use, with the same error at the call.
+
+**Limits.** A program may have 256 different long names of up to 60 bytes each.
+Anything else between `‹` and `›` (a space, a glyph, an empty name, or a
+missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 257th name
+with `GOLF: too many long names ‹…›`, both exit status 2. Locals do not take
+long names: `⇒` and `⇐` still name one of the eight slots `a`–`h`.
 
 ## 4. Tutorial
 
