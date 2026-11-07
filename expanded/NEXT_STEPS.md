@@ -206,8 +206,8 @@ and best done when the language has stopped moving under it.
 
 *But it is no longer independent.* This entry used to say "nothing above needs
 it", and that is now false. The uppercase pool is down to `B` and `C` — two
-letters — and the library is missing, at minimum, index-of,
-unique and a structural `≡` (concatenate and take/drop shipped in W9-4A as `⧺ ↑ ↓`; sort and member in W9-4B as `⍋ ∊`) ([`GAPS.md`](GAPS.md) §1.3). Item
+letters — and the library was missing, at minimum, index-of,
+unique and a structural `≡`. *(All shipped now: concatenate and take/drop in W9-4A as `⧺ ↑ ↓`; sort and member in W9-4B as `⍋ ∊`; `≣` in W9-3B; and slice, index-of, unique and flatten in W9-4B part 2 as the long-named `‹slice› ‹indexof› ‹unique› ‹flatten›` — [`GAPS.md`](GAPS.md) §1.3.)* Item
 5 (M6b) needs letters too, for a line reader and a number parser. Two letters do
 not cover either list, so **every remaining library item is gated behind this
 one** or behind spending the eight high bytes at `0xC8`–`0xCF` on words that

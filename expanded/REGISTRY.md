@@ -405,7 +405,9 @@ Allocated up front (W9-0A) so the parallel tasks never contend. Every other
 W9 word — slice, unique, index-of, flatten, the input words — waits for W9-3A
 (multi-character names, now **shipped** as `‹name›`, `0xB4`/`0xB5`) and takes a
 *name*, not a byte; `0xC8`–`0xCF` is now
-fully allocated. A task that needs anything not listed here asks the
+fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
+`‹flatten›`, the prelude's first long names, which take 4 of a program's 256
+long-name slots. A task that needs anything not listed here asks the
 integrator; it does not pick it.
 
 String literals (W9-1B): the encoder copies everything between two `“` as

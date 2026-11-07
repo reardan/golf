@@ -316,6 +316,31 @@ missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 257
 with `GOLF: too many long names ‹…›`, both exit status 2. Locals do not take
 long names: `⇒` and `⇐` still name one of the eight slots `a`–`h`.
 
+### More list words
+
+The prelude's newer list words have long names, because the high bytes ran
+out. They have no codepage row, so they are listed here. Like `⧺ ↑ ↓ ⍋`, each
+one that returns a list returns a NEW tagged list and never writes its input.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹slice›` | `list i n -> list` | the `n` elements starting at index `i`. A negative `i` counts from the end (`-1` is the last element) and is then clamped to `0`. An `i` at or past the end gives an empty list. `n` is clamped to what is left, and a negative `n` counts as `0` |
+| `‹indexof›` | `list x -> i` | index of the first element equal to `x`, or `-1` when there is none. Equality is `≡`'s raw cell equality, so an inner list is found only as that very list |
+| `‹unique›` | `list -> list` | the first occurrence of each distinct element, in the original order. It uses a hash set, so it runs in O(n) expected time |
+| `‹flatten›` | `list -> list` | every int in a nested list, depth-first, as one flat list. It works at any depth, because it loops one level at a time instead of recursing |
+
+```
+5⍳1 3‹slice›⍕            ->  1 2 3
+5⍳0 2-9‹slice›⍕          ->  3 4
+5⍳3‹indexof›Ṅ            ->  3
+5⍳7‹indexof›Ṅ            ->  -1
+5⍳"⧺⌽‹unique›⍕           ->  4 3 2 1 0
+:s⍳′⍳€;4⍳′s€‹flatten›⍕  ->  0 0 0 1
+```
+
+The four words use 4 of the 256 long names a program may have, so a program
+has 252 for itself.
+
 ## 4. Tutorial
 
 Each example below is a complete program. Compile it with

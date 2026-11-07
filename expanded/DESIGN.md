@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **844** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2539** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **7895** bytes |
-| assertions in the run2 suite | **427** |
+| assertions in the run2 suite | **444** |
 | assertions in the selfcheck suite | **41** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -330,7 +330,8 @@ the golf2 fixpoint included. In order:
   one-byte formulas, continued into `0x410C00…` and `0x4E0800…`. That is why
   every program without `‹` compiles to the same bytes as before — checked by
   run2.sh against the pre-M2 compiler logic on every example and gtools
-  program. What a long name adds is a **forward reference**: a call to one not
+  program (since W9-4B part 2, on the prelude with its four long-named
+  definitions cut out, since the pre-M2 compiler cannot read them). What a long name adds is a **forward reference**: a call to one not
   yet defined is `call rel32` whose placeholder threads the name's pending-site
   list (a `′` gets a jumped-over `jmp rel32` thunk on the same list), the
   definition patches the list, and anything still pending at end of input is
@@ -436,6 +437,26 @@ the golf2 fixpoint included. In order:
   inner list compares by its tagged value (after every int below 2^48, and by
   address among lists). `∊` is `list x -> 0/1` — zero-is-true like `T`, raw
   cell equality like `≡`, stopping at the first hit; the empty list gives 1.
+- **W9-4B part 2 — `‹slice›` `‹indexof›` `‹unique›` `‹flatten›`.** The first
+  prelude words with LONG names (the high bytes are spent). `‹slice›`
+  (`list i n`) is `↓` then `↑` with the intermediate freed by `⌫`; a negative
+  `i` counts from the end and is then clamped to 0, `n` is clamped to what is
+  left, and a negative `n` is 0. `‹indexof›` is `∊`'s loop that keeps the
+  index (`-1` on a miss). `‹unique›` keeps first occurrences in order through
+  an open-addressing hash set of 2^k ≥ 2n slots (Fibonacci hashing, the 64-bit
+  golden-ratio constant built from 16-bit pieces for the seed; slots hold
+  i+1, 0 is empty; the table is zeroed, since `A` may hand back a used block,
+  and freed at the end), so it is O(n) expected: 400,000 cells take about
+  40 ms. `‹flatten›` neither recurses nor keeps a work stack: each pass
+  splices one level and notes whether a spliced cell was itself a list, and
+  passes repeat (freeing every intermediate) until none was. That is
+  O(size · depth) in one `X`/`Y` frame, so a list nested 200 deep flattens
+  where the recursive `⍕`/`⍤` would exhaust the 28 spill frames. The four
+  take 4 of the 256 long-name slots, so a program now has 252. None of them
+  uses swap, because `decode -m` writes the swap byte as a bare `\`, which
+  does not encode back (gtools' prelude round trip caught it). A one-byte
+  program's own code compiles to the same bytes as before; only the prelude
+  part of the binary grows (run2 checks this).
 
 ## Invariants we do not break
 

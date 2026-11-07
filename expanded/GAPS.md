@@ -101,19 +101,28 @@ vocabulary is 17 words: range, sum, len, index, alloc, map, fold, show, product,
 reverse, filter, puts, chars, join, zip, plus the five polymorphic operators and
 three combinators.
 
-Missing and routinely needed: **slice, index-of, unique, min/max of a list,
-structural equality, flatten**. Concatenate used to head this list —
+Missing and routinely needed *was*: **slice, index-of, unique, min/max of a
+list, structural equality, flatten**. Concatenate used to head this list —
 `+` on two lists is elementwise, so there was no way to join two lists at all —
 and **W9-4A shipped it** as `⧺` (with `↑` take and `↓` drop, negative `n`
 counting from the end); **W9-4B shipped sort and member** as `⍋` (a new list,
 ascending signed, stable merge sort) and `∊` (`list x -> 0` on a hit, 1 on a
-miss):
+miss); W9-3B shipped structural equality as `≣`; and **W9-4B part 2 shipped
+the rest** as long-named prelude words — `‹slice›`, `‹indexof›`, `‹unique›`
+and `‹flatten›`. So none of sort, concatenate, take, drop, slice, member,
+index-of, unique, structural equality or flatten is missing any more. Of the
+list above only min/max of a list has no word of its own; it is a fold
+seeded with the first element, `"0⊇′⌈⇤` (`′⌊` for the min):
 
 ```
 2⍳2⍳+⍕   ->  0 2        # elementwise, not [0,1,0,1]
 2⍳2⍳⧺⍕   ->  0 1 0 1    # W9-4A: concatenate
 5⍳⌽⍋⍕    ->  0 1 2 3 4  # W9-4B: sort
 5⍳3∊Ṅ    ->  0          # W9-4B: member (zero-is-true)
+5⍳1 3‹slice›⍕  ->  1 2 3        # W9-4B part 2: slice
+5⍳3‹indexof›Ṅ  ->  3            # W9-4B part 2: index-of (-1 if absent)
+5⍳"⧺‹unique›⍕  ->  0 1 2 3 4    # W9-4B part 2: unique, first occurrences
+3⍳′⍳€‹flatten›⍕ -> 0 0 1        # W9-4B part 2: flatten
 3⍳3⍳≡Ṅ   ->  0          # ≡ compares the two ADDRESSES, not the contents
 ```
 
@@ -123,8 +132,8 @@ words. Everything else has to come from `0xC8`–`0xCF` (eight bytes) or wait fo
 M2 multi-character identifiers (§4 of the queue). **This makes M2 more urgent
 than its current position suggests** — it is filed as "nothing above needs it",
 but the library cannot grow past two more words without it. *(Since W9-3A:
-**shipped** — `‹name›` long names, so the blocker is gone; the library words
-themselves are still to be written.)*
+**shipped** — `‹name›` long names, so the blocker is gone; and since W9-4B
+part 2 the library words themselves are written, as long-named words.)*
 
 ### 1.4 Tacit programming: runtime library vs parse-time algebra
 
