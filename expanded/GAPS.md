@@ -43,41 +43,30 @@ Jelly is the closer comparison — GOLF already borrowed the code page, the
 one-byte-per-op canon, and the glyph/mnemonic round-trip from it. What did not
 come across:
 
-### 1.1 The data model — the big one, and it is not on the queue
+### 1.1 The data model — nested lists (support shipped, W9-3B)
 
 **Jelly's central data structure is the arbitrarily nested list.** Every atom
 that touches a list is defined at every depth, and arithmetic vectorizes all the
-way down. GOLF has *one* level and nothing below it:
+way down. Until W9-3B GOLF had *one* level and nothing below it: `⍕` printed
+inner lists as raw heap addresses, and M-VEC's five operators dispatched on the
+shapes of their two operands once, never recursing into elements.
+
+A GOLF list is a heap block `[len, e0, …]` of 64-bit cells, and an inner list is
+a tagged value (`addr | 2^48`, M-TAG2), so "is this element a list?" is an exact
+shift-and-compare. W9-3B asks it of every element:
 
 ```
-2⍳′⍳€1+⍕      ->  <addr> <addr>      # wanted [[1],[1,2]]; got the addresses, +1
-3⍳′⍳€⍕        ->  <addr> <addr> …    # ⍕ prints the inner lists' addresses
+3⍳′⍳€⍕         ->  [] [0] [0 1]          # recursive show; flat lists unchanged
+3⍳′⍳€ 10+⍕     ->  [] [10] [10 11]       # + - * ⌈ ⌊ recurse to any depth
+3⍳′⍳€"≣Ṅ       ->  -1                    # structural equality
+3⍳′⍳€⍤Ṅ        ->  2                     # depth
 ```
 
-(The printed values are heap addresses, so they are ASLR-shifted and differ every
-run — which is itself the tell: they are pointers, not data.)
-
-A GOLF list is a heap block `[len, e0, …]` of 64-bit cells and an element is
-just a cell. Nesting *stores* fine — the inner lists are really there — but
-nothing in the language knows it:
-
-- `⍕` (show) prints one level and renders inner lists as raw pointers.
-- M-VEC's five polymorphic operators dispatch on the shapes of their two
-  operands, once. They do not recurse into elements.
-- `T` cannot tell "list of ints" from "list of lists"; there is no depth or rank
-  anywhere in the representation. (Since M-TAG2 an element *can* be asked
-  exactly — an inner list is a tagged value, `v >> 48 == 1` — but nothing asks
-  yet.)
-
-This is the single largest gap to Jelly, and unlike the tag bit
-([`NEXT_STEPS.md`](NEXT_STEPS.md) §1) **it is not in the queue at all.** Note the
-dependency: a recursive `⍕`, or vectorization to arbitrary depth, needs to ask
-"is this cell a list?" of *every element* — which is precisely the question `T`
-answered with a range heuristic that was wrong in principle (fixed by M-TAG2,
-W9-2A: the question is now an exact tag test). So
-the tag bit is not just a correctness fix; it is the prerequisite for the whole
-nested-data story. That is worth saying explicitly in the queue, because item 1
-is currently justified only by the misclassification bug.
+What is still missing against Jelly: the rest of the list vocabulary is
+one-level (`∑` folds with the deep `+`, but `⌽`, `⌿`, `⊇` see only the top
+level), there is no rank or reshape, and `Z` truncates silently on a length
+mismatch at every depth. Nesting depth is bounded by the 28-frame scratch spill
+stack (DESIGN.md, known limits).
 
 ### 1.2 The numeric tower
 
@@ -340,12 +329,12 @@ blob and hands a byte that is neither word nor atom to `e`, which is already the
 diagnostic: `GOLF: undefined word q`, exit 2, nothing on fd 1 (the seed exits 2
 silently, as above). Chain links go through `X`, so they are covered too.
 
-### 3.3 Nested lists have no support above the storage layer — now queued
+### 3.3 Nested lists had no support above the storage layer — FIXED (W9-3B)
 
-§1.1. Not a crash, but `⍕` printing pointers is a wrong answer, and it is the
-gap that most limits what can be written. Now recorded as the second
-justification for the tag bit ([`NEXT_STEPS.md`](NEXT_STEPS.md) §1), which is its
-prerequisite.
+§1.1. Not a crash, but `⍕` printing pointers was a wrong answer, and it was the
+gap that most limited what could be written. The tag bit (M-TAG2, W9-2A) was its
+prerequisite; W9-3B then made `⍕` recursive, made the bare `+ - *` recurse like
+`⌈ ⌊`, and added `≣` (structural equality) and `⍤` (depth).
 
 Already recorded and confirmed accurate: the `T` range-test misclassification
 (queue §1 — **fixed** by M-TAG2, W9-2A), the global-bank recursion footgun (queue §2),

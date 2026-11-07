@@ -91,6 +91,7 @@
 #   M  list fn -> list     map (fn is a word address, via \ref)
 #   F  list init fn -> x   fold
 #   Q  list ->             print a list, space-separated (each elem then ' ')
+#                          — recursive since W9-3B: an inner list prints as [a b]
 #   P  list -> n           product
 #   V  list -> list        reverse
 #   W  list pred -> list   filter (keep where pred == 0)
@@ -142,7 +143,8 @@
 :E10);                                              # E: newline
 :M X5177464\store16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
 :F X5177464\store5177472\store16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177472\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
-:Q X16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I N 32)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
+# Q show(list) is defined under the W9-3B-NESTED anchor below: it is recursive
+# now and calls T, which must be defined first.
 # P product(list)   V reverse(list)->list   W filter(list pred)->list  (keep where pred==0)
 :P X16\shl16>5177440\store1 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch*5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
 :V X16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177472\fetch5177440\fetch\fetch5177448\fetch\rsub8\rmul\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
@@ -202,11 +204,17 @@
 # guards after the one that ran still read the code and not someone's garbage.
 :D X5177464\store&T2\rmul&T\radd5177456\store5177456\fetch[5177464\fetch Z]5177456\fetch1\rsub[5177464\fetch K]5177456\fetch2\rsub[5177464\fetch G]5177456\fetch3\rsub[5177464\fetch\exec]Y;
 # The user-facing polymorphic operators, bytes 0xC0..0xC4 (REGISTRY.md §1.2).
-# Three tokens each: ′atom auto-wraps the raw scalar op in a thunk and D picks
-# the shape.  The definition name is the high byte itself — `:\vadd` is `: 0xC0`.
-:\vadd \ref\radd D;
-:\vsub \ref\rsub D;
-:\vmul \ref\rmul D;
+# Until W9-3B ∔ ∸ ⨰ were three tokens each — ′atom auto-wrapped the raw scalar
+# op in a thunk and D picked the shape, ONE level deep.  The definition name is the high byte itself — `:\vadd` is `: 0xC0`.
+# W9-3B: DEEP.  Each hands D the word ITSELF, as ⩌ ⩍ below always did, so Z/K/G
+# re-enter it per element and an element that is a list dispatches again — to
+# any depth (`2⍳′⍳€ 10+` adds 10 at every level).  That rules out D's int,int
+# path (it would ⍎ the word on two ints and loop), so int,int is answered in
+# place with the raw op and ^.  The bare + - * still reach here only through the
+# template's tag filter, so the scalar fast path never sees this word.
+:\vadd &T2\rmul&T\radd3\rsub[\radd^]\ref\vadd D;
+:\vsub &T2\rmul&T\radd3\rsub[\rsub^]\ref\vsub D;
+:\vmul &T2\rmul&T\radd3\rsub[\rmul^]\ref\vmul D;
 # ⩍ ⩌ are SIGNED (W9-1A), like the bare ⌊ ⌈ that hook to them.  They cannot hand
 # D `′⌊`/`′⌈`: those thunks hold the polymorphic template, whose filter sends a
 # negative int straight back here — unbounded recursion.  So int,int is done in
@@ -324,6 +332,35 @@
 # @@ W9-2B-CHECKS @@
 
 # @@ W9-3B-NESTED @@
+# Nested lists above the storage layer (GAPS.md §1.1).  The tag bit makes "is
+# this element a list?" exact per element, so every word here simply asks T of
+# each element and recurses; Q (above) is the recursive show, and the bare
+# + - * (∔ ∸ ⨰, below) now recurse the way ⩌ ⩍ always did.
+# Q show(list).  W9-3B: RECURSIVE.  A top-level list prints exactly as it always
+# has — each element then ' ' — and an element that is itself a list prints in
+# brackets with single spaces between its elements and no trailing one, to any
+# depth: `2⍳′⍳€⍕` prints `[0] [0 1] `, an empty inner list `[]`.  The inner call
+# is Q itself, told it is nested by a SECOND tag bit: the element is passed as
+# v | 2^49, so its top word is 3, never 1 — no user value is a list with bit 49
+# set — and the 16\shl16> mask that every list word starts with strips both
+# bits.  s2 holds the mode for the loop: 1 at top level, 0 nested (zero-is-true,
+# so `s2[…]` is the nested-only code).  X/Y-framed like every looping word, so
+# each level of recursion has its own s0/s1/s2; one 64-byte spill frame per
+# level of nesting.  An element prints through two guards: a list (T == 0)
+# recurses and leaves 2^48 behind, which the int guard (T == 1) then skips; an
+# int fails the first guard and is printed by the second.
+:Q X"48>3\eq1\radd5177456\store16\shl16>5177440\store0 5177448\store5177456\fetch[91)]5177440\fetch\fetch0\eq[{5177448\fetch0\eq5177456\fetch|[32)]5177440\fetch5177448\fetch I"T[1 49\shl|Q 1 48\shl]"T1\rsub[N 0]_5177456\fetch1\rsub[32)]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch[93)]Y;
+# ≣ match  a b -> -1/0 (≡'s convention): structural equality.  Shape code as in D
+# (2*T(a)+T(b)): 3 int,int is \eq; 1/2 int vs list is 0; 0 list,list compares
+# lengths, then elements pairwise by recursion, stopping at the first mismatch.
+# s0 a · s7 b · s1 index · s2 the running flag (-1 until a mismatch), X/Y-framed.
+# The loop guard is (len==0) | ~s2, so lists of different lengths never index
+# past the shorter one; the loop condition is (i < len) & s2.
+:\match &T2\rmul&T\radd"3\rsub[_\eq^][X16\shl16>5177496\store16\shl16>5177440\store0 1\rsub5177456\store0 5177448\store5177440\fetch\fetch5177496\fetch\fetch\eq[0 5177456\store]5177440\fetch\fetch0\eq5177456\fetch~|[{5177440\fetch5177448\fetch I5177496\fetch5177448\fetch I\match 5177456\fetch$5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177456\fetch$1\radd}]5177456\fetch Y^]__0;
+# ⍤ depth  v -> n: an int is 0; a list is 1 + the largest depth among its
+# elements, so a flat (or empty) list is 1 and a list of lists 2.  s0 list ·
+# s1 index · s2 the running max (depths are >= 0, so the unsigned \rmax is exact).
+:\depth "T[X16\shl16>5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I\depth 5177456\fetch\rmax5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch1\radd Y^]_0;
 
 # @@ W9-3C-FREE @@
 

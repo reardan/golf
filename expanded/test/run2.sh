@@ -1421,6 +1421,33 @@ W9GS=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; print
 # @@ W9-3A-NAMES @@
 
 # @@ W9-3B-NESTED @@
+echo "Nested lists (W9-3B): recursive ⍕, ≣ match, ⍤ depth, + - * ⌈ ⌊ to any depth"
+# Before W9-3B `3⍳′⍳€⍕` printed three heap addresses and `+` stopped one level
+# down.  `:s⍳′⍳€;4⍳′s€` is a depth-3 list [[],[[]],[[],[0]],[[],[0],[0,1]]].
+[ "$(printf '%s' '5⍳⍕␤0⍳⍕␤' | gc)" = "$(printf '0 1 2 3 4 \n')" ] \
+  && ok "⍕ of a flat list (and an empty one) prints exactly as before" || no "w93b flat show"
+[ "$(printf '%s' '3⍳′⍳€⍕' | gc)" = "[] [0] [0 1] " ] \
+  && ok "⍕ prints inner lists in brackets: 3⍳′⍳€ -> [] [0] [0 1]" || no "w93b nested show"
+[ "$(printf '%s' ':s⍳′⍳€;4⍳′s€⍕' | gc)" = "[] [[]] [[] [0]] [[] [0] [0 1]] " ] \
+  && ok "⍕ recurses to depth 3" || no "w93b depth-3 show"
+[ "$(printf '%s' ':p"⍕␤;:s⍳′⍳€;3⍳′s€′p€⍕' | gc)" = "$(printf '\n[] \n[] [0] \n[] [[]] [[] [0]] ')" ] \
+  && ok "⍕ called from inside a map leaves the map's scratch intact" || no "w93b show in map"
+[ "$(printf '%s' '3⍳3⍳≣Ṅ␤3⍳2⍳≣Ṅ␤3 3≣Ṅ␤3 4≣Ṅ␤' | gc)" = "$(printf -- '-1\n0\n-1\n0')" ] \
+  && ok "≣: equal/unequal flat lists and ints (-1 true, 0 false)" || no "w93b match flat"
+[ "$(printf '%s' '3 3⍳≣Ṅ␤3⍳3≣Ṅ␤0⍳0≣Ṅ␤' | gc)" = "$(printf '0\n0\n0')" ] \
+  && ok "≣: an int never matches a list" || no "w93b match int-list"
+[ "$(printf '%s' '3⍳′⍳€3⍳′⍳€≣Ṅ␤3⍳′⍳€4⍳′⍳€≣Ṅ␤3⍳′⍳€3⍳≣Ṅ␤:s⍳′⍳€;4⍳′s€4⍳′s€≣Ṅ␤4⍳′s€4⍳′⍳€≣Ṅ␤' | gc)" = "$(printf -- '-1\n0\n0\n-1\n0')" ] \
+  && ok "≣ recurses: equal nested lists match; length, shape or depth mismatches do not" || no "w93b match nested"
+[ "$(printf '%s' '5⍤Ṅ␤0 7-⍤Ṅ␤3⍳⍤Ṅ␤0⍳⍤Ṅ␤3⍳′⍳€⍤Ṅ␤:s⍳′⍳€;4⍳′s€⍤Ṅ␤' | gc)" = "$(printf '0\n0\n1\n1\n2\n3')" ] \
+  && ok "⍤: int 0, flat list 1, empty list 1, list of lists 2, depth 3" || no "w93b depth"
+[ "$(printf '%s' '3⍳′⍳€ 10+⍕␤10 3⍳′⍳€-⍕␤3⍳′⍳€ 3*⍕␤' | gc)" = "$(printf '[] [10] [10 11] \n[] [10] [10 9] \n[] [0] [0 3] ')" ] \
+  && ok "bare + - * broadcast a scalar into every depth (both sides)" || no "w93b deep scalar"
+[ "$(printf '%s' ':s⍳′⍳€;4⍳′s€ 100+⍕' | gc)" = "[] [[]] [[] [100]] [[] [100] [100 101]] " ] \
+  && ok "bare + broadcasts through three levels" || no "w93b deep scalar 3"
+[ "$(printf '%s' '3⍳′⍳€"+⍕␤3⍳′⍳€"*⍕␤3⍳′⍳€ 3⍳+⍕␤' | gc)" = "$(printf '[] [0] [0 2] \n[] [0] [0 1] \n[] [1] [2 3] ')" ] \
+  && ok "two nested lists combine elementwise; list+list of lists broadcasts per element" || no "w93b deep elementwise"
+[ "$(printf '%s' '3⍳′⍳€ 0 5-⌊⍕␤3⍳′⍳€ 1⌈⍕␤3⍳′⍳€ 7∔⍕␤' | gc)" = "$(printf '[] [-5] [-5 -5] \n[] [1] [1 1] \n[] [7] [7 8] ')" ] \
+  && ok "⌊ ⌈ stay signed at depth; ∔ called directly recurses too" || no "w93b deep min/max"
 
 # @@ W9-3C-FREE @@
 

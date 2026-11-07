@@ -140,7 +140,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **844** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
-| assertions in the run2 suite | **377** |
+| assertions in the run2 suite | **389** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -460,6 +460,12 @@ unbuilt, and three defects this list does not yet cover — see
   shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
   deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
   M-TAG2); negatives and everything below `2^48` are ints.
+- **Nesting depth is bounded by the spill stack.** Every looping word frames
+  its scratch with `X`/`Y`, and the stack holds 28 frames; recursive `⍕`, `≣`
+  and `⍤` take one per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`), so
+  about 13 levels of nested arithmetic and 27 of printing. `X` does not check:
+  past that it writes into the W9-2C guard page and the program dies of SIGSEGV
+  rather than corrupting memory.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different
