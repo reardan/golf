@@ -155,8 +155,9 @@ do not nest), but it is real work and M-FRAME already removed the wrong answer.
 
 *Also still open.* Eight slots means eight *names*, `a`–`h`; a real symbol table
 (M2, item 4) would let a `⊡` word name its locals anything and let the count fall
-out of the name arena. And the return stack still has no guard — see DESIGN.md's
-known limits, where M-FRAME's ~15k-frame ceiling now makes it easier to reach.
+out of the name arena. The return stack's missing guard, which M-FRAME's
+~15k-frame ceiling made easier to reach, is fixed: W9-2C's guard page turns an
+overflow into a SIGSEGV instead of silent corruption (DESIGN.md, known limits).
 
 ### 3. M-MEM2 — a free list for the allocator (small-medium)
 
@@ -275,6 +276,12 @@ by W9-1C, which has `X` check the blob and pass a byte that is neither to `e`'s
 undefined-word diagnostic. And no diagnostic gained a source position: the compiler is
 single-pass with no notion of a line, so "undefined word `b`" is the whole
 message it can afford — see DESIGN.md's non-goals.
+
+**W9-2B — runtime checks.** `⊇` (prelude `I`) bounds-checks with one unsigned
+compare, and `÷`/`∣` report a zero divisor; both print `GOLF: …` to fd 2 and
+exit 1 instead of returning garbage or dying of SIGFPE. `INT64_MIN ÷ -1` is
+defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` are frozen
+and still trap — see DESIGN.md, known limits.
 
 ## Earlier waves
 

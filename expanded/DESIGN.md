@@ -137,10 +137,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **704** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1862** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **5662** bytes |
-| assertions in the run2 suite | **345** |
+| the template blob itself | **844** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
+| assertions in the run2 suite | **364** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -333,6 +333,21 @@ the golf2 fixpoint included. In order:
   negative int straight back to the hook — so they compute int,int in place as
   `⊔`/`⊓` on operands xor `2^63`, and pass themselves to `D` for every list
   shape, which makes lists (and their elements) signed too.
+- **W9-2B — runtime checks for `⊇`, `÷`, `∣`.** `3⍳9⊇Ṅ` used to print whatever
+  cell lay past the block and exit 0, and `7 0÷` died of SIGFPE (status 136).
+  Both now write a `GOLF: …` line to fd 2 and exit 1, leaving fd 1 exactly as
+  it was. `I` opens with `&⊙&»[…]` — one *unsigned* `len > i` rejects `i ≥ len`
+  and every negative `i` at once — and keeps its address arithmetic untouched
+  after it; no prelude or tool-library code indexed out of range, so nothing
+  needed a raw accessor. `÷`/`∣` embed their check: `test rcx,rcx`, then a
+  position-independent write/exit with the 21-byte message addressed
+  rip-relative, so it survives being copied inline, into `′` thunks and into
+  chain links. A shared stub at a fixed address would save ~40 bytes per use but
+  couple every template to the emitter's layout; most programs use `÷` once or
+  never. **INT64_MIN ÷ -1** (x86's other `#DE`) is *defined*, not an error: a
+  divisor of `-1` skips `idiv`, `÷` negates (wrapping, so INT64_MIN ÷ -1 is
+  INT64_MIN, like `*`) and `∣` gives 0. Cost: the two templates grew from 8 to
+  71/70 bytes, the blob from 714 to 839.
 - **M-TAG2 (W9-2A) — a real tag bit.** `T` was a range test, so an *integer*
   that happened to equal a heap address — the heap base read out of its own
   cell, say — was vectorized as a list. Now a list value handed to user code is
@@ -386,7 +401,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 704 bytes, which is what keeps the compiler re-derivable in an
+  blob at 844 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
@@ -416,6 +431,11 @@ what Python and Jelly have that this does not, which of it is refused rather tha
 unbuilt, and three defects this list does not yet cover — see
 [`GAPS.md`](GAPS.md).
 
+- **v1's unsigned `/` and `%` still trap on zero.** They are v1 templates from
+  the frozen `data/v1.hex` (`xor edx,edx; div rcx`), so `7 0/` still dies of
+  SIGFPE. Only the signed `÷`/`∣` are checked (W9-2B); use them when a divisor
+  can be 0. Nothing else is bounds-checked either: `⊙`/`⊛`/`@`/`!` are raw
+  memory access by design.
 - **Two things cannot be written inside a string literal.** The text `\str`
   (it closes the literal — the ASCII spelling of the delimiter), and any
   character whose UTF-8 contains byte `0x8E` (e.g. `Ď`, `C4 8E`), since the
@@ -442,22 +462,29 @@ unbuilt, and three defects this list does not yet cover — see
   `test/selfcheck.sh` proves seed ≡ golf2 on the sources that matter.
 - **The return stack is smaller than it was, and better.** M-MEM shrank
   `p_memsz` to `0x200000`, so the stack now runs from `0x600000` down to the
-  `0x4F` bank: about 1.08 MB, ≈**138**k frames, all of them *its own*. Before,
+  W9-2C guard page just above the `0x4F` bank: about 1.07 MB, ≈**138**k frames,
+  all of them *its own*. Before,
   it nominally had ~917k frames but shared them with a bump heap growing up from
   `0x500000` — every 8 bytes allocated cost a frame, and the two met without
   complaint. Deterministic and smaller beats large and shared.
-- **KNOWN ISSUE — the return stack has no guard, and a `⊡` word reaches it
-  sooner.** Nothing checks `rbp` against the bottom of the return-stack region.
-  Past its capacity a program does not fault: it grows straight down through the
-  `0x4F` runtime cells, the variable bank and the code arena, corrupting them
-  silently, and only faults once it walks below the load address. Measured: a
-  plain `:` word recursing 200,000 deep — well past the ~138k the region holds —
-  still exits 0 with the right answer, having overwritten all of it. This is
-  **pre-existing and not M-FRAME's**, but M-FRAME makes it reachable ~9x sooner
-  for a word that owns a frame (~15k frames rather than ~138k), so it is worth
-  writing down now. A guard costs a compare in every prologue, on the hottest
-  path there is; the honest fix is probably a guard page rather than an
-  instruction.
+- **FIXED (W9-2C) — the return stack has a guard page.** Nothing in a prologue
+  checks `rbp` (a compare there would sit on the hottest path there is), so
+  before W9-2C a runaway recursion grew straight down through the `0x4F`
+  runtime cells, the variable bank and the code arena, and a plain `:` word
+  recursing 200,000 deep still exited 0. Now `STARTUP2` (`tools/mkblob2.py`,
+  mirrored by `boot/golfref.py`) spends 15 bytes on `mprotect(0x4F1000, 1 page,
+  PROT_NONE)`, so the first frame past the bottom faults — SIGSEGV, exit 139 —
+  before a byte below it is touched; run2.sh checks that with a `→x` canary. The
+  guard comes out of the return stack (the page under it is live `0x4F` state),
+  which costs 512 of ~138.7k frames; a `⊡` word's 72-byte frame faults at about
+  15k deep. One page suffices because no frame is larger than 72 bytes. The
+  ELF-level alternative — a second `PT_LOAD` leaving the page unmapped — would
+  have moved the code start and entry point of every binary for the same
+  effect. **Limits:** it is a bare SIGSEGV, not a message (a handler needs a
+  `sigaltstack`, more startup than it is worth), and it covers what `golf2`
+  emits — `golf2` and `golf2'` included — but not `seed`, which the frozen v1c
+  builds with v1's startup and `0xC00000` stack; the seed's only job is to
+  compile golf2 once, a handful of frames deep.
 
 ## Layout
 

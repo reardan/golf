@@ -176,8 +176,8 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0x87` | `≡` | `\eq` | a b -> (a==b ? -1 : 0) |
 | `0x88` | `⌈` | `\max` | a b -> max(a,b) signed |
 | `0x89` | `⌊` | `\min` | a b -> min(a,b) signed |
-| `0x8A` | `÷` | `\sdv` | a b -> a/b signed |
-| `0x8B` | `∣` | `\smd` | a b -> a%b signed |
+| `0x8A` | `÷` | `\sdv` | a b -> a/b signed (b=0: error exit 1) |
+| `0x8B` | `∣` | `\smd` | a b -> a%b signed (b=0: error exit 1) |
 | `0x8D` | `⍎` | `\exec` | pop a word address, call it |
 | `0x91` | `﹢` | `\radd` | raw add (never polymorphic) |
 | `0x92` | `﹣` | `\rsub` | raw sub (never polymorphic) |

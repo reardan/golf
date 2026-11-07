@@ -73,6 +73,8 @@ def compile_bytes(src: bytes) -> bytes:
     # `mov ebp, RSTACK_TOP`, so a compiled program can reach argv.  Imported, not
     # re-spelled: the oracle and the self-hosted compiler must not drift into
     # different prologues, and run2.sh's oracle-parity case gates exactly that.
+    # W9-2C: it also mprotects the guard page below the return stack
+    # (mkblob2.GUARD_LO), so a runaway recursion faults instead of corrupting.
     out += mkblob2.STARTUP2
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)

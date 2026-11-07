@@ -117,7 +117,21 @@
 :A8\rmul5177480\store 5177396@H@\radd H@5177480\fetch\radd"5177400@\rlt[
   "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!;
 :L16\shl16>\fetch;                                           # L: len(list)
-:I8\rmul\radd16\shl16>8\radd\fetch;                          # I: index(list,i)
+# I: index(list,i).  W9-2B: CHECKED.  `&\fetch&\gt` is len >u i, so one unsigned
+# compare rejects i >= len AND every negative i (which is huge unsigned); `[`
+# then runs the failure path, which writes `GOLF: index out of range` to fd 2
+# and exits 1 — before W9-2B `3⍳9⊇` quietly read whatever cell lay past the
+# block.  The happy path costs over/fetch/over/compare/branch and still no
+# scratch; only the failure path borrows s0/s1, and it never returns.  The
+# check is its own step in front of the untouched address arithmetic.
+# W9-2A/M-TAG2: the list is masked ((v<<16)>>16) for the length read and again
+# for the address arithmetic, so a tagged list and a raw A block both index.
+:I&16\shl16>\fetch&\gt[
+ “GOLF: index out of range“5177440\store
+ 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
+ 10 5177448\store 2 5177448 1 1\sys_
+ 1.]
+ 8\rmul\radd16\shl16>8\radd\fetch;
 :R X"1\radd A"5177440\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177448\fetch"8\rmul5177440\fetch\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177440\fetch1 48\shl| Y;
 :S X16\shl16>5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch+5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
 # N: print signed decimal.  W4A added the sign check — cells hold negatives now,
