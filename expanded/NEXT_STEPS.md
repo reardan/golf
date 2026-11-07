@@ -17,12 +17,13 @@ guard page under the return stack, nested-list support, the missing list words
 and [`REFERENCE.md`](REFERENCE.md). Each item below keeps its record of how it
 was built. What is genuinely left is the "As needed" list (modules/`include`,
 an object-file or C backend, a relocation pass for a peephole optimizer) and
-the smaller limits DESIGN.md still lists: the X/Y spill stack bounds nesting
-depth, and v1's `/` `%` still trap on zero. W10-A closed two of them: one-byte
-names may now be forward-referenced like long ones (mutual recursion between
-`a` and `b` just works; a name never defined is still `GOLF: undefined word b`,
-now at end of input), and a program may have 1024 long names (the prelude uses
-12), up from 256.
+the smaller limits DESIGN.md listed, which W10 has now closed: one-byte names
+may be forward-referenced like long ones (mutual recursion between `a` and `b`
+just works; a name never defined is still `GOLF: undefined word b`, now at end
+of input) and a program may have 1024 long names (the prelude uses 12), up from
+256 — W10-A; v1's `/` `%` report a zero divisor like `÷`/`∣` — W10-B; and the
+X/Y spill stack is 4096 frames at `0x440000` instead of 28, with a checked
+`GOLF: spill stack exhausted` exit — W10-C.
 
 The original roadmap is done. The code page, the atom set, lists on a `brk`-grown
 heap, quotations and higher-order words, strings, named variables, a total list
@@ -323,8 +324,8 @@ message it can afford — see DESIGN.md's non-goals.
 **W9-2B — runtime checks.** `⊇` (prelude `I`) bounds-checks with one unsigned
 compare, and `÷`/`∣` report a zero divisor; both print `GOLF: …` to fd 2 and
 exit 1 instead of returning garbage or dying of SIGFPE. `INT64_MIN ÷ -1` is
-defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` are frozen
-and still trap — see DESIGN.md, known limits.
+defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` were frozen
+and still trapped until W10-B overrode them in the v2 blob with the same check.
 
 ## Earlier waves
 

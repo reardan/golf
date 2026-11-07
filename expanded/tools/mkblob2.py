@@ -67,13 +67,17 @@ _DIV0 = ([0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+1
          + list(DIV0_MSG))                        # (19 bytes of code above)
 assert len(_DIV0) == 7 + 19 + len(DIV0_MSG)
 
+# pop rcx (b); pop rax (a); b == 0 -> _DIV0.  The common head of all four
+# checked division templates (÷ ∣ and, since W10-B, v1's / %).
+_DIV0_GUARD = ([0x59, 0x58]                       # pop rcx; pop rax
+               + [0x48, 0x85, 0xC9]               # test rcx, rcx
+               + [0x75, len(_DIV0)] + _DIV0)      # jnz .ok ; else die
+
 def _divchk(minus1, push):
     """pop rcx (b), pop rax (a); b == 0 -> _DIV0; b == -1 -> `minus1` (the
     wrapped result, no idiv: INT64_MIN / -1 would trap); else cqo; idiv rcx;
     then `push` (0x50 rax = quotient, 0x52 rdx = remainder)."""
-    return ([0x59, 0x58]                          # pop rcx; pop rax
-            + [0x48, 0x85, 0xC9]                  # test rcx, rcx
-            + [0x75, len(_DIV0)] + _DIV0          # jnz .ok ; else die
+    return (_DIV0_GUARD
             + [0x48, 0x83, 0xF9, 0xFF]            # .ok: cmp rcx, -1
             + [0x75, len(minus1) + 2] + minus1    # jne .div ; ÷: neg rax · ∣: xor edx,edx
             + [0xEB, 0x05]                        # jmp .done
@@ -310,6 +314,16 @@ _ATOM_TPL = {b: tpl for b, _mn, _gl, tpl, _d in ATOMS}
 # LAST over its TEMPLATES (dict update = last wins), so the two agree.
 OVERRIDES = {b: _poly(b, v1.TEMPLATES[chr(b)]) for b in map(ord, "+-*")}
 OVERRIDES.update({b: _poly(b, _ATOM_TPL[b]) for b in (0x88, 0x89)})  # ⌈ max ⌊ min
+# W10-B: v1's UNSIGNED / % (frozen in data/v1.hex as `pop rcx; pop rax;
+# xor edx,edx; div rcx; push rax|rdx`, which dies of SIGFPE on b == 0) get the
+# same zero check as ÷ ∣.  Unsigned div has no other #DE case, so the tail is
+# v1's own and every nonzero divisor gives exactly v1's result.  The frozen
+# seed rung (built by v1c) keeps v1's templates; every v2-built binary,
+# including the compiler itself, gets these.
+def _udivchk(scalar):
+    assert scalar[:2] == [0x59, 0x58] and scalar[2:7] == [0x31, 0xD2, 0x48, 0xF7, 0xF1]
+    return _DIV0_GUARD + scalar[2:]              # .ok: xor edx,edx; div rcx; push
+OVERRIDES.update({b: _udivchk(v1.TEMPLATES[chr(b)]) for b in map(ord, "/%")})
 
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
@@ -375,9 +389,10 @@ assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime
 #
 #   0x400000..0x421000   image: code, compiler data base 0x410000, output buffer
 #   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
+#   0x440000..0x480000   X/Y scratch spill stack, 4096 frames (W10-C)
 #   0x4E0000..0x4E2800   →x/←x variable bank, 8 bytes per name: 256 one-byte
 #                        names, then 1024 long ones (W10-A)
-#   0x4F0000..0x4F1000   runtime cells, M-VEC hook table, scratch spill stack
+#   0x4F0000..0x4F0900   runtime cells, M-VEC hook table (0x4F0900.. retired)
 #   0x4F1000..0x4F2000   W9-2C guard page, PROT_NONE (mprotect in STARTUP2)
 #   ..0x600000           return stack, growing DOWN from the end of the segment
 #
@@ -467,9 +482,9 @@ ARGV_STASH = bytes([0x48, 0x89, 0x24, 0x25, 0x40, 0x00, 0x4F, 0x00])
 #
 # Why this page, and why mprotect rather than the ELF header:
 #   * the page directly below 0x4F1000 holds live state (the runtime cells, the
-#     M-VEC hook table and the spill stack), so the guard has to come out of the
-#     return stack itself; that costs 4 KB = 512 frames of ~138.7k (≈138k still),
-#     and the spill stack, which ends at 0x4F0FFF, now has a fault above it too.
+#     M-VEC hook table and, until W10-C moved it to 0x440000, the spill stack),
+#     so the guard has to come out of the return stack itself; that costs
+#     4 KB = 512 frames of ~138.7k (≈138k still).
 #   * splitting the PT_LOAD so the page is simply never mapped needs a second
 #     56-byte program header, which moves the code start (the `120+` in
 #     golf2.golfj and seed), the entry point and every record-4 offset; the

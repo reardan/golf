@@ -138,10 +138,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **844** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2703** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **8475** bytes |
-| assertions in the run2 suite | **481** |
+| the template blob itself | **948** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2807** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8579** bytes |
+| assertions in the run2 suite | **494** |
 | assertions in the selfcheck suite | **50** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -388,6 +388,18 @@ the golf2 fixpoint included. In order:
   divisor of `-1` skips `idiv`, `÷` negates (wrapping, so INT64_MIN ÷ -1 is
   INT64_MIN, like `*`) and `∣` gives 0. Cost: the two templates grew from 8 to
   71/70 bytes, the blob from 714 to 839.
+- **W10-B — v1's `/` `%` checked too.** They are v1's *unsigned* templates from
+  the frozen `data/v1.hex` (`xor edx,edx; div rcx`), so `7 0/` still died of
+  SIGFPE after W9-2B. `v1.hex` stays untouched: the v2 blob now `OVERRIDES` the
+  two records (`mkblob2._udivchk`) with W9-2B's zero check — the shared
+  `_DIV0_GUARD` head, rip-relative message included — in front of v1's own
+  `xor edx,edx; div rcx; push` tail. Unsigned `div` has no other `#DE`, so
+  every nonzero divisor gives exactly v1's result (`0 1-2/` is still 2^63-1).
+  The compiler, prelude, tool libraries and gtools only ever divide by nonzero
+  constants, so nothing changed behaviour; every v2-built binary (golf2
+  included) carries the checked templates, and only the throwaway seed rung,
+  built by the frozen v1c, keeps v1's. Cost: 52 bytes per template, the blob
+  from 844 to 948.
 - **M-MEM2 (W9-3C) — a free list for the allocator.** `A` bump-allocated and
   nothing was ever freed, so `M` in a loop climbed the break forever (a
   1,000,000-iteration map over `5⍳` took ~71 MB). New word `⌫` (`\free`, 0xCA):
@@ -448,8 +460,8 @@ the golf2 fixpoint included. In order:
 - **W9-4B — `⍋` sort and `∊` member.** Prelude words at `0xCE`/`0xCF`. `⍋`
   returns a NEW tagged list in ascending SIGNED order and leaves its input
   alone; it is an iterative bottom-up merge sort (stable, O(n log n), one
-  `X`/`Y` frame whatever the length — no recursion to exhaust the 28-frame spill
-  stack), ping-ponging between a `0↓` copy of the input and one block from `A`,
+  `X`/`Y` frame whatever the length — no recursion to exhaust the spill
+  stack, 28 frames then, 4096 since W10-C), ping-ponging between a `0↓` copy of the input and one block from `A`,
   with a branch-free merge step that reads both run heads at clamped indices.
   100,000 elements sort in well under a second. It is meant for int lists: an
   inner list compares by its tagged value (after every int below 2^48, and by
@@ -484,7 +496,8 @@ the golf2 fixpoint included. In order:
   splices one level and notes whether a spliced cell was itself a list, and
   passes repeat (freeing every intermediate) until none was. That is
   O(size · depth) in one `X`/`Y` frame, so a list nested 200 deep flattens
-  where the recursive `⍕`/`⍤` would exhaust the 28 spill frames. The four
+  at any depth, while the recursive `⍕`/`⍤` are bounded by the spill stack (4096 frames
+  since W10-C, so they reach ~4,000 levels now). The four
   take 4 of the 256 long-name slots, so a program now has 252. None of them
   uses swap, because `decode -m` writes the swap byte as a bare `\`, which
   does not encode back (gtools' prelude round trip caught it). A one-byte
@@ -507,9 +520,9 @@ the golf2 fixpoint included. In order:
   compiler-only and clear of W10-C's spill stack at `0x440000`–`0x47FFFF`. The
   variable bank keeps `0x4E0000 + 8*name`, now through `0x4E27FF`, so a
   long-named variable's address did not move. The compiler got smaller: `e`
-  and `X` lost their special cases. Cost: `golf2`'s binary 11841 → 11767
-  bytes, `seed`'s 8722 → 8625; `golf2.golf` 8512 → 8475, `seed.golf`
-  2722 → 2703.
+  and `X` lost their special cases. Cost (measured before W10-B/C merged): `golf2`'s
+  binary −74 bytes (11841 → 11767), `seed`'s −97 (8722 → 8625); `golf2.golf`
+  −37, `seed.golf` −19.
 
 ## Invariants we do not break
 
@@ -546,7 +559,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 844 bytes, which is what keeps the compiler re-derivable in an
+  blob at 948 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
@@ -589,11 +602,9 @@ what Python and Jelly have that this does not, which of it is refused rather tha
 unbuilt, and three defects this list does not yet cover — see
 [`GAPS.md`](GAPS.md).
 
-- **v1's unsigned `/` and `%` still trap on zero.** They are v1 templates from
-  the frozen `data/v1.hex` (`xor edx,edx; div rcx`), so `7 0/` still dies of
-  SIGFPE. Only the signed `÷`/`∣` are checked (W9-2B); use them when a divisor
-  can be 0. Nothing else is bounds-checked either: `⊙`/`⊛`/`@`/`!` are raw
-  memory access by design.
+- **Raw memory access is unchecked.** `⊙`/`⊛`/`@`/`!` are raw memory access
+  by design; only `⊇` (prelude `I`) bounds-checks, and only `/ % ÷ ∣` check
+  their divisor.
 - **Two things cannot be written inside a string literal.** The text `\str`
   (it closes the literal — the ASCII spelling of the delimiter), and any
   character whose UTF-8 contains byte `0x8E` (e.g. `Ď`, `C4 8E`), since the
@@ -618,12 +629,16 @@ unbuilt, and three defects this list does not yet cover — see
   shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
   deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
   M-TAG2); negatives and everything below `2^48` are ints.
-- **Nesting depth is bounded by the spill stack.** Every looping word frames
-  its scratch with `X`/`Y`, and the stack holds 28 frames; recursive `⍕`, `≣`
-  and `⍤` take one per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`), so
-  about 13 levels of nested arithmetic and 27 of printing. `X` does not check:
-  past that it writes into the W9-2C guard page and the program dies of SIGSEGV
-  rather than corrupting memory.
+- **Nesting depth is bounded by the spill stack, now generously (W10-C).**
+  Every looping word frames its scratch with `X`/`Y`; recursive `⍕`, `≣` and
+  `⍤` take one frame per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`).
+  The stack was 28 frames at `0x4F0900` (about 13 levels of nested arithmetic,
+  27 of printing, then a bare SIGSEGV in the guard page); W10-C moved it to
+  free BSS at `0x440000`–`0x47FFFF` (REGISTRY §3), 4096 frames = 256 KB, so
+  about 2,000 levels of nested arithmetic and 4,000 of `⍕`/`≣`/`⍤`. Untouched
+  BSS pages cost no RAM. `X` checks the bound with one compare-and-branch and,
+  past it, writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like the
+  compose arena); `Y` needs no check.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different

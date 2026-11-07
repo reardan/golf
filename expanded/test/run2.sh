@@ -350,7 +350,7 @@ echo "64-bit list cells (M4): negatives survive storage; N prints signed"
 [ "$(printf '%s' ':m2\rsub;5R\refmMSNE' | gc)" = "0" ] \
   && ok "sum crossing zero (-2-1+0+1+2)" || no "sum crossing zero"
 # Regressions through the widened cells: M-VEC broadcast, an M-CHAIN fork, and a
-# mapped word that itself loops (spill frames are 64 bytes now, 28 deep).
+# mapped word that itself loops (spill frames are 64 bytes now, 4096 deep since W10-C).
 [ "$(printf '%s' '4R3+QE' | gc)" = "3 4 5 6 " ] \
   && ok "regression: M-VEC broadcast through widened cells" || no "widened vec broadcast"
 [ "$(printf '%s' '5R\refS\refL\ref\sdv\fork NE' | gc)" = "2" ] \
@@ -1706,7 +1706,7 @@ W94UB=$(printf '%s' '200000⍳"⧺‹unique›≢N' > "$TMP/u10k.golfj"; tools/g
     = "$(printf '0\n0 1 2 3 4 \n0\n1\n0\n0 1 2 3 4 ')" ] \
   && ok "‹flatten›: empty, already flat (a copy), only empty inner lists, depth 1, tagged, input untouched" || no "flatten edges"
 [ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
-  && ok "‹flatten› of a list nested 201 deep (far past the 28 spill frames)" || no "flatten deep"
+  && ok "‹flatten› of a list nested 201 deep (no recursion, so no spill frames per level)" || no "flatten deep"
 [ "$(printf '%s' ':s⍳′⍳€;4⍳′s€"‹flatten›_⍕E' | gc)" = "[] [[]] [[] [0]] [[] [0] [0 1]] " ] \
   && ok "‹flatten› leaves its nested input intact" || no "flatten input"
 # The prelude's long names cost one-byte programs nothing: compiled after the
@@ -1878,8 +1878,57 @@ w10s="${w10s/:‹z›;/}"
   && ok "$w10n user long names (+ $w93p prelude) as words and variables, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
 
 # @@ W10-B-V1DIV @@
+echo "v1's / % (W10-B): unsigned as ever, but a zero divisor is a clean error, not SIGFPE"
+# Before W10-B `7 0/` and `7 0%` died of SIGFPE (status 136): they are v1's
+# frozen `xor edx,edx; div rcx` templates.  The v2 blob now OVERRIDES them with
+# the W9-2B zero check in front of v1's own tail (tools/mkblob2.py _udivchk).
+w92bdied "$(printf '%s' '7 0/N E' | w92b)" "divide by zero" "" \
+  && ok "7 0/: exit 1 with the message on fd 2, not SIGFPE" || no "/ by zero"
+w92bdied "$(printf '%s' '5N E 7 0%N E' | w92b)" "divide by zero" "5" \
+  && ok "7 0%: exit 1 with the message, earlier output kept" || no "% by zero"
+w92bdied "$(printf '%s' '7 0\ref/\exec N E' | w92b)" "divide by zero" "" \
+  && ok "′/ (the auto-wrapped thunk) checks too" || no "′/ by zero"
+[ "$(printf '%s' '7 0%' | atom 2>&1; echo "rc=$?")" = "$(printf 'GOLF: divide by zero\nrc=1')" ] \
+  && ok "the bare % template checks without the prelude" || no "bare % by zero"
+[ "$(printf '%s' '7 2/N E 7 2%N E 0 1- 2/N E 0 1- 10%N E 0 1- 0 2-/N E 0 7- 2%N E' | gc)" \
+    = "$(printf '3\n1\n9223372036854775807\n5\n1\n1')" ] \
+  && ok "/ % still UNSIGNED for nonzero divisors (u64 max /2, %10, -1/-2 = 1)" || no "/ % unsigned"
+printf '%s' '100 7/N E 100 7%N E 0 1- 3/N E 0 1- 0 2-%N E 1 0/N E' | python3 tools/codepage.py encode \
+  | cat "$TMP/pre.gb" - > "$TMP/w10b.src"
+"$TMP/golf2" < "$TMP/w10b.src" > "$TMP/w10b.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w10b.src" > "$TMP/w10b.ref" 2>/dev/null
+cmp -s "$TMP/w10b.g2" "$TMP/w10b.ref" \
+  && ok "oracle: identical bytes for checked / %" || no "oracle / % bytes"
+chmod +x "$TMP/w10b.ref"
+[ "$("$TMP/w10b.ref" 2>&1; echo "rc=$?")" \
+    = "$(printf '14\n2\n6148914691236517205\n1\nGOLF: divide by zero\nrc=1')" ] \
+  && ok "oracle: the same results and the same clean exit" || no "oracle / % run"
 
 # @@ W10-C-SPILL @@
+echo "Spill stack (W10-C): 4096 frames at 0x440000, overflow checked in X"
+# X/Y's frames moved from 0x4F0900 (28 frames) to 0x440000..0x47FFFF (4096), so
+# nested-list recursion and nested higher-order words go hundreds deep; past the
+# end X writes `GOLF: spill stack exhausted` to fd 2 and exits 1.  `w10cn D K`
+# pushes K⍳ nested D deep (W10CW defines ‹wrap›: x -> a one-element list [x]).
+W10CW=':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;'
+w10cn(){ printf '%s⍳%s→i{‹wrap›←i1-"→i0\\eq}' "$2" "$1"; }
+[ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 200))0 1 2$(printf ']%.0s' $(seq 200)) " ] \
+  && ok "⍕ of a list nested 200 deep" || no "⍕ 200 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 100 3; printf '"+⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 100))0 2 4$(printf ']%.0s' $(seq 100)) " ] \
+  && ok "+ of a list nested 100 deep with itself" || no "+ 100 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '""≣N E⍤N E'; w10cn 200 3; w10cn 200 4; printf '≣N E'; } | gc)" \
+    = "$(printf -- '-1\n201\n0')" ] \
+  && ok "≣ and ⍤ at depth 200 (a list matches itself, not one differing at the core)" || no "≣/⍤ 200 deep"
+[ "$( { printf '%s' "$W10CW"; w10cn 3000 3; printf '⍤N E'; w10cn 1500 3; printf '"+⍤N E'; } | gc)" = "$(printf '3001\n1501')" ] \
+  && ok "⍤ at depth 3000 and + at depth 1500 (thousands of frames)" || no "⍤ 3000 / + 1500 deep"
+w10cerr=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+           && chmod +x "$TMP/p" && { "$TMP/p" > "$TMP/w10c.out" 2>&1; echo "rc=$?"; } 2>/dev/null)
+[ "$w10cerr" = "rc=1" ] && [ "$(cat "$TMP/w10c.out")" = "GOLF: spill stack exhausted" ] \
+  && ok "⍤ of a 100,000-deep nesting: 'GOLF: spill stack exhausted', exit 1" \
+  || no "spill exhaustion: $w10cerr, '$(head -c 80 "$TMP/w10c.out")'"
+grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REGISTRY.md \
+  && [ "$(grep -o '4456448\\radd' lib/prelude.golfj | wc -l)" = 2 ] && grep -q '"262144\\rlt\[' lib/prelude.golfj \
+  && ok "REGISTRY §3 and prelude X/Y agree on the spill region and its 4096-frame bound" || no "spill region docs/prelude"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
