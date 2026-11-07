@@ -108,9 +108,9 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA6` | `\brk` | `⌸` | `brk` syscall — the list heap's growth primitive | shipped |
 | `0xA7` | `\sys` | `⎈` | raw syscall: `a1 a2 a3 num -> result` (wave 8, M-TOOL) | shipped |
 | `0xB0` | `\chain` | `⊚` | chain definition prefix: `⊚name f g h;` (compiler logic, no template) | shipped |
-| `0xB1` | `\dloc` | `⊡` | define a word WITH a frame of eight per-call locals: `⊡name … ;` (compiler logic, no template) | shipped |
-| `0xB2` | `\lset` | `⇒` | pop TOS into local slot `x`, `x` in `a`–`h` (compiler logic, no template) | shipped |
-| `0xB3` | `\lget` | `⇐` | push local slot `x`, `x` in `a`–`h` (compiler logic, no template) | shipped |
+| `0xB1` | `\dloc` | `⊡` | define a word WITH a frame of per-call locals, one cell per local it names (≤ 16; sized at `;` since M-FRAME2, W9-4D): `⊡name … ;` (compiler logic, no template) | shipped |
+| `0xB2` | `\lset` | `⇒` | pop TOS into local `x`, `x` in `a`–`h` or a `‹long name›` (W9-4D) (compiler logic, no template) | shipped |
+| `0xB3` | `\lget` | `⇐` | push local `x`, `x` in `a`–`h` or a `‹long name›` (W9-4D) (compiler logic, no template) | shipped |
 | `0xB4` | `\lname` | `‹` | open a long name `‹name›` — a word, quotation, chain link or variable name of `0-9 A-Z a-z _ -` bytes (M2, W9-3A; compiler logic, no template) | shipped |
 | `0xB5` | `\rname` | `›` | close a long name (M2, W9-3A; only ever read by the `‹` case) | shipped |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
@@ -306,7 +306,9 @@ both forms are given here and the decimal is the one you type.
 | `m+52` | 4259892 | `e`'s undefined-word diagnostic: the offending name byte with a newline stacked above it (`name + 10<<8`), staged for one `write(2, m+52, 2)`. Compiler-only — a compiled program never sees this address | shipped |
 | `m+56` | 4259896 | M-FRAME's in-a-`⊡`-definition flag, in the **seed** only — `^` and `;` read it to decide whether to release a locals frame (`self/golf2.golfj` holds the same flag in its variable bank, as `J`) | shipped |
 | `m+60`…`m+84` | 4259900–4259924 | M2 long-name state in the **seed** only, seven 4-byte cells: name count · length being read · entry being read into · entry compared against · compare countdown · table index · a body address (`self/golf2.golfj` keeps the same state in its variable bank, under long names) (W9-3A) | shipped |
-| `m+88` | | **first free compiler scratch** | free |
+| `m+88`, `m+92` | 4259928 · 4259932 | M-FRAME2 in the **seed** only: the current `⊡` word's local count · the head of its frame-size patch list (`self/golf2.golfj` keeps both in its variable bank, as `‹locals›` and `‹frame›`) (W9-4D) | shipped |
+| `m+96`…`m+159` | 4259936–4259999 | M-FRAME2 slot table, **both** compilers: the name number of the current `⊡` word's local `i` (`i` < 16) at `m+96+4*i`, in order of first appearance. Compiler-only (W9-4D) | shipped |
+| `m+160` | | **first free compiler scratch** | free |
 | `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
 | `m+3072`–`m+4095` | 0x410C00–0x410FFF | M2: the dictionary's slots for long names, name numbers 256–511 — the byte-indexed table at `m+2048` extended by its own formula `m+2048 + 4*name`, up to the output buffer (W9-3A) | shipped |
 | `0x430000`–`0x43FFFF` | 4390912– | M2 compiler-only long-name region. Used: `0x434000`–`0x437FFF`, the name table — name `E` (256–511) has a 64-byte entry at `0x430000 + 64*E`, `[len:4][≤60 bytes]` — and `0x438400`–`0x4387FF`, the forward-reference heads — the last unpatched `call`/`jmp rel32` site for `E` at `0x438000 + 4*E` (4423680 + 4*E), each placeholder holding the next. Above the 64 KB output buffer; a compiled program never sees it (W9-3A) | shipped |

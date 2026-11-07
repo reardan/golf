@@ -24,8 +24,8 @@ code page removed the pressure that multi-character names were supposed to
 relieve, so the golf surface, the library and 64-bit values came first. Per-call
 locals landed with M-FRAME (`⊡name … ;`, slots `a`–`h`), and **multi-character
 names** with M2 (W9-3A): `‹name›` stands wherever a one-byte name can, and may
-be used before its definition. What (1) still lacks is locals with real names —
-a `⊡` word still names its eight slots `a`–`h`.
+be used before its definition — locals included, since M-FRAME2 (W9-4D) sized
+each `⊡` frame to the locals its word names.
 
 Bytes 128..255 were entirely unused and the compiler's `e` word already
 dispatches *any* byte it finds in the template blob, so the code page costs
@@ -139,10 +139,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **844** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2539** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **7895** bytes |
-| assertions in the run2 suite | **427** |
-| assertions in the selfcheck suite | **41** |
+| the generated bootstrap seed (`self/seed.golf`) | **2722** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8512** bytes |
+| assertions in the run2 suite | **440** |
+| assertions in the selfcheck suite | **44** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -321,6 +321,23 @@ the golf2 fixpoint included. In order:
   than wrapped: `⇒z` would be displacement 200, a *negative* disp8 landing in the
   frame of a word not yet called, and `⇒A` would wrap to 0 and silently alias
   slot `a`.
+- **M-FRAME2 (W9-4D) — a frame sized to its locals, and locals with long
+  names.** The backpatch chain M-FRAME deferred. `⊡` emits `sub rbp, imm32` and
+  every `^` inside it `add rbp, imm32`, each immediate left holding the previous
+  site (the `⊡`'s holds 0) — a list threaded through the unpatched immediates,
+  one compiler variable for its head. A local is a *name* now, `a`–`h` or any
+  `‹long›`, and takes the next slot at its first appearance, so its displacement
+  is known on the spot and `⇒`/`⇐` stay five bytes; only the count waits, and
+  `;` walks the list writing 8 × count into every site. A word naming k locals
+  has a frame of k+1 cells: 24 bytes for two, 8 — a `:` word's — for none, so a
+  two-local word recurses ≈46k deep where M-FRAME's slab allowed ≈15k. At most
+  16 locals (a 17th is `GOLF: too many locals ‹name›`), which keeps every
+  displacement a disp8; a frame is then at most 136 bytes. The slot table is 16
+  name numbers at `m+96` (REGISTRY §3). `:` words compile byte-for-byte as
+  before; `⊡` words compile differently but compute the same (run2.sh's M2
+  byte-identity case holds `⊡` programs to their old output instead). Outside a
+  `⊡` word `⇒a`…`⇒h` keep M-FRAME's fixed slots and a long local is refused.
+  Cost: seed +183 bytes (2539 → 2722), golf2 +617 (7895 → 8512).
 - **M2 (W9-3A) — long names, with forward references.** `‹name›` (`0xB4` …
   `0xB5`, bytes `0-9 A-Z a-z _ -`) works wherever a one-byte name does — `:`,
   `⊚`, `⊡` headers, calls, `′`, chain links, `→`/`←`. The compiler interns each
@@ -501,8 +518,8 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 - **Long names (M2) are bounded and global.** 256 per program (the prelude's
   count too), at most 60 bytes each, interned in a fixed compiler table; a 257th
   is refused. Only long names can be forward-referenced — a one-byte name is
-  still define-before-use. `⇒`/`⇐` locals still name the slots `a`–`h`; named
-  locals are W9-4D's. And there are no scopes: a long name, like a letter, is
+  still define-before-use. Locals take long names too (W9-4D), up to 16 per
+  `⊡` word. And there are no scopes: a long name, like a letter, is
   one dictionary entry and one variable cell for the whole program.
 
 For the limits that only show up when GOLF is held against another language —
@@ -569,8 +586,9 @@ unbuilt, and three defects this list does not yet cover — see
   PROT_NONE)`, so the first frame past the bottom faults — SIGSEGV, exit 139 —
   before a byte below it is touched; run2.sh checks that with a `→x` canary. The
   guard comes out of the return stack (the page under it is live `0x4F` state),
-  which costs 512 of ~138.7k frames; a `⊡` word's 72-byte frame faults at about
-  15k deep. One page suffices because no frame is larger than 72 bytes. The
+  which costs 512 of ~138.7k frames; a `⊡` word naming all eight of `a`–`h`
+  (a 72-byte frame) faults at about 15k deep. One page suffices because no frame
+  is larger than 136 bytes (16 locals, M-FRAME2). The
   ELF-level alternative — a second `PT_LOAD` leaving the page unmapped — would
   have moved the code start and entry point of every binary for the same
   effect. **Limits:** it is a bare SIGSEGV, not a message (a handler needs a

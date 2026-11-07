@@ -102,6 +102,14 @@
 #   ‹head›   a forward-reference head cell
 #   ‹site›   ‹resolve›'s current site, ‹next› the one after it on the list
 #
+# M-FRAME2 (W9-4D) adds two more, live for the span of one ⊡ definition:
+#
+#   ‹locals› how many distinct locals the definition has named so far
+#   ‹frame›  the last unpatched frame-size immediate (the head of its list)
+#
+# and one compiler-only table outside the bank: the name number of local slot i
+# is the 4-byte cell at m+96+4*i = 4259936+4*i, i < 16 (../REGISTRY.md §3).
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -111,7 +119,7 @@
 #
 # Words, in definition-before-use order: B Y Z U a o L w W k c C f E ‹say› V
 # ‹die› ‹badname› ‹same› ‹readname› ‹getname› ‹forward› ‹resolve› ‹undefined›
-# e D g h X t H.  The M2 words have long names for the same reason their state
+# e D g h X ‹badlocal› ‹slot› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -760,6 +768,101 @@ w
 
 
 # ---------------------------------------------------------------------------
+# Locals (M-FRAME, sized per definition since M-FRAME2)
+# ---------------------------------------------------------------------------
+#
+# A ⊡ word's locals are NAMES — `a`…`h` or any ‹long name› — and each gets the
+# next slot at its first appearance in the definition, so a word that names k
+# locals has a frame of exactly k cells: slot i at [rbp+8*i], the return address
+# at [rbp+8*k].  The slot is known the moment the name is read, so ⇒/⇐ stay
+# five fixed bytes; only k is not known until `;`, and that is the frame-size
+# immediate's problem (see ⊡, `^` and `;` in `t`).  At most 16 locals, which
+# keeps every displacement a disp8 (8*15 = 120 < 128).
+
+:‹badlocal› # ‹badlocal› : reject the local named b      [ msgblock -> !!! ]
+←b
+256<
+1﹢
+[           # a one-byte name: V shows the byte, as M-FRAME always did
+V
+]
+←b          # a long name: ‹die› shows it in full
+64﹡
+4390912﹢
+‹die›
+;
+
+:‹slot›     # ‹slot› : the rbp displacement of the local named b [ -> disp ]
+←b
+256<
+1﹢
+[           # a one-byte local is a..h, as it always was.  ⇒z or ⇒A is
+←b          #   refused rather than quietly given a slot: a one-letter local
+97﹣         #   is still a deliberate, small namespace
+8<
+[
+“GOLF: local out of range “
+‹badlocal›
+]
+]
+←J
+[           # OUTSIDE a ⊡ word there is no table: today's fixed a..h slot,
+←b          #   name - 'a', exactly as M-FRAME compiled it
+256<
+[           #   and a long name has nowhere to go at all
+“GOLF: local out of range “
+‹badlocal›
+]
+←b
+97﹣
+8﹡
+^
+]
+0
+→‹idx›
+{           # this definition's slot table, in order of first appearance
+←‹idx›
+←‹locals›
+﹣
+[           #   not named yet: claim the next slot
+←‹locals›
+16<
+[           #     a 17th local would need a disp32: refuse it
+“GOLF: too many locals “
+‹badlocal›
+]
+←b
+←‹locals›
+4﹡
+4259936﹢
+!           #     slot table[k] = b
+←‹locals›
+"
+1﹢
+→‹locals›
+8﹡          #     displacement 8*k
+^
+]
+←‹idx›
+4﹡
+4259936﹢
+@
+←b
+﹣
+[           #   named before: its slot
+←‹idx›
+8﹡
+^
+]
+←‹idx›
+1﹢
+→‹idx›
+0
+}
+;
+
+
+# ---------------------------------------------------------------------------
 # The token dispatcher
 # ---------------------------------------------------------------------------
 #
@@ -862,12 +965,25 @@ e
 ]
 ←J
 1-
-[           #   a ⊡ definition: release its locals frame before the epilogue,
-0→J         #   and stop claiming one, so the next ':' word is an ordinary word
-72o         #   0x48 0x83 0xC5 0x40  add rbp, 64
-131o
+[           #   a ⊡ definition: its frame size is known at last, 8*‹locals›.
+0→J         #   Stop claiming a frame, so the next ':' word is an ordinary word,
+{           #   and walk the list of frame-size immediates — the ⊡ prologue's
+←‹frame›    #   and every `^`'s — writing the size into each.  An unpatched
+@           #   immediate holds the next site down; the ⊡'s holds 0, the end.
+←‹locals›
+8﹡
+←‹frame›
+!           #     patch this site ...
+→‹frame›    #     ... and move to the one it pointed at
+←‹frame›
+1<          #   until the 0 that ends the list
+}
+72o         #   0x48 0x81 0xC5 imm32  add rbp, 8*locals — release the frame
+129o
 197o
-64o
+←‹locals›
+8﹡
+w
 ]
 94E         #   the epilogue: blob record 94, the template of '^'
 k           #   backpatch the ':' or '⊚' jmp to land after it
@@ -1025,7 +1141,7 @@ w
 
 "
 177-
-[           # 0xB1 ⊡ : define a word WITH a frame of eight per-call locals.
+[           # 0xB1 ⊡ : define a word WITH a frame of per-call locals.
 _           #   The header is ':'s exactly; the frame is what it adds.  Locals
 ‹getname›   #   are opt-in because `^` is an epilogue that can appear anywhere
 →b          #   in a body and a single-pass compiler cannot know a frame size
@@ -1040,10 +1156,14 @@ Y
 0
 w           #   the jmp displacement, left on the stack for ';'
 1E          #   the word prologue (blob record 1)
-72o         #   0x48 0x83 0xED 0x40  sub rbp, 64 — the eight slots, below the
-131o        #   return address, which is therefore at [rbp+64] from here on
-237o
-64o
+72o         #   0x48 0x81 0xED imm32  sub rbp, 8*locals — the slots, below the
+129o        #   return address.  How many is not known until ';', so the
+237o        #   immediate is left unpatched and starts the list of sites ';'
+←p          #   fills in (M-FRAME2): it holds 0, the end of that list
+→‹frame›
+0
+w
+0→‹locals›  #   no locals named yet
 1→J         #   this definition has a frame; '^' and ';' release it
 ^
 ]
@@ -1052,25 +1172,14 @@ w           #   the jmp displacement, left on the stack for ';'
 178-
 [           # 0xB2 ⇒ : pop TOS into a local slot
 _
-(           #   the name is the next byte
-→b          #   keep it for the diagnostic below
-←b
-97-         #   'a' is slot 0 ...
-"
-8<          #   ... and there are only eight.  Unchecked, ⇒z would be disp 200,
-[           #   which is a NEGATIVE disp8 (-56) and would land in the frame of
-            #   a word not yet called; ⇒A would wrap to disp 0 and silently
-            #   alias slot a.  Both are the kind of quiet corruption M-DIAG
-            #   exists to refuse, so an out-of-range name stops the compile.
-“GOLF: local out of range “
-V
-]
-8*          #   a slot is 8 bytes, so this is the displacement off rbp
+‹getname›   #   the name is the next byte, or a ‹long name›
+→b
+‹slot›      #   its displacement off rbp, a disp8 for every legal local
 88o         #   0x58                 pop rax
 72o         #   0x48 0x89 0x45 disp  mov [rbp+disp], rax
 137o
 69o
-o           #   the displacement, which fits a disp8 for every legal slot
+o           #   the displacement
 ^
 ]
 
@@ -1078,17 +1187,9 @@ o           #   the displacement, which fits a disp8 for every legal slot
 179-
 [           # 0xB3 ⇐ : push a local slot
 _
-(
+‹getname›
 →b
-←b
-97-
-"
-8<          #   the same eight-slot range check as ⇒
-[
-“GOLF: local out of range “
-V
-]
-8*
+‹slot›
 72o         #   0x48 0x8B 0x45 disp  mov rax, [rbp+disp]
 139o
 69o
@@ -1103,11 +1204,14 @@ o
 _           #   now only so that it can ask whether there is a frame to release.
 ←J
 1-
-[           #   there is: undo the ⊡ prologue's reservation first
-72o         #   0x48 0x83 0xC5 0x40  add rbp, 64
-131o
+[           #   there is: undo the ⊡ prologue's reservation first.  Its size
+72o         #   is not known yet, so the immediate joins the list ';' patches:
+129o        #   0x48 0x81 0xC5 imm32  add rbp, <patched at ';'>
 197o
-64o
+←‹frame›    #   the placeholder holds the previous site ...
+←p
+→‹frame›    #   ... and this one becomes the head
+w
 ]
 94E         #   the epilogue itself (blob record 94).  With the flag clear this
 ^           #   is byte-for-byte what `e` used to copy, which is why every

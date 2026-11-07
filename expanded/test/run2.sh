@@ -1108,7 +1108,7 @@ echo "Per-call locals (M-FRAME): ⊡name … ; owns a frame, ⇒x / ⇐x reach i
   && ok "recursion through a local is correct at depth (sum 1..10 = 55)" || no "local recursion"
 [ "$(printf '%s' ':g"0-[_0^]\setn\getn1-g\getn+;10gN E' | gc)" = "10" ] \
   && ok "... and the global bank still gives the old wrong answer (10)" || no "global recursion regression"
-# Eight slots, a..h, each its own cell.  Pushed 1..8, so a=8 (popped first) and
+# Eight one-letter locals, a..h, each its own cell.  Pushed 1..8, so a=8 (popped first) and
 # h=1 (popped last); a+h is 9 only if no two names share a slot.
 [ "$(printf '%s' '\dlocf\lseta\lsetb\lsetc\lsetd\lsete\lsetf\lsetg\lseth\lgeta\lgeth+;1 2 3 4 5 6 7 8 fN E' | gc)" = "9" ] \
   && ok "all eight slots a..h are distinct" || no "eight slots"
@@ -1123,7 +1123,8 @@ echo "Per-call locals (M-FRAME): ⊡name … ; owns a frame, ⇒x / ⇐x reach i
 [ "$(printf '%s' '\dlocc\lseta\lgeta0\slt1+[42^]\lgeta;7cN E' | gc)" = "7" ] \
   && ok "... and the ordinary exit of that same word still works" || no "frame word normal exit"
 # Opt-in is the whole design: a `:` word must be untouched, or 50,000-deep
-# recursion (asserted above) would not still pass.  A ⊡ frame is 72 bytes.
+# recursion (asserted above) would not still pass.  A ⊡ frame is a cell per
+# local named (M-FRAME2), plus the return address.
 [ "$(printf '%s' ':r"[^]\dec r;50000 r N E' | gc)" = "0" ] \
   && ok "a plain : word is unchanged — 50,000 deep still works" || no "opt-in regression"
 # Unchecked, ⇒z is displacement 200 — a NEGATIVE disp8 (-56), landing in the
@@ -1394,7 +1395,9 @@ w9g ':r"[^]\dec r;200000 r N E'
 [ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
   && ok "200,000-deep plain : recursion dies with SIGSEGV (139) instead of exiting 0" \
   || no "200,000-deep recursion: rc $w9grc, output '$w9gout' (want 139, nothing)"
-w9g '\dlocc\lseta\lgeta0\slt1+[0^]\lgeta1-c;20000cN E'
+# Since M-FRAME2 (W9-4D) a ⊡ frame is one cell per local named, so the word
+# names all eight one-letter locals to keep its 72-byte frame.
+w9g '\dlocc\lseta\lgetb\lgetc\lgetd\lgete\lgetf\lgetg\lgeth_______\lgeta0\slt1+[0^]\lgeta1-c;20000cN E'
 [ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
   && ok "a ⊡ word (72-byte frames) recursing 20,000 deep dies the same way" \
   || no "20,000-deep ⊡ recursion: rc $w9grc, output '$w9gout' (want 139, nothing)"
@@ -1495,7 +1498,7 @@ sys.stdout.buffer.write(enc.replace(mkblob2.BLOB_MARKER, mkblob2.blob_escape()))
 PY
   "$TMP/golf2" < "$TMP/pre-m2.golf" > "$TMP/pre-m2" 2>/dev/null && chmod +x "$TMP/pre-m2" && w93ref=pre-m2
 fi
-w93bad=""; w93n=0
+w93bad=""; w93n=0; w93f=0
 for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj; do
   case "$f" in
     *.golfj) { cat "$TMP/pre.gb"
@@ -1507,10 +1510,19 @@ for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj;
   "$TMP/golf2" < "$TMP/w93.src" > "$TMP/w93.new" 2>/dev/null
   if [ "$w93ref" = pre-m2 ]; then "$TMP/pre-m2" < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null
   else python3 boot/golfref.py < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null; fi
-  cmp -s "$TMP/w93.new" "$TMP/w93.old" || w93bad="$w93bad $f"; w93n=$((w93n+1))
+  # M-FRAME2 (W9-4D) deliberately changed what a ⊡ word compiles to (its frame
+  # is sized to its locals), so a program using ⊡ is held to the same OUTPUT
+  # as the pre-M2 build instead; every other program still to the same bytes.
+  if grep -q '⊡\|\\dloc' "$f"; then
+    chmod +x "$TMP/w93.new" "$TMP/w93.old"
+    w93o=$("$TMP/w93.old" 2>&1 </dev/null); w93w=$("$TMP/w93.new" 2>&1 </dev/null)
+    { [ -n "$w93o" ] && [ "$w93o" = "$w93w" ]; } || w93bad="$w93bad $f(output)"
+    w93f=$((w93f+1))
+  else cmp -s "$TMP/w93.new" "$TMP/w93.old" || w93bad="$w93bad $f"; fi
+  w93n=$((w93n+1))
 done
-[ -z "$w93bad" ] && [ "$w93n" -gt 20 ] \
-  && ok "every existing example and gtools program compiles to the same bytes as before M2 (${w93ref:-oracle}, $w93n programs)" \
+[ -z "$w93bad" ] && [ "$w93n" -gt 20 ] && [ "$w93f" -ge 1 ] \
+  && ok "every existing example and gtools program compiles to the same bytes as before M2 (${w93ref:-oracle}, $w93n programs; the $w93f using ⊡ to the same output, M-FRAME2)" \
   || no "M2 changed the bytes of:$w93bad"
 
 # @@ W9-3B-NESTED @@
@@ -1634,6 +1646,60 @@ W94T=$(( ($(date +%s%N) - W94T) / 1000000 ))
 # @@ W9-4C-INPUT @@
 
 # @@ W9-4D-FRAMES @@
+echo "Sized frames (M-FRAME2, W9-4D): a ⊡ word reserves one cell per local it names"
+# ⊡ emits `sub rbp, imm32` and every `^` an `add rbp, imm32`, each immediate left
+# holding the previous site; `;` walks that list and writes 8*k into each, k the
+# number of distinct locals (a..h or ‹long›) named in the definition.
+w94dbin(){ printf '%s' "$1" | python3 tools/codepage.py encode | "$TMP/golf2" > "$TMP/w94d.bin" 2>/dev/null; }
+w94dhas(){ python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); print(d.count(bytes.fromhex(sys.argv[2])))' "$TMP/w94d.bin" "$1"; }
+w94dbin '⊡t⇒a⇒‹b›⇐a⇐‹b›+"[^]1+;'
+[ "$(w94dhas 4881ed10000000)" = 1 ] && [ "$(w94dhas 4881c510000000)" = 2 ] \
+  && [ "$(w94dhas 4883ed40)" = 0 ] \
+  && ok "two locals: sub rbp,16 once, add rbp,16 at the ^ and at ; (no 64-byte slab)" \
+  || no "two-local frame bytes: sub×$(w94dhas 4881ed10000000) add×$(w94dhas 4881c510000000)"
+w94dbin '⊡z"[^]1-;'
+[ "$(w94dhas 4881ed00000000)" = 1 ] && [ "$(w94dhas 4881c500000000)" = 2 ] \
+  && ok "zero locals: the frame is 0 cells (k = 0 is allowed)" || no "zero-local frame bytes"
+# Measured, not just read off the bytes: 24-byte frames (two locals + the return
+# address) go 40,000 deep; the same word naming eight locals has 72-byte frames,
+# which hit the W9-2C guard page long before that (≈15k).
+w9g '⊡c"⇒a⇒‹d›⇐a[0^]⇐a1-c⇐‹d›+;40000cN E'
+[ "$w9grc" = 0 ] && [ "$w9gout" = "800020000" ] \
+  && ok "a two-local ⊡ word recurses 40,000 deep (24-byte frames)" \
+  || no "two-local depth: rc $w9grc, output '$w9gout'"
+w9g '⊡c"⇒a⇒‹d›⇐b⇐c⇐e⇐f⇐g⇐h______⇐a[0^]⇐a1-c⇐‹d›+;40000cN E'
+[ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
+  && ok "... the same word naming eight locals hits the guard page (72-byte frames)" \
+  || no "eight-local depth: rc $w9grc, output '$w9gout' (want 139)"
+w9g '⊡‹z›"[^]1-‹z›;100000‹z›N E'
+[ "$w9grc" = 0 ] && [ "$w9gout" = "0" ] \
+  && ok "a zero-local ⊡ word recurses 100,000 deep, like a : word" || no "zero-local depth: rc $w9grc"
+[ "$(printf '%s' '⊡‹sum›"[_0^]⇒‹acc›⇐‹acc›1-‹sum›⇐‹acc›+;30000‹sum›N E' | gc)" = "450015000" ] \
+  && ok "one long-named local: ‹sum› of 1..30000 = n(n+1)/2 at depth" || no "long local recursion"
+[ "$(printf '%s' '⊡‹m›⇒a⇒‹x›⇒b⇐a⇐‹x›-⇐b*⇐a+;2 7 3‹m›N E' | gc)" = "-5" ] \
+  && ok "long and one-letter locals mixed in one word" || no "mixed locals"
+# Sixteen distinct slots, one-letter and long interleaved: pushed 1..16, so the
+# first popped (a) is 16 and the last (‹i16›) is 1, and ‹i9› (9th) is 8.
+[ "$(printf '%s' '⊡f⇒a⇒‹i2›⇒b⇒‹i4›⇒c⇒‹i6›⇒d⇒‹i8›⇒‹i9›⇒e⇒‹i11›⇒f⇒‹i13›⇒g⇒‹i15›⇒‹i16›⇐a10000*⇐‹i9›100*+⇐‹i16›+;1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16fN E' | gc)" = "160801" ] \
+  && ok "sixteen mixed locals get sixteen distinct slots" || no "sixteen locals"
+# Every level leaves through an early ^ — the base case's and one after the
+# recursive call — so a ^ that released the wrong amount would drift rbp by
+# 20,000 frames.  Then two frame sizes (one and two cells) calling each other.
+[ "$(printf '%s' '⊡‹t›"⇒‹n›⇒a⇐‹n›[0^]⇐‹n›1-‹t›⇐a+0[^]9;20000‹t›N E' | gc)" = "200010000" ] \
+  && ok "early ^ exits restore rbp in a sized frame, 20,000 deep" || no "early-exit recursion"
+[ "$(printf '%s' '⊡‹ev›⇒‹n›⇐‹n›[1^]⇐‹n›1-‹od›;⊡‹od›⇒‹n›⇐a_⇐‹n›[0^]⇐‹n›1-‹ev›0[^]7;30000‹ev›N 30001‹ev›N E' | gc)" = "10" ] \
+  && ok "two frame sizes, mutually recursive through early ^, 30,000 deep" || no "mutual sized frames"
+[ "$(printf '%s' '⊡f⇒‹a1›⇒‹a2›⇒‹a3›⇒‹a4›⇒‹a5›⇒‹a6›⇒‹a7›⇒‹a8›⇒‹a9›⇒‹a10›⇒‹a11›⇒‹a12›⇒‹a13›⇒‹a14›⇒‹a15›⇒‹a16›⇒‹a17›;' | und)" = "2" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: too many locals ‹a17›" ] && [ ! -s "$TMP/u.out" ] \
+  && ok "a 17th local is refused (16 keep every slot a disp8), exit 2" || no "too many locals"
+[ "$(printf '%s' ':g⇐‹x›;' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range ‹x›" ] \
+  && ok "a long local outside a ⊡ word is refused (there is no frame to hold it)" || no "long local outside ⊡"
+w94dsrc='⊡‹t›"⇒‹n›⇒a⇐‹n›[0^]⇐‹n›1-‹t›⇐a+0[^]9;⊡‹m›⇒a⇒‹x›⇒b⇐a⇐‹x›-⇐b*⇐a+;⊡‹z›1+;50‹t›N 2 7 3‹m›N 4‹z›N'
+cat "$TMP/pre.gb" <(printf '%s' "$w94dsrc" | python3 tools/codepage.py encode) > "$TMP/w94d.src"
+"$TMP/golf2" < "$TMP/w94d.src" > "$TMP/w94d.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w94d.src" > "$TMP/w94d.ref" 2>/dev/null
+cmp -s "$TMP/w94d.g2" "$TMP/w94d.ref" \
+  && ok "oracle: identical bytes for sized frames (long, mixed, zero locals, ^)" || no "oracle sized-frame bytes"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

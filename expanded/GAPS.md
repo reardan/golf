@@ -208,10 +208,9 @@ key on but integers.
   in the queue for anyone actually writing programs. **Fixed by M-FRAME**, opt in
   per definition: `⊡f"0-[_0^]⇒a⇐a1-f⇐a+;3fṄ` is `6`. The global spelling still
   behaves exactly as above — it is not deprecated, and the suite pins both.
-  Locals are eight slots named `a`–`h`; sizing a frame per definition is
-  [`NEXT_STEPS.md`](NEXT_STEPS.md) §2, and the reason it is not free is that `^`
-  is a template that ends a word, so a single-pass compiler cannot know a frame's
-  size until `;`.
+  Since M-FRAME2 (W9-4D) locals may have long names (`⇒‹acc›`) and a frame
+  is sized to the locals a word names, one cell each — the `^`s' frame-size
+  immediates are patched at `;` ([`NEXT_STEPS.md`](NEXT_STEPS.md) §2).
 
 ### 2.3 Functions
 
@@ -403,7 +402,7 @@ Ordered by (severity × how cheap the fix is) when this file was written.
 Since then **M-FRAME** shipped too, which was §2.2's silent-wrong-answer on
 recursion — the worst remaining defect this file found. That leaves, as the top
 of the real queue: the tag bit (correctness *and* nested data), then M2 (the
-letter shortage — since shipped by W9-3A, though named locals are still open),
-then sizing a `⊡` frame per definition. Two small unclaimed fixes remain: the
+letter shortage — since shipped by W9-3A), then sizing a `⊡` frame per
+definition — since shipped, with named locals, by W9-4D. Two small unclaimed fixes remain: the
 `′`-path variant of §3.2, and a guard on the return stack, which M-FRAME made
 easier to reach — since closed by W9-2C's guard page (DESIGN.md, known limits).

@@ -137,7 +137,16 @@ both longnames "$TMP/src.longnames"
 [ "$("$TMP/new.longnames" 2>/dev/null)" = "252070 1 4 5" ] \
   && ok "prelude + a long-name program runs (M2)" || no "long-name program output"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames; do
+# M-FRAME2 (W9-4D): sized frames — long and one-letter locals mixed, a zero-local
+# ⊡ word, early ^ exits patched through the frame-size list, two frame sizes
+# calling each other — through both source forms.
+printf '%s' '⊡‹sum›"[_0^]⇒‹acc›⇐‹acc›1-‹sum›⇐‹acc›+0[^]9;⊡‹mix›⇒a⇒‹x›⇒b⇐a⇐‹x›-⇐b*⇐a+;⊡‹nil›1+;⊡‹two›⇒‹p›⇒‹q›⇐‹p›‹sum›⇐‹q›‹nil›+;100‹sum›Ṅ␤2 7 3‹mix›Ṅ␤5 10‹two›Ṅ' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.frames"
+both frames "$TMP/src.frames"
+[ "$("$TMP/new.frames" 2>/dev/null)" = "$(printf '5050\n-5\n61')" ] \
+  && ok "prelude + a sized-frame program runs (M-FRAME2)" || no "sized-frame program output: $("$TMP/new.frames" 2>/dev/null)"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -182,6 +191,17 @@ cat "$TMP/pre.gb" <(printf '%s' ':‹f›‹g›;' | python3 tools/codepage.py e
   && [ "$(cat "$TMP/badlong.newerr")" = "GOLF: undefined word ‹g›" ] \
   && ok "both reject an undefined long name at end of input (M2)" \
   || no "undefined long name rejection differs (seed $sst, golf2 $gst)"
+
+# M-FRAME2 (W9-4D): a 17th local in one ⊡ word is refused by both (16 keep
+# every slot a disp8), and only golf2 can say which.
+w94d=""; for k in $(seq 1 17); do w94d="$w94d⇒‹l$k›"; done
+cat "$TMP/pre.gb" <(printf '%s' "⊡f$w94d;" | python3 tools/codepage.py encode) > "$TMP/badloc.src"
+"$TMP/seed"  < "$TMP/badloc.src" > "$TMP/badloc.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badloc.src" > "$TMP/badloc.new" 2>"$TMP/badloc.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badloc.old" ] && [ ! -s "$TMP/badloc.new" ] \
+  && [ "$(cat "$TMP/badloc.newerr")" = "GOLF: too many locals ‹l17›" ] \
+  && ok "both reject a 17th local in one ⊡ word (M-FRAME2)" \
+  || no "too-many-locals rejection differs (seed $sst, golf2 $gst)"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

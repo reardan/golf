@@ -284,20 +284,24 @@ def _poly(byte, scalar):
 # where `:` words still go ~138k, which is the honest price of a frame and is
 # paid only by the words that use one.
 #
-# Layout, with R the address the return address is stored at:
+# M-FRAME shipped as 3 with a fixed eight-slot frame; M-FRAME2 (W9-4D) then
+# did 2 on top of it, keeping the opt-in.  A ⊡ word's locals are names — `a`..`h`
+# or any ‹long name› — and each takes the next slot at its first appearance in
+# the definition, so a word naming k locals reserves exactly k cells:
 #
-#     [rbp+0] .. [rbp+56]   the eight local slots, a..h
-#     [rbp+64] = R          the return address
+#     [rbp+0] .. [rbp+8k-8]  the k local slots, in order of first appearance
+#     [rbp+8k] = R           the return address
 #
-# A slot's displacement is 8*(name-'a') and does not depend on how many slots
-# the word actually uses, which is what lets `⇒`/`⇐` be fixed-size templates.
-# Eight slots is the compromise: the compiler's own busiest word holds five
-# variables at once, so eight is comfortable, while a slot per letter would cost
-# 216 bytes a frame.
-FRAME_SLOTS = 8
-FRAME_BYTES = 8 * FRAME_SLOTS
-FRAME_RESERVE = bytes([0x48, 0x83, 0xED, FRAME_BYTES])   # sub rbp, 64
-FRAME_RELEASE = bytes([0x48, 0x83, 0xC5, FRAME_BYTES])   # add rbp, 64
+# A slot's displacement is known when its name is read, so `⇒`/`⇐` stay five
+# bytes; only k waits for `;`.  So `⊡` emits `sub rbp, imm32` and every `^` an
+# `add rbp, imm32` with the immediate left unpatched, each holding the previous
+# site (the ⊡'s holds 0) — a list threaded through the immediates themselves —
+# and `;` walks it writing 8k into each, then emits its own `add rbp, 8k`.  At
+# most FRAME_MAX_LOCALS locals, so every displacement is a disp8 (8*15 = 120).
+# The FRAME_RESERVE / FRAME_RELEASE below are the opcodes; the imm32 follows.
+FRAME_MAX_LOCALS = 16
+FRAME_RESERVE = bytes([0x48, 0x81, 0xED])   # sub rbp, imm32
+FRAME_RELEASE = bytes([0x48, 0x81, 0xC5])   # add rbp, imm32
 
 _ATOM_TPL = {b: tpl for b, _mn, _gl, tpl, _d in ATOMS}
 # byte -> replacement template.  build_blob2 emits the override INSTEAD of the
