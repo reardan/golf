@@ -19,8 +19,8 @@ was built. What is genuinely left is the "As needed" list (modules/`include`,
 an object-file or C backend, a relocation pass for a peephole optimizer) and
 the smaller limits DESIGN.md still lists: one-byte names are still
 define-before-use, long names are capped at 256 per program (the prelude uses
-12), the X/Y spill stack bounds nesting depth, and v1's `/` `%` still trap on
-zero.
+12), and the X/Y spill stack bounds nesting depth. (v1's `/` `%` now report a
+zero divisor like `÷`/`∣` — W10-B.)
 
 The original roadmap is done. The code page, the atom set, lists on a `brk`-grown
 heap, quotations and higher-order words, strings, named variables, a total list
@@ -321,8 +321,8 @@ message it can afford — see DESIGN.md's non-goals.
 **W9-2B — runtime checks.** `⊇` (prelude `I`) bounds-checks with one unsigned
 compare, and `÷`/`∣` report a zero divisor; both print `GOLF: …` to fd 2 and
 exit 1 instead of returning garbage or dying of SIGFPE. `INT64_MIN ÷ -1` is
-defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` are frozen
-and still trap — see DESIGN.md, known limits.
+defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` were frozen
+and still trapped until W10-B overrode them in the v2 blob with the same check.
 
 ## Earlier waves
 
