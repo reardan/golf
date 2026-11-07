@@ -140,7 +140,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **844** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
-| assertions in the run2 suite | **364** |
+| assertions in the run2 suite | **377** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -365,6 +365,14 @@ the golf2 fixpoint included. In order:
   hook cells stay zero, so the fixpoint held. A list of lists stores tagged
   inner lists, so the per-element "is this a list?" that nested data needs is
   now a shift and a compare rather than a heuristic.
+- **W9-4A — `⧺` cat, `↑` take, `↓` drop.** Prelude words at the high bytes
+  `0xCB`–`0xCD`, so `2⍳2⍳⧺⍕` finally prints `0 1 0 1`. Each returns a NEW tagged
+  list and never writes its inputs; cells are copied verbatim, so nested
+  (tagged inner) lists ride along shared. Edge rules: `↑`'s `|n|` is clamped to
+  the length (an over-take is the whole list — no APL padding), `↓` past the
+  end is empty, and a negative `n` counts from the END, APL-style (`5⍳¯2↑` is
+  `3 4`, `5⍳¯2↓` is `0 1 2`). `↓` is implemented as a `↑` of the kept count.
+  Demo: `examples/listwords.golfj`.
 
 ## Invariants we do not break
 

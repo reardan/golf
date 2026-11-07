@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **26** are now spent, leaving **85** free. It is partitioned as follows
+space; **29** are now spent, leaving **82** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -122,9 +122,9 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | reserved |
 | `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | reserved |
 | `0xCA` | `\free` | `⌫` | release a list block to the allocator's free list (W9-3C) | reserved |
-| `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | reserved |
-| `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | reserved |
-| `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | reserved |
+| `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | shipped |
+| `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | shipped |
+| `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | shipped |
 | `0xCE` | `\sort` | `⍋` | ascending signed sort, returns a new list (W9-4B) | reserved |
 | `0xCF` | `\memb` | `∊` | `list x -> f`: 0 if x is an element (zero-is-true, like `T`), 1 otherwise (W9-4B) | reserved |
 

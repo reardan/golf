@@ -1,0 +1,9 @@
+# List words (W9-4A): ⧺ cat · ↑ take · ↓ drop.  Each returns a NEW list.
+#   ⍳ range  ⍕ print list  ≢ len  ⊃ string -> codes  ⊐ print codes as text
+3⍳ 2⍳ ⧺⍕␤                # concatenate                    -> 0 1 2 0 1
+6⍳ 2↑⍕␤                  # the first two                  -> 0 1
+6⍳ 2↓⍕␤                  # all but the first two          -> 2 3 4 5
+6⍳ 0 2- ↑⍕␤              # n < 0 takes from the end (APL) -> 4 5
+6⍳ 0 2- ↓⍕␤              # n < 0 drops from the end       -> 0 1 2 3
+6⍳ 9↑≢Ṅ␤                 # over-take: the whole list      -> 6
+“golf“⊃ 3↑ “ is fun“⊃ ⧺⊐␤  # strings as code lists         -> gol is fun

@@ -1425,6 +1425,30 @@ W9GS=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; print
 # @@ W9-3C-FREE @@
 
 # @@ W9-4A-LISTWORDS1 @@
+echo "List words (W9-4A): ⧺ cat, ↑ take, ↓ drop — new tagged lists, inputs untouched"
+[ "$(printf '%s' '2⍳2⍳⧺⍕' | gc)" = "0 1 0 1 " ] && ok "⧺: 2⍳2⍳⧺ -> 0 1 0 1" || no "cat basic"
+[ "$(printf '%s' '0⍳3⍳⧺⍕E 3⍳0⍳⧺⍕E 0⍳0⍳⧺≢N E 3⍳4⍳⧺≢N E' | gc)" = "$(printf '0 1 2 \n0 1 2 \n0\n7')" ] \
+  && ok "⧺: empty on either side / both, result length via ≢" || no "cat empty/len"
+[ "$(printf '%s' '“foo“⊃“bar“⊃⧺⊐E' | gc)" = "foobar" ] && ok "⧺ of two strings' code lists, printed by ⊐" || no "cat strings"
+[ "$(printf '%s' '3⍳2⍳⧺T N E 3⍳2⍳⧺10+⍕' | gc)" = "$(printf '0\n10 11 12 10 11 ')" ] \
+  && ok "⧺'s result is a tagged list (T, bare + vectorizes)" || no "cat tag"
+[ "$(printf '%s' '5⍳0↑≢N E 5⍳5↑⍕E 5⍳9↑⍕E 5⍳2↑⍕E 0⍳3↑≢N E' | gc)" = "$(printf '0\n0 1 2 3 4 \n0 1 2 3 4 \n0 1 \n0')" ] \
+  && ok "↑: n=0, n=len, n>len (whole list), 2, empty input" || no "take"
+[ "$(printf '%s' '5⍳0 2-↑⍕E 5⍳0 9-↑⍕E 5⍳0 1 63≪-↑⍕E' | gc)" = "$(printf '3 4 \n0 1 2 3 4 \n0 1 2 3 4 ')" ] \
+  && ok "↑: n<0 takes the last |n| (APL), clamped; -2^63 too" || no "take negative"
+[ "$(printf '%s' '5⍳0↓⍕E 5⍳5↓≢N E 5⍳9↓≢N E 5⍳2↓⍕E 0⍳3↓≢N E' | gc)" = "$(printf '0 1 2 3 4 \n0\n0\n2 3 4 \n0')" ] \
+  && ok "↓: n=0, n=len, n>len (empty), 2, empty input" || no "drop"
+[ "$(printf '%s' '5⍳0 2-↓⍕E 5⍳0 9-↓≢N E 0⍳0 3-↓≢N E 5⍳0 1 63≪-↓≢N E' | gc)" = "$(printf '0 1 2 \n0\n0\n0')" ] \
+  && ok "↓: n<0 drops the last |n| (APL), clamped" || no "drop negative"
+[ "$(printf '%s' '5⍳2↑T N E 5⍳2↓T N E' | gc)" = "$(printf '0\n0')" ] && ok "↑/↓ results are tagged lists" || no "take/drop tag"
+[ "$(printf '%s' '3⍳→a 2⍳→b ←a←b⧺_ ←a 1↑_ ←a 1↓_ ←a 0 1-↑_ ←a⍕E ←b⍕E' | gc)" = "$(printf '0 1 2 \n0 1 ')" ] \
+  && ok "⧺/↑/↓ leave their inputs unchanged" || no "inputs unchanged"
+[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 1 48≪| 5⍳1↑⧺"≢N E"0⊇100+⍕E 1⊇N E' | gc)" = "$(printf '2\n100 101 102 \n0')" ] \
+  && ok "⧺ carries a nested (tagged inner) list through unchanged" || no "cat nested"
+tools/golfc -j examples/listwords.golfj "$TMP/lw" 2>/dev/null
+LWOUT=$(printf '0 1 2 0 1 \n0 1 \n2 3 4 5 \n4 5 \n0 1 2 3 \n6\ngol is fun')
+[ "$("$TMP/lw" 2>/dev/null)" = "$LWOUT" ] && ok "golfc examples/listwords.golfj" || no "listwords.golfj"
+[ "$(oracle listwords)" = "$LWOUT" ] && ok "oracle: listwords.golfj behaves identically" || no "oracle listwords.golfj"
 
 # @@ W9-4B-LISTWORDS2 @@
 

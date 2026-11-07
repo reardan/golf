@@ -112,13 +112,15 @@ vocabulary is 17 words: range, sum, len, index, alloc, map, fold, show, product,
 reverse, filter, puts, chars, join, zip, plus the five polymorphic operators and
 three combinators.
 
-Missing and routinely needed: **sort, concatenate, take/drop/slice, member,
-index-of, unique, min/max of a list, structural equality, flatten**. Concatenate
-is the one that stings most — `+` on two lists is elementwise, so there is no way
-to join two lists at all:
+Missing and routinely needed: **sort, slice, member, index-of, unique, min/max
+of a list, structural equality, flatten**. Concatenate used to head this list —
+`+` on two lists is elementwise, so there was no way to join two lists at all —
+and **W9-4A shipped it** as `⧺` (with `↑` take and `↓` drop, negative `n`
+counting from the end):
 
 ```
 2⍳2⍳+⍕   ->  0 2        # elementwise, not [0,1,0,1]
+2⍳2⍳⧺⍕   ->  0 1 0 1    # W9-4A: concatenate
 3⍳3⍳≡Ṅ   ->  0          # ≡ compares the two ADDRESSES, not the contents
 ```
 
