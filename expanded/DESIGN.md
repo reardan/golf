@@ -383,7 +383,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 839 bytes, which is what keeps the compiler re-derivable in an
+  blob at 854 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
