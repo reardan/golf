@@ -1175,6 +1175,62 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
 # @@ W9-1C-REFDIAG @@
 
 # @@ W9-1D-REFERENCE @@
+echo "Language reference (REFERENCE.md): generated tables, every op byte, tutorial"
+# Section 3 of REFERENCE.md is codepage.py's own output, spliced between two
+# marker lines; it must be the CURRENT output, or the reference has drifted.
+python3 - > "$TMP/w9d.blk" <<'PY'
+import sys
+sys.path.insert(0, "tools")
+import codepage
+t = open("REFERENCE.md", encoding="utf-8").read()
+a, z = t.find(codepage.REF_BEGIN), t.find(codepage.REF_END)
+sys.stdout.write(t[a + len(codepage.REF_BEGIN) + 1:z] if 0 <= a < z else "NO MARKERS")
+PY
+python3 tools/codepage.py reference | cmp -s - "$TMP/w9d.blk" \
+  && ok "REFERENCE.md's generated block = codepage.py reference" \
+  || no "REFERENCE.md generated block is stale: python3 tools/codepage.py reference --update REFERENCE.md"
+# Every allocated byte (atoms, compiler ops, library words) and every v1 core
+# op is named in the file as `0xNN`, so nothing allocated goes undocumented.
+w9dmiss=$(python3 - <<'PY'
+import sys
+sys.path.insert(0, "tools"); sys.path.insert(0, "boot")
+import codepage, v1
+t = open("REFERENCE.md", encoding="utf-8").read()
+bs = {b for b, *_ in codepage.all_rows()} | {ord(k) for k in v1.TEMPLATES}
+print(" ".join(f"0x{b:02X}" for b in sorted(bs) if f"`0x{b:02X}`" not in t))
+PY
+)
+[ -z "$w9dmiss" ] && ok "every allocated op byte and v1 op appears in REFERENCE.md" \
+  || no "REFERENCE.md does not mention: $w9dmiss"
+# Ṅ prints SIGNED decimal (the code page used to say unsigned).
+[ "$(printf '%s' '0 1-\num\nl' | gc)" = "-1" ] \
+  && python3 tools/codepage.py table | grep -q 'Ṅ .*print signed decimal' \
+  && ok "Ṅ prints signed decimal, and the code page says so" || no "Ṅ signed doc/behaviour"
+# The tutorial: every ```golfj block between the TUTORIAL markers is followed by
+# a ```text block of its exact stdout (trailing spaces ignored).  Compile each
+# with the prelude and compare; one assertion covers them all.
+rm -rf "$TMP/w9tut"; mkdir -p "$TMP/w9tut"
+w9dn=$(python3 - "$TMP/w9tut" <<'PY'
+import re, sys
+t = open("REFERENCE.md", encoding="utf-8").read()
+a, z = t.find("<!-- TUTORIAL BEGIN -->"), t.find("<!-- TUTORIAL END -->")
+pairs = re.findall(r"```golfj\n(.*?)```\s*```text\n(.*?)```", t[a:z], re.S) if 0 <= a < z else []
+for i, (src, out) in enumerate(pairs, 1):
+    open(f"{sys.argv[1]}/{i}.golfj", "w", encoding="utf-8").write(src)
+    open(f"{sys.argv[1]}/{i}.out", "w", encoding="utf-8").write(out)
+print(len(pairs))
+PY
+)
+w9dbad=""
+for f in "$TMP"/w9tut/*.golfj; do
+  [ -e "$f" ] || continue
+  got=$(gc < "$f" | sed 's/[[:space:]]*$//')
+  want=$(sed 's/[[:space:]]*$//' "${f%.golfj}.out")
+  [ "$got" = "$want" ] || { w9dbad="$w9dbad $(basename "$f" .golfj)"; no "tutorial example $(basename "$f" .golfj) prints '$got', REFERENCE.md says '$want'"; }
+done
+[ "$w9dn" -ge 6 ] 2>/dev/null && [ "$w9dn" -le 10 ] && [ -z "$w9dbad" ] \
+  && ok "all $w9dn REFERENCE.md tutorial examples compile and print their documented output" \
+  || no "tutorial: $w9dn examples extracted (need 6-10), failing:$w9dbad"
 
 # @@ W9-2A-TAG2 @@
 

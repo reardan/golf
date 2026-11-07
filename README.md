@@ -93,6 +93,10 @@ before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f�
 spellings are compiled and output-checked by the suite, as
 `examples/capstone.golfj` and its `examples/legacy_capstone.golfj` twin.
 
+Every op, atom and library word — with stack effects and a tutorial whose
+examples the suite compiles and runs — is in
+[`expanded/REFERENCE.md`](expanded/REFERENCE.md), the language reference.
+
 The design, the shipped record and the known limits live in
 [`expanded/DESIGN.md`](expanded/DESIGN.md); the prioritized queue of what's next
 is [`expanded/NEXT_STEPS.md`](expanded/NEXT_STEPS.md). What the language still
@@ -118,7 +122,7 @@ result:
 GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
-`bash test/run2.sh` is **298 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **302 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

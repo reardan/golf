@@ -47,6 +47,7 @@ codepage.py encode <prog.golfj >prog.gb   # \sqr / glyph / ASCII  ->  raw bytes
 codepage.py decode <prog.gb               # raw bytes  ->  glyphs (3² 4⊕ …)
 codepage.py decode -m <prog.gb            # raw bytes  ->  ASCII \mnemonic form
 codepage.py table                         # the atom reference
+codepage.py reference                     # the same, as REFERENCE.md's Markdown
 ```
 
 Author in ASCII with `\`-mnemonics (`3\sqr` = "3 squared"), store as raw bytes,
@@ -139,7 +140,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **714** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **1865** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5611** bytes |
-| assertions in the run2 suite | **298** |
+| assertions in the run2 suite | **302** |
 | assertions in the selfcheck suite | **37** |
 | assertions in the gtools differential suite | **42** |
 | the capstone, in op bytes | **46** |
@@ -430,7 +431,8 @@ unbuilt, and three defects this list does not yet cover — see
 | `self/golf2.golf` | GENERATED: `golf2.golfj` code-page encoded + the template blob |
 | `self/seed.golf` | GENERATED: the same compiler in v1 GOLF — the bootstrap rung only |
 | `tools/mkblob2.py` | builds both `self/*.golf`; source of truth for the atom table + the v1 seed |
-| `tools/codepage.py` | code page: encode/decode glyph/mnemonic ⇄ raw bytes; `table` reference |
+| `REFERENCE.md` | **the language reference**: v1 core ops, the generated v2 code-page tables, a checked tutorial |
+| `tools/codepage.py` | code page: encode/decode glyph/mnemonic ⇄ raw bytes; `table` / `reference` (REFERENCE.md's generated tables) |
 | `tools/golfc` | compile a program (prepends the prelude; `-j` to encode glyph source) |
 | `lib/prelude.golfj` | the standard library: list runtime, map/fold, number/list printing |
 | `boot/golfref.py` | Python reference/oracle for v2 (debugging only) |
