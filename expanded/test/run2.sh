@@ -506,9 +506,10 @@ print("blob",   len(mkblob2.build_blob2()))
 print("memsz",  hex(mkblob2.MEMSZ))
 print("rstack", hex(mkblob2.RSTACK_TOP))
 print("rsdec",  mkblob2.RSTACK_TOP)
-# The return stack runs from RSTACK_TOP down to the top of the 0x4F bank, 8
-# bytes a frame; the docs quote it in thousands.
-print("frames", (mkblob2.RSTACK_TOP - 0x4F1000) // 8 // 1000)
+# The return stack runs from RSTACK_TOP down to the top of the W9-2C guard page
+# (RSTACK_FLOOR, one page above the 0x4F bank), 8 bytes a frame; the docs quote
+# it in thousands.
+print("frames", (mkblob2.RSTACK_TOP - mkblob2.RSTACK_FLOOR) // 8 // 1000)
 print("hiused", len(hi))
 print("hifree", 111 - len(hi))
 PY
@@ -1304,6 +1305,45 @@ done
 # @@ W9-2B-CHECKS @@
 
 # @@ W9-2C-GUARD @@
+echo "Return-stack guard (W9-2C): the page below the return stack is PROT_NONE"
+# STARTUP2 mprotects [0x4F1000, 0x4F2000), so a runaway recursion faults on the
+# guard (SIGSEGV, 139) before it reaches the 0x4F bank, the variable bank or the
+# code arena.  Before W9-2C a 200,000-deep plain recursion exited 0 having
+# silently overwritten all three.  w9g compiles its argument and leaves the exit
+# status in $w9grc and (bounded) stdout in $w9gout; it is called directly, not at
+# the end of a pipe, so the two variables survive.  The braces send bash's own
+# "Segmentation fault" notice to /dev/null with the program's stderr.
+w9g(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - \
+         | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p"
+       { "$TMP/p" > "$TMP/w9g.out"; } 2>/dev/null; w9grc=$?
+       w9gout=$(head -c 64 "$TMP/w9g.out"); }
+w9g ':r"[^]\dec r;200000 r N E'
+[ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
+  && ok "200,000-deep plain : recursion dies with SIGSEGV (139) instead of exiting 0" \
+  || no "200,000-deep recursion: rc $w9grc, output '$w9gout' (want 139, nothing)"
+w9g '\dlocc\lseta\lgeta0\slt1+[0^]\lgeta1-c;20000cN E'
+[ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
+  && ok "a ⊡ word (72-byte frames) recursing 20,000 deep dies the same way" \
+  || no "20,000-deep ⊡ recursion: rc $w9grc, output '$w9gout' (want 139, nothing)"
+# The canary: every level checks that →x still holds 12345 and prints B and exits
+# if not.  Unguarded (the syscall NOPed out) this prints B — the return stack
+# reaches the variable bank first; guarded the fault must come first.
+w9g '12345→x:r"[^]←x12345≡[66)E]\dec r;200000 r N E'
+[ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
+  && ok "... and the fault comes before a →x canary in the variable bank is overwritten" \
+  || no "canary: rc $w9grc, output '$w9gout' (want 139, nothing)"
+w9g '12345→x:r"[^]←x12345≡[66)E]\dec r;138000 r N←xN E'
+[ "$w9grc" = 0 ] && [ "$w9gout" = "012345" ] \
+  && ok "138,000 deep (the documented ≈138k) still runs clean, canary intact" \
+  || no "138,000-deep recursion: rc $w9grc, output '$w9gout'"
+# Every v2 binary carries the guard, the compilers included: golf2 (built by the
+# seed, which embeds the same blob) and anything golf2 emits start with STARTUP2.
+# The seed itself is built by the frozen v1c with v1's startup and has none.
+W9GS=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; print(mkblob2.STARTUP2.hex())')
+[ "$(od -An -tx1 -j120 -N${#W9GS} "$TMP/golf2" | tr -d ' \n' | cut -c1-${#W9GS})" = "$W9GS" ] \
+  && [ "$(od -An -tx1 -j120 -N${#W9GS} "$TMP/p" | tr -d ' \n' | cut -c1-${#W9GS})" = "$W9GS" ] \
+  && ok "golf2 and the programs it emits both open with the guarded STARTUP2" \
+  || no "STARTUP2 (with guard) not at offset 120 of golf2 / an emitted program"
 
 # @@ W9-3A-NAMES @@
 

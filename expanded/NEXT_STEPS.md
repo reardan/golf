@@ -146,8 +146,9 @@ do not nest), but it is real work and M-FRAME already removed the wrong answer.
 
 *Also still open.* Eight slots means eight *names*, `a`–`h`; a real symbol table
 (M2, item 4) would let a `⊡` word name its locals anything and let the count fall
-out of the name arena. And the return stack still has no guard — see DESIGN.md's
-known limits, where M-FRAME's ~15k-frame ceiling now makes it easier to reach.
+out of the name arena. The return stack's missing guard, which M-FRAME's
+~15k-frame ceiling made easier to reach, is fixed: W9-2C's guard page turns an
+overflow into a SIGSEGV instead of silent corruption (DESIGN.md, known limits).
 
 ### 3. M-MEM2 — a free list for the allocator (small-medium)
 

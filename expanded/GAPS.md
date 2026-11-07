@@ -389,5 +389,5 @@ recursion — the worst remaining defect this file found. That leaves, as the to
 of the real queue: the tag bit (correctness *and* nested data), then M2 (the
 letter shortage, which now also gates naming more than eight locals), then
 sizing a `⊡` frame per definition. Two small unclaimed fixes remain: the
-`′`-path variant of §3.2, and a guard on the return stack, which has none and
-which M-FRAME made easier to reach (DESIGN.md, known limits).
+`′`-path variant of §3.2, and a guard on the return stack, which M-FRAME made
+easier to reach — since closed by W9-2C's guard page (DESIGN.md, known limits).

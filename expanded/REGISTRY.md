@@ -315,6 +315,7 @@ both forms are given here and the decimal is the one you type.
 | `0x4F00C0` | 5177536 | W9-3C free-list head(s) for `A`/`⌫`: up to eight 8-byte cells `0x4F00C0`–`0x4F00F8` (one per size class), owned by W9-3C | reserved |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
+| `0x4F1000`–`0x4F1FFF` | 5181440–5185535 | **return-stack guard page** — `PROT_NONE`, set by `STARTUP2`'s `mprotect` (`mkblob2.GUARD_LO`); the return stack bottoms out at `0x4F2000` (`mkblob2.RSTACK_FLOOR`), so overflow faults here instead of corrupting the bank below. Not in `seed` (built by v1c with v1's startup) (W9-2C) | shipped |
 | `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
 | the `brk` | — | **the list heap**, above the whole load segment, grown by `⌸`. Not a fixed address: the kernel ASLR-shifts the initial break, which is why it lives in the two cells above | shipped |
 
@@ -326,7 +327,8 @@ Notes:
 - **The entry-`rsp` cell is a full 8 bytes and must be read with `⊙`.** It is
   written by `tools/mkblob2.STARTUP2` (mirrored by `boot/golfref.py`), which is
   v1's `mov ebp, 0xC00000` with a `mov [0x4F0040], rsp` in front — so every
-  binary the v2 toolchain emits is 8 bytes longer than it used to be. Unlike
+  binary the v2 toolchain emits is 8 bytes longer than it used to be (and 15
+  more since W9-2C put the guard page's `mprotect` between the two). Unlike
   every other fixed cell here it holds a *stack* address, which on Linux x86-64
   is far above 2^32 — `@` would truncate it. So are the `argv[i]` pointers it
   leads to, and any buffer address handed to `⎈`: all of that arithmetic is
@@ -362,7 +364,7 @@ Notes:
   same 8 MB BSS: a list of ~917k cells met the stack and the program died. The
   heap is now the kernel's, grown with `brk` (`0xA6`) above the load segment, so
   `p_memsz` reserves only what is statically addressed (`0x200000`) and the
-  return stack has its 1.08 MB — ≈138k frames — entirely to itself. That is why
+  return stack has its ~1.07 MB — ≈138k frames, above the W9-2C guard page — entirely to itself. That is why
   `0x4F0034`/`0x4F0038` exist: the base cannot be a constant any more.
   **Do not add a fixed heap-base row to this table.**
 - The M-VEC hook table is at stride 8 (not 4) so it stayed correct when M4

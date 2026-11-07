@@ -313,13 +313,14 @@ LGET_BYTE = 0xB3    # ⇐x push a local slot
 #   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
 #   0x4E0000..0x4E0400   →x/←x variable bank
 #   0x4F0000..0x4F1000   runtime cells, M-VEC hook table, scratch spill stack
+#   0x4F1000..0x4F2000   W9-2C guard page, PROT_NONE (mprotect in STARTUP2)
 #   ..0x600000           return stack, growing DOWN from the end of the segment
 #
 # p_memsz and the return-stack top are ONE number, not two: v1.STARTUP seeds
 # rbp with the top of the BSS, so shrinking the segment necessarily moves the
 # return stack with it and BOTH blob records (3 startup, 4 header) have to change
-# together — hence the second override here.  It leaves ~1.08 MB of return stack
-# (≈138k frames) between the 0x4F bank and the segment end, against a compiler
+# together — hence the second override here.  It leaves ~1.07 MB of return stack
+# (≈138k frames) between the W9-2C guard page and the segment end, against a compiler
 # whose deepest nesting is a handful of frames.
 #
 # Everything ABOVE the segment is the brk heap.  The kernel starts the break at
@@ -386,13 +387,48 @@ def _check_atoms():
 # anything that pushes; neither instruction does, so it reads front to back.
 ARGV_STASH = bytes([0x48, 0x89, 0x24, 0x25, 0x40, 0x00, 0x4F, 0x00])
 #            mov [0x4F0040], rsp
-STARTUP2 = ARGV_STASH + SETUP_RSTACK
+
+# --- W9-2C: the return-stack guard page ----------------------------------------
+# Nothing in a prologue compares rbp against anything (that would cost an
+# instruction on the hottest path there is), so before W9-2C a runaway recursion
+# walked straight down through the 0x4F bank, the variable bank and the code
+# arena, corrupting them silently, and a 200,000-deep plain recursion still
+# exited 0.  The fix is a guard PAGE rather than an instruction: the one page
+# directly below the return stack, [0x4F1000, 0x4F2000), is made PROT_NONE by
+# STARTUP, so the first frame pushed past the bottom of the return stack faults
+# (SIGSEGV, exit 139) before it can touch a single byte of anything below.
+#
+# Why this page, and why mprotect rather than the ELF header:
+#   * the page directly below 0x4F1000 holds live state (the runtime cells, the
+#     M-VEC hook table and the spill stack), so the guard has to come out of the
+#     return stack itself; that costs 4 KB = 512 frames of ~138.7k (≈138k still),
+#     and the spill stack, which ends at 0x4F0FFF, now has a fault above it too.
+#   * splitting the PT_LOAD so the page is simply never mapped needs a second
+#     56-byte program header, which moves the code start (the `120+` in
+#     golf2.golfj and seed), the entry point and every record-4 offset; the
+#     mprotect is 15 bytes of record 3 and nothing else moves.
+#   * one page suffices: the largest frame (a `⊡` word's) is 72 bytes and every
+#     call writes its return address, so no frame can step over 4 KB unseen.
+# The return value is ignored: on the off chance the kernel refuses, the program
+# runs exactly as it did before W9-2C.  The `push/pop` pairs only use the stack
+# AFTER the stash and leave rsp where they found it.
+GUARD_LO = 0x4F1000                 # the guard page: PROT_NONE from STARTUP on
+GUARD_SIZE = 0x1000                 # one page (the kernel rounds len up anyway)
+RSTACK_FLOOR = GUARD_LO + GUARD_SIZE   # 0x4F2000: lowest usable return-stack byte
+assert GUARD_LO % 0x1000 == 0 and RSTACK_FLOOR < RSTACK_TOP
+GUARD_PAGE = (bytes([0x6A, 10, 0x58])                       # push 10; pop rax  (mprotect)
+              + bytes([0xBF]) + GUARD_LO.to_bytes(4, "little")  # mov edi, GUARD_LO
+              + bytes([0x6A, 0x01, 0x5E])                   # push 1; pop rsi   (len: 1 page)
+              + bytes([0x31, 0xD2])                         # xor edx, edx      (PROT_NONE)
+              + bytes([0x0F, 0x05]))                        # syscall
+assert len(GUARD_PAGE) == 15
+STARTUP2 = ARGV_STASH + GUARD_PAGE + SETUP_RSTACK
 
 def build_blob2():
     b = bytearray()
     b += v1.rec(1, v1.PROLOGUE)
     b += v1.rec(2, v1.COND)
-    b += v1.rec(3, STARTUP2)                     # M-TOOL stash + M-MEM rbp
+    b += v1.rec(3, STARTUP2)                     # M-TOOL stash + W9-2C guard + M-MEM rbp
     b += v1.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
     b += v1.rec(5, v1.AUTOEXIT)
     used = set()
