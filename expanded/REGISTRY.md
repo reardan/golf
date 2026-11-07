@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **31** are now spent, leaving **80** free. It is partitioned as follows
+space; **33** are now spent, leaving **78** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -125,8 +125,8 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | shipped |
 | `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | shipped |
 | `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | shipped |
-| `0xCE` | `\sort` | `⍋` | ascending signed sort, returns a new list (W9-4B) | reserved |
-| `0xCF` | `\memb` | `∊` | `list x -> f`: 0 if x is an element (zero-is-true, like `T`), 1 otherwise (W9-4B) | reserved |
+| `0xCE` | `\sort` | `⍋` | ascending signed sort, returns a new list (W9-4B) | shipped |
+| `0xCF` | `\memb` | `∊` | `list x -> f`: 0 if x is an element (zero-is-true, like `T`), 1 otherwise (W9-4B) | shipped |
 
 `0x91`–`0x96` are the raw scalar atoms M-VEC needs (see NEXT_STEPS.md §3): they
 keep the non-polymorphic behavior of `+ - * ⌊ ⌈ <` so the prelude's own pointer
