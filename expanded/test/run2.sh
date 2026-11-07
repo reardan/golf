@@ -1833,6 +1833,31 @@ cmp -s "$TMP/w94d.g2" "$TMP/w94d.ref" \
 # @@ W10-A-NAMES @@
 
 # @@ W10-B-V1DIV @@
+echo "v1's / % (W10-B): unsigned as ever, but a zero divisor is a clean error, not SIGFPE"
+# Before W10-B `7 0/` and `7 0%` died of SIGFPE (status 136): they are v1's
+# frozen `xor edx,edx; div rcx` templates.  The v2 blob now OVERRIDES them with
+# the W9-2B zero check in front of v1's own tail (tools/mkblob2.py _udivchk).
+w92bdied "$(printf '%s' '7 0/N E' | w92b)" "divide by zero" "" \
+  && ok "7 0/: exit 1 with the message on fd 2, not SIGFPE" || no "/ by zero"
+w92bdied "$(printf '%s' '5N E 7 0%N E' | w92b)" "divide by zero" "5" \
+  && ok "7 0%: exit 1 with the message, earlier output kept" || no "% by zero"
+w92bdied "$(printf '%s' '7 0\ref/\exec N E' | w92b)" "divide by zero" "" \
+  && ok "′/ (the auto-wrapped thunk) checks too" || no "′/ by zero"
+[ "$(printf '%s' '7 0%' | atom 2>&1; echo "rc=$?")" = "$(printf 'GOLF: divide by zero\nrc=1')" ] \
+  && ok "the bare % template checks without the prelude" || no "bare % by zero"
+[ "$(printf '%s' '7 2/N E 7 2%N E 0 1- 2/N E 0 1- 10%N E 0 1- 0 2-/N E 0 7- 2%N E' | gc)" \
+    = "$(printf '3\n1\n9223372036854775807\n5\n1\n1')" ] \
+  && ok "/ % still UNSIGNED for nonzero divisors (u64 max /2, %10, -1/-2 = 1)" || no "/ % unsigned"
+printf '%s' '100 7/N E 100 7%N E 0 1- 3/N E 0 1- 0 2-%N E 1 0/N E' | python3 tools/codepage.py encode \
+  | cat "$TMP/pre.gb" - > "$TMP/w10b.src"
+"$TMP/golf2" < "$TMP/w10b.src" > "$TMP/w10b.g2" 2>/dev/null
+python3 boot/golfref.py < "$TMP/w10b.src" > "$TMP/w10b.ref" 2>/dev/null
+cmp -s "$TMP/w10b.g2" "$TMP/w10b.ref" \
+  && ok "oracle: identical bytes for checked / %" || no "oracle / % bytes"
+chmod +x "$TMP/w10b.ref"
+[ "$("$TMP/w10b.ref" 2>&1; echo "rc=$?")" \
+    = "$(printf '14\n2\n6148914691236517205\n1\nGOLF: divide by zero\nrc=1')" ] \
+  && ok "oracle: the same results and the same clean exit" || no "oracle / % run"
 
 # @@ W10-C-SPILL @@
 
