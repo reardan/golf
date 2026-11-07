@@ -40,6 +40,7 @@ FILESZ = v1.FILESZ      # fixed p_filesz (binary must stay under this)
 # v1's op templates plus every v2 atom.  A local copy: the frozen module is read
 # from, never written to.
 TEMPLATES = dict(v1.TEMPLATES)
+# (So W9-1A's signed ⌈ ⌊ — cmovl/cmovg — reach the oracle from that table alone.)
 TEMPLATES.update({chr(b): list(tpl) for b, _mn, _gl, tpl, _d in mkblob2.ATOMS})
 # M-VEC: the bare + - * ⌈ ⌊ are polymorphic — a hook-cell shape dispatch in front
 # of the unchanged scalar body (see mkblob2._poly).  Applied LAST: dict update

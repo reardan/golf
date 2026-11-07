@@ -81,8 +81,8 @@ the M-VEC preamble's `or rax,[rsp+8]; jns .scalar` filter would send `-1 5+` to
 the dispatcher as list-shaped and `Ṅ` would dereference it. The suite already
 pins the opposite (`0 1-T` → int, and "a -1 flag reaches the hook and falls back
 to the scalar op"), so the change trades a rare wrong answer for a common one.
-GOLF has been signed since M4 — `≺ ≻ ≫`, `÷`, `∣` and `N`'s sign check all say
-so — and any tag in the sign bit fights that.
+GOLF has been signed since M4 — `≺ ≻ ≫`, `÷`, `∣`, `N`'s sign check and (since
+W9-1A) `⌈ ⌊` all say so — and any tag in the sign bit fights that.
 
 *What a correct version looks like.* The honest framing is that in an untagged
 64-bit word you cannot have both the full integer range and an exact pointer

@@ -69,10 +69,13 @@ ATOMS = [
                                                           "a b -> (a>b unsigned ? -1 : 0)"),
     (0x87, "eq",  "≡", [0x59, 0x58, 0x48, 0x29, 0xC8, 0x48, 0x83, 0xE8, 0x01,
                         0x48, 0x19, 0xC0, 0x50],          "a b -> (a==b ? -1 : 0)"),
-    (0x88, "max", "⌈", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x42, 0xC1, 0x50],
-                                                          "a b -> max(a,b) unsigned"),
-    (0x89, "min", "⌊", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x47, 0xC1, 0x50],
-                                                          "a b -> min(a,b) unsigned"),
+    # W9-1A: ⌈ ⌊ are SIGNED (cmp rax,rcx then cmovl / cmovg), like ÷ ∣ ≺ ≻ and
+    # the rest of the language's arithmetic; unsigned max/min stay available as
+    # the raw ⊔ ⊓ below, which the prelude's pointer math relies on.
+    (0x88, "max", "⌈", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x4C, 0xC1, 0x50],
+                                                          "a b -> max(a,b) signed"),
+    (0x89, "min", "⌊", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x4F, 0xC1, 0x50],
+                                                          "a b -> min(a,b) signed"),
     (0x8A, "sdv", "÷", [0x59, 0x58, 0x48, 0x99, 0x48, 0xF7, 0xF9, 0x50],
                                                           "a b -> a/b signed"),
     (0x8B, "smd", "∣", [0x59, 0x58, 0x48, 0x99, 0x48, 0xF7, 0xF9, 0x52],
@@ -82,8 +85,9 @@ ATOMS = [
     # REF_BYTE below, with a case in each of the three compilers — and together
     # they give higher-order functions (map/fold).
     (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
-    # Raw scalar ops — byte-for-byte copies of today's scalar templates for
-    # `+ - * ⌊ ⌈ <`.  M-VEC will make those bare ops *polymorphic* (dispatch on
+    # Raw scalar ops — byte-for-byte copies of the original scalar templates for
+    # `+ - * ⌊ ⌈ <` (⊓ ⊔ keep the UNSIGNED cmova/cmovb that ⌊ ⌈ had before W9-1A
+    # made those signed — pointer math wants unsigned).  M-VEC will make those bare ops *polymorphic* (dispatch on
     # int-vs-list); the prelude's own pointer/flag arithmetic must never pay for
     # (or be changed by) that dispatch, so it moves to these.  Reserved for
     # prelude-internal use: they are guaranteed to stay pure scalar forever.
