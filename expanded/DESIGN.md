@@ -137,10 +137,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **714** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1872** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **5672** bytes |
-| assertions in the run2 suite | **332** |
+| the template blob itself | **729** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **1887** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **5687** bytes |
+| assertions in the run2 suite | **337** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -418,22 +418,29 @@ unbuilt, and three defects this list does not yet cover — see
   `test/selfcheck.sh` proves seed ≡ golf2 on the sources that matter.
 - **The return stack is smaller than it was, and better.** M-MEM shrank
   `p_memsz` to `0x200000`, so the stack now runs from `0x600000` down to the
-  `0x4F` bank: about 1.08 MB, ≈**138**k frames, all of them *its own*. Before,
+  W9-2C guard page just above the `0x4F` bank: about 1.07 MB, ≈**138**k frames,
+  all of them *its own*. Before,
   it nominally had ~917k frames but shared them with a bump heap growing up from
   `0x500000` — every 8 bytes allocated cost a frame, and the two met without
   complaint. Deterministic and smaller beats large and shared.
-- **KNOWN ISSUE — the return stack has no guard, and a `⊡` word reaches it
-  sooner.** Nothing checks `rbp` against the bottom of the return-stack region.
-  Past its capacity a program does not fault: it grows straight down through the
-  `0x4F` runtime cells, the variable bank and the code arena, corrupting them
-  silently, and only faults once it walks below the load address. Measured: a
-  plain `:` word recursing 200,000 deep — well past the ~138k the region holds —
-  still exits 0 with the right answer, having overwritten all of it. This is
-  **pre-existing and not M-FRAME's**, but M-FRAME makes it reachable ~9x sooner
-  for a word that owns a frame (~15k frames rather than ~138k), so it is worth
-  writing down now. A guard costs a compare in every prologue, on the hottest
-  path there is; the honest fix is probably a guard page rather than an
-  instruction.
+- **FIXED (W9-2C) — the return stack has a guard page.** Nothing in a prologue
+  checks `rbp` (a compare there would sit on the hottest path there is), so
+  before W9-2C a runaway recursion grew straight down through the `0x4F`
+  runtime cells, the variable bank and the code arena, and a plain `:` word
+  recursing 200,000 deep still exited 0. Now `STARTUP2` (`tools/mkblob2.py`,
+  mirrored by `boot/golfref.py`) spends 15 bytes on `mprotect(0x4F1000, 1 page,
+  PROT_NONE)`, so the first frame past the bottom faults — SIGSEGV, exit 139 —
+  before a byte below it is touched; run2.sh checks that with a `→x` canary. The
+  guard comes out of the return stack (the page under it is live `0x4F` state),
+  which costs 512 of ~138.7k frames; a `⊡` word's 72-byte frame faults at about
+  15k deep. One page suffices because no frame is larger than 72 bytes. The
+  ELF-level alternative — a second `PT_LOAD` leaving the page unmapped — would
+  have moved the code start and entry point of every binary for the same
+  effect. **Limits:** it is a bare SIGSEGV, not a message (a handler needs a
+  `sigaltstack`, more startup than it is worth), and it covers what `golf2`
+  emits — `golf2` and `golf2'` included — but not `seed`, which the frozen v1c
+  builds with v1's startup and `0xC00000` stack; the seed's only job is to
+  compile golf2 once, a handful of frames deep.
 - **KNOWN ISSUE — an integer inside the heap window looks like a list.** `T` is
   a range test (`v - base <u span`), so any *integer* whose value happens to
   land in `[base, base+span)` is dispatched as a list by `D` and by the five
