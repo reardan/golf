@@ -267,6 +267,12 @@ undefined-word diagnostic. And no diagnostic gained a source position: the compi
 single-pass with no notion of a line, so "undefined word `b`" is the whole
 message it can afford — see DESIGN.md's non-goals.
 
+**W9-2B — runtime checks.** `⊇` (prelude `I`) bounds-checks with one unsigned
+compare, and `÷`/`∣` report a zero divisor; both print `GOLF: …` to fd 2 and
+exit 1 instead of returning garbage or dying of SIGFPE. `INT64_MIN ÷ -1` is
+defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` are frozen
+and still trap — see DESIGN.md, known limits.
+
 ## Earlier waves
 
 **M3W then M-CHAIN2.** Both lived entirely in the compiler's front end

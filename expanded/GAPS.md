@@ -244,6 +244,12 @@ message. Every failure mode is silent corruption or a signal:
 3⍳9⊇Ṅ      ->  0                        # out of bounds, no check, garbage back
 ```
 
+**Since W9-2B, both of those two are reported**: `GOLF: divide by zero` /
+`GOLF: index out of range` on fd 2, exit status 1 (`∣` too, and a negative or
+exactly-`len` index; `INT64_MIN ÷ -1` is defined as `INT64_MIN`, `∣ -1` as 0).
+Still a signal: v1's unsigned `/` and `%` divided by zero — they are frozen v1
+templates. Still no `try`; a runtime error ends the program.
+
 The compiler is the same: bad source does not produce a diagnostic, it produces
 a bad binary. For a language whose whole test discipline is byte-identical
 differential comparison, "no diagnostics at all" is a defensible cost — but it is

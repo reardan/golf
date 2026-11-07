@@ -47,6 +47,39 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "boot"))
 import v1       # the frozen v1 substrate: templates, ELF header, blob helpers
 
+# --- W9-2B: the divide-by-zero check shared by the ÷ ∣ templates ------------
+# Templates are copied inline at every use, and into ′-thunks and chain links,
+# so the check must be position-independent: the message travels INSIDE the
+# template and is addressed rip-relative.  No shared stub at a fixed address —
+# that would couple every template to the emitter's layout for ~40 bytes saved
+# per use, and most programs use ÷/∣ once or never.  The data stack is rsp, so
+# push/pop imm8 are the short way to load the syscall registers; nothing on it
+# matters any more once we are on the way out.
+DIV0_MSG = b"GOLF: divide by zero\n"
+_DIV0 = ([0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+19]
+         + [0x6A, 0x02, 0x5F]                     # push 2;  pop rdi   fd 2
+         + [0x6A, len(DIV0_MSG), 0x5A]            # push n;  pop rdx   length
+         + [0x6A, 0x01, 0x58]                     # push 1;  pop rax   write
+         + [0x0F, 0x05]                           # syscall
+         + [0x6A, 0x01, 0x5F]                     # push 1;  pop rdi   status 1
+         + [0x6A, 0x3C, 0x58]                     # push 60; pop rax   exit
+         + [0x0F, 0x05]                           # syscall
+         + list(DIV0_MSG))                        # (19 bytes of code above)
+assert len(_DIV0) == 7 + 19 + len(DIV0_MSG)
+
+def _divchk(minus1, push):
+    """pop rcx (b), pop rax (a); b == 0 -> _DIV0; b == -1 -> `minus1` (the
+    wrapped result, no idiv: INT64_MIN / -1 would trap); else cqo; idiv rcx;
+    then `push` (0x50 rax = quotient, 0x52 rdx = remainder)."""
+    return ([0x59, 0x58]                          # pop rcx; pop rax
+            + [0x48, 0x85, 0xC9]                  # test rcx, rcx
+            + [0x75, len(_DIV0)] + _DIV0          # jnz .ok ; else die
+            + [0x48, 0x83, 0xF9, 0xFF]            # .ok: cmp rcx, -1
+            + [0x75, len(minus1) + 2] + minus1    # jne .div ; ÷: neg rax · ∣: xor edx,edx
+            + [0xEB, 0x05]                        # jmp .done
+            + [0x48, 0x99, 0x48, 0xF7, 0xF9]      # .div: cqo; idiv rcx
+            + [push])                             # .done: push rax / rdx
+
 # --- Atoms added on top of the minimal v1 op set.  Each is a pure machine-code
 #     template (no compiler-logic change).  (byte, mnemonic, glyph, template, doc)
 #     M1 atoms live at printable-ASCII bytes; the code-page atoms live at 0x80+.
@@ -76,10 +109,14 @@ ATOMS = [
                                                           "a b -> max(a,b) signed"),
     (0x89, "min", "⌊", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x4F, 0xC1, 0x50],
                                                           "a b -> min(a,b) signed"),
-    (0x8A, "sdv", "÷", [0x59, 0x58, 0x48, 0x99, 0x48, 0xF7, 0xF9, 0x50],
-                                                          "a b -> a/b signed"),
-    (0x8B, "smd", "∣", [0x59, 0x58, 0x48, 0x99, 0x48, 0xF7, 0xF9, 0x52],
-                                                          "a b -> a%b signed"),
+    # W9-2B: ÷ ∣ are CHECKED.  A zero divisor writes `GOLF: divide by zero` to
+    # fd 2 and exits 1 (_DIV0, below) instead of dying of SIGFPE; a divisor of
+    # -1 skips idiv (INT64_MIN / -1 is the other #DE) and gives the wrapped
+    # result — ÷ is `neg`, so INT64_MIN ÷ -1 = INT64_MIN, and ∣ is 0.
+    (0x8A, "sdv", "÷", _divchk([0x48, 0xF7, 0xD8], 0x50),
+                                                          "a b -> a/b signed (b=0: error exit 1)"),
+    (0x8B, "smd", "∣", _divchk([0x31, 0xD2], 0x52),
+                                                          "a b -> a%b signed (b=0: error exit 1)"),
     # Quotations: exec is an indirect call (pop a word address, call it).  Its
     # partner `ref` (push a word's address) is a compiler prefix, not an atom —
     # REF_BYTE below, with a case in each of the three compilers — and together
