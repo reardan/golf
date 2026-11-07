@@ -126,7 +126,13 @@ the one that guards the fix: `0 1-T` is still an int, and so is every negative a
 program can produce. Every existing polymorphic test unchanged;
 `0x4F0034`/`0x4F0038` deleted from REGISTRY.md §3 in the same commit.
 
-### 2. M-FRAME2 — size the frame per definition (medium)
+### 2. M-FRAME2 — size the frame per definition — **shipped (W9-4D)**
+
+**Shipped as sketched below** (DESIGN.md records it): `⊡` emits `sub rbp, imm32`
+and every `^` an `add rbp, imm32`, their immediates threaded into a list that
+`;` walks and patches with 8 × the number of distinct locals; locals take long
+names (`⇒‹acc›`), slots go in order of first appearance, at most 16 a word. A
+two-local word's frame is 24 bytes, not 72. The rest of this entry is the history.
 
 **M-FRAME shipped** (DESIGN.md): `⊡name … ;` owns a frame of eight slots and
 `⇒x`/`⇐x` reach them, so recursion through a local is correct. What it did *not*
@@ -186,8 +192,8 @@ dictionary and the variable bank extend by their own formulas, and **forward
 references** for long names — call sites thread a per-name patch list, the
 definition patches it, and a name still pending at end of input is
 `GOLF: undefined word ‹name›`. Mutual recursion needs no declaration. Programs
-without `‹` compile to the same bytes as before. *Still open:* named locals
-(`⇒‹x›` is refused; W9-4D), forward references for one-byte names (kept
+without `‹` compile to the same bytes as before. Named locals (`⇒‹x›`)
+followed with W9-4D (item 2). *Still open:* forward references for one-byte names (kept
 define-before-use on purpose — their error stays at the call), and the fixed
 table (256 names × 60 bytes). The rest of this entry is the case that was made
 for it.

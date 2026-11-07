@@ -207,9 +207,9 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0x8F` | `→` | `\set` | prefix: →x pops TOS into variable x |
 | `0x90` | `←` | `\get` | prefix: ←x pushes variable x |
 | `0xB0` | `⊚` | `\chain` | prefix: ⊚name f g h; defines a tacit chain (a train of links) |
-| `0xB1` | `⊡` | `\dloc` | prefix: ⊡name ... ; defines a word with a frame of 8 per-call locals |
-| `0xB2` | `⇒` | `\lset` | prefix: ⇒x pops TOS into local x (a..h) |
-| `0xB3` | `⇐` | `\lget` | prefix: ⇐x pushes local x (a..h) |
+| `0xB1` | `⊡` | `\dloc` | prefix: ⊡name ... ; defines a word with a frame of per-call locals, one cell each |
+| `0xB2` | `⇒` | `\lset` | prefix: ⇒x pops TOS into local x (a..h or ‹name›) |
+| `0xB3` | `⇐` | `\lget` | prefix: ⇐x pushes local x (a..h or ‹name›) |
 | `0xB4` | `‹` | `\lname` | opens a long name: ‹name› stands wherever a one-byte name can |
 | `0xB5` | `›` | `\rname` | closes a long name |
 
@@ -272,7 +272,7 @@ A few notes on what the tables leave out:
   such an address as their function argument. `∘ ⇉ ⑂` combine them.
 - **Variables.** `→x` / `←x` store and load one global 64-bit cell per name
   byte. They are global, so a recursive word should use `⊡` locals instead:
-  `⇒x` / `⇐x` reach slots `a`–`h` of the current call's frame.
+  `⇒x` / `⇐x` reach local `x` in the current call's frame (see Locals below).
 - **Chains.** `⊚name f g h;` defines a tacit train. One link is a call, two
   links are a composition, and three are a fork `h(f x, g x)`. A fourth or later
   link is an ordinary call made on the result.
@@ -296,6 +296,21 @@ Because `›` ends the name, `5‹sq›3` is the call followed by the number 3, 
 the ASCII spelling `\lnamesq\rname` is the same token as `‹sq›`. `‹ab›` and
 `‹abc›` are different names, and so are `‹a›` and `a`: a long-named variable has
 its own cell, beyond the 256 one-byte ones.
+
+**Locals.** Inside `⊡name … ;` the prefixes `⇒` (pop into) and `⇐` (push)
+name per-call locals: a one-letter `a`–`h` or any long name, mixed freely.
+Each distinct name gets the next slot at its first appearance in the
+definition, so a `⊡` word that names *k* locals reserves exactly *k* cells
+(`⊡‹inc›1+;`, with none, costs what a `:` word does) and recurses that much
+deeper. At most 16 locals per word: a 17th is `GOLF: too many locals ‹name›`,
+exit 2. Outside a `⊡` word a long local is `GOLF: local out of range ‹name›`, and
+a one-letter one past `h` is refused everywhere.
+
+```golfj
+⊡‹sum›"[_0^]⇒‹n›⇐‹n›1-‹sum›⇐‹n›+;   # one cell a call
+⊡‹hyp›⇒a⇒‹y›⇐a⇐a*⇐‹y›⇐‹y›*+;        # two: a, then ‹y›
+100‹sum›Ṅ␤3 4‹hyp›Ṅ␤                # 5050, then 25
+```
 
 **Forward references.** A long name may be called, or quoted with `′`, before
 its definition. That is all mutual recursion needs:
@@ -486,8 +501,8 @@ the (integer) mean of a list.
 4
 ```
 
-**9. Recursion with locals.** A `⊡` word gets eight private slots `a`–`h` per
-call, so recursion is safe. Global `→`/`←` variables would be overwritten by
+**9. Recursion with locals.** A `⊡` word gets private locals (`a`–`h` or long
+names, one cell each) per call, so recursion is safe. Global `→`/`←` variables would be overwritten by
 the inner calls. This is the factorial of 10.
 
 ```golfj

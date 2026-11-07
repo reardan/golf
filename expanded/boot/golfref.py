@@ -83,6 +83,8 @@ def compile_bytes(src: bytes) -> bytes:
     stack = []          # backpatch stack: (kind, offset)
     chain = None        # M-CHAIN2: the link bytes taken so far, or None
     frame = False       # M-FRAME: inside a ⊡ definition, which owns a slab
+    flocals = []        # M-FRAME2: its locals' name numbers, in order of first use
+    fsites = []         # M-FRAME2: its frame-size immediates, patched at ';'
     longs = []          # M2: long names in order of first appearance; name
                         # number LONG_BASE + i, exactly as golf2 interns them
     pending = {}        # M2: long name -> call/jmp sites awaiting its body
@@ -226,9 +228,12 @@ def compile_bytes(src: bytes) -> bytes:
                 for b in chain[:2] if len(chain) < 3 else []:
                     call_or_template(b)
                 chain = None
-            if frame:                                # M-FRAME: release the slab
-                frame = False
-                emit(mkblob2.FRAME_RELEASE)
+            if frame:                                # M-FRAME: release the slab,
+                frame = False                        # now that its size is known
+                size = 8 * len(flocals)              # (M-FRAME2): patch every
+                for at in fsites:                    # earlier immediate with it
+                    out[at:at + 4] = size.to_bytes(4, "little")
+                emit(mkblob2.FRAME_RELEASE); emit_u32(size)
             emit(v1.EPILOGUE)
             kind, patch = stack.pop()
             assert kind == 'def', "; without :"
@@ -237,6 +242,7 @@ def compile_bytes(src: bytes) -> bytes:
         if ch == '^':                                # M-FRAME: early return.  A
             if frame:                                # plain template until now;
                 emit(mkblob2.FRAME_RELEASE)          # it is a case only so it
+                fsites.append(len(out)); emit_u32(0) # (size patched at ';')
             emit(TEMPLATES['^'])                     # can release a ⊡ frame.
             continue
         if ch == '[':                                # if (execute when TOS==0)
@@ -306,13 +312,25 @@ def compile_bytes(src: bytes) -> bytes:
             define(name)
             stack.append(('def', patch))
             emit(v1.PROLOGUE)
-            emit(mkblob2.FRAME_RESERVE)              # ... the eight-slot slab
+            emit(mkblob2.FRAME_RESERVE)              # ... a slab sized at ';'
+            fsites = [len(out)]; emit_u32(0)         # (M-FRAME2), one cell per
+            flocals = []                             # distinct local named
             frame = True                             # which '^' and ';' release
             continue
         if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
-            slot = take() - ord('a')
-            if not 0 <= slot < mkblob2.FRAME_SLOTS:
+            name = take_name()                       # a..h, or a ‹long name›
+            if name < 256 and not 0 <= name - ord('a') < 8:
                 raise SystemExit(f"golfref: local out of range at byte {i-1}")
+            if not frame:                            # outside ⊡: M-FRAME's fixed
+                if name >= 256:                      # a..h slot; a long name has
+                    raise SystemExit(f"golfref: local out of range at byte {i-1}")
+                slot = name - ord('a')               # nowhere to go
+            else:                                    # M-FRAME2: first appearance
+                if name not in flocals:              # claims the next slot
+                    if len(flocals) >= mkblob2.FRAME_MAX_LOCALS:
+                        raise SystemExit(f"golfref: too many locals at byte {i-1}")
+                    flocals.append(name)
+                slot = flocals.index(name)
             if c == LSET_BYTE:                       # pop rax; mov [rbp+d],rax
                 emit([0x58, 0x48, 0x89, 0x45, 8 * slot])
             else:                                    # mov rax,[rbp+d]; push rax

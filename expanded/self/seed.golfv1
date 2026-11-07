@@ -121,6 +121,14 @@
 # already rejects it — no template, dict slot 0 — with exit(2).  Before W9-1C it
 # was wrapped like an atom, around a template that does not exist (SIGILL).
 :X"Y@"[_"256<[233o5wPm24+!233&FLm24+@69632-w_^]"f?["e]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+# l — M-FRAME2: the rbp displacement of a local, from its name number.  A
+# one-byte local must be a..h.  Outside a ⊡ word (m56 clear) it keeps M-FRAME's
+# fixed slot name-'a', and a long name is refused.  Inside, the definition's
+# slot table at m96 (name numbers, 4 bytes each) is searched in order of first
+# appearance; a new name claims slot m88 (the count so far), at most 16, so every
+# displacement is a disp8.  m80 is the walking index (M2's, idle by now).  golf2
+# names the offending local on fd 2; the seed can only exit(2).
+:l"256<1+["97-8<[2.]]m56+@["256<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
 :t"33<1+[_^]                                            # whitespace
 "35-[_h^]                                               # '#' comment
 "U1+[48-{("U[Q!Lw^]Z0}]                                 # digit -> number
@@ -130,7 +138,7 @@
 # never reached the fork, so its links are emitted here as plain calls, and a ⊡
 # word releases its frame.  Then the ordinary epilogue and backpatch, which are
 # the same for every kind of definition.
-"59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!72o131o197o64o]94Ek^] # ';' end def -- and close a chain
+"59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!{m92+@@m88+@8*m92+@!m92+!m92+@1<}72o129o197om88+@8*w]94Ek^] # ';' end def -- and close a chain
 "91-[_2E133oP0w^]                                       # '[' if
 "93-[_k^]                                               # ']' end if
 "'{-[_P^]                                               # '{' loop start ('{ = 123)
@@ -175,39 +183,39 @@
 "143-[_G8*5111808+88o72o137o4o37ow^]                    # 0x8F  →x store TOS to the global variable bank
 "144-[_G8*5111808+72o139o4o37ow80o^]                    # 0x90  ←x load from the global variable bank
 
-# ⊡ (0xB1) / ⇒x (0xB2) / ⇐x (0xB3) — M-FRAME, per-call locals.
+# ⊡ (0xB1) / ⇒x (0xB2) / ⇐x (0xB3) — M-FRAME, per-call locals, sized per
+# definition since M-FRAME2 (W9-4D).
 #
-#   ⊡name … ;   define a word WITH a frame of eight local slots
-#   ⇒x          pop TOS into local x   (x in a..h)
+#   ⊡name … ;   define a word WITH a frame of locals, one cell per local named
+#   ⇒x          pop TOS into local x   (x in a..h, or a ‹long name›)
 #   ⇐x          push local x
 #
-# ⊡ is `:`'s case plus two things: the frame reservation right after the
-# prologue (`sub rbp,64`), and a flag in m56 saying "this definition has a
-# frame" — which `^` and `;` read to decide whether to release it.  Layout, with
-# R the address the return address is stored at:
+# ⊡ is `:`'s case plus three things: `sub rbp, imm32` right after the prologue,
+# its immediate left unpatched; a flag in m56 saying "this definition has a
+# frame", which `^` and `;` read; and a zeroed local count in m88.  Layout, for
+# a word naming k locals, with R the address the return address is stored at:
 #
-#     [rbp+0] .. [rbp+56]   the eight local slots, a..h
-#     [rbp+64] = R          the return address
+#     [rbp+0] .. [rbp+8k-8]  the k slots, in order of first appearance
+#     [rbp+8k] = R           the return address
 #
-# A slot's displacement is 8*(name-'a') and does not depend on how many slots the
-# word actually uses, which is what lets ⇒/⇐ be fixed-size five-byte templates.
-# Eight slots is the compromise: the compiler's own busiest word holds five
-# variables at once, while a slot per letter would cost 216 bytes a frame.
-#
-# `"8<[2.]` is the eight-slot range check.  Unchecked, ⇒z would be displacement
-# 200 — a NEGATIVE disp8 (-56), landing in the frame of a word not yet called —
-# and ⇒A would wrap to 0 and silently alias slot a.  golf2 names the offending
-# byte on fd 2; this seed, in v1 GOLF, can only exit(2).  Same status, same
-# asymmetry as `e` above, gated by test/selfcheck.sh.
-"177-[_G"233oP4+\Y!RP0w1E72o131o237o64o1m56+!^]           # 0xB1  ⊡  define a word owning a frame of 8 locals
-"178-[_(97-"8<[2.]8*88o72o137o69oo^]                    # 0xB2  ⇒x pop TOS into local slot x (a..h)
-"179-[_(97-"8<[2.]8*72o139o69oo80o^]                    # 0xB3  ⇐x push local slot x
+# `l` gives a name its slot (m96 holds the table), so ⇒/⇐ stay five bytes; only
+# k waits for `;`.  Every frame-size immediate — the ⊡'s and each `^`'s
+# `add rbp, imm32` — holds the previous one's address (the ⊡'s holds 0) and m92
+# the newest, so `;` walks that list writing 8k into each, then emits its own
+# `add rbp, 8k`.  A one-letter local past h, a 17th local, or a long local
+# outside a ⊡ word stops the compile: golf2 says which on fd 2; this seed, in v1
+# GOLF, can only exit(2).  Same status, same asymmetry as `e` above, gated by
+# test/selfcheck.sh.
+"177-[_G"233oP4+\Y!RP0w1E72o129o237oPm92+!0w0m88+!1m56+!^] # 0xB1  ⊡  define a word owning a frame of locals
+"178-[_Gl88o72o137o69oo^]                               # 0xB2  ⇒x pop TOS into local x (a..h or ‹name›)
+"179-[_Gl72o139o69oo80o^]                               # 0xB3  ⇐x push local x
 
 # `^` was a plain template until M-FRAME; it becomes a case purely so it can test
-# that flag.  With the flag clear it emits `94E` — the same template `e` would
+# that flag (and, since M-FRAME2, link its frame-size immediate into m92's
+# list).  With the flag clear it emits `94E` — the same template `e` would
 # have copied — so every existing program compiles to the bytes it did before,
 # which is what keeps the ladder and the fixpoint undisturbed.
-"94-[_m56+@1-[72o131o197o64o]94E^]                      # '^' early return: release the frame first when there is one
+"94-[_m56+@1-[72o129o197om92+@Pm92+!w]94E^]               # '^' early return: release the frame first when there is one
 
 # ⊚ (0xB0) — M-CHAIN2, a CHAIN definition.  `⊚name f g h;` is the tacit train the
 # explicit spelling builds, with the compiler supplying every ′:
