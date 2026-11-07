@@ -11,7 +11,8 @@ This is a full oracle, not a shim:
     truth for the code-page atom templates.  Adding an atom there makes it work
     here with no edit to this file.
   * **Compiler ops are implemented natively** here: ′ ref (0x8C), “ str (0x8E),
-    → set (0x8F), ← get (0x90) and ⊚ chain (0xB0).  These change the compiler's
+    → set (0x8F), ← get (0x90), ⊚ chain (0xB0), ⊡ ⇒ ⇐ (0xB1-0xB3) and the
+    M2 long-name brackets ‹ › (0xB4/0xB5).  These change the compiler's
     *logic*, not just its template table, so they cannot be inherited — they are
     transcribed from the authoritative cases in self/seed.golfv1 and
     self/golf2.golfj, whose byte allocations tools/mkblob2.py owns.
@@ -40,6 +41,7 @@ FILESZ = v1.FILESZ      # fixed p_filesz (binary must stay under this)
 # v1's op templates plus every v2 atom.  A local copy: the frozen module is read
 # from, never written to.
 TEMPLATES = dict(v1.TEMPLATES)
+# (So W9-1A's signed ⌈ ⌊ — cmovl/cmovg — reach the oracle from that table alone.)
 TEMPLATES.update({chr(b): list(tpl) for b, _mn, _gl, tpl, _d in mkblob2.ATOMS})
 # M-VEC: the bare + - * ⌈ ⌊ are polymorphic — a hook-cell shape dispatch in front
 # of the unchanged scalar body (see mkblob2._poly).  Applied LAST: dict update
@@ -57,6 +59,8 @@ CHAIN_BYTE = mkblob2.CHAIN_BYTE  # ⊚  define a word as a tacit chain of links
 FRAME_BYTE = mkblob2.FRAME_BYTE  # ⊡  define a word with a frame of locals
 LSET_BYTE = mkblob2.LSET_BYTE    # ⇒  pop TOS into a local slot
 LGET_BYTE = mkblob2.LGET_BYTE    # ⇐  push a local slot
+LNAME_BYTE = mkblob2.LNAME_BYTE  # ‹  opens a long name (M2)
+RNAME_BYTE = mkblob2.RNAME_BYTE  # ›  closes it
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -72,11 +76,18 @@ def compile_bytes(src: bytes) -> bytes:
     # `mov ebp, RSTACK_TOP`, so a compiled program can reach argv.  Imported, not
     # re-spelled: the oracle and the self-hosted compiler must not drift into
     # different prologues, and run2.sh's oracle-parity case gates exactly that.
+    # W9-2C: it also mprotects the guard page below the return stack
+    # (mkblob2.GUARD_LO), so a runaway recursion faults instead of corrupting.
     out += mkblob2.STARTUP2
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)
     chain = None        # M-CHAIN2: the link bytes taken so far, or None
     frame = False       # M-FRAME: inside a ⊡ definition, which owns a slab
+    flocals = []        # M-FRAME2: its locals' name numbers, in order of first use
+    fsites = []         # M-FRAME2: its frame-size immediates, patched at ';'
+    longs = []          # M2: long names in order of first appearance; name
+                        # number LONG_BASE + i, exactly as golf2 interns them
+    pending = {}        # M2: long name -> call/jmp sites awaiting its body
     i, n = 0, len(src)
 
     def emit(bs):
@@ -115,9 +126,14 @@ def compile_bytes(src: bytes) -> bytes:
         if name in dict_:                            # a defined word: its body VA
             emit([0x68]); emit_u32(BASE + dict_[name])
             return
-        if chr(name) not in TEMPLATES:
-            raise SystemExit(
-                f"golfref: ′ on unknown word 0x{name:02x} at byte {i-1}")
+        if name >= mkblob2.LONG_BASE:                # M2: a long name defined later —
+            emit([0xE9]); emit_u32(5)                # a thunk [jmp rel32] to it,
+            thunk = len(out)                         # jumped over; the rel32 is a
+            forward(0xE9, name)                      # forward site like any call
+            emit([0x68]); emit_u32(BASE + thunk)
+            return
+        if chr(name) not in TEMPLATES:               # neither: `X` hands it to `e`,
+            call_or_template(name)                   # i.e. the undefined-word exit
         emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
         thunk = len(out)
         emit(v1.PROLOGUE)
@@ -126,10 +142,48 @@ def compile_bytes(src: bytes) -> bytes:
         patch32(patch, len(out))                     # land on the push below
         emit([0x68]); emit_u32(BASE + thunk)
 
+    def forward(op, name):
+        """M2: `op rel32` to a long name not defined yet; its definition
+        patches the site (golf2 threads the same sites through the placeholders,
+        so once patched the bytes are identical)."""
+        emit([op]); pending.setdefault(name, []).append(len(out))
+        emit(b"\0\0\0\0")
+
+    def define(name):
+        """Bind `name` to the body starting here, and patch its forward sites."""
+        dict_[name] = len(out)
+        for site in pending.pop(name, []):
+            patch32(site, dict_[name])
+
+    def read_long():
+        """M2: the bytes after ‹ up to ›, interned to a name number."""
+        nonlocal i
+        start = i
+        while i < n and src[i] != RNAME_BYTE:
+            i += 1
+        name = src[start:i]
+        ok = all(chr(b).isascii() and (chr(b).isalnum() or b in b"_-") for b in name)
+        if i >= n or not ok or not name or len(name) > mkblob2.LONG_LEN:
+            raise SystemExit(f"golfref: bad long name at byte {start}")
+        i += 1
+        if name not in longs:
+            if len(longs) >= mkblob2.LONG_MAX:
+                raise SystemExit("golfref: too many long names")
+            longs.append(name)
+        return mkblob2.LONG_BASE + longs.index(name)
+
+    def take_name():
+        """A prefix's operand: one byte, or a whole ‹long name›."""
+        b = take()
+        return read_long() if b == LNAME_BYTE else b
+
     def call_or_template(b):
         """Compile one ordinary token: its template, or a call to that word."""
-        if chr(b) in TEMPLATES:
+        if b < 256 and chr(b) in TEMPLATES:
             emit(TEMPLATES[chr(b)])
+            return
+        if b not in dict_ and b >= mkblob2.LONG_BASE:
+            forward(0xE8, b)
             return
         if b not in dict_:
             raise SystemExit(f"golfref: undefined word 0x{b:02x} at byte {i-1}")
@@ -163,9 +217,9 @@ def compile_bytes(src: bytes) -> bytes:
             emit_lit(take())
             continue
         if ch == ':':                                # define word
-            name = take()
+            name = take_name()
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")  # jmp over body
-            dict_[name] = len(out)                   # body = prologue address
+            define(name)                             # body = prologue address
             stack.append(('def', patch))
             emit(v1.PROLOGUE)
             continue
@@ -174,9 +228,12 @@ def compile_bytes(src: bytes) -> bytes:
                 for b in chain[:2] if len(chain) < 3 else []:
                     call_or_template(b)
                 chain = None
-            if frame:                                # M-FRAME: release the slab
-                frame = False
-                emit(mkblob2.FRAME_RELEASE)
+            if frame:                                # M-FRAME: release the slab,
+                frame = False                        # now that its size is known
+                size = 8 * len(flocals)              # (M-FRAME2): patch every
+                for at in fsites:                    # earlier immediate with it
+                    out[at:at + 4] = size.to_bytes(4, "little")
+                emit(mkblob2.FRAME_RELEASE); emit_u32(size)
             emit(v1.EPILOGUE)
             kind, patch = stack.pop()
             assert kind == 'def', "; without :"
@@ -185,6 +242,7 @@ def compile_bytes(src: bytes) -> bytes:
         if ch == '^':                                # M-FRAME: early return.  A
             if frame:                                # plain template until now;
                 emit(mkblob2.FRAME_RELEASE)          # it is a case only so it
+                fsites.append(len(out)); emit_u32(0) # (size patched at ';')
             emit(TEMPLATES['^'])                     # can release a ⊡ frame.
             continue
         if ch == '[':                                # if (execute when TOS==0)
@@ -221,7 +279,7 @@ def compile_bytes(src: bytes) -> bytes:
 
         # ---------------------------------------------------- v2 compiler logic
         if c == REF_BYTE:                            # ′name -> push name's VA
-            push_ref(take())
+            push_ref(take_name())
             continue
         if c == STR_BYTE:                            # “bytes“ -> byte block
             # jmp over; [len:u32][bytes...]; push VA of the length word.
@@ -241,26 +299,38 @@ def compile_bytes(src: bytes) -> bytes:
             continue
         if c == SET_BYTE:                            # →x : pop rax; mov [x],rax
             emit([0x58, 0x48, 0x89, 0x04, 0x25])
-            emit_u32(VARBANK + VARSTRIDE * take())
+            emit_u32(VARBANK + VARSTRIDE * take_name())
             continue
         if c == GET_BYTE:                            # ←x : mov rax,[x]; push rax
             emit([0x48, 0x8B, 0x04, 0x25])
-            emit_u32(VARBANK + VARSTRIDE * take()); emit([0x50])
+            emit_u32(VARBANK + VARSTRIDE * take_name()); emit([0x50])
             continue
 
         if c == FRAME_BYTE:                          # ⊡name … ; : with locals
-            name = take()                            # the header is ':'s, plus
+            name = take_name()                       # the header is ':'s, plus
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
-            dict_[name] = len(out)
+            define(name)
             stack.append(('def', patch))
             emit(v1.PROLOGUE)
-            emit(mkblob2.FRAME_RESERVE)              # ... the eight-slot slab
+            emit(mkblob2.FRAME_RESERVE)              # ... a slab sized at ';'
+            fsites = [len(out)]; emit_u32(0)         # (M-FRAME2), one cell per
+            flocals = []                             # distinct local named
             frame = True                             # which '^' and ';' release
             continue
         if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
-            slot = take() - ord('a')
-            if not 0 <= slot < mkblob2.FRAME_SLOTS:
+            name = take_name()                       # a..h, or a ‹long name›
+            if name < 256 and not 0 <= name - ord('a') < 8:
                 raise SystemExit(f"golfref: local out of range at byte {i-1}")
+            if not frame:                            # outside ⊡: M-FRAME's fixed
+                if name >= 256:                      # a..h slot; a long name has
+                    raise SystemExit(f"golfref: local out of range at byte {i-1}")
+                slot = name - ord('a')               # nowhere to go
+            else:                                    # M-FRAME2: first appearance
+                if name not in flocals:              # claims the next slot
+                    if len(flocals) >= mkblob2.FRAME_MAX_LOCALS:
+                        raise SystemExit(f"golfref: too many locals at byte {i-1}")
+                    flocals.append(name)
+                slot = flocals.index(name)
             if c == LSET_BYTE:                       # pop rax; mov [rbp+d],rax
                 emit([0x58, 0x48, 0x89, 0x45, 8 * slot])
             else:                                    # mov rax,[rbp+d]; push rax
@@ -268,13 +338,16 @@ def compile_bytes(src: bytes) -> bytes:
             continue
 
         if c == CHAIN_BYTE:                          # ⊚name … ; : a tacit chain
-            name = take()                            # the header is ':'s
+            name = take_name()                       # the header is ':'s
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
-            dict_[name] = len(out)
+            define(name)
             stack.append(('def', patch))
             emit(v1.PROLOGUE)
             chain = []                               # links from here to ';'
             continue
+        if c == LNAME_BYTE:                          # M2: ‹name› as a token — its
+            c = read_long()                          # number then stands for it,
+                                                     # as a link or as a call
         if chain is not None:
             # Inside a chain body this token is a LINK, not a call.  The count
             # decides the train: the third link emits ′f ′g ′h and the ⑂ that
@@ -294,6 +367,9 @@ def compile_bytes(src: bytes) -> bytes:
 
     if stack:
         raise SystemExit(f"golfref: unbalanced blocks: {stack}")
+    for k, name in enumerate(longs):                 # M2: called, never defined
+        if mkblob2.LONG_BASE + k in pending:
+            raise SystemExit(f"golfref: undefined word ‹{name.decode()}›")
     emit(v1.AUTOEXIT)
     if len(out) >= FILESZ:
         raise SystemExit(f"golfref: output {len(out)} bytes exceeds p_filesz {FILESZ}")

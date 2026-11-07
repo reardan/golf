@@ -47,6 +47,39 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "boot"))
 import v1       # the frozen v1 substrate: templates, ELF header, blob helpers
 
+# --- W9-2B: the divide-by-zero check shared by the ÷ ∣ templates ------------
+# Templates are copied inline at every use, and into ′-thunks and chain links,
+# so the check must be position-independent: the message travels INSIDE the
+# template and is addressed rip-relative.  No shared stub at a fixed address —
+# that would couple every template to the emitter's layout for ~40 bytes saved
+# per use, and most programs use ÷/∣ once or never.  The data stack is rsp, so
+# push/pop imm8 are the short way to load the syscall registers; nothing on it
+# matters any more once we are on the way out.
+DIV0_MSG = b"GOLF: divide by zero\n"
+_DIV0 = ([0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+19]
+         + [0x6A, 0x02, 0x5F]                     # push 2;  pop rdi   fd 2
+         + [0x6A, len(DIV0_MSG), 0x5A]            # push n;  pop rdx   length
+         + [0x6A, 0x01, 0x58]                     # push 1;  pop rax   write
+         + [0x0F, 0x05]                           # syscall
+         + [0x6A, 0x01, 0x5F]                     # push 1;  pop rdi   status 1
+         + [0x6A, 0x3C, 0x58]                     # push 60; pop rax   exit
+         + [0x0F, 0x05]                           # syscall
+         + list(DIV0_MSG))                        # (19 bytes of code above)
+assert len(_DIV0) == 7 + 19 + len(DIV0_MSG)
+
+def _divchk(minus1, push):
+    """pop rcx (b), pop rax (a); b == 0 -> _DIV0; b == -1 -> `minus1` (the
+    wrapped result, no idiv: INT64_MIN / -1 would trap); else cqo; idiv rcx;
+    then `push` (0x50 rax = quotient, 0x52 rdx = remainder)."""
+    return ([0x59, 0x58]                          # pop rcx; pop rax
+            + [0x48, 0x85, 0xC9]                  # test rcx, rcx
+            + [0x75, len(_DIV0)] + _DIV0          # jnz .ok ; else die
+            + [0x48, 0x83, 0xF9, 0xFF]            # .ok: cmp rcx, -1
+            + [0x75, len(minus1) + 2] + minus1    # jne .div ; ÷: neg rax · ∣: xor edx,edx
+            + [0xEB, 0x05]                        # jmp .done
+            + [0x48, 0x99, 0x48, 0xF7, 0xF9]      # .div: cqo; idiv rcx
+            + [push])                             # .done: push rax / rdx
+
 # --- Atoms added on top of the minimal v1 op set.  Each is a pure machine-code
 #     template (no compiler-logic change).  (byte, mnemonic, glyph, template, doc)
 #     M1 atoms live at printable-ASCII bytes; the code-page atoms live at 0x80+.
@@ -69,21 +102,29 @@ ATOMS = [
                                                           "a b -> (a>b unsigned ? -1 : 0)"),
     (0x87, "eq",  "≡", [0x59, 0x58, 0x48, 0x29, 0xC8, 0x48, 0x83, 0xE8, 0x01,
                         0x48, 0x19, 0xC0, 0x50],          "a b -> (a==b ? -1 : 0)"),
-    (0x88, "max", "⌈", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x42, 0xC1, 0x50],
-                                                          "a b -> max(a,b) unsigned"),
-    (0x89, "min", "⌊", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x47, 0xC1, 0x50],
-                                                          "a b -> min(a,b) unsigned"),
-    (0x8A, "sdv", "÷", [0x59, 0x58, 0x48, 0x99, 0x48, 0xF7, 0xF9, 0x50],
-                                                          "a b -> a/b signed"),
-    (0x8B, "smd", "∣", [0x59, 0x58, 0x48, 0x99, 0x48, 0xF7, 0xF9, 0x52],
-                                                          "a b -> a%b signed"),
+    # W9-1A: ⌈ ⌊ are SIGNED (cmp rax,rcx then cmovl / cmovg), like ÷ ∣ ≺ ≻ and
+    # the rest of the language's arithmetic; unsigned max/min stay available as
+    # the raw ⊔ ⊓ below, which the prelude's pointer math relies on.
+    (0x88, "max", "⌈", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x4C, 0xC1, 0x50],
+                                                          "a b -> max(a,b) signed"),
+    (0x89, "min", "⌊", [0x59, 0x58, 0x48, 0x39, 0xC8, 0x48, 0x0F, 0x4F, 0xC1, 0x50],
+                                                          "a b -> min(a,b) signed"),
+    # W9-2B: ÷ ∣ are CHECKED.  A zero divisor writes `GOLF: divide by zero` to
+    # fd 2 and exits 1 (_DIV0, below) instead of dying of SIGFPE; a divisor of
+    # -1 skips idiv (INT64_MIN / -1 is the other #DE) and gives the wrapped
+    # result — ÷ is `neg`, so INT64_MIN ÷ -1 = INT64_MIN, and ∣ is 0.
+    (0x8A, "sdv", "÷", _divchk([0x48, 0xF7, 0xD8], 0x50),
+                                                          "a b -> a/b signed (b=0: error exit 1)"),
+    (0x8B, "smd", "∣", _divchk([0x31, 0xD2], 0x52),
+                                                          "a b -> a%b signed (b=0: error exit 1)"),
     # Quotations: exec is an indirect call (pop a word address, call it).  Its
     # partner `ref` (push a word's address) is a compiler prefix, not an atom —
     # REF_BYTE below, with a case in each of the three compilers — and together
     # they give higher-order functions (map/fold).
     (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
-    # Raw scalar ops — byte-for-byte copies of today's scalar templates for
-    # `+ - * ⌊ ⌈ <`.  M-VEC will make those bare ops *polymorphic* (dispatch on
+    # Raw scalar ops — byte-for-byte copies of the original scalar templates for
+    # `+ - * ⌊ ⌈ <` (⊓ ⊔ keep the UNSIGNED cmova/cmovb that ⌊ ⌈ had before W9-1A
+    # made those signed — pointer math wants unsigned).  M-VEC will make those bare ops *polymorphic* (dispatch on
     # int-vs-list); the prelude's own pointer/flag arithmetic must never pay for
     # (or be changed by) that dispatch, so it moves to these.  Reserved for
     # prelude-internal use: they are guaranteed to stay pure scalar forever.
@@ -139,14 +180,15 @@ ATOMS = [
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
 # These five op bytes keep their v1/atom scalar body but get a shape-dispatch
-# preamble in front of it.  Layout (38 bytes + the untouched scalar body):
+# preamble in front of it.  Layout (36 bytes + the untouched scalar body):
 #
 #     48 83 3C 25 <hook> 00     cmp qword [hook], 0     ; per-op hook cell
-#     74 1B                     je  .scalar             ; no dispatcher -> scalar
-#     48 8B 04 24               mov rax, [rsp]          ; b  (TOS)
-#     48 0B 44 24 08            or  rax, [rsp+8]        ; | a
-#     3B 04 25 <heapbase>       cmp eax, [heap base]
-#     72 09                     jb  .scalar             ; both below the heap
+#     74 19                     je  .scalar             ; no dispatcher -> scalar
+#     66 83 7C 24 06 01         cmp word [rsp+6], 1     ; b's tag  (TOS)
+#     74 08                     je  .call
+#     66 83 7C 24 0E 01         cmp word [rsp+14], 1    ; a's tag
+#     75 09                     jne .scalar             ; neither is a list
+#   .call:
 #     FF 14 25 <hook>           call qword [hook]       ; (a b) still on the stack
 #     EB <len(scalar)>          jmp .done
 #   .scalar:  <the original scalar template, byte for byte>
@@ -163,23 +205,22 @@ ATOMS = [
 #     emit the same bytes.  (v1c carries v1's blob and so emits different code —
 #     that divergence is absorbed at the v1c -> seed rung, which is never
 #     compared against anything.)
-#   * **The filter is conservative, never authoritative.**  `or` only sets bits,
-#     so (a|b) >= a: if EITHER operand is a heap address the compare cannot send
-#     us to the scalar path.  False positives are fine and expected (a -1 flag
-#     from `<` looks huge): they reach the PRELUDE's dispatcher D, which re-tests
-#     both operands exactly and applies the raw scalar op when both are ints.
+#   * **The filter is EXACT (M-TAG2).**  A list value is its heap address with
+#     bit 48 set — `addr | 2^48`, so `v >> 48 == 1` — and the top 16 bits of a
+#     little-endian qword are the word at byte offset 6.  So `cmp word [rsp+6],1`
+#     is exactly `T`, with no cell to read: an operand is a list iff its high
+#     word is 0x0001.  Negative integers (high word 0xFFFF) and everything below
+#     2^48 (high word 0) take the scalar path without ever reaching the prelude;
+#     the only integers that dispatch are those in [2^48, 2^49), the range the
+#     tag sacrifices.  Until M-TAG2 this was a conservative `(a|b) <u heap base`
+#     against the 32-bit cell 0x4F0034 — a range test that sent a -1 flag to the
+#     prelude and let an integer that happened to equal a heap address in.
 #   * **Stack-neutral.**  `call` pushes its return address on the DATA stack and
 #     the hooked word's PROLOGUE parks it on the return stack, so the word sees
 #     exactly (a b) and leaves one result — the scalar path's net effect.
-#
-# The heap-base compare is 32-bit on purpose.  0x4F0034 is a 4-byte cell whose
-# neighbour 0x4F0038 (the heap span) is non-zero, so a 64-bit read there would
-# yield span<<32 | base and put the bound above every real address, disabling
-# dispatch entirely.  Heap addresses are < 2^32 and low32(a|b) >= low32(a) = a,
-# so the 32-bit test keeps the same one-sided guarantee.
 HOOK_BASE = 0x4F0100       # hook table (REGISTRY.md §3), 256 entries
 HOOK_STRIDE = 8            # 8, not 4: `call qword [disp32]` reads 64 bits
-HEAP_BASE_CELL = 0x4F0034  # runtime heap base, installed by the prelude's init
+LIST_TAG = 1 << 48         # M-TAG2: a list value is addr | LIST_TAG (lib/prelude.golfj)
 
 def hook_addr(byte):
     """The hook cell for op `byte`."""
@@ -191,19 +232,18 @@ def _u32(v):
 
 def _poly(byte, scalar):
     """Wrap a scalar template in the hook-cell shape dispatch shown above."""
-    hook, base, scalar = _u32(hook_addr(byte)), _u32(HEAP_BASE_CELL), list(scalar)
+    hook, scalar = _u32(hook_addr(byte)), list(scalar)
     assert len(scalar) < 128, "scalar body too long to jump over with a rel8"
-    fast = ([0x48, 0x8B, 0x04, 0x24]                  # mov rax, [rsp]
-            + [0x48, 0x0B, 0x44, 0x24, 0x08]          # or  rax, [rsp+8]
-            + [0x3B, 0x04, 0x25] + base               # cmp eax, [heap base]
-            + [0x72, 9]                               # jb  .scalar  (7+2 ahead)
-            + [0xFF, 0x14, 0x25] + hook               # call qword [hook]
-            + [0xEB, len(scalar)])                    # jmp .done
-    assert fast[17] == 9 and len(fast) - 18 == 9, "jb displacement"
+    call = [0xFF, 0x14, 0x25] + hook + [0xEB, len(scalar)]   # call [hook]; jmp .done
+    b_tag = [0x66, 0x83, 0x7C, 0x24, 0x06, 0x01]   # cmp word [rsp+6], 1   (b: TOS)
+    a_tag = [0x66, 0x83, 0x7C, 0x24, 0x0E, 0x01]   # cmp word [rsp+14], 1  (a)
+    fast = (b_tag + [0x74, len(a_tag) + 2]          # je  .call
+            + a_tag + [0x75, len(call)]             # jne .scalar
+            + call)
     tpl = ([0x48, 0x83, 0x3C, 0x25] + hook + [0x00]   # cmp qword [hook], 0
            + [0x74, len(fast)]                        # je  .scalar
            + fast + scalar)
-    assert len(tpl) == 38 + len(scalar) <= 255, (byte, len(tpl))
+    assert len(tpl) == 36 + len(scalar) <= 255, (byte, len(tpl))
     return tpl
 
 # --- M-FRAME: every definition gets a private slab of locals ----------------
@@ -244,20 +284,24 @@ def _poly(byte, scalar):
 # where `:` words still go ~138k, which is the honest price of a frame and is
 # paid only by the words that use one.
 #
-# Layout, with R the address the return address is stored at:
+# M-FRAME shipped as 3 with a fixed eight-slot frame; M-FRAME2 (W9-4D) then
+# did 2 on top of it, keeping the opt-in.  A ⊡ word's locals are names — `a`..`h`
+# or any ‹long name› — and each takes the next slot at its first appearance in
+# the definition, so a word naming k locals reserves exactly k cells:
 #
-#     [rbp+0] .. [rbp+56]   the eight local slots, a..h
-#     [rbp+64] = R          the return address
+#     [rbp+0] .. [rbp+8k-8]  the k local slots, in order of first appearance
+#     [rbp+8k] = R           the return address
 #
-# A slot's displacement is 8*(name-'a') and does not depend on how many slots
-# the word actually uses, which is what lets `⇒`/`⇐` be fixed-size templates.
-# Eight slots is the compromise: the compiler's own busiest word holds five
-# variables at once, so eight is comfortable, while a slot per letter would cost
-# 216 bytes a frame.
-FRAME_SLOTS = 8
-FRAME_BYTES = 8 * FRAME_SLOTS
-FRAME_RESERVE = bytes([0x48, 0x83, 0xED, FRAME_BYTES])   # sub rbp, 64
-FRAME_RELEASE = bytes([0x48, 0x83, 0xC5, FRAME_BYTES])   # add rbp, 64
+# A slot's displacement is known when its name is read, so `⇒`/`⇐` stay five
+# bytes; only k waits for `;`.  So `⊡` emits `sub rbp, imm32` and every `^` an
+# `add rbp, imm32` with the immediate left unpatched, each holding the previous
+# site (the ⊡'s holds 0) — a list threaded through the immediates themselves —
+# and `;` walks it writing 8k into each, then emits its own `add rbp, 8k`.  At
+# most FRAME_MAX_LOCALS locals, so every displacement is a disp8 (8*15 = 120).
+# The FRAME_RESERVE / FRAME_RELEASE below are the opcodes; the imm32 follows.
+FRAME_MAX_LOCALS = 16
+FRAME_RESERVE = bytes([0x48, 0x81, 0xED])   # sub rbp, imm32
+FRAME_RELEASE = bytes([0x48, 0x81, 0xC5])   # add rbp, imm32
 
 _ATOM_TPL = {b: tpl for b, _mn, _gl, tpl, _d in ATOMS}
 # byte -> replacement template.  build_blob2 emits the override INSTEAD of the
@@ -293,6 +337,16 @@ CHAIN_BYTE = 0xB0   # ⊚  define a word as a tacit chain of links
 FRAME_BYTE = 0xB1   # ⊡  define a word owning a frame of locals
 LSET_BYTE = 0xB2    # ⇒x pop TOS into a local slot
 LGET_BYTE = 0xB3    # ⇐x push a local slot
+LNAME_BYTE = 0xB4   # ‹  opens a long name: ‹name› (M2, W9-3A)
+RNAME_BYTE = 0xB5   # ›  closes it
+# M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
+# NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
+# their one-byte formulas unchanged (0x410800 + 4*name, 0x4E0000 + 8*name).
+LONG_BASE = 256           # the first long name's number
+LONG_MAX = 256            # how many long names a program may have
+LONG_LEN = 60             # the longest long name, in bytes
+LONG_TABLE = 0x430000     # entry for name E is LONG_TABLE + 64*E: [len:4][bytes]
+LONG_HEADS = 0x438000     # forward-reference head for name E at LONG_HEADS + 4*E
 
 # --- M-MEM (W6): v2's BSS stops reserving the static list heap ---------------
 # v1 asks for p_memsz = 0x800000, i.e. [0x400000, 0xC00000).  The bottom megabyte
@@ -309,20 +363,22 @@ LGET_BYTE = 0xB3    # ⇐x push a local slot
 #   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
 #   0x4E0000..0x4E0400   →x/←x variable bank
 #   0x4F0000..0x4F1000   runtime cells, M-VEC hook table, scratch spill stack
+#   0x4F1000..0x4F2000   W9-2C guard page, PROT_NONE (mprotect in STARTUP2)
 #   ..0x600000           return stack, growing DOWN from the end of the segment
 #
 # p_memsz and the return-stack top are ONE number, not two: v1.STARTUP seeds
 # rbp with the top of the BSS, so shrinking the segment necessarily moves the
 # return stack with it and BOTH blob records (3 startup, 4 header) have to change
-# together — hence the second override here.  It leaves ~1.08 MB of return stack
-# (≈138k frames) between the 0x4F bank and the segment end, against a compiler
+# together — hence the second override here.  It leaves ~1.07 MB of return stack
+# (≈138k frames) between the W9-2C guard page and the segment end, against a compiler
 # whose deepest nesting is a handful of frames.
 #
 # Everything ABOVE the segment is the brk heap.  The kernel starts the break at
 # the page-aligned end of the last PT_LOAD and then ASLR-shifts it by up to
 # 32 MB, so the heap base is NOT 0x600000 and cannot be hard-coded anywhere —
-# which is exactly why the prelude reads it with `0⌸` at startup and publishes
-# it in the 0x4F0034/0x4F0038 bounds cells the M-VEC templates and `T` read.
+# which is exactly why the prelude reads it with `0⌸` at startup and keeps it
+# in the 0x4F0034/0x4F0038 cells that only its allocator `A` reads (since
+# M-TAG2 neither `T` nor the M-VEC templates look at the heap's bounds at all).
 #
 # The frozen v1 compiler keeps v1's numbers: data/v1.hex is untouched, so v1c
 # and the `seed` it builds still run with a 0xC00000 return stack.  Only what the v2
@@ -353,7 +409,8 @@ def _check_atoms():
     bs = [b for b, _mn, _gl, _tpl, _doc in ATOMS]
     dup = sorted({b for b in bs if bs.count(b) > 1})
     assert not dup, "duplicate ATOMS byte: " + ", ".join(f"0x{b:02X}" for b in dup)
-    taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE, CHAIN_BYTE}
+    taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE, CHAIN_BYTE, FRAME_BYTE,
+             LSET_BYTE, LGET_BYTE, LNAME_BYTE, RNAME_BYTE}
     taken |= {ord(ch) for ch in v1.TEMPLATES}
     clash = sorted(set(bs) & taken)
     assert not clash, ("ATOMS byte already allocated: "
@@ -382,13 +439,48 @@ def _check_atoms():
 # anything that pushes; neither instruction does, so it reads front to back.
 ARGV_STASH = bytes([0x48, 0x89, 0x24, 0x25, 0x40, 0x00, 0x4F, 0x00])
 #            mov [0x4F0040], rsp
-STARTUP2 = ARGV_STASH + SETUP_RSTACK
+
+# --- W9-2C: the return-stack guard page ----------------------------------------
+# Nothing in a prologue compares rbp against anything (that would cost an
+# instruction on the hottest path there is), so before W9-2C a runaway recursion
+# walked straight down through the 0x4F bank, the variable bank and the code
+# arena, corrupting them silently, and a 200,000-deep plain recursion still
+# exited 0.  The fix is a guard PAGE rather than an instruction: the one page
+# directly below the return stack, [0x4F1000, 0x4F2000), is made PROT_NONE by
+# STARTUP, so the first frame pushed past the bottom of the return stack faults
+# (SIGSEGV, exit 139) before it can touch a single byte of anything below.
+#
+# Why this page, and why mprotect rather than the ELF header:
+#   * the page directly below 0x4F1000 holds live state (the runtime cells, the
+#     M-VEC hook table and the spill stack), so the guard has to come out of the
+#     return stack itself; that costs 4 KB = 512 frames of ~138.7k (≈138k still),
+#     and the spill stack, which ends at 0x4F0FFF, now has a fault above it too.
+#   * splitting the PT_LOAD so the page is simply never mapped needs a second
+#     56-byte program header, which moves the code start (the `120+` in
+#     golf2.golfj and seed), the entry point and every record-4 offset; the
+#     mprotect is 15 bytes of record 3 and nothing else moves.
+#   * one page suffices: the largest frame (a `⊡` word's) is 72 bytes and every
+#     call writes its return address, so no frame can step over 4 KB unseen.
+# The return value is ignored: on the off chance the kernel refuses, the program
+# runs exactly as it did before W9-2C.  The `push/pop` pairs only use the stack
+# AFTER the stash and leave rsp where they found it.
+GUARD_LO = 0x4F1000                 # the guard page: PROT_NONE from STARTUP on
+GUARD_SIZE = 0x1000                 # one page (the kernel rounds len up anyway)
+RSTACK_FLOOR = GUARD_LO + GUARD_SIZE   # 0x4F2000: lowest usable return-stack byte
+assert GUARD_LO % 0x1000 == 0 and RSTACK_FLOOR < RSTACK_TOP
+GUARD_PAGE = (bytes([0x6A, 10, 0x58])                       # push 10; pop rax  (mprotect)
+              + bytes([0xBF]) + GUARD_LO.to_bytes(4, "little")  # mov edi, GUARD_LO
+              + bytes([0x6A, 0x01, 0x5E])                   # push 1; pop rsi   (len: 1 page)
+              + bytes([0x31, 0xD2])                         # xor edx, edx      (PROT_NONE)
+              + bytes([0x0F, 0x05]))                        # syscall
+assert len(GUARD_PAGE) == 15
+STARTUP2 = ARGV_STASH + GUARD_PAGE + SETUP_RSTACK
 
 def build_blob2():
     b = bytearray()
     b += v1.rec(1, v1.PROLOGUE)
     b += v1.rec(2, v1.COND)
-    b += v1.rec(3, STARTUP2)                     # M-TOOL stash + M-MEM rbp
+    b += v1.rec(3, STARTUP2)                     # M-TOOL stash + W9-2C guard + M-MEM rbp
     b += v1.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
     b += v1.rec(5, v1.AUTOEXIT)
     used = set()

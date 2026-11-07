@@ -22,18 +22,19 @@ Two useful languages hide inside GOLF:
 The plan was (1) then (2); what actually happened was (2) then most of (1). The
 code page removed the pressure that multi-character names were supposed to
 relieve, so the golf surface, the library and 64-bit values came first. Per-call
-locals landed with M-FRAME (`⊡name … ;`, slots `a`–`h`), which leaves **real
-multi-character names** as the last piece of (1) still outstanding — item 4 of
-[`NEXT_STEPS.md`](NEXT_STEPS.md), and now also what a `⊡` word needs to name more
-than eight locals.
+locals landed with M-FRAME (`⊡name … ;`, slots `a`–`h`), and **multi-character
+names** with M2 (W9-3A): `‹name›` stands wherever a one-byte name can, and may
+be used before its definition — locals included, since M-FRAME2 (W9-4D) sized
+each `⊡` frame to the locals its word names.
 
 Bytes 128..255 were entirely unused and the compiler's `e` word already
 dispatches *any* byte it finds in the template blob, so the code page costs
 almost nothing on the compiler side. It is a better answer to "GOLF ran out of
 single-byte op slots" than multi-character identifiers, and it leans into the
-golf heritage. Multi-char identifiers (M2, now in [`NEXT_STEPS.md`](NEXT_STEPS.md))
-are *optional* — useful for readable user-defined names, but no longer required
-to grow the built-in op set.
+golf heritage. Multi-char identifiers (M2, shipped as `‹name›`) are *optional*
+— useful for readable user-defined names, but not required to grow the built-in
+op set; a program that never writes `‹` compiles to exactly the bytes it did
+before them.
 
 ## Code page (Jelly-style)
 
@@ -47,6 +48,7 @@ codepage.py encode <prog.golfj >prog.gb   # \sqr / glyph / ASCII  ->  raw bytes
 codepage.py decode <prog.gb               # raw bytes  ->  glyphs (3² 4⊕ …)
 codepage.py decode -m <prog.gb            # raw bytes  ->  ASCII \mnemonic form
 codepage.py table                         # the atom reference
+codepage.py reference                     # the same, as REFERENCE.md's Markdown
 ```
 
 Author in ASCII with `\`-mnemonics (`3\sqr` = "3 squared"), store as raw bytes,
@@ -136,12 +138,12 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **714** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **1865** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **5611** bytes |
-| assertions in the run2 suite | **298** |
-| assertions in the selfcheck suite | **37** |
-| assertions in the gtools differential suite | **42** |
+| the template blob itself | **844** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2722** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8512** bytes |
+| assertions in the run2 suite | **471** |
+| assertions in the selfcheck suite | **44** |
+| assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
 | the v2 p_memsz (`mkblob2.MEMSZ`) | **0x200000** |
@@ -171,22 +173,27 @@ the golf2 fixpoint included. In order:
   `map`, `fold`, `filter`, `zip` are ordinary library words.
 - **M5 — strings.** `“...“` emits a length-prefixed byte block; `U` turns one
   into a list of char codes, so every list op works on text, and `J` prints a
-  code list back.
+  code list back. Since W9-1B the encoder treats a literal as *text*: between
+  two delimiters (`“` or `\str`, either closes either) the UTF-8 is copied
+  verbatim — no mnemonics, no glyph bytes, `#` is not a comment — with `\“` as
+  the one escape (the bytes of `“`). The compiler did not change; it still
+  copies bytes up to the next `0x8E`.
 - **M3 — named variables.** `→x` / `←x` over a name-indexed **global** bank at
   `0x4E0000`: `(a+b)*(a-b)` is `←a←b+←a←b-*`. Global, not per-frame (see limits).
 - **M-SOUND — a total list runtime.** Every prelude loop is guarded, so the empty
   list is a fixed point rather than garbage, and `Z` truncates to the shorter of
   its two inputs instead of reading off the end.
 - **M-TAG — shape polymorphism as a library.** `T` answers "list or int" by range
-  (`v - base <u span` against the runtime heap-bounds cells), `D` dispatches a
-  binary op on the shapes of both operands, and `∔ ∸ ⨰ ⩍ ⩌` are the polymorphic
-  arithmetic words built on it.
+  (`v - base <u span` against the runtime heap-bounds cells — a range test that
+  M-TAG2 replaced with a real tag), `D` dispatches a binary op on the shapes of
+  both operands, and `∔ ∸ ⨰ ⩍ ⩌` are the polymorphic arithmetic words built on it.
 - **M-VEC — the bare operators vectorize.** `4⍳3+` is `3 4 5 6`, `4⍳4⍳*∑` is a
   dot product, with no type tag on the value and no change to the compiler's
-  logic. Each of `+ - * ⌈ ⌊` keeps its scalar body and gains a 38-byte preamble:
+  logic. Each of `+ - * ⌈ ⌊` keeps its scalar body and gains a preamble (38 bytes
+  then, 36 since M-TAG2):
   `cmp qword [hook],0; je scalar` (hook table: 256 cells of 8 bytes at `0x4F0100`,
   indexed by op byte — REGISTRY.md §3), then a conservative `(a|b) <u heap-base`
-  filter, then `call qword [hook]`. **The prelude is authoritative, not the
+  filter (exact on the tag since M-TAG2), then `call qword [hook]`. **The prelude is authoritative, not the
   filter:** the hooks point at `∔ ∸ ⨰ ⩌ ⩍`, whose dispatcher re-tests both
   operands with `T` and falls back to the raw scalar op — so a `-1` flag from
   `<`, which the cheap filter cannot reject, is still added, not indexed. The
@@ -283,9 +290,14 @@ the golf2 fixpoint included. In order:
   The seed exits 2 *without* a message — v1 GOLF has no way to reach fd 2, and
   fd 1 is carrying the binary — which is the one deliberate divergence between
   the two source forms, and `test/selfcheck.sh` asserts both halves of it rather
-  than letting it drift. The `′` path is *not* covered: `X` already reads a name
-  with no dictionary entry as an atom, which is how `′atom` auto-wrapping works,
-  so `′typo` is a different bug and still open.
+  than letting it drift. The `′` path was a separate bug, fixed in W9-1C: `X`
+  read any name with no dictionary entry as an atom (that is how `′atom`
+  auto-wrapping works), so `′typo` wrapped a template that does not exist and
+  the binary died with SIGILL. `X` now also reads the blob, and hands a byte that
+  is neither word nor atom to `e` — whose own lookups then fail and give the same
+  `GOLF: undefined word <name>`, exit 2 (the seed: exit 2, silently). It covers
+  chain links too, since they go through `X`. Cost: 7 bytes of seed, 61 of golf2;
+  every program that compiled before compiles to the same bytes.
 - **M-FRAME — per-call locals, opt in.** `⊡name … ;` defines a word that owns a
   frame of eight slots; `⇒x` and `⇐x` reach them. It closes the last M3 shortcut:
   the variable bank behind `→x`/`←x` is **global**, one cell per name for the
@@ -309,11 +321,174 @@ the golf2 fixpoint included. In order:
   than wrapped: `⇒z` would be displacement 200, a *negative* disp8 landing in the
   frame of a word not yet called, and `⇒A` would wrap to 0 and silently alias
   slot `a`.
+- **M-FRAME2 (W9-4D) — a frame sized to its locals, and locals with long
+  names.** The backpatch chain M-FRAME deferred. `⊡` emits `sub rbp, imm32` and
+  every `^` inside it `add rbp, imm32`, each immediate left holding the previous
+  site (the `⊡`'s holds 0) — a list threaded through the unpatched immediates,
+  one compiler variable for its head. A local is a *name* now, `a`–`h` or any
+  `‹long›`, and takes the next slot at its first appearance, so its displacement
+  is known on the spot and `⇒`/`⇐` stay five bytes; only the count waits, and
+  `;` walks the list writing 8 × count into every site. A word naming k locals
+  has a frame of k+1 cells: 24 bytes for two, 8 — a `:` word's — for none, so a
+  two-local word recurses ≈46k deep where M-FRAME's slab allowed ≈15k. At most
+  16 locals (a 17th is `GOLF: too many locals ‹name›`), which keeps every
+  displacement a disp8; a frame is then at most 136 bytes. The slot table is 16
+  name numbers at `m+96` (REGISTRY §3). `:` words compile byte-for-byte as
+  before; `⊡` words compile differently but compute the same (run2.sh's M2
+  byte-identity case holds `⊡` programs to their old output instead). Outside a
+  `⊡` word `⇒a`…`⇒h` keep M-FRAME's fixed slots and a long local is refused.
+  Cost: seed +183 bytes (2539 → 2722), golf2 +617 (7895 → 8512).
+- **M2 (W9-3A) — long names, with forward references.** `‹name›` (`0xB4` …
+  `0xB5`, bytes `0-9 A-Z a-z _ -`) works wherever a one-byte name does — `:`,
+  `⊚`, `⊡` headers, calls, `′`, chain links, `→`/`←`. The compiler interns each
+  long name at its first appearance to a **name number** 256 + index, and from
+  there on it is simply a name that does not fit a byte: the dictionary slot
+  (`m+2048 + 4*name`) and the variable cell (`0x4E0000 + 8*name`) are the
+  one-byte formulas, continued into `0x410C00…` and `0x4E0800…`. That is why
+  every program without `‹` compiles to the same bytes as before — checked by
+  run2.sh against the pre-M2 compiler logic on every example and gtools
+  program (since W9-4B part 2, on the prelude with its four long-named
+  definitions cut out, since the pre-M2 compiler cannot read them). What a long name adds is a **forward reference**: a call to one not
+  yet defined is `call rel32` whose placeholder threads the name's pending-site
+  list (a `′` gets a jumped-over `jmp rel32` thunk on the same list), the
+  definition patches the list, and anything still pending at end of input is
+  `GOLF: undefined word ‹name›`, exit 2, before a byte is written. So mutual
+  recursion needs no declaration. One-byte names stay define-before-use: their
+  pending lists are always empty, and their error stays at the call. The
+  compiler's own M2 words and state carry long names (`‹readname›`,
+  `‹count›`, …) — every letter was already taken in `golf2.golfj` — so the seed
+  implements them too, and the fixpoint now exercises them. Cost: `golf2`'s
+  binary 9292 → 11482 bytes, `seed`'s 5919 → 7970.
 - **The capstone shrank.** `examples/capstone.golfj` went from **54** op bytes to
   **46** by letting the bare polymorphic operators do the looping; the pre-M-VEC
   spellings are kept verbatim and output-checked as
   `examples/legacy_capstone.golfj`, because they are still how a list meets a
   function that is not one of the five hooked operators.
+- **W9-1A — `⌈ ⌊` are signed.** They were the last unsigned arithmetic in a
+  signed language (`0 5-3⌈` was `-5`). The templates now use `cmovl`/`cmovg`;
+  the raw `⊔ ⊓` keep the old unsigned `cmovb`/`cmova` for the prelude's pointer
+  math. `⩌ ⩍` (the hooks behind the bare ops) could not just hand `D` a `′⌈`
+  thunk — that thunk holds the polymorphic template, whose filter sends any
+  negative int straight back to the hook — so they compute int,int in place as
+  `⊔`/`⊓` on operands xor `2^63`, and pass themselves to `D` for every list
+  shape, which makes lists (and their elements) signed too.
+- **W9-2B — runtime checks for `⊇`, `÷`, `∣`.** `3⍳9⊇Ṅ` used to print whatever
+  cell lay past the block and exit 0, and `7 0÷` died of SIGFPE (status 136).
+  Both now write a `GOLF: …` line to fd 2 and exit 1, leaving fd 1 exactly as
+  it was. `I` opens with `&⊙&»[…]` — one *unsigned* `len > i` rejects `i ≥ len`
+  and every negative `i` at once — and keeps its address arithmetic untouched
+  after it; no prelude or tool-library code indexed out of range, so nothing
+  needed a raw accessor. `÷`/`∣` embed their check: `test rcx,rcx`, then a
+  position-independent write/exit with the 21-byte message addressed
+  rip-relative, so it survives being copied inline, into `′` thunks and into
+  chain links. A shared stub at a fixed address would save ~40 bytes per use but
+  couple every template to the emitter's layout; most programs use `÷` once or
+  never. **INT64_MIN ÷ -1** (x86's other `#DE`) is *defined*, not an error: a
+  divisor of `-1` skips `idiv`, `÷` negates (wrapping, so INT64_MIN ÷ -1 is
+  INT64_MIN, like `*`) and `∣` gives 0. Cost: the two templates grew from 8 to
+  71/70 bytes, the blob from 714 to 839.
+- **M-MEM2 (W9-3C) — a free list for the allocator.** `A` bump-allocated and
+  nothing was ever freed, so `M` in a loop climbed the break forever (a
+  1,000,000-iteration map over `5⍳` took ~71 MB). New word `⌫` (`\free`, 0xCA):
+  `list ->` pushes a block onto a free list and `A` pops one before it bumps;
+  the same loop with a `⌫` after each map now leaves the break exactly where it
+  was. Every `A` block grew a **header cell** in front of the address `A`
+  returns — `[cap][payload]` — because an `A` block is not always a list (the
+  tool libraries' byte buffers have no length cell), and no caller ever touched
+  anything but the payload, so the prelude, `lib/t*.golfj` and `gtools/` were
+  unchanged and gtools parity held. **Size classes, no search:** eight heads at
+  `0x4F00C0`–`0x4F00F8`; class `k` = 0…6 holds blocks of exactly `4<<k` cells
+  (4 … 256), so any request of the class fits the head; class 7 holds the rest
+  at `max(c, 512)` cells and is popped only when its head is big enough
+  (first-fit at the head, never a walk). The class is seven unsigned compares,
+  so `A` stays a loop-free leaf on `s5` with no frame; `⌫` is the same shape.
+  Accepts a tagged list or a raw `A` block (it masks, like every list word).
+  Guards, both exit 1 with a `GOLF:` line on fd 2: a value whose header would
+  lie outside the heap ("free of a non-heap value": an int, a string literal, a
+  code address) and a block whose header is already negative — a freed block's
+  header holds `-cap` — ("double free"). Explicit only: no existing word frees
+  its inputs.
+- **M-TAG2 (W9-2A) — a real tag bit.** `T` was a range test, so an *integer*
+  that happened to equal a heap address — the heap base read out of its own
+  cell, say — was vectorized as a list. Now a list value handed to user code is
+  its address with bit 48 set (`addr | 2^48`): `T` is `v >> 48 == 1`, and the
+  M-VEC filter is exact — `cmp word [rsp+6],1` per operand, the top 16 bits of
+  each, no cell read, two bytes *shorter* than the range filter it replaced. The
+  sign bit was never an option (every negative number has it); a high-byte tag
+  sacrifices only the integers in `[2^48, 2^49)` and leaves negatives and
+  everything below `2^48` as ints. Every list word masks on the way in with
+  `(v<<16)>>16` — idempotent, so a raw `A` block still works as input — and tags
+  its result on the way out with `1 48≪|` (not the literal `2^48`, which the seed
+  would truncate and so break seed ≡ golf2 on the prelude). `A` stays a plain
+  allocator returning a raw address; the heap base/span cells are now its state
+  alone. Library and template only: the compiler's logic did not change, and its
+  hook cells stay zero, so the fixpoint held. A list of lists stores tagged
+  inner lists, so the per-element "is this a list?" that nested data needs is
+  now a shift and a compare rather than a heuristic.
+- **W9-4A — `⧺` cat, `↑` take, `↓` drop.** Prelude words at the high bytes
+  `0xCB`–`0xCD`, so `2⍳2⍳⧺⍕` finally prints `0 1 0 1`. Each returns a NEW tagged
+  list and never writes its inputs; cells are copied verbatim, so nested
+  (tagged inner) lists ride along shared. Edge rules: `↑`'s `|n|` is clamped to
+  the length (an over-take is the whole list — no APL padding), `↓` past the
+  end is empty, and a negative `n` counts from the END, APL-style (`5⍳¯2↑` is
+  `3 4`, `5⍳¯2↓` is `0 1 2`). `↓` is implemented as a `↑` of the kept count.
+  Demo: `examples/listwords.golfj`.
+- **W9-3B — nested lists above the storage layer.** With the tag exact per
+  element, the prelude now asks it of every element and recurses. `⍕` prints an
+  inner list in brackets (`3⍳′⍳€⍕` → `[] [0] [0 1] `) while a flat top-level
+  list prints byte-for-byte as before; the inner call is `Q` itself, handed the
+  element with a second tag bit (`v | 2^49`) that its entry mask strips. The
+  bare `+ - *` now go to depth like `⌈ ⌊` always did: `∔ ∸ ⨰` answer int,int
+  in place and otherwise hand `D` the word *itself*, so `Z`/`K`/`G` re-enter it
+  per element (`3⍳′⍳€ 10+⍕` → `[] [10] [10 11] `). Two new high-byte words:
+  `≣` (`0xC8`) structural equality (`-1`/`0`, an int never matches a list) and
+  `⍤` (`0xC9`) depth (int 0, flat or empty list 1, then 1 + the deepest
+  element). Prelude only; the templates' scalar fast path is untouched.
+- **W9-4B — `⍋` sort and `∊` member.** Prelude words at `0xCE`/`0xCF`. `⍋`
+  returns a NEW tagged list in ascending SIGNED order and leaves its input
+  alone; it is an iterative bottom-up merge sort (stable, O(n log n), one
+  `X`/`Y` frame whatever the length — no recursion to exhaust the 28-frame spill
+  stack), ping-ponging between a `0↓` copy of the input and one block from `A`,
+  with a branch-free merge step that reads both run heads at clamped indices.
+  100,000 elements sort in well under a second. It is meant for int lists: an
+  inner list compares by its tagged value (after every int below 2^48, and by
+  address among lists). `∊` is `list x -> 0/1` — zero-is-true like `T`, raw
+  cell equality like `≡`, stopping at the first hit; the empty list gives 1.
+- **W9-4C — input for user programs (M6b).** The first prelude words with LONG
+  names, so no letter or high byte was spent: `‹readall›` `‹readline›`
+  `‹getc›` `‹words›` `‹num›` `‹ints›` `‹args›`, ported from `lib/tio.golfj` and
+  `lib/ttext.golfj` to the prelude's rules (X/Y frames, raw atoms, masked
+  inputs, tagged results, no `→x`). The stdin words share one 8 KB read buffer,
+  allocated on first use; its raw address lives in the cell `0x4F0050`
+  (REGISTRY §3), the only new fixed state. `‹readline›` returns the line and a
+  zero-is-true flag (1 = end of input with nothing read); `‹num›` skips leading
+  whitespace, takes one `+`/`-`, and stops at the first non-digit (no digits →
+  0). `‹words›` is two passes (count, then copy) so the result is allocated
+  once; `‹readall›` grows by doubling and gives each outgrown block back with
+  `⌫`. A 1.2 MB input reads in well under a second. The prelude's eight long
+  names count against a program's 256; run2's M2 "same bytes as before M2"
+  check now feeds the pre-M2 compiler a prelude with those definitions cut out.
+  Demo: `examples/input.golfj`.
+- **W9-4B part 2 — `‹slice›` `‹indexof›` `‹unique›` `‹flatten›`.** The first
+  prelude words with LONG names (the high bytes are spent). `‹slice›`
+  (`list i n`) is `↓` then `↑` with the intermediate freed by `⌫`; a negative
+  `i` counts from the end and is then clamped to 0, `n` is clamped to what is
+  left, and a negative `n` is 0. `‹indexof›` is `∊`'s loop that keeps the
+  index (`-1` on a miss). `‹unique›` keeps first occurrences in order through
+  an open-addressing hash set of 2^k ≥ 2n slots (Fibonacci hashing, the 64-bit
+  golden-ratio constant built from 16-bit pieces for the seed; slots hold
+  i+1, 0 is empty; the table is zeroed, since `A` may hand back a used block,
+  and freed at the end), so it is O(n) expected: 400,000 cells take about
+  40 ms. `‹flatten›` neither recurses nor keeps a work stack: each pass
+  splices one level and notes whether a spliced cell was itself a list, and
+  passes repeat (freeing every intermediate) until none was. That is
+  O(size · depth) in one `X`/`Y` frame, so a list nested 200 deep flattens
+  where the recursive `⍕`/`⍤` would exhaust the 28 spill frames. The four
+  take 4 of the 256 long-name slots, so a program now has 252. None of them
+  uses swap, because `decode -m` writes the swap byte as a bare `\`, which
+  does not encode back (gtools' prelude round trip caught it). A one-byte
+  program's own code compiles to the same bytes as before; only the prelude
+  part of the binary grows (run2 checks this).
 
 ## Invariants we do not break
 
@@ -350,7 +525,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 714 bytes, which is what keeps the compiler re-derivable in an
+  blob at 844 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
@@ -360,10 +535,11 @@ person does not have to guess whether they were forgotten.
   a parse-time arity algebra, and matching it means a real front end — a
   different project, not a milestone. `⊚` chain definitions are as far as the
   single-pass model goes.
-- **Diagnostics, in general.** The compiler is single-pass with no symbol table
-  and no source positions; it cannot say "line 4" because it does not know what
-  a line is. The two failures worth naming are named (an undefined word, an
-  exhausted compose arena) and both cost a byte-count that had to be justified.
+- **Diagnostics, in general.** The compiler is single-pass with no source
+  positions; it cannot say "line 4" because it does not know what a line is.
+  The failures worth naming are named (an undefined word, an exhausted compose
+  arena, a local out of range, a malformed long name) and each cost a
+  byte-count that had to be justified.
   A general error-reporting layer is not coming; it would be a large fraction of
   a 4.8 KB compiler.
 
@@ -375,15 +551,58 @@ specific silent failure can earn its diagnostic, as those two did.
 These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
+- **Long names (M2) are bounded and global.** 256 per program (the prelude's
+  count too — eight since W9-4C's input words), at most 60 bytes each, interned in a fixed compiler table; a 257th
+  is refused. Only long names can be forward-referenced — a one-byte name is
+  still define-before-use. Locals take long names too (W9-4D), up to 16 per
+  `⊡` word. And there are no scopes: a long name, like a letter, is
+  one dictionary entry and one variable cell for the whole program.
+- **`(` and the input words are two readers.** `‹readall›`, `‹readline›`,
+  `‹getc›` and `‹ints›` read through the prelude's 8 KB buffer; `(` is a raw
+  one-byte `read` that bypasses it, so mixing the two loses or reorders bytes.
+  A user program also still writes one byte per `write` (`)`); only the tools'
+  `lib/tio.golfj` buffers output.
+
 For the limits that only show up when GOLF is held against another language —
 what Python and Jelly have that this does not, which of it is refused rather than
 unbuilt, and three defects this list does not yet cover — see
 [`GAPS.md`](GAPS.md).
 
-- **The heap-bounds cells are 32-bit too.** `0x4F0034`/`0x4F0038` are read by
-  `T` and are baked into all five M-VEC templates as a 32-bit compare operand.
-  The break is ASLR-shifted but far below 4 GB in practice; a program that grew
-  the break past `2^32` would need those cells — and the templates — widened.
+- **v1's unsigned `/` and `%` still trap on zero.** They are v1 templates from
+  the frozen `data/v1.hex` (`xor edx,edx; div rcx`), so `7 0/` still dies of
+  SIGFPE. Only the signed `÷`/`∣` are checked (W9-2B); use them when a divisor
+  can be 0. Nothing else is bounds-checked either: `⊙`/`⊛`/`@`/`!` are raw
+  memory access by design.
+- **Two things cannot be written inside a string literal.** The text `\str`
+  (it closes the literal — the ASCII spelling of the delimiter), and any
+  character whose UTF-8 contains byte `0x8E` (e.g. `Ď`, `C4 8E`), since the
+  compiler ends a literal at the first `0x8E`; the encoder rejects the latter
+  with an error rather than emit a broken block. A byte block that needs either
+  must be built at run time.
+- **The allocator's cells are 32-bit.** `A` keeps the heap base and how far it
+  has pushed the break in the 4-byte cells `0x4F0034`/`0x4F0038`, and its bump
+  pointer `H` is a 4-byte offset, so one process's list heap must stay under
+  4 GB. Nothing else reads them any more — since M-TAG2 neither `T` nor the
+  M-VEC templates do — so widening them is a prelude-only change.
+- **`⌫` is manual, and the free list is simple.** Nothing frees on its own:
+  a program that wants a flat heap calls `⌫` on what it is done with, and a
+  freed list must not be used again (its first cell becomes the free-list link).
+  Caught: freeing a non-heap value and freeing one block twice in a row.
+  Not caught: a pointer into the middle of a block, or a stale copy freed after
+  the block was handed out again. Blocks are never split or coalesced; small
+  blocks round up to a power of two (≤ 2x), and the >256-cell class checks only
+  its head, so a large freed block can be passed over by a bigger request.
+- **The integers in `[2^48, 2^49)` are lists.** A list value is `addr | 2^48`,
+  so an integer whose top 16 bits are exactly `0x0001` (281 to 562 trillion) is
+  shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
+  deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
+  M-TAG2); negatives and everything below `2^48` are ints.
+- **Nesting depth is bounded by the spill stack.** Every looping word frames
+  its scratch with `X`/`Y`, and the stack holds 28 frames; recursive `⍕`, `≣`
+  and `⍤` take one per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`), so
+  about 13 levels of nested arithmetic and 27 of printing. `X` does not check:
+  past that it writes into the W9-2C guard page and the program dies of SIGSEGV
+  rather than corrupting memory.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different
@@ -394,33 +613,30 @@ unbuilt, and three defects this list does not yet cover — see
   `test/selfcheck.sh` proves seed ≡ golf2 on the sources that matter.
 - **The return stack is smaller than it was, and better.** M-MEM shrank
   `p_memsz` to `0x200000`, so the stack now runs from `0x600000` down to the
-  `0x4F` bank: about 1.08 MB, ≈**138**k frames, all of them *its own*. Before,
+  W9-2C guard page just above the `0x4F` bank: about 1.07 MB, ≈**138**k frames,
+  all of them *its own*. Before,
   it nominally had ~917k frames but shared them with a bump heap growing up from
   `0x500000` — every 8 bytes allocated cost a frame, and the two met without
   complaint. Deterministic and smaller beats large and shared.
-- **KNOWN ISSUE — the return stack has no guard, and a `⊡` word reaches it
-  sooner.** Nothing checks `rbp` against the bottom of the return-stack region.
-  Past its capacity a program does not fault: it grows straight down through the
-  `0x4F` runtime cells, the variable bank and the code arena, corrupting them
-  silently, and only faults once it walks below the load address. Measured: a
-  plain `:` word recursing 200,000 deep — well past the ~138k the region holds —
-  still exits 0 with the right answer, having overwritten all of it. This is
-  **pre-existing and not M-FRAME's**, but M-FRAME makes it reachable ~9x sooner
-  for a word that owns a frame (~15k frames rather than ~138k), so it is worth
-  writing down now. A guard costs a compare in every prologue, on the hottest
-  path there is; the honest fix is probably a guard page rather than an
-  instruction.
-- **KNOWN ISSUE — an integer inside the heap window looks like a list.** `T` is
-  a range test (`v - base <u span`), so any *integer* whose value happens to
-  land in `[base, base+span)` is dispatched as a list by `D` and by the five
-  polymorphic templates. Pre-existing since M-TAG, unfixed, and it moved rather
-  than went away when M-MEM put the heap at the break. Known-safe values are
-  covered — a `-1` compare flag, a word address, an `0x4D0000` thunk are all
-  outside the window and are regression-tested — but nothing rules out a program
-  whose arithmetic genuinely produces a heap-sized number. The fix is a real tag
-  bit on the value, which is item 3 of the forward queue — where the
-  originally specified scheme (bit 63) is now recorded as wrong, because every
-  negative integer has that bit set.
+- **FIXED (W9-2C) — the return stack has a guard page.** Nothing in a prologue
+  checks `rbp` (a compare there would sit on the hottest path there is), so
+  before W9-2C a runaway recursion grew straight down through the `0x4F`
+  runtime cells, the variable bank and the code arena, and a plain `:` word
+  recursing 200,000 deep still exited 0. Now `STARTUP2` (`tools/mkblob2.py`,
+  mirrored by `boot/golfref.py`) spends 15 bytes on `mprotect(0x4F1000, 1 page,
+  PROT_NONE)`, so the first frame past the bottom faults — SIGSEGV, exit 139 —
+  before a byte below it is touched; run2.sh checks that with a `→x` canary. The
+  guard comes out of the return stack (the page under it is live `0x4F` state),
+  which costs 512 of ~138.7k frames; a `⊡` word naming all eight of `a`–`h`
+  (a 72-byte frame) faults at about 15k deep. One page suffices because no frame
+  is larger than 136 bytes (16 locals, M-FRAME2). The
+  ELF-level alternative — a second `PT_LOAD` leaving the page unmapped — would
+  have moved the code start and entry point of every binary for the same
+  effect. **Limits:** it is a bare SIGSEGV, not a message (a handler needs a
+  `sigaltstack`, more startup than it is worth), and it covers what `golf2`
+  emits — `golf2` and `golf2'` included — but not `seed`, which the frozen v1c
+  builds with v1's startup and `0xC00000` stack; the seed's only job is to
+  compile golf2 once, a handful of frames deep.
 
 ## Layout
 
@@ -430,7 +646,8 @@ unbuilt, and three defects this list does not yet cover — see
 | `self/golf2.golf` | GENERATED: `golf2.golfj` code-page encoded + the template blob |
 | `self/seed.golf` | GENERATED: the same compiler in v1 GOLF — the bootstrap rung only |
 | `tools/mkblob2.py` | builds both `self/*.golf`; source of truth for the atom table + the v1 seed |
-| `tools/codepage.py` | code page: encode/decode glyph/mnemonic ⇄ raw bytes; `table` reference |
+| `REFERENCE.md` | **the language reference**: v1 core ops, the generated v2 code-page tables, a checked tutorial |
+| `tools/codepage.py` | code page: encode/decode glyph/mnemonic ⇄ raw bytes; `table` / `reference` (REFERENCE.md's generated tables) |
 | `tools/golfc` | compile a program (prepends the prelude; `-j` to encode glyph source) |
 | `lib/prelude.golfj` | the standard library: list runtime, map/fold, number/list printing |
 | `boot/golfref.py` | Python reference/oracle for v2 (debugging only) |

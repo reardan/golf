@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **26** are now spent, leaving **85** free. It is partitioned as follows
+space; **36** are now spent, leaving **75** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -76,8 +76,8 @@ for the range immediately above them; do not fill them opportunistically.
 | `0x85` | `\hlv` | `⊘` | TOS >> 1 | shipped |
 | `0x86` | `\gt` | `»` | unsigned greater | shipped |
 | `0x87` | `\eq` | `≡` | equal | shipped |
-| `0x88` | `\max` | `⌈` | unsigned max | shipped |
-| `0x89` | `\min` | `⌊` | unsigned min | shipped |
+| `0x88` | `\max` | `⌈` | signed max (`cmovl`, W9-1A; was unsigned); unsigned max stays available as `⊔` | shipped |
+| `0x89` | `\min` | `⌊` | signed min (`cmovg`, W9-1A; was unsigned); unsigned min stays available as `⊓` | shipped |
 | `0x8A` | `\sdv` | `÷` | signed divide | shipped |
 | `0x8B` | `\smd` | `∣` | signed modulo | shipped |
 | `0x8C` | `\ref` | `′` | push a word's address (compiler prefix) | shipped |
@@ -108,9 +108,11 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xA6` | `\brk` | `⌸` | `brk` syscall — the list heap's growth primitive | shipped |
 | `0xA7` | `\sys` | `⎈` | raw syscall: `a1 a2 a3 num -> result` (wave 8, M-TOOL) | shipped |
 | `0xB0` | `\chain` | `⊚` | chain definition prefix: `⊚name f g h;` (compiler logic, no template) | shipped |
-| `0xB1` | `\dloc` | `⊡` | define a word WITH a frame of eight per-call locals: `⊡name … ;` (compiler logic, no template) | shipped |
-| `0xB2` | `\lset` | `⇒` | pop TOS into local slot `x`, `x` in `a`–`h` (compiler logic, no template) | shipped |
-| `0xB3` | `\lget` | `⇐` | push local slot `x`, `x` in `a`–`h` (compiler logic, no template) | shipped |
+| `0xB1` | `\dloc` | `⊡` | define a word WITH a frame of per-call locals, one cell per local it names (≤ 16; sized at `;` since M-FRAME2, W9-4D): `⊡name … ;` (compiler logic, no template) | shipped |
+| `0xB2` | `\lset` | `⇒` | pop TOS into local `x`, `x` in `a`–`h` or a `‹long name›` (W9-4D) (compiler logic, no template) | shipped |
+| `0xB3` | `\lget` | `⇐` | push local `x`, `x` in `a`–`h` or a `‹long name›` (W9-4D) (compiler logic, no template) | shipped |
+| `0xB4` | `\lname` | `‹` | open a long name `‹name›` — a word, quotation, chain link or variable name of `0-9 A-Z a-z _ -` bytes (M2, W9-3A; compiler logic, no template) | shipped |
+| `0xB5` | `\rname` | `›` | close a long name (M2, W9-3A; only ever read by the `‹` case) | shipped |
 | `0xC0` | `\vadd` | `∔` | polymorphic add | shipped |
 | `0xC1` | `\vsub` | `∸` | polymorphic sub | shipped |
 | `0xC2` | `\vmul` | `⨰` | polymorphic mul | shipped |
@@ -119,6 +121,14 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xC5` | `\comp` | `∘` | compose two quotations (writes a 39-byte thunk into the code arena) | shipped |
 | `0xC6` | `\pipe` | `⇉` | pipeline (thread a value through a list of quotations) | shipped |
 | `0xC7` | `\fork` | `⑂` | fork: `x ′f ′g ′h -> h(f x, g x)` | shipped |
+| `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | shipped |
+| `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | shipped |
+| `0xCA` | `\free` | `⌫` | `list ->`: release a list (tagged) or raw `A` block to the allocator's size-classed free list; explicit only (W9-3C, M-MEM2) | shipped |
+| `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | shipped |
+| `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | shipped |
+| `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | shipped |
+| `0xCE` | `\sort` | `⍋` | ascending signed sort, returns a new list (W9-4B) | shipped |
+| `0xCF` | `\memb` | `∊` | `list x -> f`: 0 if x is an element (zero-is-true, like `T`), 1 otherwise (W9-4B) | shipped |
 
 `0x91`–`0x96` are the raw scalar atoms M-VEC needs (see NEXT_STEPS.md §3): they
 keep the non-polymorphic behavior of `+ - * ⌊ ⌈ <` so the prelude's own pointer
@@ -165,7 +175,18 @@ Uppercase letters are the pool.
 
 **Free:** `B`, `C` — reserved, unassigned. That is the *entire* remaining
 uppercase pool. Anything after them needs a high byte from `0xC0`–`0xCF` (§1.2)
-or M2 multi-char identifiers.
+or — since M2 (W9-3A) shipped — a **long name** `‹name›`, which costs nothing
+scarce: 256 per program, up to 60 bytes each, and a library word with a long
+name may even be defined after the words that call it. Long names need no
+allocation here, but a prelude long name is visible to every user program, so
+prelude long names should still be listed below their wave's anchor in
+`lib/prelude.golfj` and kept few: they count against the program's 256.
+
+Prelude long names in use (all **shipped**):
+
+| names | wave | anchor |
+|---|---|---|
+| `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›`, and the helper `‹_inread›` (names starting `‹_in` are reserved for it) | W9-4C | `W9-4C-INPUT` |
 
 > **Rule: the prelude must NEVER use `→x` / `←x`.** The variable bank at
 > `0x4E0000` is user space — one global cell per name — so a prelude word that
@@ -290,23 +311,32 @@ both forms are given here and the decimal is the one you type.
 | `m+40`, `m+44`, `m+48` | | M-CHAIN2 in the **seed** only: the first three buffered link bytes | shipped |
 | `m+52` | 4259892 | `e`'s undefined-word diagnostic: the offending name byte with a newline stacked above it (`name + 10<<8`), staged for one `write(2, m+52, 2)`. Compiler-only — a compiled program never sees this address | shipped |
 | `m+56` | 4259896 | M-FRAME's in-a-`⊡`-definition flag, in the **seed** only — `^` and `;` read it to decide whether to release a locals frame (`self/golf2.golfj` holds the same flag in its variable bank, as `J`) | shipped |
-| `m+60` | | **first free compiler scratch** | free |
+| `m+60`…`m+84` | 4259900–4259924 | M2 long-name state in the **seed** only, seven 4-byte cells: name count · length being read · entry being read into · entry compared against · compare countdown · table index · a body address (`self/golf2.golfj` keeps the same state in its variable bank, under long names) (W9-3A) | shipped |
+| `m+88`, `m+92` | 4259928 · 4259932 | M-FRAME2 in the **seed** only: the current `⊡` word's local count · the head of its frame-size patch list (`self/golf2.golfj` keeps both in its variable bank, as `‹locals›` and `‹frame›`) (W9-4D) | shipped |
+| `m+96`…`m+159` | 4259936–4259999 | M-FRAME2 slot table, **both** compilers: the name number of the current `⊡` word's local `i` (`i` < 16) at `m+96+4*i`, in order of first appearance. Compiler-only (W9-4D) | shipped |
+| `m+160` | | **first free compiler scratch** | free |
 | `m+2048`, `m+4096` | | v1 name table / buffer — do not encroach | shipped |
+| `m+3072`–`m+4095` | 0x410C00–0x410FFF | M2: the dictionary's slots for long names, name numbers 256–511 — the byte-indexed table at `m+2048` extended by its own formula `m+2048 + 4*name`, up to the output buffer (W9-3A) | shipped |
+| `0x430000`–`0x43FFFF` | 4390912– | M2 compiler-only long-name region. Used: `0x434000`–`0x437FFF`, the name table — name `E` (256–511) has a 64-byte entry at `0x430000 + 64*E`, `[len:4][≤60 bytes]` — and `0x438400`–`0x4387FF`, the forward-reference heads — the last unpatched `call`/`jmp rel32` site for `E` at `0x438000 + 4*E` (4423680 + 4*E), each placeholder holding the next. Above the 64 KB output buffer; a compiled program never sees it (W9-3A) | shipped |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
+| `0x4E0800`–`0x4E0FFF` | 5113856–5115903 | long-named variables (`→‹name›`/`←‹name›`): the bank above, continued by its own formula `0x4E0000 + 8*name` for name numbers 256–511 — **user space** (W9-3A) | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
 | `0x4F0010`–`0x4F002C` | 5177360–5177388 | **RETIRED** — the old 4-byte-stride scratch bank `s0`–`s7`; W4A moved the bank to `0x4F0060` and nothing reads these eight cells any more | free |
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
-| `0x4F0034` | 5177396 | **heap base cell** — the `brk` the prelude's init was handed, published for `T` and the five M-VEC templates. ASLR-shifted every run, so it is never spelled out anywhere | shipped |
-| `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `T` is `v - base <u span` | shipped |
+| `0x4F0034` | 5177396 | **heap base cell** — the `brk` the prelude's init was handed; `A` adds the bump offset `H` to it. ASLR-shifted every run, so it is never spelled out anywhere. Since M-TAG2 (W9-2A) it is **allocator state only**: `T` and the M-VEC templates test the list tag and no longer read it | shipped |
+| `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `A` grows the break when a block would pass it. Allocator state only since M-TAG2 (it was `T`'s `v - base <u span` bound) | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
-| `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
-| `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
+| `0x4F0048`–`0x4F004F` | 5177416 | reserved for future scratch (run2.sh's W1 atom test round-trips a value through it) | free |
+| `0x4F0050` | 5177424 | **prelude input buffer** (W9-4C): the RAW address of the stdin buffer block `[pos][len][8192 bytes]` that `‹getc›`/`‹readline›`/`‹readall›`/`‹ints›` share; 0 (BSS) until the first read allocates it with `A` | shipped |
+| `0x4F0058`–`0x4F005F` | 5177432 | reserved for future scratch | free |
+| `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp (`A` and `⌫` only), `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
 | `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
-| `0x4F00C0`–`0x4F00FF` | 5177536–5177599 | reserved for future scratch | free |
+| `0x4F00C0`–`0x4F00F8` | 5177536 · 5177544 · … · 5177592 | **free-list heads** for `A`/`⌫` (W9-3C, M-MEM2), **stride 8**, one per size class: class `k` = 0…6 at `5177536+8k` holds blocks of exactly `4<<k` cells (4, 8, … 256); class 7 at 5177592 holds every larger block (`max(c, 512)` cells, popped only when the head fits). Each head is a raw payload address or 0 (BSS) = empty; a free block's payload cell 0 links to the next. See the note below on the block header | shipped |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
+| `0x4F1000`–`0x4F1FFF` | 5181440–5185535 | **return-stack guard page** — `PROT_NONE`, set by `STARTUP2`'s `mprotect` (`mkblob2.GUARD_LO`); the return stack bottoms out at `0x4F2000` (`mkblob2.RSTACK_FLOOR`), so overflow faults here instead of corrupting the bank below. Not in `seed` (built by v1c with v1's startup) (W9-2C) | shipped |
 | `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
 | the `brk` | — | **the list heap**, above the whole load segment, grown by `⌸`. Not a fixed address: the kernel ASLR-shifts the initial break, which is why it lives in the two cells above | shipped |
 
@@ -318,7 +348,8 @@ Notes:
 - **The entry-`rsp` cell is a full 8 bytes and must be read with `⊙`.** It is
   written by `tools/mkblob2.STARTUP2` (mirrored by `boot/golfref.py`), which is
   v1's `mov ebp, 0xC00000` with a `mov [0x4F0040], rsp` in front — so every
-  binary the v2 toolchain emits is 8 bytes longer than it used to be. Unlike
+  binary the v2 toolchain emits is 8 bytes longer than it used to be (and 15
+  more since W9-2C put the guard page's `mprotect` between the two). Unlike
   every other fixed cell here it holds a *stack* address, which on Linux x86-64
   is far above 2^32 — `@` would truncate it. So are the `argv[i]` pointers it
   leads to, and any buffer address handed to `⎈`: all of that arithmetic is
@@ -329,10 +360,11 @@ Notes:
   widened in place (at a 4-byte stride `s0`'s high half is `s1`). All scratch
   access is `⊙`/`⊛` (`\fetch`/`\store`). The four cells at `0x4F0030`–`0x4F003C`
   deliberately did **not** move or widen: they hold pointers and byte offsets
-  that are < 2^31 in practice, plain `@`/`!` on them is therefore exact, and
-  `0x4F0034` in particular is baked into every M-VEC template as a 32-bit
-  compare operand. That is a real 4 GB ceiling on the break (DESIGN.md, known
-  limits) — widening the cells means widening five templates with them.
+  that are < 2^31 in practice, and plain `@`/`!` on them is therefore exact.
+  Until M-TAG2 `0x4F0034` was also baked into every M-VEC template as a 32-bit
+  compare operand; it no longer is — the templates test a value's high word for
+  the list tag (`addr | 2^48`) and read no cell but their hook — so the base and
+  span are now private to `A`, and widening them would touch only the prelude.
   The **user variable bank at `0x4E0000` was 4 bytes per name for the same
   reason and is now 8** (M3W): unlike the four fixed cells, no template hard-codes
   a bank address — the compiler computes `0x4E0000 + 8*name` when it emits the
@@ -347,21 +379,55 @@ Notes:
   onto the data stack first, since `Y` is stack-neutral), so higher-order words
   nest: a mapped function may itself call `R`/`S`/`M`/… . `X` and `Y` touch no
   scratch themselves — only the data stack and absolute addresses. `A` is the
-  one exception: `s5` is A-only and never held across a call, so `A` needs no
-  frame, and `I` is scratch-free.
+  one exception: `s5` is A-only (and `⌫`'s, since W9-3C — the other leaf of
+  the allocator) and never held across a call, so neither needs a frame, and
+  `I` is scratch-free.
+- **Every `A` block has a header cell (W9-3C, M-MEM2).** `A` returns the
+  payload address `p`; the cell at `p-8` holds the block's capacity in cells
+  (the request rounded up to its size class), or **minus** that capacity while
+  the block sits on a free list (that sign is `⌫`'s double-free guard). Every
+  caller — the prelude, `lib/t*.golfj`, `gtools/` — only ever touches the
+  payload, so the header changed no caller; it costs 8 bytes per block plus
+  the rounding (at most 2x, and only for blocks of ≤ 256 cells).
 - **The heap/return-stack collision is gone.** Until M-MEM a bump heap grew up
   from `0x500000` while the return stack grew down from `0xC00000` inside the
   same 8 MB BSS: a list of ~917k cells met the stack and the program died. The
   heap is now the kernel's, grown with `brk` (`0xA6`) above the load segment, so
   `p_memsz` reserves only what is statically addressed (`0x200000`) and the
-  return stack has its 1.08 MB — ≈138k frames — entirely to itself. That is why
-  `0x4F0034`/`0x4F0038` exist: the base cannot be a constant any more.
+  return stack has its ~1.07 MB — ≈138k frames, above the W9-2C guard page — entirely to itself. That is why
+  `0x4F0034`/`0x4F0038` exist: the base cannot be a constant any more, and `A`
+  needs both it and the span to know when to move the break.
   **Do not add a fixed heap-base row to this table.**
+- **A list value is tagged (M-TAG2).** What a list word hands user code is
+  `addr | 2^48` — the heap address with bit 48 set, so `v >> 48 == 1` — and
+  every list word masks it back off (`(v<<16)>>16`, idempotent, so a raw `A`
+  block is accepted too). The tag is a property of the *value*, not an address:
+  it needs no cell, and nothing in this table records it.
 - The M-VEC hook table is at stride 8 (not 4) so it stayed correct when M4
   widened list cells to 64 bits — which W4A has now done, with no change to the
   templates, the hook cells or the seed.
 
 ---
+
+## W9 — the gap-fix waves
+
+Allocated up front (W9-0A) so the parallel tasks never contend. Every other
+W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
+§2) — waits for W9-3A
+(multi-character names, now **shipped** as `‹name›`, `0xB4`/`0xB5`) and takes a
+*name*, not a byte; `0xC8`–`0xCF` is now
+fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
+`‹flatten›`, the prelude's first long names. With W9-4C's input words the
+prelude now uses 12 of the 256 long-name slots, leaving 244 for a program
+(run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
+integrator; it does not pick it.
+
+String literals (W9-1B): the encoder copies everything between two `“` as
+UTF-8 bytes, verbatim — no mnemonics, no glyph encoding — except the escape
+`\“`, which stands for the UTF-8 bytes of `“` itself. A string whose UTF-8
+contains the raw byte `0x8E` (the delimiter) is an encode error. **Shipped**
+(W9-1B): `\str` opens and closes a literal too, and either spelling closes
+either; the decoders copy a literal's bytes back out raw.
 
 ## 4. Adding something
 

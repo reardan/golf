@@ -69,7 +69,8 @@ for n in bad:
 sys.exit(1 if bad else 0)
 PY
 # Only ops the SEED can compile may appear in golf2.golf's code: ASCII, plus the
-# four compiler prefixes (′ “ → ←) and the atom bytes.  Anything else and the
+# compiler ops (′ “ → ← ⊚ ⊡ ⇒ ⇐, and since M2 the long-name brackets ‹ ›, which
+# golf2.golfj's own M2 words are named with) and the atom bytes.  Anything else and the
 # compiler could never be built by the seed that bootstraps it.  Checked on the
 # encoded source before the splice — the blob is arbitrary raw bytes.
 python3 - <<'PY' && ok "golf2.golfj uses only ops the seed can compile" || no "unsupported op byte"
@@ -79,7 +80,7 @@ import codepage, mkblob2
 data = codepage.encode(open("self/golf2.golfj", encoding="utf-8").read())
 known = {mkblob2.REF_BYTE, mkblob2.STR_BYTE, mkblob2.SET_BYTE, mkblob2.GET_BYTE,
          mkblob2.CHAIN_BYTE, mkblob2.FRAME_BYTE, mkblob2.LSET_BYTE,
-         mkblob2.LGET_BYTE}
+         mkblob2.LGET_BYTE, mkblob2.LNAME_BYTE, mkblob2.RNAME_BYTE}
 known |= {b for b, _mn, _gl, _tpl, _d in mkblob2.ATOMS}
 used = sorted({b for b in data if b >= 0x80})
 sys.stderr.write("       high bytes used: "
@@ -128,7 +129,24 @@ for ex in lists strings vars vectorize capstone chaindef locals; do
 done
 
 echo "Byte-for-byte agreement: the two source forms are the same compiler"
-for t in hello fizz lists strings vars vectorize capstone chaindef locals; do
+# M2: long names — every place one can stand, forward calls and a forward ′,
+# mutual recursion — through both source forms.
+printf '%s' ':‹square›²;⊚‹mean›∑≢÷;⊡‹hyp›⇒a⇒b⇐a‹square›⇐b‹square›+;:‹even›"[_0^]⊖‹odd›;:‹odd›"[_1^]⊖‹even›;3 4‹hyp›Ṅ5⍳‹mean›Ṅ9‹odd›Ṅ7→‹count›←‹count›Ṅ3⍳′‹square›€⍕4′‹later›⍎Ṅ:‹later›⊕;' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.longnames"
+both longnames "$TMP/src.longnames"
+[ "$("$TMP/new.longnames" 2>/dev/null)" = "252070 1 4 5" ] \
+  && ok "prelude + a long-name program runs (M2)" || no "long-name program output"
+
+# M-FRAME2 (W9-4D): sized frames — long and one-letter locals mixed, a zero-local
+# ⊡ word, early ^ exits patched through the frame-size list, two frame sizes
+# calling each other — through both source forms.
+printf '%s' '⊡‹sum›"[_0^]⇒‹acc›⇐‹acc›1-‹sum›⇐‹acc›+0[^]9;⊡‹mix›⇒a⇒‹x›⇒b⇐a⇐‹x›-⇐b*⇐a+;⊡‹nil›1+;⊡‹two›⇒‹p›⇒‹q›⇐‹p›‹sum›⇐‹q›‹nil›+;100‹sum›Ṅ␤2 7 3‹mix›Ṅ␤5 10‹two›Ṅ' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.frames"
+both frames "$TMP/src.frames"
+[ "$("$TMP/new.frames" 2>/dev/null)" = "$(printf '5050\n-5\n61')" ] \
+  && ok "prelude + a sized-frame program runs (M-FRAME2)" || no "sized-frame program output: $("$TMP/new.frames" 2>/dev/null)"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -154,6 +172,36 @@ cat "$TMP/pre.gb" <(printf '%s' '5qN' | python3 tools/codepage.py encode) > "$TM
   && ok "neither leaves a partial binary on fd 1" || no "partial binary on rejection"
 [ "$(cat "$TMP/bad.newerr")" = "GOLF: undefined word q" ] && [ ! -s "$TMP/bad.olderr" ] \
   && ok "golf2 explains it on fd 2; the seed, in v1 GOLF, cannot" || no "diagnostic text"
+# W9-1C: `′q` reaches the same rejection through X, which hands a name that is
+# neither a word nor an atom to `e` — in both source forms.
+cat "$TMP/pre.gb" <(printf '%s' '3⍳′q€⍕' | python3 tools/codepage.py encode) > "$TMP/badref.src"
+"$TMP/seed"  < "$TMP/badref.src" > "$TMP/badref.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badref.src" > "$TMP/badref.new" 2>"$TMP/badref.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badref.old" ] && [ ! -s "$TMP/badref.new" ] \
+  && [ "$(cat "$TMP/badref.newerr")" = "GOLF: undefined word q" ] \
+  && ok "both reject ′ of an undefined name the same way (W9-1C)" \
+  || no "′undefined rejection differs (seed $sst, golf2 $gst)"
+
+# M2: a long name called but never defined is rejected at end of input by both,
+# and only golf2 can say which one.
+cat "$TMP/pre.gb" <(printf '%s' ':‹f›‹g›;' | python3 tools/codepage.py encode) > "$TMP/badlong.src"
+"$TMP/seed"  < "$TMP/badlong.src" > "$TMP/badlong.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badlong.src" > "$TMP/badlong.new" 2>"$TMP/badlong.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badlong.old" ] && [ ! -s "$TMP/badlong.new" ] \
+  && [ "$(cat "$TMP/badlong.newerr")" = "GOLF: undefined word ‹g›" ] \
+  && ok "both reject an undefined long name at end of input (M2)" \
+  || no "undefined long name rejection differs (seed $sst, golf2 $gst)"
+
+# M-FRAME2 (W9-4D): a 17th local in one ⊡ word is refused by both (16 keep
+# every slot a disp8), and only golf2 can say which.
+w94d=""; for k in $(seq 1 17); do w94d="$w94d⇒‹l$k›"; done
+cat "$TMP/pre.gb" <(printf '%s' "⊡f$w94d;" | python3 tools/codepage.py encode) > "$TMP/badloc.src"
+"$TMP/seed"  < "$TMP/badloc.src" > "$TMP/badloc.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badloc.src" > "$TMP/badloc.new" 2>"$TMP/badloc.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badloc.old" ] && [ ! -s "$TMP/badloc.new" ] \
+  && [ "$(cat "$TMP/badloc.newerr")" = "GOLF: too many locals ‹l17›" ] \
+  && ok "both reject a 17th local in one ⊡ word (M-FRAME2)" \
+  || no "too-many-locals rejection differs (seed $sst, golf2 $gst)"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

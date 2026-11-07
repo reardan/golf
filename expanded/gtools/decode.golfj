@@ -19,6 +19,10 @@
 #         elif b in (9,10) or 32 <= b < 127: -> that ASCII character
 #         else:                              -> \xNN, UPPERCASE hex
 #
+# Since W9-1B a string literal is verbatim text, so the bytes between two 0x8E
+# are copied raw (see "STRING LITERALS" at the filter below); the three
+# branches apply everywhere else.
+#
 # Three branches, in that order, one per input byte.  The first is `x` (glyph)
 # or `y` (mnemonic) from lib/tutf.golfj, which answer over the table in
 # ../data/codepage.tsv; the second is one range test and two equalities; the
@@ -72,7 +76,7 @@
 # argv[0] (what the Python does with `os.path.dirname(__file__)`) does not
 # transfer: argv[0] here is `build/gdecode`, whose directory is `build/`, not
 # the tree root.  Compiling the table in as a literal is impossible — a `“…“`
-# block cannot contain byte 0x8E and the encoder is not string-aware, which is
+# block cannot contain byte 0x8E (the table holds raw 0x8E and glyph bytes), which is
 # the whole reason ../data/codepage.tsv exists as a file.  An environment
 # variable would mean walking envp past argv, for a knob a positional argument
 # already provides.
@@ -101,7 +105,8 @@
 # Variables used: `w` -m flag · `u` table-loaded flag · `z` end-of-argv flag ·
 # `i` index · `c` path buffer · `d` path literal · `p`/`n` input buffer and
 # length · `q` the current byte · `r`/`l` the match pointer and its length ·
-# `j` emit index · `v` printable flag · `o` nibble.  NOT `s`: that is
+# `j` emit index · `v` printable flag · `o` nibble · `k` inside-a-literal flag
+# · `b` byte-handled flag · `e` closer choice.  NOT `s`: that is
 # lib/tutf.golfj's own state variable and this program would erase the table.
 # The variable bank and the word namespace are disjoint (a name byte after
 # 0x8F/0x90 is never a call), so `p` here and `p` in lib/ttext.golfj are two
@@ -147,9 +152,30 @@
 
 # ---------------------------------------------------------------------------
 # The filter.  Slurp stdin, then one pass, one output decision per input byte.
-0 e\setn\setp 0\seti
+#
+# STRING LITERALS (W9-1B).  `k` is 1 between two 0x8E bytes; `b` is 0 while
+# the current byte still needs rendering by the ordinary rule.
+#   * 0x8E itself: `“`, or `\str` under -m or when it CLOSES a literal whose
+#     last byte is a backslash (`\“` would read back as the escape).  The
+#     backslash test reads the byte before i only when k is 1, i.e. after an
+#     opener, so it never reads before the buffer.
+#   * inside a literal: E2 80 9C is written `\“` (the encoder's one escape);
+#     every other byte is copied RAW — the literal was UTF-8 text verbatim.
+0 e\setn\setp 0\seti 0\setk
 \getn 0\eq[{
  \getp\geti\radd?\setq
+ 0\setb
+ \getq 142\xor[1\setb 1\sete
+  \getk 0\eq[\getp\geti\radd 1\rsub?92\xor[0\sete]]
+  \getw 0\eq[0\sete]
+  \gete[92 g 115 g 116 g 114 g]
+  \gete 0\eq[226 g 128 g 156 g]
+  1\getk\rsub\setk]
+ \getb[\getk 0\eq[1\setb
+  \getn\geti 3\radd\rlt[\getq 226\xor \getp\geti\radd 1\radd?128\xor\or \getp\geti\radd 2\radd?156\xor\or
+   [92 g 226 g 128 g 156 g \geti 2\radd\seti 2\setb]]
+  \getb 1\xor[\getq g]]]
+ \getb[
  \getw[\getq x\setl\setr]
  \getw 0\eq[\getq y\setl\setr]
  # Decodable (a length of at least 1): the glyph, or a backslash and the
@@ -170,6 +196,6 @@
   # 0-9.  Branchless, and there is no lower-case path to get wrong.
   \getv 0\eq[92 g 120 g
    \getq 4\shr\seto \geto 48\radd 9\geto\rlt 7\rmul\rsub g
-   \getq 15\and\seto \geto 48\radd 9\geto\rlt 7\rmul\rsub g]]
+   \getq 15\and\seto \geto 48\radd 9\geto\rlt 7\rmul\rsub g]]]
  \geti 1\radd\seti \geti\getn\rlt 1\radd}]
 f

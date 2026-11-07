@@ -73,6 +73,8 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
   The link count picks the shape: one is a call, two compose, three fork.
 - **strings** as `“...“` byte blocks that convert to code lists, so every list op
   works on them: `“Hello“U1+J` maps +1 → `Ifmmp` (long form: `“Hello“U′⊕€J`).
+  A literal is literal: its text is copied as UTF-8, verbatim (`“a\n # é⊕“` is
+  those bytes), and `\“` is the one escape, for a `“` inside it.
 - **named variables** `→x`/`←x` over a 64-bit-per-name bank, so `←a←b+←a←b-*` is
   `(a+b)*(a-b)` with no juggling — and, since M-FRAME, **per-call locals**:
   that bank is global, so `⊡name … ;` defines a word owning a frame of eight
@@ -92,6 +94,10 @@ So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J
 before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both
 spellings are compiled and output-checked by the suite, as
 `examples/capstone.golfj` and its `examples/legacy_capstone.golfj` twin.
+
+Every op, atom and library word — with stack effects and a tutorial whose
+examples the suite compiles and runs — is in
+[`expanded/REFERENCE.md`](expanded/REFERENCE.md), the language reference.
 
 The design, the shipped record and the known limits live in
 [`expanded/DESIGN.md`](expanded/DESIGN.md); the prioritized queue of what's next
@@ -118,7 +124,7 @@ result:
 GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
-`bash test/run2.sh` is **298 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **471 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

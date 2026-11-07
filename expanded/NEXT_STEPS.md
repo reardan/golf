@@ -10,6 +10,18 @@ the `v1c` binary pinned by `../SEEDS`) is never touched.
 
 ## Where we are
 
+**W9 — the gap-fix waves — closed the queue below.** Every numbered item
+(M-TAG2, M-FRAME2, M-MEM2, M2, M6b) has shipped, along with signed `⌈ ⌊`,
+literal strings, a `′undefined` diagnostic, index and divide-by-zero checks, a
+guard page under the return stack, nested-list support, the missing list words
+and [`REFERENCE.md`](REFERENCE.md). Each item below keeps its record of how it
+was built. What is genuinely left is the "As needed" list (modules/`include`,
+an object-file or C backend, a relocation pass for a peephole optimizer) and
+the smaller limits DESIGN.md still lists: one-byte names are still
+define-before-use, long names are capped at 256 per program (the prelude uses
+12), the X/Y spill stack bounds nesting depth, and v1's `/` `%` still trap on
+zero.
+
 The original roadmap is done. The code page, the atom set, lists on a `brk`-grown
 heap, quotations and higher-order words, strings, named variables, a total list
 runtime, shape polymorphism, *implicit* vectorization on the bare `+ - * ⌈ ⌊`,
@@ -34,10 +46,11 @@ Four facts about the implementation shape everything below:
 2. **The whole load segment is RWX** and a quotation is just an address, so the
    prelude can write machine code at runtime. `∘` already does; anything that
    wants to synthesize a closure can too, with no compiler change.
-3. **`T` is a range test, not a tag.** Everything polymorphic rests on "is this
-   value inside the heap window", which is cheap, correct for every value the
-   suite exercises, and wrong in principle. Item 1 below is the fix — and
-   the scheme this file used to specify for it was not.
+3. **`T` is a tag test (since M-TAG2).** A list value is `addr | 2^48`, so
+   "is this a list?" is `v >> 48 == 1` — exact, cell-free, and cheap enough to
+   ask of every element, which is what nested data needs. It used to be a range
+   test against the heap window; item 1 below records why, and why the first
+   scheme specified to replace it (bit 63) was wrong.
 4. **The compiler binary never runs the prelude**, so its M-VEC hook cells stay
    zero and it always takes the scalar path. That is the reason implicit
    vectorization did not disturb the fixpoint, and the same argument covers any
@@ -51,7 +64,17 @@ DESIGN.md: **M3W** (the variable bank is 64 bits per name) and **M-CHAIN2**
 it specified turns out to be wrong for a reason worth writing down — it is now
 item 1, with the counterexample and a corrected design.
 
-### 1. M-TAG2 — a real tag bit (medium — **the specified scheme is wrong**)
+### 1. M-TAG2 — a real tag bit (**shipped**, W9-2A)
+
+**Shipped as option 1 below** (DESIGN.md records it): a list value is
+`addr | 2^48`, `T` is a shift and a compare, the M-VEC filter tests each
+operand's high word exactly, and every list word masks on entry and tags on
+exit. One correction to the plan: the two bounds cells did **not** go away —
+`A` still needs the base and the span to know when to move the break — but
+nothing except `A` reads them now, so the 4 GB ceiling is an allocator detail
+that a prelude-only change can lift. The nested-data payoff
+followed as W9-3B: `⍕` recurses, `+ - * ⌈ ⌊` vectorize to any depth, and `≣`
+(structural match) and `⍤` (depth) exist. The rest of this entry is the history.
 
 *What.* Retire the range test. `T` is `v - base <u span` today, so an *integer*
 that happens to land in `[base, base+span)` is dispatched as a list — the one
@@ -81,8 +104,8 @@ the M-VEC preamble's `or rax,[rsp+8]; jns .scalar` filter would send `-1 5+` to
 the dispatcher as list-shaped and `Ṅ` would dereference it. The suite already
 pins the opposite (`0 1-T` → int, and "a -1 flag reaches the hook and falls back
 to the scalar op"), so the change trades a rare wrong answer for a common one.
-GOLF has been signed since M4 — `≺ ≻ ≫`, `÷`, `∣` and `N`'s sign check all say
-so — and any tag in the sign bit fights that.
+GOLF has been signed since M4 — `≺ ≻ ≫`, `÷`, `∣`, `N`'s sign check and (since
+W9-1A) `⌈ ⌊` all say so — and any tag in the sign bit fights that.
 
 *What a correct version looks like.* The honest framing is that in an untagged
 64-bit word you cannot have both the full integer range and an exact pointer
@@ -115,7 +138,13 @@ the one that guards the fix: `0 1-T` is still an int, and so is every negative a
 program can produce. Every existing polymorphic test unchanged;
 `0x4F0034`/`0x4F0038` deleted from REGISTRY.md §3 in the same commit.
 
-### 2. M-FRAME2 — size the frame per definition (medium)
+### 2. M-FRAME2 — size the frame per definition — **shipped (W9-4D)**
+
+**Shipped as sketched below** (DESIGN.md records it): `⊡` emits `sub rbp, imm32`
+and every `^` an `add rbp, imm32`, their immediates threaded into a list that
+`;` walks and patches with 8 × the number of distinct locals; locals take long
+names (`⇒‹acc›`), slots go in order of first appearance, at most 16 a word. A
+two-local word's frame is 24 bytes, not 72. The rest of this entry is the history.
 
 **M-FRAME shipped** (DESIGN.md): `⊡name … ;` owns a frame of eight slots and
 `⇒x`/`⇐x` reach them, so recursion through a local is correct. What it did *not*
@@ -144,27 +173,42 @@ linked list through their own unpatched immediates and walked at `;`. That is a
 well-understood assembler technique and costs one compiler variable (definitions
 do not nest), but it is real work and M-FRAME already removed the wrong answer.
 
-*Also still open.* Eight slots means eight *names*, `a`–`h`; a real symbol table
-(M2, item 4) would let a `⊡` word name its locals anything and let the count fall
-out of the name arena. And the return stack still has no guard — see DESIGN.md's
-known limits, where M-FRAME's ~15k-frame ceiling now makes it easier to reach.
+*Also still open.* Eight slots means eight *names*, `a`–`h`; M2's name table
+(item 4, shipped) could let a `⊡` word name its locals anything and let the count fall
+out of the name arena. The return stack's missing guard, which M-FRAME's
+~15k-frame ceiling made easier to reach, is fixed: W9-2C's guard page turns an
+overflow into a SIGSEGV instead of silent corruption (DESIGN.md, known limits).
 
-### 3. M-MEM2 — a free list for the allocator (small-medium)
+### 3. M-MEM2 — a free list for the allocator — **SHIPPED (W9-3C)**
 
-*What.* `A` bump-allocates and nothing is ever freed. Since `M`, `W`, `V`, `Z`,
-`K` and `G` each allocate a fresh list per call, a map inside a loop leaks
-linearly — the heap grows with `brk` now, so it does not crash, it just climbs.
+*What it was.* `A` bump-allocated and nothing was ever freed, so `M`, `W`, `V`,
+`Z`, `K` and `G` in a loop leaked linearly.
 
-*How.* Keep the bump pointer as the fast path and give each block a header cell
-carrying its size (the length header nearly is one already). Add a `free` word
-that threads a released block onto a size-classed free list; `A` checks the
-matching class before bumping. A first cut can be one list and exact-fit only —
-the allocation pattern here is overwhelmingly "same-size list, over and over".
+*What shipped.* `⌫` (`\free`, 0xCA), explicit only: `list ->` releases a
+tagged list or a raw `A` block. Every `A` block has a header cell `[cap]` in
+front of the payload; eight free-list heads at `0x4F00C0`–`0x4F00F8` are size
+classes (4, 8, … 256 cells exactly, then one list for everything larger, checked
+at the head only). `A` pops the matching head before bumping and stays a
+loop-free `s5` leaf. A map-and-free loop now keeps the program break flat
+(run2.sh, W9-3C). Double free and freeing a non-heap value exit 1 with a message.
 
-*Why here.* It is invisible until a program is long-running, and it wants the
-tag bit (item 1) first so a header cell can never be mistaken for a value.
+*Still open.* No splitting or coalescing, no walk of the large class, and no
+automatic freeing — a word that consumed its input, or a scope that released
+everything it allocated, would want ownership rules GOLF does not have.
 
-### 4. M2 — multi-character identifiers (medium)
+### 4. M2 — multi-character identifiers (medium) — **shipped (W9-3A)**
+
+*Shipped as* `‹name›` (`0xB4`/`0xB5`, DESIGN.md's record): long names for words,
+quotations, chain links and variables, interned to name numbers 256–511 so the
+dictionary and the variable bank extend by their own formulas, and **forward
+references** for long names — call sites thread a per-name patch list, the
+definition patches it, and a name still pending at end of input is
+`GOLF: undefined word ‹name›`. Mutual recursion needs no declaration. Programs
+without `‹` compile to the same bytes as before. Named locals (`⇒‹x›`)
+followed with W9-4D (item 2). *Still open:* forward references for one-byte names (kept
+define-before-use on purpose — their error stays at the call), and the fixed
+table (256 names × 60 bytes). The rest of this entry is the case that was made
+for it.
 
 *What.* Word names are single bytes and the uppercase prelude pool is down to
 `B` and `C` (REGISTRY.md §2). The code page removed the pressure on *operators*,
@@ -180,8 +224,12 @@ and best done when the language has stopped moving under it.
 
 *But it is no longer independent.* This entry used to say "nothing above needs
 it", and that is now false. The uppercase pool is down to `B` and `C` — two
-letters — and the library is missing, at minimum, sort, concatenate, take/drop,
-member, index-of, unique and a structural `≡` ([`GAPS.md`](GAPS.md) §1.3). Item
+letters — and the library is missing, at minimum, index-of,
+unique and a structural `≡` (concatenate and take/drop shipped in W9-4A as `⧺ ↑ ↓`; sort and member in W9-4B as `⍋ ∊`) ([`GAPS.md`](GAPS.md) §1.3). Item
+5 (M6b) needed letters too, for a line reader and a number parser (it shipped
+on long names once M2 landed, W9-4C). Two letters do
+letters — and the library was missing, at minimum, index-of,
+unique and a structural `≡`. *(All shipped now: concatenate and take/drop in W9-4A as `⧺ ↑ ↓`; sort and member in W9-4B as `⍋ ∊`; `≣` in W9-3B; and slice, index-of, unique and flatten in W9-4B part 2 as the long-named `‹slice› ‹indexof› ‹unique› ‹flatten›` — [`GAPS.md`](GAPS.md) §1.3.)* Item
 5 (M6b) needs letters too, for a line reader and a number parser. Two letters do
 not cover either list, so **every remaining library item is gated behind this
 one** or behind spending the eight high bytes at `0xC8`–`0xCF` on words that
@@ -190,24 +238,26 @@ tag bit is still the thing that makes the *language* correct, and it is cheaper 
 but "nothing needs it" is no longer the reason to defer it. Sequencing it right
 after the tag bit, and before the allocator, is the honest ordering.
 
-### 5. M6b — a number parser and line-oriented input for USER programs (small)
+### 5. M6b — a number parser and line-oriented input for USER programs — **shipped (W9-4C)**
 
-*What.* The syscall half of this item shipped with M-TOOL: `⎈` (`\sys`, `0xA7`)
-is the read atom it asked for, and `lib/tio.golfj` already has buffered input,
-a slurp and argv, while `lib/ttext.golfj` has the decimal and hex parsers. What
-is *not* done is making any of that reachable from an ordinary program:
-`lib/t*.golfj` is prepended only by `gtools/build`, for the repo's own tools.
+*What it was.* A user program could read one byte with `(` and nothing more;
+`lib/tio.golfj`/`lib/ttext.golfj` had buffered reads, a slurp, argv and decimal
+parsing, but only `gtools/build` prepends them, and they claim `a`–`z`.
 
-*How.* Decide what a user program should get, then move exactly that into
-`lib/prelude.golfj` — most likely a line reader, a decimal parser, and a
-split-on-whitespace yielding a list. The cost is the constraint the tool
-libraries were invented to dodge: the prelude's uppercase pool is down to `B`
-and `C`, so anything that moves needs a high byte from `0xC8`–`0xCF`, and the
-prelude may never use `→x`/`←x` (the bank is user space). Do not simply prepend
-`lib/t*.golfj` to user programs — it claims lowercase `a`–`z` wholesale and
-would shadow half of any program's own words.
+*What shipped.* Seven long-named prelude words (M2 made names free, so no
+letter or high byte was spent), under the `W9-4C-INPUT` anchor:
+`‹readall›` (stdin → code list), `‹readline›` (→ line without its `\n`, then a
+flag: 0 got a line, 1 end of input), `‹getc›` (→ byte or -1), `‹words›`
+(split a code list on ASCII whitespace), `‹num›` (signed decimal; stops at the
+first non-digit, no digits → 0), `‹ints›` (all of stdin as integers) and
+`‹args›` (argv[1..] as code lists). One 8 KB read buffer, made on first use and
+reached through the cell `0x4F0050` (REGISTRY §3), backs all the stdin words,
+so they interleave. `examples/input.golfj`; tests in run2.sh's W9-4C block,
+including `printf '1 2 3' | … ‹ints›∑Ṅ` → `6`, empty input, a 1.2 MB input.
 
-*Tests.* Pipe `1 2 3` in, sum it, print `6`; empty input yields the empty list.
+*Still open.* `(` bypasses the buffer, so a program should not mix the two.
+There is no hex or float parser, no number formatter into a list, and no
+output buffering for user programs (`)` is still one `write` per byte).
 
 ## As needed
 
@@ -257,14 +307,22 @@ recorded; two of them were small enough to fix in the same pass. The compose
 arena is now bounded (it was silently overwriting the user variable bank after
 1680 composes, exit status 0), and an undefined word is now reported instead of
 compiling to a jump through a zeroed dictionary slot. Both are in DESIGN.md's
-record. The third — nested lists having no support above the storage layer — is
-item 1's second justification above, because the tag bit is its prerequisite.
+record. The third — nested lists having no support above the storage layer — was
+item 1's second justification above, because the tag bit is its prerequisite;
+it shipped as W9-3B (recursive `⍕`, deep `+ - * ⌈ ⌊`, `≣` match, `⍤` depth).
 
-Two things that wave did **not** do. The `′` path still reads an undefined name
-as an atom (`X`'s auto-wrapping cannot tell a typo from `′⊗`), which is a
-separate small fix. And no diagnostic gained a source position: the compiler is
+Two things that wave did **not** do. The `′` path still read an undefined name
+as an atom (`X`'s auto-wrapping could not tell a typo from `′⊗`) — since fixed
+by W9-1C, which has `X` check the blob and pass a byte that is neither to `e`'s
+undefined-word diagnostic. And no diagnostic gained a source position: the compiler is
 single-pass with no notion of a line, so "undefined word `b`" is the whole
 message it can afford — see DESIGN.md's non-goals.
+
+**W9-2B — runtime checks.** `⊇` (prelude `I`) bounds-checks with one unsigned
+compare, and `÷`/`∣` report a zero divisor; both print `GOLF: …` to fd 2 and
+exit 1 instead of returning garbage or dying of SIGFPE. `INT64_MIN ÷ -1` is
+defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` are frozen
+and still trap — see DESIGN.md, known limits.
 
 ## Earlier waves
 

@@ -49,6 +49,10 @@
 #   0x410800   dictionary: the body address of the word named x is at +4*x
 #   0x411000   output buffer B: the byte at file offset f is stored at B+f
 #   0x4E0000   variable bank: cell for name x is at 0x4E0000+8*x  (→x / ←x)
+#   0x434000   long-name table (M2): the name with index E (256..511) has a
+#              64-byte entry at 0x430000+64*E — [length:4][up to 60 bytes]
+#   0x438400   forward-reference heads (M2): the cell for name E is at
+#              0x438000+4*E and holds the last unpatched site, 0 = none
 #
 # Both fixed addresses are the ones v1 documents as D+2048 and D+4096 with
 # D = 0x410000, so the compiled binary keeps exactly today's memory map.  A
@@ -85,6 +89,27 @@
 #   G  the 2nd buffered link byte                            (M-CHAIN2)
 #   I  the 3rd buffered link byte                            (M-CHAIN2)
 #
+# M2's state has LONG names, because the one-letter pool is spent — every letter
+# is already a word or a variable here, and this file keeps the two apart:
+#
+#   ‹count›  how many long names have been interned
+#   ‹entry›  the table entry a long name is being read into
+#   ‹len›    its length so far
+#   ‹ch›     the byte just read into it
+#   ‹idx›    an index walking the long-name table
+#   ‹other›  the entry ‹same› compares against, or ‹die›'s name entry
+#   ‹left›   ‹same›'s remaining byte count
+#   ‹head›   a forward-reference head cell
+#   ‹site›   ‹resolve›'s current site, ‹next› the one after it on the list
+#
+# M-FRAME2 (W9-4D) adds two more, live for the span of one ⊡ definition:
+#
+#   ‹locals› how many distinct locals the definition has named so far
+#   ‹frame›  the last unpatched frame-size immediate (the head of its list)
+#
+# and one compiler-only table outside the bank: the name number of local slot i
+# is the 4-byte cell at m+96+4*i = 4259936+4*i, i < 16 (../REGISTRY.md §3).
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -92,8 +117,27 @@
 # together, for exactly the span of one chain definition, and the seed holds the
 # same five in its own scratch at m32..m48 (../REGISTRY.md §3).
 #
-# Words, in definition-before-use order (single-byte names, as the dictionary is
-# byte-indexed): B Y Z U a o L w W k c C f E e D g h X t H.
+# Words, in definition-before-use order: B Y Z U a o L w W k c C f E ‹say› V
+# ‹die› ‹badname› ‹same› ‹readname› ‹getname› ‹forward› ‹resolve› ‹undefined›
+# e D g h X ‹badlocal› ‹slot› t H.  The M2 words have long names for the same reason their state
+# does — and so the compiler is its own first user of the feature: the seed
+# implements long names too, and builds this file.
+#
+# LONG NAMES (M2).  `‹name›` (bytes 0xB4 … 0xB5) is a name of any length, in
+# every place a one-byte name can stand: `:‹sq›`, `⊚‹sq›`, `⊡‹sq›`, a call
+# `‹sq›`, `′‹sq›`, `→‹n›`, `←‹n›`.  `‹readname›` interns it to a NAME NUMBER 256+index,
+# and from there on it is just a name that does not fit a byte: the dictionary
+# slot `Y` computes and the variable cell `→`/`←` compute are the same formulas,
+# one past the byte-indexed ranges (0x410C00.. and 0x4E0800..).  So a program
+# that never writes ‹ compiles to exactly the bytes it always did.
+#
+# What a long name has that a one-byte name does not is a FORWARD REFERENCE:
+# a call to a long name not yet defined emits `call rel32` with the name's
+# pending-site list threaded through the placeholder (‹forward›), the definition
+# walks and patches that list (‹resolve›), and anything still pending at end of
+# input is `GOLF: undefined word ‹name›`, exit 2, before a byte is written
+# (‹undefined›).  So
+# mutual recursion between long names needs no declaration.
 #
 # Every value the compiler handles is an address inside the load segment (under
 # 0x600000) or a small integer, and it installs no vectorization hooks (its hook
@@ -272,12 +316,7 @@ C
 # Compiling one ordinary token
 # ---------------------------------------------------------------------------
 
-:V          # V : report a compile error and stop            [ msgblock -> !!! ]
-            # Writes `<msg> <the byte in b>` to fd 2 and exits 2.  fd 2, never
-            # fd 1: fd 1 is carrying the binary.  Every caller has already put
-            # the offending byte in `b`, which is where the handlers keep the
-            # name they are working on anyway.  A word rather than three copies
-            # of the same fifteen ops — the compiler is small on purpose.
+:‹say›      # ‹say› : write a “…“ block to fd 2                  [ msgblock -> ]
 →S          # park the block; its address is needed twice
 2           # fd 2
 ←S
@@ -286,6 +325,15 @@ C
 @           # ... which is the length
 1⎈          # write(2, msg, len)
 _
+;
+
+:V          # V : report a compile error and stop            [ msgblock -> !!! ]
+            # Writes `<msg> <the byte in b>` to fd 2 and exits 2.  fd 2, never
+            # fd 1: fd 1 is carrying the binary.  Every caller has already put
+            # the offending byte in `b`, which is where the handlers keep the
+            # name they are working on anyway.  A word rather than three copies
+            # of the same fifteen ops — the compiler is small on purpose.
+‹say›       # the message
 ←b
 2560+       # the offending byte, with a newline (10<<8) stacked above it
 4259892!    # staged in the compiler's own scratch cell at m+52
@@ -295,6 +343,269 @@ _
 1⎈          # write(2, m+52, 2) — the byte, then the newline
 _
 2.          # exit(2).  No output file is worth completing.
+;
+
+
+# ---------------------------------------------------------------------------
+# Long names (M2): ‹name›
+# ---------------------------------------------------------------------------
+#
+# A long name is interned into a 256-entry table at its first appearance and is
+# a NAME NUMBER 256+index from then on.  Entry E (E = 256..511) is the 64 bytes
+# at 0x430000 + 64*E — [length:4][the name, at most 60 bytes] — and E's
+# forward-reference head is the cell at 0x438000 + 4*E.  Both regions are
+# compiler-only (../REGISTRY.md §3); a compiled program never sees them.
+
+:‹die›      # ‹die› : `<msg>‹name›` + newline to fd 2, exit 2   [ msg entry -> !!! ]
+→‹other›    # the name's table entry
+‹say›
+12157154    # 0xB980E2: the three UTF-8 bytes of ‹, staged in m+52.  A string
+4259892!    # literal would put high bytes in this source that selfcheck.sh's
+2           # seed-compilability check (rightly) refuses, so they are a number
+4259892
+3
+1⎈
+_
+2
+←‹other›
+4﹢          # the name's bytes ...
+←‹other›
+@           # ... and its length
+1⎈
+_
+179994850   # 0x0ABA80E2: ›, then a newline
+4259892!
+2
+4259892
+4
+1⎈
+_
+2.
+;
+
+:‹badname›  # ‹badname› : reject the long name being read     [ -> !!! ]
+←‹len›      # what was read of it so far is what gets shown
+←‹entry›
+!
+“GOLF: bad long name “
+←‹entry›
+‹die›
+;
+
+:‹same›     # ‹same› : 0 iff entries ‹other› and ‹entry› hold one name [ -> f ]
+←‹len›      # compare the length cell AND the bytes, last to first: names of
+4﹢          # different lengths differ in that cell, so ‹ab› never matches ‹abc›
+→‹left›
+0           # a dummy for the first `_` below
+{
+_           # drop the last byte difference (0, or the dummy)
+←‹left›
+[           # nothing left to compare: the same name
+0
+^
+]
+←‹left›
+1﹣
+→‹left›
+←‹other›
+←‹left›
+﹢
+?
+←‹entry›
+←‹left›
+﹢
+?
+﹣           # the byte difference: 0 keeps scanning,
+"           # anything else leaves the loop with it on the stack
+}
+;
+
+:‹readname› # ‹readname› : read a long name after ‹, intern it  [ -> 256+index ]
+←‹count›
+256﹢
+64﹡
+4390912﹢
+→‹entry›    # read it straight into the next free entry: a new name is then
+0           # interned just by counting it, with no copy
+→‹len›
+{
+(
+"
+181﹣
+[           # › : the name is complete
+_
+←‹len›
+←‹entry›
+!           #   its length goes in the entry's first cell
+←‹len›
+[           #   ‹› is not a name
+‹badname›
+]
+0
+→‹idx›
+{           #   look for it among the names seen so far
+←‹idx›
+←‹count›
+﹣
+[           #     not one of them: a new name
+←‹count›
+256<
+[           #       256 long names fill the table
+“GOLF: too many long names “
+←‹entry›
+‹die›
+]
+←‹count›
+"
+1﹢
+→‹count›    #       claim the entry it was read into
+256﹢
+^
+]
+←‹idx›
+256﹢
+64﹡
+4390912﹢
+→‹other›
+‹same›
+[           #     the same name: its number
+←‹idx›
+256﹢
+^
+]
+←‹idx›
+1﹢
+→‹idx›
+0
+}
+]
+→‹ch›       # an ordinary byte of the name
+←‹ch›
+48﹣
+10<         # 0-9
+←‹ch›
+65﹣
+26<         # A-Z
+﹢
+←‹ch›
+97﹣
+26<         # a-z
+﹢
+←‹ch›
+95﹣
+1<          # _
+﹢
+←‹ch›
+45﹣
+1<          # -
+﹢
+[           # -1 for exactly one of those, 0 for anything else — EOF included
+‹badname›
+]
+←‹len›
+60<
+[           # an entry holds 60 bytes of name
+‹badname›
+]
+←‹ch›
+←‹entry›
+4﹢
+←‹len›
+﹢
+,           # store the byte
+←‹len›
+1﹢
+→‹len›
+0
+}
+;
+
+:‹getname›  # ‹getname› : a prefix's operand                    [ -> name ]
+(           # one byte, as it always was ...
+"
+180﹣
+[           # ... unless it is ‹ : then the whole long name
+_
+‹readname›
+]
+;
+
+:‹forward›  # ‹forward› : emit `op rel32` to a name not yet defined [ op -> ]
+o           # the opcode: 0xE8 call, or 0xE9 inside a ′ thunk
+←b
+4﹡
+4423680﹢
+→‹head›     # name b's list of pending sites
+←p          # this site joins it: the placeholder holds the old head ...
+←‹head›
+@
+w
+←‹head›
+!           # ... and the head is now this site
+;
+
+:‹resolve›  # ‹resolve› : patch name b's pending sites to its body [ -> ]
+←b          # A one-byte name never has any — it is define-before-use, so its
+4﹡          # head is always 0 and this is a no-op: every program without a
+4423680﹢    # long name compiles to exactly the bytes it did before M2.
+→‹head›
+←‹head›
+@
+→‹site›
+0
+←‹head›
+!           # the list is consumed
+{
+←‹site›
+[
+^           # the end of the list
+]
+←‹site›
+@
+→‹next›     # the placeholder holds the next site
+←b
+Y
+@
+←‹site›
+﹣
+4﹣          # rel32 = body - (site + 4)
+←‹site›
+!
+←‹next›
+→‹site›
+0
+}
+;
+
+:‹undefined› # ‹undefined› : reject a name still pending at end of input [ -> ]
+0
+→‹idx›
+{
+←‹idx›
+←‹count›
+﹣
+[           # every long name checked
+^
+]
+←‹idx›
+256﹢
+4﹡
+4423680﹢
+@           # its pending-site list
+1<
+[           # not empty: called, but never defined
+“GOLF: undefined word “
+←‹idx›
+256﹢
+64﹡
+4390912﹢
+‹die›
+]
+←‹idx›
+1﹢
+→‹idx›
+0
+}
 ;
 
 :e          # e : compile a table op, or a call to a defined word  [ ch -> ]
@@ -312,12 +623,21 @@ Y
 [           #   ... which is 0 for a name that was never defined.  Emitting the
             #   call anyway is what v1 did: rel32 = 0 - (p+4) is a jump to a
             #   wild address, so the compile REPORTS SUCCESS and the binary
-            #   dies with SIGSEGV the moment the word is reached.  A name is
-            #   always a single byte here, so this is what every typo looks
-            #   like — and, since a word must be defined before use, what
-            #   mutual recursion looks like too.
+            #   dies with SIGSEGV the moment the word is reached.  For a
+            #   one-byte name, which must be defined before use, this is what
+            #   every typo looks like.  A long name (M2) may come later: that is
+            #   how mutual recursion is written, so it is checked at the end.
+_
+←b
+256<
+1﹢
+[           #     A ONE-BYTE name: that is an error, reported against the
 “GOLF: undefined word “
-V           #     report it against the byte in `b`, and exit(2)
+V           #     byte in `b` — exit(2)
+]
+232         #     a LONG name may be defined later (M2): call it through
+‹forward›   #     its pending-site list, which its definition patches
+^
 ]
 232o        #   0xE8 = call rel32
 ←p
@@ -389,6 +709,8 @@ _           # any other byte: drop it and keep skipping
 # template is wrapped in a thunk [prologue][template][epilogue], emitted inline
 # and jumped over, and the thunk's address is pushed instead.  That is what
 # makes ′+ and a chain link like ÷ work without the user wrapping anything.
+# A byte that is neither (`′typo`) is rejected exactly as a plain call to it
+# would be — `GOLF: undefined word <name>`, exit 2 — by handing it to `e` (W9-1C).
 
 :X          # X : emit `push <the address of the word or atom named b>` [ b -> ]
 →b
@@ -396,9 +718,31 @@ _           # any other byte: drop it and keep skipping
 Y
 @           # dict[name]: a defined word's body address, or 0
 "
-[           # 0 -> not a word but an atom:
-_           #   wrap its template in a thunk and push the thunk instead
-233o        #   0xE9 = jmp over the thunk
+[           # 0 -> not a word, so it had better be an atom:
+_
+←b
+256<
+[           #   ... or a LONG name defined further down (M2).  Its address is
+233o        #   not known yet, so push the address of a thunk that jumps to
+5w          #   it instead: jmp over [jmp rel32], with that rel32 on the name's
+←p          #   pending list.  ⍎ calling the thunk lands in the word through a
+→r          #   tail jump, so it behaves exactly like the word itself.
+233
+‹forward›
+L
+←r
+69632﹣
+w
+^
+]
+←b
+f
+?           #   its blob record's key byte, 0 for the sentinel
+[           #   neither a word nor an atom — a typo.  Wrapping the template
+←b          #   anyway built a thunk around whatever followed the sentinel, and
+e           #   the binary died with SIGILL.  `e` on this byte is the undefined-
+]           #   word diagnostic already (no template, dict slot 0): it exits 2
+233o        #   0xE9 = jmp over the thunk, around the atom's own template
 ←p
 →j          #   the jmp's placeholder site
 0
@@ -420,6 +764,101 @@ w           #   emit `push imm32 <the thunk's address>`
 69632-      # a defined word: push its body address directly
 L
 w
+;
+
+
+# ---------------------------------------------------------------------------
+# Locals (M-FRAME, sized per definition since M-FRAME2)
+# ---------------------------------------------------------------------------
+#
+# A ⊡ word's locals are NAMES — `a`…`h` or any ‹long name› — and each gets the
+# next slot at its first appearance in the definition, so a word that names k
+# locals has a frame of exactly k cells: slot i at [rbp+8*i], the return address
+# at [rbp+8*k].  The slot is known the moment the name is read, so ⇒/⇐ stay
+# five fixed bytes; only k is not known until `;`, and that is the frame-size
+# immediate's problem (see ⊡, `^` and `;` in `t`).  At most 16 locals, which
+# keeps every displacement a disp8 (8*15 = 120 < 128).
+
+:‹badlocal› # ‹badlocal› : reject the local named b      [ msgblock -> !!! ]
+←b
+256<
+1﹢
+[           # a one-byte name: V shows the byte, as M-FRAME always did
+V
+]
+←b          # a long name: ‹die› shows it in full
+64﹡
+4390912﹢
+‹die›
+;
+
+:‹slot›     # ‹slot› : the rbp displacement of the local named b [ -> disp ]
+←b
+256<
+1﹢
+[           # a one-byte local is a..h, as it always was.  ⇒z or ⇒A is
+←b          #   refused rather than quietly given a slot: a one-letter local
+97﹣         #   is still a deliberate, small namespace
+8<
+[
+“GOLF: local out of range “
+‹badlocal›
+]
+]
+←J
+[           # OUTSIDE a ⊡ word there is no table: today's fixed a..h slot,
+←b          #   name - 'a', exactly as M-FRAME compiled it
+256<
+[           #   and a long name has nowhere to go at all
+“GOLF: local out of range “
+‹badlocal›
+]
+←b
+97﹣
+8﹡
+^
+]
+0
+→‹idx›
+{           # this definition's slot table, in order of first appearance
+←‹idx›
+←‹locals›
+﹣
+[           #   not named yet: claim the next slot
+←‹locals›
+16<
+[           #     a 17th local would need a disp32: refuse it
+“GOLF: too many locals “
+‹badlocal›
+]
+←b
+←‹locals›
+4﹡
+4259936﹢
+!           #     slot table[k] = b
+←‹locals›
+"
+1﹢
+→‹locals›
+8﹡          #     displacement 8*k
+^
+]
+←‹idx›
+4﹡
+4259936﹢
+@
+←b
+﹣
+[           #   named before: its slot
+←‹idx›
+8﹡
+^
+]
+←‹idx›
+1﹢
+→‹idx›
+0
+}
 ;
 
 
@@ -484,7 +923,7 @@ w
 58-
 [           # ':' : define a word
 _
-(           #   its name is the next byte
+‹getname›   #   its name is the next byte, or a ‹long name›
 →b
 233o        #   0xE9 = jmp over the body about to be compiled
 ←p
@@ -492,6 +931,7 @@ _
 ←b
 Y
 !           #   dict[name] = body address
+‹resolve›   #   and every call that got here first now lands on it (M2)
 ←p          #   the displacement's own address ...
 0
 w           #   ... emitted as a placeholder, and left on the stack for ';'
@@ -525,12 +965,25 @@ e
 ]
 ←J
 1-
-[           #   a ⊡ definition: release its locals frame before the epilogue,
-0→J         #   and stop claiming one, so the next ':' word is an ordinary word
-72o         #   0x48 0x83 0xC5 0x40  add rbp, 64
-131o
+[           #   a ⊡ definition: its frame size is known at last, 8*‹locals›.
+0→J         #   Stop claiming a frame, so the next ':' word is an ordinary word,
+{           #   and walk the list of frame-size immediates — the ⊡ prologue's
+←‹frame›    #   and every `^`'s — writing the size into each.  An unpatched
+@           #   immediate holds the next site down; the ⊡'s holds 0, the end.
+←‹locals›
+8﹡
+←‹frame›
+!           #     patch this site ...
+→‹frame›    #     ... and move to the one it pointed at
+←‹frame›
+1<          #   until the 0 that ends the list
+}
+72o         #   0x48 0x81 0xC5 imm32  add rbp, 8*locals — release the frame
+129o
 197o
-64o
+←‹locals›
+8﹡
+w
 ]
 94E         #   the epilogue: blob record 94, the template of '^'
 k           #   backpatch the ':' or '⊚' jmp to land after it
@@ -607,7 +1060,7 @@ w           #   emit `push imm32 <the data's address>`
 140-
 [           # 0x8C ′ : push the address of the next name
 _
-(
+‹getname›   #   a byte, or a ‹long name›
 X           #   the whole job is X's, since M-CHAIN2 shares it
 ^
 ]
@@ -658,9 +1111,9 @@ o           #   an ordinary byte: copy it into the block
 143-
 [           # 0x8F → : pop TOS into the named variable
 _
-(           #   the name is the next byte
-8*
-5111808+    #   its cell in the bank at 0x4E0000, 8 bytes per name (M3W)
+‹getname›   #   the name is the next byte, or a ‹long name› — whose number
+8*          #   256..511 puts its cell at 0x4E0800..0x4E0FF8, past every
+5111808+    #   one-byte name's.  Cell = 0x4E0000 + 8*name (M3W)
 88o         #   0x58                 pop rax
 72o         #   0x48 0x89 0x04 0x25  mov [cell], rax
 137o
@@ -674,7 +1127,7 @@ w
 144-
 [           # 0x90 ← : push the named variable
 _
-(
+‹getname›
 8*
 5111808+
 72o         #   0x48 0x8B 0x04 0x25  mov rax, [cell] — the full 64-bit cell, so
@@ -688,9 +1141,9 @@ w
 
 "
 177-
-[           # 0xB1 ⊡ : define a word WITH a frame of eight per-call locals.
+[           # 0xB1 ⊡ : define a word WITH a frame of per-call locals.
 _           #   The header is ':'s exactly; the frame is what it adds.  Locals
-(           #   are opt-in because `^` is an epilogue that can appear anywhere
+‹getname›   #   are opt-in because `^` is an epilogue that can appear anywhere
 →b          #   in a body and a single-pass compiler cannot know a frame size
 233o        #   until ';' — so the only frame that costs nothing to the words
 ←p          #   that do not want one is a frame nobody else reserves.
@@ -698,14 +1151,19 @@ _           #   The header is ':'s exactly; the frame is what it adds.  Locals
 ←b
 Y
 !           #   dict[name] = body address
+‹resolve›
 ←p
 0
 w           #   the jmp displacement, left on the stack for ';'
 1E          #   the word prologue (blob record 1)
-72o         #   0x48 0x83 0xED 0x40  sub rbp, 64 — the eight slots, below the
-131o        #   return address, which is therefore at [rbp+64] from here on
-237o
-64o
+72o         #   0x48 0x81 0xED imm32  sub rbp, 8*locals — the slots, below the
+129o        #   return address.  How many is not known until ';', so the
+237o        #   immediate is left unpatched and starts the list of sites ';'
+←p          #   fills in (M-FRAME2): it holds 0, the end of that list
+→‹frame›
+0
+w
+0→‹locals›  #   no locals named yet
 1→J         #   this definition has a frame; '^' and ';' release it
 ^
 ]
@@ -714,25 +1172,14 @@ w           #   the jmp displacement, left on the stack for ';'
 178-
 [           # 0xB2 ⇒ : pop TOS into a local slot
 _
-(           #   the name is the next byte
-→b          #   keep it for the diagnostic below
-←b
-97-         #   'a' is slot 0 ...
-"
-8<          #   ... and there are only eight.  Unchecked, ⇒z would be disp 200,
-[           #   which is a NEGATIVE disp8 (-56) and would land in the frame of
-            #   a word not yet called; ⇒A would wrap to disp 0 and silently
-            #   alias slot a.  Both are the kind of quiet corruption M-DIAG
-            #   exists to refuse, so an out-of-range name stops the compile.
-“GOLF: local out of range “
-V
-]
-8*          #   a slot is 8 bytes, so this is the displacement off rbp
+‹getname›   #   the name is the next byte, or a ‹long name›
+→b
+‹slot›      #   its displacement off rbp, a disp8 for every legal local
 88o         #   0x58                 pop rax
 72o         #   0x48 0x89 0x45 disp  mov [rbp+disp], rax
 137o
 69o
-o           #   the displacement, which fits a disp8 for every legal slot
+o           #   the displacement
 ^
 ]
 
@@ -740,17 +1187,9 @@ o           #   the displacement, which fits a disp8 for every legal slot
 179-
 [           # 0xB3 ⇐ : push a local slot
 _
-(
+‹getname›
 →b
-←b
-97-
-"
-8<          #   the same eight-slot range check as ⇒
-[
-“GOLF: local out of range “
-V
-]
-8*
+‹slot›
 72o         #   0x48 0x8B 0x45 disp  mov rax, [rbp+disp]
 139o
 69o
@@ -765,11 +1204,14 @@ o
 _           #   now only so that it can ask whether there is a frame to release.
 ←J
 1-
-[           #   there is: undo the ⊡ prologue's reservation first
-72o         #   0x48 0x83 0xC5 0x40  add rbp, 64
-131o
+[           #   there is: undo the ⊡ prologue's reservation first.  Its size
+72o         #   is not known yet, so the immediate joins the list ';' patches:
+129o        #   0x48 0x81 0xC5 imm32  add rbp, <patched at ';'>
 197o
-64o
+←‹frame›    #   the placeholder holds the previous site ...
+←p
+→‹frame›    #   ... and this one becomes the head
+w
 ]
 94E         #   the epilogue itself (blob record 94).  With the flag clear this
 ^           #   is byte-for-byte what `e` used to copy, which is why every
@@ -779,7 +1221,7 @@ _           #   now only so that it can ask whether there is a frame to release.
 176-
 [           # 0xB0 ⊚ : define a word as a tacit CHAIN of links
 _           #   the header is ':'s, plus the two state cells
-(           #   its name is the next byte
+‹getname›   #   its name is the next byte, or a ‹long name›
 →b
 233o        #   0xE9 = jmp over the body about to be compiled
 ←p
@@ -787,6 +1229,7 @@ _           #   the header is ':'s, plus the two state cells
 ←b
 Y
 !           #   dict[name] = body address
+‹resolve›   #   and every call that got here first now lands on it (M2)
 ←p          #   the displacement's own address ...
 0
 w           #   ... emitted as a placeholder, and left on the stack for ';'
@@ -795,6 +1238,13 @@ w           #   ... emitted as a placeholder, and left on the stack for ';'
 0→K         #   with no links yet
 ^
 ]
+
+"
+180-
+[           # 0xB4 ‹ : a long name used as a token.  It is read and interned,
+_           #   and its NUMBER takes the char's place on the stack — then falls
+‹readname›  #   through, so the chain-link case and `e` below treat it exactly
+]           #   like a one-byte name: a link, or a call
 
 ←u
 1-
@@ -914,6 +1364,8 @@ t           #   compile it
 1<          #   loop while it is not 0, i.e. until EOF
 }
 
+‹undefined› # a long name called but never defined stops here, before a byte
+            # of output exists (M2)
 5E          # blob record 5: exit(0)
 
 B

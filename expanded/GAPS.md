@@ -43,38 +43,30 @@ Jelly is the closer comparison — GOLF already borrowed the code page, the
 one-byte-per-op canon, and the glyph/mnemonic round-trip from it. What did not
 come across:
 
-### 1.1 The data model — the big one, and it is not on the queue
+### 1.1 The data model — nested lists (support shipped, W9-3B)
 
 **Jelly's central data structure is the arbitrarily nested list.** Every atom
 that touches a list is defined at every depth, and arithmetic vectorizes all the
-way down. GOLF has *one* level and nothing below it:
+way down. Until W9-3B GOLF had *one* level and nothing below it: `⍕` printed
+inner lists as raw heap addresses, and M-VEC's five operators dispatched on the
+shapes of their two operands once, never recursing into elements.
+
+A GOLF list is a heap block `[len, e0, …]` of 64-bit cells, and an inner list is
+a tagged value (`addr | 2^48`, M-TAG2), so "is this element a list?" is an exact
+shift-and-compare. W9-3B asks it of every element:
 
 ```
-2⍳′⍳€1+⍕      ->  <addr> <addr>      # wanted [[1],[1,2]]; got the addresses, +1
-3⍳′⍳€⍕        ->  <addr> <addr> …    # ⍕ prints the inner lists' addresses
+3⍳′⍳€⍕         ->  [] [0] [0 1]          # recursive show; flat lists unchanged
+3⍳′⍳€ 10+⍕     ->  [] [10] [10 11]       # + - * ⌈ ⌊ recurse to any depth
+3⍳′⍳€"≣Ṅ       ->  -1                    # structural equality
+3⍳′⍳€⍤Ṅ        ->  2                     # depth
 ```
 
-(The printed values are heap addresses, so they are ASLR-shifted and differ every
-run — which is itself the tell: they are pointers, not data.)
-
-A GOLF list is a heap block `[len, e0, …]` of 64-bit cells and an element is
-just a cell. Nesting *stores* fine — the inner lists are really there — but
-nothing in the language knows it:
-
-- `⍕` (show) prints one level and renders inner lists as raw pointers.
-- M-VEC's five polymorphic operators dispatch on the shapes of their two
-  operands, once. They do not recurse into elements.
-- `T` cannot tell "list of ints" from "list of lists"; there is no depth or rank
-  anywhere in the representation.
-
-This is the single largest gap to Jelly, and unlike the tag bit
-([`NEXT_STEPS.md`](NEXT_STEPS.md) §1) **it is not in the queue at all.** Note the
-dependency: a recursive `⍕`, or vectorization to arbitrary depth, needs to ask
-"is this cell a list?" of *every element* — which is precisely the question `T`
-answers with a range heuristic that DESIGN.md admits is wrong in principle. So
-the tag bit is not just a correctness fix; it is the prerequisite for the whole
-nested-data story. That is worth saying explicitly in the queue, because item 1
-is currently justified only by the misclassification bug.
+What is still missing against Jelly: the rest of the list vocabulary is
+one-level (`∑` folds with the deep `+`, but `⌽`, `⌿`, `⊇` see only the top
+level), there is no rank or reshape, and `Z` truncates silently on a length
+mismatch at every depth. Nesting depth is bounded by the 28-frame scratch spill
+stack (DESIGN.md, known limits).
 
 ### 1.2 The numeric tower
 
@@ -109,13 +101,28 @@ vocabulary is 17 words: range, sum, len, index, alloc, map, fold, show, product,
 reverse, filter, puts, chars, join, zip, plus the five polymorphic operators and
 three combinators.
 
-Missing and routinely needed: **sort, concatenate, take/drop/slice, member,
-index-of, unique, min/max of a list, structural equality, flatten**. Concatenate
-is the one that stings most — `+` on two lists is elementwise, so there is no way
-to join two lists at all:
+Missing and routinely needed *was*: **slice, index-of, unique, min/max of a
+list, structural equality, flatten**. Concatenate used to head this list —
+`+` on two lists is elementwise, so there was no way to join two lists at all —
+and **W9-4A shipped it** as `⧺` (with `↑` take and `↓` drop, negative `n`
+counting from the end); **W9-4B shipped sort and member** as `⍋` (a new list,
+ascending signed, stable merge sort) and `∊` (`list x -> 0` on a hit, 1 on a
+miss); W9-3B shipped structural equality as `≣`; and **W9-4B part 2 shipped
+the rest** as long-named prelude words — `‹slice›`, `‹indexof›`, `‹unique›`
+and `‹flatten›`. So none of sort, concatenate, take, drop, slice, member,
+index-of, unique, structural equality or flatten is missing any more. Of the
+list above only min/max of a list has no word of its own; it is a fold
+seeded with the first element, `"0⊇′⌈⇤` (`′⌊` for the min):
 
 ```
 2⍳2⍳+⍕   ->  0 2        # elementwise, not [0,1,0,1]
+2⍳2⍳⧺⍕   ->  0 1 0 1    # W9-4A: concatenate
+5⍳⌽⍋⍕    ->  0 1 2 3 4  # W9-4B: sort
+5⍳3∊Ṅ    ->  0          # W9-4B: member (zero-is-true)
+5⍳1 3‹slice›⍕  ->  1 2 3        # W9-4B part 2: slice
+5⍳3‹indexof›Ṅ  ->  3            # W9-4B part 2: index-of (-1 if absent)
+5⍳"⧺‹unique›⍕  ->  0 1 2 3 4    # W9-4B part 2: unique, first occurrences
+3⍳′⍳€‹flatten›⍕ -> 0 0 1        # W9-4B part 2: flatten
 3⍳3⍳≡Ṅ   ->  0          # ≡ compares the two ADDRESSES, not the contents
 ```
 
@@ -124,7 +131,9 @@ prelude's uppercase pool is down to `B` and `C`. Two letters, ten-plus wanted
 words. Everything else has to come from `0xC8`–`0xCF` (eight bytes) or wait for
 M2 multi-character identifiers (§4 of the queue). **This makes M2 more urgent
 than its current position suggests** — it is filed as "nothing above needs it",
-but the library cannot grow past two more words without it.
+but the library cannot grow past two more words without it. *(Since W9-3A:
+**shipped** — `‹name›` long names, so the blocker is gone; and since W9-4B
+part 2 the library words themselves are written, as long-named words.)*
 
 ### 1.4 Tacit programming: runtime library vs parse-time algebra
 
@@ -152,19 +161,20 @@ Jelly needs no such escape hatch. Closing this properly is a front-end rewrite,
 not a milestone — worth recording as out of scope rather than leaving it as an
 implied someday.
 
-### 1.5 I/O and the program's shape
+### 1.5 I/O and the program's shape — input shipped (W9-4C)
 
 Jelly reads arguments from the command line, evaluates the last chain as `main`,
 and **auto-prints the result**. GOLF requires explicit printing every time
-(`Ṅ ⍕ ␤ 🗲 ⊐`) and, for an ordinary user program, has almost nothing to read
-*with*: `(` gets one byte from stdin, and that is the whole input surface.
+(`Ṅ ⍕ ␤ 🗲 ⊐`). Until W9-4C an ordinary user program also had almost nothing
+to read *with*: `(` got one byte from stdin, and that was the whole input
+surface (`lib/tio.golfj`/`lib/ttext.golfj` serve only the repo's own tools).
 
-The pieces exist — `⎈` (`\sys`) is an atom available to any program, and
-`lib/tio.golfj`/`lib/ttext.golfj` have buffered reads, a slurp, argv and decimal
-parsing — but those libraries are prepended only by `gtools/build`, for the
-repo's own tools. This is queued as item 5 (M6b) and correctly scoped there;
-the note that it cannot simply prepend `lib/t*.golfj` (they claim `a`–`z`
-wholesale) is the crux, and it runs into the same letter shortage as §1.3.
+W9-4C (NEXT_STEPS item 5, M6b) put the input half into the prelude under long
+names, so no letter was spent: `‹readall›`, `‹readline›`, `‹getc›`,
+`‹words›`, `‹num›`, `‹ints›` and `‹args›` (REFERENCE.md, "Input").
+`printf '1 2 3' | prog` with `‹ints›∑Ṅ` prints `6`. What remains of the gap is
+the program's *shape*: no implicit `main`, no auto-print, and the command line
+arrives as code lists the program must parse itself (`‹args›′‹num›€`).
 
 ---
 
@@ -185,7 +195,9 @@ key on but integers.
 ### 2.2 Names and scope
 
 - **Single-byte identifiers.** 256 word slots in a flat byte-indexed table, and
-  the readable letters are gone (§1.3). Queued as M2 (§4).
+  the readable letters are gone (§1.3). **Fixed by M2 (W9-3A):** `‹name›` adds
+  256 long names per program, usable as words, quotations, chain links and
+  variables. Locals still take one-byte slot names `a`–`h`.
 - **No lexical scope, and no closures.** The variable bank is one global cell per
   name. The "closure" idiom in `examples/legacy_capstone.golfj`
   (`10→k:f←k+;… ′f€`) is a global read at call time, not a capture:
@@ -206,10 +218,9 @@ key on but integers.
   in the queue for anyone actually writing programs. **Fixed by M-FRAME**, opt in
   per definition: `⊡f"0-[_0^]⇒a⇐a1-f⇐a+;3fṄ` is `6`. The global spelling still
   behaves exactly as above — it is not deprecated, and the suite pins both.
-  Locals are eight slots named `a`–`h`; sizing a frame per definition is
-  [`NEXT_STEPS.md`](NEXT_STEPS.md) §2, and the reason it is not free is that `^`
-  is a template that ends a word, so a single-pass compiler cannot know a frame's
-  size until `;`.
+  Since M-FRAME2 (W9-4D) locals may have long names (`⇒‹acc›`) and a frame
+  is sized to the locals a word names, one cell each — the `^`s' frame-size
+  immediates are patched at `;` ([`NEXT_STEPS.md`](NEXT_STEPS.md) §2).
 
 ### 2.3 Functions
 
@@ -218,7 +229,11 @@ keyword arguments, no varargs, **no arity checking of any kind**, no anonymous
 functions — `′` quotes a *named* word, so every function must be defined and
 named first — and no generators, decorators, or comprehensions.
 
-**No forward references or mutual recursion.** A word must be defined before use.
+**No forward references or mutual recursion.** *(Fixed for long names by M2,
+W9-3A: a `‹name›` may be called or quoted before its definition, the call sites
+are patched when it arrives, and one never defined is `GOLF: undefined word
+‹name›`, exit 2. One-byte names stay define-before-use, now with M-DIAG's
+diagnostic instead of the segfault below.)* A word must be defined before use.
 Self-recursion works (the dictionary slot is live inside the body), but two words
 that call each other cannot be written at all — and the failure is a compile that
 *succeeds* and a binary that segfaults:
@@ -244,6 +259,12 @@ message. Every failure mode is silent corruption or a signal:
 3⍳9⊇Ṅ      ->  0                        # out of bounds, no check, garbage back
 ```
 
+**Since W9-2B, both of those two are reported**: `GOLF: divide by zero` /
+`GOLF: index out of range` on fd 2, exit status 1 (`∣` too, and a negative or
+exactly-`len` index; `INT64_MIN ÷ -1` is defined as `INT64_MIN`, `∣ -1` as 0).
+Still a signal: v1's unsigned `/` and `%` divided by zero — they are frozen v1
+templates. Still no `try`; a runtime error ends the program.
+
 The compiler is the same: bad source does not produce a diagnostic, it produces
 a bad binary. For a language whose whole test discipline is byte-identical
 differential comparison, "no diagnostics at all" is a defensible cost — but it is
@@ -252,9 +273,13 @@ Python, and it appears nowhere in DESIGN.md's limits.
 
 ### 2.5 Memory
 
-- **Nothing is freed.** `A` bump-allocates; `M`, `W`, `V`, `Z`, `K`, `G` each
-  allocate per call, so a map in a loop climbs forever. Queued as M-MEM2 (§3),
-  accurately.
+- **Freeing is manual (was: nothing is freed).** `A` bump-allocated and `M`,
+  `W`, `V`, `Z`, `K`, `G` each allocate per call, so a map in a loop climbed
+  forever. **Since W9-3C (M-MEM2)** `⌫` hands a block back to a size-classed
+  free list that `A` checks first, so a loop that frees what it maps keeps the
+  break flat. It is explicit — nothing frees on its own, there is no GC and no
+  ownership, and a use after `⌫` is undefined — so against Python this is
+  C's `free`, not reference counting.
 - **The `∘` compose arena has no bounds check, and overruns into user data.**
   See §3 below — this one is a live defect, not a design limit.
 
@@ -321,21 +346,23 @@ the frozen `v1c`, whose entire output surface is `)` (one byte to fd 1) and `.`
 status; only the explanation is golf2's, and the seed's error path is unreachable
 in the build anyway.
 
-*Still open, and a different bug:* the `′` path does not get this check. `X`
-already treats a name with no dictionary entry as an **atom** (that is how
-`′atom` auto-wrapping works), so `′typo` builds a thunk around a template that
-does not exist rather than reporting anything. Worth its own fix; it is not the
-same code path and not the same failure.
+*A different bug, fixed later (W9-1C):* the `′` path did not get this check.
+`X` treated a name with no dictionary entry as an **atom** (that is how `′atom`
+auto-wrapping works), so `′typo` built a thunk around a template that does not
+exist, and `3⍳′q€⍕` compiled clean and died with SIGILL. `X` now also checks the
+blob and hands a byte that is neither word nor atom to `e`, which is already the
+diagnostic: `GOLF: undefined word q`, exit 2, nothing on fd 1 (the seed exits 2
+silently, as above). Chain links go through `X`, so they are covered too.
 
-### 3.3 Nested lists have no support above the storage layer — now queued
+### 3.3 Nested lists had no support above the storage layer — FIXED (W9-3B)
 
-§1.1. Not a crash, but `⍕` printing pointers is a wrong answer, and it is the
-gap that most limits what can be written. Now recorded as the second
-justification for the tag bit ([`NEXT_STEPS.md`](NEXT_STEPS.md) §1), which is its
-prerequisite.
+§1.1. Not a crash, but `⍕` printing pointers was a wrong answer, and it was the
+gap that most limited what could be written. The tag bit (M-TAG2, W9-2A) was its
+prerequisite; W9-3B then made `⍕` recursive, made the bare `+ - *` recurse like
+`⌈ ⌊`, and added `≣` (structural equality) and `⍤` (depth).
 
 Already recorded and confirmed accurate: the `T` range-test misclassification
-(DESIGN.md known limits, queue §1), the global-bank recursion footgun (queue §2),
+(queue §1 — **fixed** by M-TAG2, W9-2A), the global-bank recursion footgun (queue §2),
 allocator leaks (queue §3), the letter shortage (REGISTRY §2), and the
 seed/golf2 divergence above 2³¹ (DESIGN.md known limits).
 
@@ -385,7 +412,7 @@ Ordered by (severity × how cheap the fix is) when this file was written.
 Since then **M-FRAME** shipped too, which was §2.2's silent-wrong-answer on
 recursion — the worst remaining defect this file found. That leaves, as the top
 of the real queue: the tag bit (correctness *and* nested data), then M2 (the
-letter shortage, which now also gates naming more than eight locals), then
-sizing a `⊡` frame per definition. Two small unclaimed fixes remain: the
-`′`-path variant of §3.2, and a guard on the return stack, which has none and
-which M-FRAME made easier to reach (DESIGN.md, known limits).
+letter shortage — since shipped by W9-3A), then sizing a `⊡` frame per
+definition — since shipped, with named locals, by W9-4D. Two small unclaimed fixes remain: the
+`′`-path variant of §3.2, and a guard on the return stack, which M-FRAME made
+easier to reach — since closed by W9-2C's guard page (DESIGN.md, known limits).

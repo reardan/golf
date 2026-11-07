@@ -47,6 +47,32 @@
 :C"1+?\2+\c;                                            # C: copy template @rec
 :fS!m8+@{"?"[_^]S@-[^]"1+?2++0};                        # f: find record for key
 :EfC;                                                   # E: emit template for key
+# ---------------------------------------------------------------------------
+# M2 — long names, ‹name› (0xB4 … 0xB5).  A long name is interned to a NAME
+# NUMBER 256+index at its first appearance, and from then on is a name that
+# does not fit a byte: Y (dict at m2048 + 4*name) and the variable bank
+# (0x4E0000 + 8*name) take it with their one-byte formulas.  Tables, both
+# compiler-only (../REGISTRY.md §3):
+#     0x430000 + 64*E   entry for name E (256..511): [len:4][up to 60 bytes]
+#     0x438000 + 4*E    E's forward-reference head: the last unpatched site
+# Seed-side scratch:  m60 name count · m64 length being read · m68 entry being
+# read into · m72 entry compared against · m76 compare countdown · m80 index ·
+# m84 a body address.  (self/golf2.golfj names the same state ‹count› ‹len›
+# ‹entry› ‹other› ‹left› ‹idx› in its own variable bank.)
+#
+# Every error here is golf2's `GOLF: bad long name` / `too many long names` /
+# `undefined word ‹name›` — and, as for `e`, the seed can only exit(2).
+# ---------------------------------------------------------------------------
+:xm64+@4+m76+!0{_m76+@[0^]m76+@1-m76+!m72+@m76+@+?m68+@m76+@+?-"}; # x: 0 iff entries m72 and m68 hold one name (length cell and bytes, last to first)
+# N: read a long name after ‹ straight into the next free entry; on › look for
+# it among the names so far, else claim that entry.  -> its name number.  A name
+# byte must be 0-9 A-Z a-z _ or - : the five range tests sum to -1 for exactly
+# one of them and to 0 for anything else, EOF included.
+:Nm60+@256+64*4390912+m68+!0m64+!{("181-[_m64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@256<[2.]m60+@"1+m60+!256+^]m80+@256+64*4390912+m72+!x[m80+@256+^]m80+@1+m80+!0}]"48-10<&65-26<+&97-26<+&95-1<+&45-1<+[2.]m64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!0};
+:G("180-[_N];                                           # G: a prefix's operand -- one byte, or a whole ‹long name›
+:F\o4*4423680+"@P\w\!;                                  # F: op name -> emit `op rel32`, the site joining name's pending list
+:R"Y@m84+!4*4423680+"@\0\!{"[_^]"@\"m84+@\-4-\!0};       # R: name -> patch its pending sites to its (just stored) body
+:z0m80+!{m80+@m60+@-[^]m80+@256+4*4423680+@1<[2.]m80+@1+m80+!0}; # z: end of input -- a long name still pending is undefined
 # e — the default: emit a table op, or compile a call to a user word.
 #
 # v1's `e` emitted `call rel32` with rel32 = dict[name] - (P+4) and never looked
@@ -68,7 +94,9 @@
 # The reordering against v1 is load-bearing: `232o` has to sit BELOW the lookup
 # so the slot can be tested before a byte is written, and `P` is read after
 # `232o` in both forms, so rel32 is unchanged.
-:e"f"?[_Y@"[2.]232oP4+-w^]\_C;                          # e: table op or call (undefined word -> exit 2)
+# M2: with dict[name] zero, a LONG name (>= 256) is not an error yet but a
+# forward call through its pending list (F); only a one-byte name exits 2.
+:e"f"?[_"Y@"[_"256<1+[2.]232\F^]\_232oP4+-w^]\_C;       # e: table op or call (undefined word -> exit 2)
 :D0{("U[_^]Z0};                                         # D: read decimal
 :gQ@"[_(^]0Q!;                                          # g: get char (pending Q)
 :h{("10-[_^]"[_^]_0};                                   # h: skip comment line
@@ -84,17 +112,33 @@
 # byte" three times over.  It has to be defined before `t` (which calls it) and
 # after everything it calls itself — o, w, E and the templates — which `h` is the
 # last of, so it lands exactly here.
-:X"Y@"[_233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+#
+# M2: an undefined LONG name may be defined further down, so ′ pushes the address
+# of a thunk [jmp rel32] instead (jumped over), the rel32 on the name's pending
+# list; ⍎ on the thunk tail-jumps into the word.
+#
+# A name that is neither a word nor an atom (`′typo`) is handed to `e`, which
+# already rejects it — no template, dict slot 0 — with exit(2).  Before W9-1C it
+# was wrapped like an atom, around a template that does not exist (SIGILL).
+:X"Y@"[_"256<[233o5wPm24+!233&FLm24+@69632-w_^]"f?["e]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+# l — M-FRAME2: the rbp displacement of a local, from its name number.  A
+# one-byte local must be a..h.  Outside a ⊡ word (m56 clear) it keeps M-FRAME's
+# fixed slot name-'a', and a long name is refused.  Inside, the definition's
+# slot table at m96 (name numbers, 4 bytes each) is searched in order of first
+# appearance; a new name claims slot m88 (the count so far), at most 16, so every
+# displacement is a disp8.  m80 is the walking index (M2's, idle by now).  golf2
+# names the offending local on fd 2; the seed can only exit(2).
+:l"256<1+["97-8<[2.]]m56+@["256<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
 :t"33<1+[_^]                                            # whitespace
 "35-[_h^]                                               # '#' comment
 "U1+[48-{("U[Q!Lw^]Z0}]                                 # digit -> number
 "39-[_(Lw^]                                             # "'" char literal
-"58-[_(233oP4+\Y!P0w1E^]                                # ':' define word
+"58-[_G"233oP4+\Y!RP0w1E^]                                # ':' define word
 # `;` closes a chain and a frame as well as a definition: a 1- or 2-link chain
 # never reached the fork, so its links are emitted here as plain calls, and a ⊡
 # word releases its frame.  Then the ordinary epilogue and backpatch, which are
 # the same for every kind of definition.
-"59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!72o131o197o64o]94Ek^] # ';' end def -- and close a chain
+"59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!{m92+@@m88+@8*m92+@!m92+!m92+@1<}72o129o197om88+@8*w]94Ek^] # ';' end def -- and close a chain
 "91-[_2E133oP0w^]                                       # '[' if
 "93-[_k^]                                               # ']' end if
 "'{-[_P^]                                               # '{' loop start ('{ = 123)
@@ -111,7 +155,7 @@
 # and emit `push <that word's runtime address>` instead of a call.  This is the
 # first change to compiler logic over v1, and what makes higher-order functions
 # possible: ′f pushes a callable and ⍎ calls it, so map and fold work.
-"140-[_(X^]                                             # 0x8C  ′  quotation: push a word's address
+"140-[_GX^]                                             # 0x8C  ′  quotation: push a word's address
 
 # “ (0x8E) — a string literal.  “...“ emits a length-prefixed byte block
 # [len(4)][bytes], jumped over, and pushes its address.  A string is thus a byte
@@ -136,42 +180,42 @@
 # address had to be reallocated.  Widening in place was impossible for the same
 # reason the scratch bank could not be: at a 4-byte stride x's high half IS the
 # cell of name x+1.
-"143-[_(8*5111808+88o72o137o4o37ow^]                    # 0x8F  →x store TOS to the global variable bank
-"144-[_(8*5111808+72o139o4o37ow80o^]                    # 0x90  ←x load from the global variable bank
+"143-[_G8*5111808+88o72o137o4o37ow^]                    # 0x8F  →x store TOS to the global variable bank
+"144-[_G8*5111808+72o139o4o37ow80o^]                    # 0x90  ←x load from the global variable bank
 
-# ⊡ (0xB1) / ⇒x (0xB2) / ⇐x (0xB3) — M-FRAME, per-call locals.
+# ⊡ (0xB1) / ⇒x (0xB2) / ⇐x (0xB3) — M-FRAME, per-call locals, sized per
+# definition since M-FRAME2 (W9-4D).
 #
-#   ⊡name … ;   define a word WITH a frame of eight local slots
-#   ⇒x          pop TOS into local x   (x in a..h)
+#   ⊡name … ;   define a word WITH a frame of locals, one cell per local named
+#   ⇒x          pop TOS into local x   (x in a..h, or a ‹long name›)
 #   ⇐x          push local x
 #
-# ⊡ is `:`'s case plus two things: the frame reservation right after the
-# prologue (`sub rbp,64`), and a flag in m56 saying "this definition has a
-# frame" — which `^` and `;` read to decide whether to release it.  Layout, with
-# R the address the return address is stored at:
+# ⊡ is `:`'s case plus three things: `sub rbp, imm32` right after the prologue,
+# its immediate left unpatched; a flag in m56 saying "this definition has a
+# frame", which `^` and `;` read; and a zeroed local count in m88.  Layout, for
+# a word naming k locals, with R the address the return address is stored at:
 #
-#     [rbp+0] .. [rbp+56]   the eight local slots, a..h
-#     [rbp+64] = R          the return address
+#     [rbp+0] .. [rbp+8k-8]  the k slots, in order of first appearance
+#     [rbp+8k] = R           the return address
 #
-# A slot's displacement is 8*(name-'a') and does not depend on how many slots the
-# word actually uses, which is what lets ⇒/⇐ be fixed-size five-byte templates.
-# Eight slots is the compromise: the compiler's own busiest word holds five
-# variables at once, while a slot per letter would cost 216 bytes a frame.
-#
-# `"8<[2.]` is the eight-slot range check.  Unchecked, ⇒z would be displacement
-# 200 — a NEGATIVE disp8 (-56), landing in the frame of a word not yet called —
-# and ⇒A would wrap to 0 and silently alias slot a.  golf2 names the offending
-# byte on fd 2; this seed, in v1 GOLF, can only exit(2).  Same status, same
-# asymmetry as `e` above, gated by test/selfcheck.sh.
-"177-[_(233oP4+\Y!P0w1E72o131o237o64o1m56+!^]           # 0xB1  ⊡  define a word owning a frame of 8 locals
-"178-[_(97-"8<[2.]8*88o72o137o69oo^]                    # 0xB2  ⇒x pop TOS into local slot x (a..h)
-"179-[_(97-"8<[2.]8*72o139o69oo80o^]                    # 0xB3  ⇐x push local slot x
+# `l` gives a name its slot (m96 holds the table), so ⇒/⇐ stay five bytes; only
+# k waits for `;`.  Every frame-size immediate — the ⊡'s and each `^`'s
+# `add rbp, imm32` — holds the previous one's address (the ⊡'s holds 0) and m92
+# the newest, so `;` walks that list writing 8k into each, then emits its own
+# `add rbp, 8k`.  A one-letter local past h, a 17th local, or a long local
+# outside a ⊡ word stops the compile: golf2 says which on fd 2; this seed, in v1
+# GOLF, can only exit(2).  Same status, same asymmetry as `e` above, gated by
+# test/selfcheck.sh.
+"177-[_G"233oP4+\Y!RP0w1E72o129o237oPm92+!0w0m88+!1m56+!^] # 0xB1  ⊡  define a word owning a frame of locals
+"178-[_Gl88o72o137o69oo^]                               # 0xB2  ⇒x pop TOS into local x (a..h or ‹name›)
+"179-[_Gl72o139o69oo80o^]                               # 0xB3  ⇐x push local x
 
 # `^` was a plain template until M-FRAME; it becomes a case purely so it can test
-# that flag.  With the flag clear it emits `94E` — the same template `e` would
+# that flag (and, since M-FRAME2, link its frame-size immediate into m92's
+# list).  With the flag clear it emits `94E` — the same template `e` would
 # have copied — so every existing program compiles to the bytes it did before,
 # which is what keeps the ladder and the fixpoint undisturbed.
-"94-[_m56+@1-[72o131o197o64o]94E^]                      # '^' early return: release the frame first when there is one
+"94-[_m56+@1-[72o129o197om92+@Pm92+!w]94E^]               # '^' early return: release the frame first when there is one
 
 # ⊚ (0xB0) — M-CHAIN2, a CHAIN definition.  `⊚name f g h;` is the tacit train the
 # explicit spelling builds, with the compiler supplying every ′:
@@ -194,7 +238,12 @@
 # Seed-side state, ../REGISTRY.md §3:  m32 in-a-chain flag · m36 link count ·
 # m40/m44/m48 the buffered link bytes.  (self/golf2.golfj holds the same five in
 # its variable bank as u K F G I — it owns that bank; see its header.)
-"176-[_(233oP4+\Y!P0w1E1m32+!0m36+!^]                   # 0xB0  ⊚  chain definition header
+"176-[_G"233oP4+\Y!RP0w1E1m32+!0m36+!^]                   # 0xB0  ⊚  chain definition header
+
+# ‹ (0xB4) as a TOKEN: read and intern the long name, and let its number take
+# the char's place and fall through — so the LINK case and `e` below treat it
+# exactly like a one-byte name.
+"180-[_N]                                               # 0xB4  ‹  a long name used as a token
 
 # A token inside a chain is a LINK.  This case must sit LAST, just before the
 # `e;` fallthrough: everything `t` recognizes earlier — whitespace, comments,
@@ -209,5 +258,6 @@ e;                                                      # default: e
 @BLOB@
 
 # main: store the blob address, write the ELF header, set P = B+120, emit
-# the startup stub, run the token loop, exit, then flush the output buffer.
-m8+!HB120+m4+!3E{g"m!tm@1<}5EB{"?)1+"P<1+}_
+# the startup stub, run the token loop, check no long name is left undefined
+# (z), exit, then flush the output buffer.
+m8+!HB120+m4+!3E{g"m!tm@1<}z5EB{"?)1+"P<1+}_

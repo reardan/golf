@@ -15,6 +15,8 @@ Usage:
   codepage.py decode <in.gb                 # raw bytes -> glyphs
   codepage.py decode -m <in.gb              # raw bytes -> ASCII \\mnemonic form
   codepage.py table                         # print the atom code-page reference
+  codepage.py reference                     # the same tables as Markdown (REFERENCE.md)
+  codepage.py reference --update FILE       # splice them between FILE's markers
   codepage.py check                         # assert the namespace invariants
 """
 import os, sys
@@ -38,11 +40,11 @@ LIB = [
     ("L", "len",   "≢", "len(list)"),
     ("I", "index", "⊇", "index(list, i)"),
     ("A", "alloc", "⍶", "alloc(cells) -> addr"),
-    ("N", "num",   "Ṅ", "print unsigned decimal"),
+    ("N", "num",   "Ṅ", "print signed decimal"),
     ("E", "nl",    "␤", "print newline"),
     ("M", "map",   "€", "map(list, fn) -> list"),
     ("F", "fold",  "⇤", "fold(list, init, fn) -> x"),
-    ("Q", "show",  "⍕", "print a list, space-separated"),
+    ("Q", "show",  "⍕", "print a list, space-separated; inner lists as [a b]"),
     ("P", "prod",  "∏", "product(list)"),
     ("V", "rev",   "⌽", "reverse(list) -> list"),
     ("W", "filter","⌿", "filter(list, pred) -> list (keep where pred==0)"),
@@ -57,11 +59,22 @@ LIB = [
     (0xC0, "vadd", "∔", "polymorphic add (int/list, elementwise, broadcast)"),
     (0xC1, "vsub", "∸", "polymorphic sub (int/list, elementwise, broadcast)"),
     (0xC2, "vmul", "⨰", "polymorphic mul (int/list, elementwise, broadcast)"),
-    (0xC3, "vmin", "⩍", "polymorphic min (int/list, elementwise, broadcast)"),
-    (0xC4, "vmax", "⩌", "polymorphic max (int/list, elementwise, broadcast)"),
+    (0xC3, "vmin", "⩍", "polymorphic signed min (int/list, elementwise, broadcast)"),
+    (0xC4, "vmax", "⩌", "polymorphic signed max (int/list, elementwise, broadcast)"),
     (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
     (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
     (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
+    (0xC8, "match", "≣", "match: a b -> -1/0, structural equality into nested lists"),
+    (0xC9, "depth", "⍤", "depth: int 0, flat list 1, list of lists 2, ..."),
+    # --- W9-4A LIB rows: list words (prelude anchor W9-4A-LISTWORDS1) ---
+    (0xCB, "cat",  "⧺", "concatenate: l1 l2 -> new list (l1 then l2)"),
+    (0xCC, "take", "↑", "take: list n -> first n (n<0: last |n|; clamped to len)"),
+    (0xCD, "drop", "↓", "drop: list n -> all but first n (n<0: all but last |n|)"),
+    # --- W9-3C LIB row ---
+    (0xCA, "free", "⌫", "free(list|block): release an A block to the free list"),
+    # --- W9-4B LIB rows: list words (prelude anchor W9-4B-LISTWORDS2) ---
+    (0xCE, "sort", "⍋", "sort: list -> new list, ascending signed (stable merge sort)"),
+    (0xCF, "memb", "∊", "member: list x -> 0 if x is an element, else 1"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
@@ -74,9 +87,12 @@ COMPILER = [
     (mkblob2.CHAIN_BYTE, "chain", "⊚",
      "prefix: ⊚name f g h; defines a tacit chain (a train of links)"),
     (mkblob2.FRAME_BYTE, "dloc", "⊡",
-     "prefix: ⊡name ... ; defines a word with a frame of 8 per-call locals"),
-    (mkblob2.LSET_BYTE, "lset", "⇒", "prefix: ⇒x pops TOS into local x (a..h)"),
-    (mkblob2.LGET_BYTE, "lget", "⇐", "prefix: ⇐x pushes local x (a..h)"),
+     "prefix: ⊡name ... ; defines a word with a frame of per-call locals, one cell each"),
+    (mkblob2.LSET_BYTE, "lset", "⇒", "prefix: ⇒x pops TOS into local x (a..h or ‹name›)"),
+    (mkblob2.LGET_BYTE, "lget", "⇐", "prefix: ⇐x pushes local x (a..h or ‹name›)"),
+    (mkblob2.LNAME_BYTE, "lname", "‹",
+     "opens a long name: ‹name› stands wherever a one-byte name can"),
+    (mkblob2.RNAME_BYTE, "rname", "›", "closes a long name"),
 ]
 
 def lib_byte(key) -> int:
@@ -109,6 +125,28 @@ for _key, _mn, _gl, _doc in LIB:
         BYTE2MNEM[_b] = _mn
 
 
+# String literals (../REGISTRY.md "W9", shipped by W9-1B).  Between two
+# delimiters the source is LITERAL: its UTF-8 is copied verbatim — no mnemonics,
+# no glyph encoding, `#` is not a comment.  Either spelling of the delimiter
+# opens a literal, and either closes it: the glyph `“` or the exact text `\str`.
+# The one escape is `\“`, which stands for the UTF-8 bytes of `“` (E2 80 9C).
+# Consequences: the text `\str` cannot appear inside a literal (it closes it),
+# and neither can any character whose UTF-8 holds byte 0x8E — the compiler
+# copies bytes up to the next 0x8E — so such a literal is an encode error.
+STR_GLYPH = "“"
+STR_MNEM = "\\str"
+STR_ESC = "\\“"
+STR_ESC_BYTES = STR_GLYPH.encode("utf-8")      # E2 80 9C
+STR_ERR = "codepage: a string literal cannot contain byte 0x8E (the string delimiter)"
+
+
+def _delim(text: str, i: int) -> int:
+    """Length of the string delimiter starting at text[i], or 0."""
+    if text[i] == STR_GLYPH:
+        return 1
+    return len(STR_MNEM) if text.startswith(STR_MNEM, i) else 0
+
+
 def encode(text: str) -> bytes:
     """Turn glyph/mnemonic/ASCII source into raw code-page bytes."""
     out = bytearray()
@@ -119,6 +157,21 @@ def encode(text: str) -> bytes:
             while i < n and text[i] != "\n":
                 i += 1
             continue
+        d = _delim(text, i)
+        if d:                                      # a string literal: verbatim
+            out.append(mkblob2.STR_BYTE); i += d
+            while i < n:
+                if text.startswith(STR_ESC, i):    # \“ -> the bytes of “
+                    out += STR_ESC_BYTES; i += len(STR_ESC); continue
+                d = _delim(text, i)
+                if d:                              # the closing delimiter
+                    out.append(mkblob2.STR_BYTE); i += d
+                    break
+                b = text[i].encode("utf-8")
+                if mkblob2.STR_BYTE in b:
+                    raise SystemExit(STR_ERR)
+                out += b; i += 1
+            continue                               # (an unclosed literal runs to EOF)
         if c == "\\":                              # \name mnemonic escape
             if i + 1 < n and text[i + 1] == "\\":  # \\ -> literal backslash (swap)
                 out.append(0x5C); i += 2; continue
@@ -142,14 +195,41 @@ def encode(text: str) -> bytes:
 
 
 def decode(data: bytes, mnemonic: bool = False) -> str:
+    """Raw bytes -> glyph (or `-m` mnemonic) source.
+
+    Byte 0x8E toggles "inside a literal".  Inside one, bytes are copied RAW (as
+    surrogate-escaped str, so even invalid UTF-8 survives to stdout byte for
+    byte), except E2 80 9C, which is written as the escape `\\“`.  The closer is
+    `“`, or `\\str` when the literal's last byte is a backslash (`\\“` would read
+    back as the escape).  This is a byte-level rule on purpose: gtools/decode
+    applies the same one without a UTF-8 decoder.
+    """
     out = []
-    for b in data:
-        if b in BYTE2GLYPH and b >= 0x80:
-            out.append(f"\\{BYTE2MNEM[b]}" if mnemonic else BYTE2GLYPH[b])
-        elif b in (9, 10) or 32 <= b < 127:
-            out.append(chr(b))
+    in_str = False
+    i, n = 0, len(data)
+    while i < n:
+        b = data[i]
+        if b == mkblob2.STR_BYTE:
+            if mnemonic:
+                out.append(STR_MNEM)
+            elif in_str and data[i - 1] == 0x5C:
+                out.append(STR_MNEM)
+            else:
+                out.append(STR_GLYPH)
+            in_str = not in_str; i += 1
+        elif in_str:
+            if data[i:i + 3] == STR_ESC_BYTES:
+                out.append(STR_ESC); i += 3
+            else:
+                out.append(bytes([b]).decode("utf-8", "surrogateescape")); i += 1
         else:
-            out.append(f"\\x{b:02X}")               # exact round-trip fallback
+            if b in BYTE2GLYPH and b >= 0x80:
+                out.append(f"\\{BYTE2MNEM[b]}" if mnemonic else BYTE2GLYPH[b])
+            elif b in (9, 10) or 32 <= b < 127:
+                out.append(chr(b))
+            else:
+                out.append(f"\\x{b:02X}")           # exact round-trip fallback
+            i += 1
     return "".join(out)
 
 
@@ -168,6 +248,62 @@ def print_table():
         b = lib_byte(key)
         word = key if isinstance(key, str) else "-"     # high-byte words: no letter
         print(f"0x{b:02X}   {gl:>2}     \\{mn:<7}  {word}     {doc}")
+
+
+# REFERENCE.md carries the output of `reference` between these two lines, and
+# run2.sh (W9-1D) requires it to equal the current output, so the generated half
+# of the language reference cannot drift from the tables above.
+REF_BEGIN = "<!-- BEGIN GENERATED: python3 tools/codepage.py reference -->"
+REF_END = "<!-- END GENERATED -->"
+
+
+def _md(text) -> str:
+    """One Markdown table cell: a pipe would end the cell, even in a code span."""
+    return str(text).replace("|", "\\|")
+
+
+def reference_md() -> str:
+    """The v2 atom / compiler-op / library tables, as Markdown."""
+    out = []
+    w = out.append
+    w("### Atoms\n")
+    w("Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): "
+      "the compiler copies each one's template inline.\n")
+    w("| byte | glyph | mnemonic | meaning |")
+    w("|---|---|---|---|")
+    for b, mn, gl, _t, doc in mkblob2.ATOMS:
+        w(f"| `0x{b:02X}` | `{_md(gl)}` | `\\{mn}` | {_md(doc)} |")
+    w("\n### Compiler ops\n")
+    w("Single-byte tokens the compiler handles itself (prefixes, delimiters, "
+      "definition headers) — there is no template behind them.\n")
+    w("| byte | glyph | mnemonic | meaning |")
+    w("|---|---|---|---|")
+    for b, mn, gl, doc in COMPILER:
+        w(f"| `0x{b:02X}` | `{_md(gl)}` | `\\{mn}` | {_md(doc)} |")
+    w("\n### Library words\n")
+    w("Words defined by the prelude (`lib/prelude.golfj`). A letter word is "
+      "called by its ASCII letter; its glyph and mnemonic are input aliases for "
+      "that letter. A high-byte word has no letter.\n")
+    w("| byte | glyph | mnemonic | word | meaning |")
+    w("|---|---|---|---|---|")
+    for key, mn, gl, doc in LIB:
+        b = lib_byte(key)
+        word = f"`{key}`" if isinstance(key, str) else "—"
+        w(f"| `0x{b:02X}` | `{_md(gl)}` | `\\{mn}` | {word} | {_md(doc)} |")
+    return "\n".join(out) + "\n"
+
+
+def reference_splice(path):
+    """Rewrite the generated block of `path` in place (between the markers)."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    a, z = text.find(REF_BEGIN), text.find(REF_END)
+    if a < 0 or z < a:
+        raise SystemExit(f"codepage: {path} lacks the reference markers")
+    a += len(REF_BEGIN)
+    new = text[:a] + "\n" + reference_md() + text[z:]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new)
 
 
 def all_rows():
@@ -227,18 +363,28 @@ def check():
 
 
 def main(argv):
-    if len(argv) < 2 or argv[1] not in ("encode", "decode", "table", "check"):
+    if len(argv) < 2 or argv[1] not in ("encode", "decode", "table", "check",
+                                        "reference"):
         sys.exit(__doc__)
     cmd = argv[1]
     if cmd == "table":
         print_table(); return
+    if cmd == "reference":
+        if argv[2:3] == ["--update"] and len(argv) == 4:
+            reference_splice(argv[3])
+        elif len(argv) == 2:
+            sys.stdout.write(reference_md())
+        else:
+            sys.exit(__doc__)
+        return
     if cmd == "check":
         check(); return
     if cmd == "encode":
         sys.stdout.buffer.write(encode(sys.stdin.buffer.read().decode("utf-8")))
     else:
         mnem = "-m" in argv[2:]
-        sys.stdout.write(decode(sys.stdin.buffer.read(), mnemonic=mnem))
+        sys.stdout.buffer.write(decode(sys.stdin.buffer.read(), mnemonic=mnem)
+                                .encode("utf-8", "surrogateescape"))
 
 
 if __name__ == "__main__":
