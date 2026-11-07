@@ -1200,6 +1200,26 @@ echo "W9-1A: ⌈ ⌊ (and ⩌ ⩍) are SIGNED; ⊔ ⊓ stay unsigned"
   && ok "oracle: signed ⌈ ⌊ identical in golfref" || no "oracle signed max/min"
 
 # @@ W9-1B-STRINGS @@
+echo "String literals are literal (W9-1B): verbatim UTF-8 between two “, one escape \\“"
+[ "$(printf '%s' '“a\nb“O' | gc)" = 'a\nb' ] \
+  && ok "“a\\nb“ prints a backslash-n, not a mnemonic error" || no "literal backslash in a string"
+[ "$(printf '%s' '“say \“hi\““O' | gc)" = 'say “hi“' ] \
+  && ok "\\“ inside a literal is the character “" || no "string escape \\“"
+[ "$(printf '%s' '“héllo ⊕ 🗲“O' | gc)" = 'héllo ⊕ 🗲' ] \
+  && ok "non-ASCII text and glyphs inside a literal stay their UTF-8 bytes" || no "UTF-8 in a string"
+[ "$(printf '%s' '“a # b“O E 7N' | gc)" = "$(printf 'a # b\n7')" ] \
+  && ok "# inside a literal is text, not a comment" || no "# in a string"
+[ "$(printf '%s' '\strsqr “O“ ⊕\strO' | gc)" = 'sqr  ⊕' ] \
+  && ok "\\str opens and closes too; either spelling closes either" || no "\\str delimiters"
+printf '%s' '“Ď“O' | python3 tools/codepage.py encode > "$TMP/s8e.out" 2> "$TMP/s8e.err"
+[ "$?" = 1 ] && grep -q 'cannot contain byte 0x8E' "$TMP/s8e.err" \
+  && ok "a literal whose UTF-8 holds 0x8E (Ď = C4 8E) is an encode error" || no "0x8E in a string accepted"
+printf '%s' '“héllo \“x\“ ⊕\\str 1N“#“O' > "$TMP/srt.src"
+python3 tools/codepage.py encode < "$TMP/srt.src" > "$TMP/srt.gb"
+python3 tools/codepage.py decode < "$TMP/srt.gb" | python3 tools/codepage.py encode | cmp -s - "$TMP/srt.gb" \
+  && python3 tools/codepage.py decode -m < "$TMP/srt.gb" | python3 tools/codepage.py encode | cmp -s - "$TMP/srt.gb" \
+  && [ "$(python3 tools/codepage.py decode < "$TMP/srt.gb")" = '“héllo \“x\“ ⊕\\str 1N“#“O' ] \
+  && ok "decode renders a literal verbatim and round-trips it (glyph and -m form)" || no "string decode round trip"
 
 # @@ W9-1C-REFDIAG @@
 echo "Diagnostics: ′name of an undefined name is reported, not wrapped as an atom"

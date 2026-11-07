@@ -224,7 +224,9 @@ def _selfcheck():
             else:
                 out.append(f"\\x{b:02X}")
         return "".join(out)
-    every = bytes(range(256))
+    # 0x8E last: codepage.decode copies the bytes AFTER a string delimiter raw
+    # (W9-1B), which is literal handling, not a table lookup.
+    every = bytes(b for b in range(256) if b != mkblob2.STR_BYTE) + bytes([mkblob2.STR_BYTE])
     for m in (False, True):
         assert dec(every, m) == codepage.decode(every, mnemonic=m), "decode differs"
 

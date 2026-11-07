@@ -20,12 +20,16 @@
 # ---------------------------------------------------------------------------
 #
 #   1. `#`  a comment: skip to (not including) the next newline, emit nothing.
-#           There is NO string awareness at all — a `#` inside a “…“ literal
-#           really does eat the rest of the line.  That is not an oversight
-#           being ported faithfully out of politeness: `self/golf2.golfj` says
-#           in so many words that a comment may contain anything, and the blob
-#           is spliced in AFTER encoding precisely because a `#` in it would be
-#           swallowed.  Diverging here would change what the repo's sources mean.
+#           Outside a string literal only (W9-1B): a comment may contain
+#           anything, `“` included, and it is skipped before step 1b looks.
+#   1a-c.   STRING LITERALS ARE LITERAL (../REGISTRY.md "W9").  A delimiter —
+#           the glyph `“` or the exact text `\str` — emits 0x8E and flips the
+#           in-literal flag I.  Inside, every byte is copied verbatim (no
+#           mnemonics, no glyphs, `#` is text), except `\“`, which emits the
+#           three bytes of `“`, and a byte 0x8E, which is fatal: the compiler
+#           ends the literal at the first 0x8E.  The blob is still spliced in
+#           AFTER encoding — it holds raw 0x8E and `#` bytes, which no source
+#           spelling could carry.
 #   2. `\`  an escape.  `\\` emits byte 0x5C (swap) and consumes two.  Otherwise
 #           scan the maximal run of ASCII letters and take its LONGEST KNOWN
 #           MNEMONIC PREFIX — `\sqr48` is `\sqr` then `48`, `\sqrp` is `\sqr`
@@ -39,8 +43,8 @@
 #   4. any other byte < 128 -> itself (whitespace included).
 #   5. anything else is fatal: not in the code page.
 #
-# Both fatal cases write one line to fd 2 and exit(1), matching Python's
-# `raise SystemExit(...)`.
+# All three fatal cases write one line to fd 2 and exit(1), matching Python's
+# `raise SystemExit(...)`; the 0x8E one is Python's text exactly.
 #
 # ---------------------------------------------------------------------------
 # WHERE THE TABLE COMES FROM
@@ -134,6 +138,7 @@
 #   N  one past the last input byte  K  bytes the current match consumed
 #   V  the op byte that match found  U  a scratch address   Q  a scratch length
 #   T  the default path's buffer (top level only)
+#   I  1 inside a string literal, else 0   L  the delimiter's length at P
 #
 # `s` is NEVER touched: it is `lib/tutf.golfj`'s state block and `←s` is how
 # every one of its words finds the table.
@@ -180,9 +185,10 @@
             # so that each arm can `^` out instead of threading a "handled" flag
             # through three nested blocks.
 
-# --- 1. `#` : a comment, dropped ------------------------------------------
-←P?35\eq1\radd[                         # `≡` is -1 when equal, so `1﹢` makes it
-                                        # the zero-is-true flag `[` wants
+# --- 1. `#` : a comment, dropped — outside a literal only -----------------
+←P?35\eq1\radd ←I\or[                   # `≡` is -1 when equal, so `1﹢` makes it
+                                        # the zero-is-true flag `[` wants; OR-ing
+                                        # in I (1 inside a literal) vetoes it
  {←P1\radd→P                            # step FIRST — buf[P] is the `#` itself,
                                         # which is not the newline being sought
   ←P←N\rlt1\radd                        # 1 once the cursor reaches the end ...
@@ -192,6 +198,26 @@
  ^]                                     # the newline itself is left for the
                                         # next token, as Python's `continue`
                                         # leaves it: it encodes as whitespace
+
+# --- 1a. inside a literal, the escape `\“` : the three bytes of “ ---------
+←I0\eq[←N←P4\radd\rlt[                  # in a literal, and four bytes left
+ ←P?92\xor ←P1\radd?226\xor\or ←P2\radd?128\xor\or ←P3\radd?156\xor\or
+ [226 g 128 g 156 g ←P4\radd→P ^]]]     # the XORs OR to 0 only on 5C E2 80 9C
+
+# --- 1b. a delimiter, either spelling: open or close a literal ------------
+0→L                                     # L = how many bytes the delimiter at P
+←N←P3\radd\rlt[                         # spans: 3 for “ (E2 80 9C), 4 for the
+ ←P?226\xor ←P1\radd?128\xor\or ←P2\radd?156\xor\or[3→L]]
+←N←P4\radd\rlt[                         # text `\str`, 0 for neither.  Each test
+ ←P?92\xor ←P1\radd?115\xor\or ←P2\radd?116\xor\or ←P3\radd?114\xor\or[4→L]]
+                                        # is guarded so no byte past N is read
+←L0\eq[142 g ←P←L\radd→P 1←I\rsub→I ^]  # emit 0x8E, step over it, flip I
+
+# --- 1c. any other byte inside a literal: itself, verbatim ---------------
+←I0\eq[←P?142\xor[“codepage: a string literal cannot contain byte 0x8E (the string delimiter)“a]
+ ←P?g ←P1\radd→P ^]                     # byte for byte is Python's char for
+                                        # char: no UTF-8 sequence holds a 0x8E
+                                        # unless one of its bytes is 0x8E
 
 # --- 2. `\` : an escape ---------------------------------------------------
 ←P?92\eq1\radd[
@@ -260,6 +286,9 @@
 # Slurp it and parse it.  The records point INTO this buffer, so it must — and
 # does — stay alive for the whole run; the record count is of no use here.
 e t _
+
+# Not inside a string literal yet.  (I is 1 between two delimiters.)
+0→I
 
 # Slurp stdin.  `e` yields (buffer, length); N becomes one past the last byte,
 # which is the form every loop below wants and `v`/`w` take as their window end.
