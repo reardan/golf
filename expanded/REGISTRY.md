@@ -76,8 +76,8 @@ for the range immediately above them; do not fill them opportunistically.
 | `0x85` | `\hlv` | `⊘` | TOS >> 1 | shipped |
 | `0x86` | `\gt` | `»` | unsigned greater | shipped |
 | `0x87` | `\eq` | `≡` | equal | shipped |
-| `0x88` | `\max` | `⌈` | unsigned max — **W9-1A makes it signed** (`cmovl`); unsigned max stays available as `⊔` | reserved |
-| `0x89` | `\min` | `⌊` | unsigned min — **W9-1A makes it signed** (`cmovg`); unsigned min stays available as `⊓` | reserved |
+| `0x88` | `\max` | `⌈` | signed max (`cmovl`, W9-1A; was unsigned); unsigned max stays available as `⊔` | shipped |
+| `0x89` | `\min` | `⌊` | signed min (`cmovg`, W9-1A; was unsigned); unsigned min stays available as `⊓` | shipped |
 | `0x8A` | `\sdv` | `÷` | signed divide | shipped |
 | `0x8B` | `\smd` | `∣` | signed modulo | shipped |
 | `0x8C` | `\ref` | `′` | push a word's address (compiler prefix) | shipped |

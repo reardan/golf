@@ -140,7 +140,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **714** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **1872** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5672** bytes |
-| assertions in the run2 suite | **310** |
+| assertions in the run2 suite | **325** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **42** |
 | the capstone, in op bytes | **46** |
@@ -320,6 +320,14 @@ the golf2 fixpoint included. In order:
   spellings are kept verbatim and output-checked as
   `examples/legacy_capstone.golfj`, because they are still how a list meets a
   function that is not one of the five hooked operators.
+- **W9-1A — `⌈ ⌊` are signed.** They were the last unsigned arithmetic in a
+  signed language (`0 5-3⌈` was `-5`). The templates now use `cmovl`/`cmovg`;
+  the raw `⊔ ⊓` keep the old unsigned `cmovb`/`cmova` for the prelude's pointer
+  math. `⩌ ⩍` (the hooks behind the bare ops) could not just hand `D` a `′⌈`
+  thunk — that thunk holds the polymorphic template, whose filter sends any
+  negative int straight back to the hook — so they compute int,int in place as
+  `⊔`/`⊓` on operands xor `2^63`, and pass themselves to `D` for every list
+  shape, which makes lists (and their elements) signed too.
 
 ## Invariants we do not break
 

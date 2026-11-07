@@ -174,8 +174,8 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0x85` | `⊘` | `\hlv` | TOS >> 1 |
 | `0x86` | `»` | `\gt` | a b -> (a>b unsigned ? -1 : 0) |
 | `0x87` | `≡` | `\eq` | a b -> (a==b ? -1 : 0) |
-| `0x88` | `⌈` | `\max` | a b -> max(a,b) unsigned |
-| `0x89` | `⌊` | `\min` | a b -> min(a,b) unsigned |
+| `0x88` | `⌈` | `\max` | a b -> max(a,b) signed |
+| `0x89` | `⌊` | `\min` | a b -> min(a,b) signed |
 | `0x8A` | `÷` | `\sdv` | a b -> a/b signed |
 | `0x8B` | `∣` | `\smd` | a b -> a%b signed |
 | `0x8D` | `⍎` | `\exec` | pop a word address, call it |
@@ -235,8 +235,8 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xC0` | `∔` | `\vadd` | — | polymorphic add (int/list, elementwise, broadcast) |
 | `0xC1` | `∸` | `\vsub` | — | polymorphic sub (int/list, elementwise, broadcast) |
 | `0xC2` | `⨰` | `\vmul` | — | polymorphic mul (int/list, elementwise, broadcast) |
-| `0xC3` | `⩍` | `\vmin` | — | polymorphic min (int/list, elementwise, broadcast) |
-| `0xC4` | `⩌` | `\vmax` | — | polymorphic max (int/list, elementwise, broadcast) |
+| `0xC3` | `⩍` | `\vmin` | — | polymorphic signed min (int/list, elementwise, broadcast) |
+| `0xC4` | `⩌` | `\vmax` | — | polymorphic signed max (int/list, elementwise, broadcast) |
 | `0xC5` | `∘` | `\comp` | — | compose: ′f ′g -> ′(x -> g(f x)) |
 | `0xC6` | `⇉` | `\pipe` | — | pipeline: x qlist -> y (apply each quotation in turn) |
 | `0xC7` | `⑂` | `\fork` | — | fork: x ′f ′g ′h -> h(f x, g x) |

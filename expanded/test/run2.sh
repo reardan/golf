@@ -1169,6 +1169,35 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
 # Gap-fix waves (W9): one anchor per agent task; each task adds its tests
 # directly under its own anchor and nowhere else.  Keep them in order.
 # @@ W9-1A-SIGNED @@
+echo "W9-1A: ⌈ ⌊ (and ⩌ ⩍) are SIGNED; ⊔ ⊓ stay unsigned"
+# Before W9-1A, ⌈ ⌊ compared unsigned (cmovb/cmova): max(-5,3) was -5.
+[ "$(printf '%s' '0 5-3\max N E' | gc)" = "3" ]    && ok "⌈ signed: max(-5,3) = 3"   || no "signed max -5 3"
+[ "$(printf '%s' '3 0 5-\max N E' | gc)" = "3" ]   && ok "⌈ signed: max(3,-5) = 3"   || no "signed max 3 -5"
+[ "$(printf '%s' '0 5-3\min N E' | gc)" = "-5" ]   && ok "⌊ signed: min(-5,3) = -5"  || no "signed min -5 3"
+[ "$(printf '%s' '3 0 5-\min N E' | gc)" = "-5" ]  && ok "⌊ signed: min(3,-5) = -5"  || no "signed min 3 -5"
+[ "$(printf '%s' '0 5- 0 3-\max N E' | gc)" = "-3" ] && [ "$(printf '%s' '0 5- 0 3-\min N E' | gc)" = "-5" ] \
+  && ok "⌈ ⌊ signed with both operands negative" || no "signed max/min both negative"
+# The bare scalar template itself (no prelude, so no hook): cmovl / cmovg.
+[ "$(printf '%s' '0 5-3\max 48+)' | atom)" = "3" ] && [ "$(printf '%s' '0 5-3\min 53+)' | atom)" = "0" ] \
+  && ok "⌈ ⌊ scalar templates are signed without the prelude" || no "bare signed max/min"
+[ "$(printf '%s' '0 5-3\vmax N E 0 5-3\vmin N E' | gc)" = "$(printf '3\n-5')" ] \
+  && ok "⩌ ⩍ int,int signed" || no "vmax/vmin signed"
+[ "$(printf '%s' '5R 2-0\max QE' | gc)" = "0 0 0 1 2 " ] && ok "⌈ list,int: [-2..2] ⌈ 0 = 0 0 0 1 2" || no "vec signed max list,int"
+[ "$(printf '%s' '0 5R 2-\min QE' | gc)" = "-2 -1 0 0 0 " ] && ok "⌊ int,list: 0 ⌊ [-2..2]" || no "vec signed min int,list"
+[ "$(printf '%s' '5R 2- 5R 3-\max QE 5R 2- 5R 3-\min QE' | gc)" = "$(printf -- '-2 -1 0 1 2 \n-3 -2 -1 0 1 ')" ] \
+  && ok "⌈ ⌊ list,list elementwise with negatives" || no "vec signed max/min list,list"
+[ "$(printf '%s' '5R 2-0\vmax QE 5R 2-0\vmin QE' | gc)" = "$(printf -- '0 0 0 1 2 \n-2 -1 0 0 0 ')" ] \
+  && ok "⩌ ⩍ list,int elementwise signed" || no "vmax/vmin list signed"
+# The extremes: d = b-a overflows here, but the compare is a ≻ a+d = a ≻ b, exact.
+[ "$(printf '%s' '9223372036854775807 0 9223372036854775807- 1-\vmax N E 9223372036854775807 0 9223372036854775807- 1-\vmin N E' | gc)" \
+    = "$(printf -- '9223372036854775807\n-9223372036854775808')" ] \
+  && ok "⩌ ⩍ at INT64_MAX vs INT64_MIN" || no "vmax/vmin extremes"
+[ "$(printf '%s' '6R 3-0 9-\ref\maxFNE' | gc)" = "2" ] && ok "fold ′⌈ over negatives (seed -9) = 2" || no "fold signed max"
+# ⊔ ⊓ stay UNSIGNED — the prelude's pointer math depends on it: -5 is 2^64-5.
+[ "$(printf '%s' '0 5-3\rmax N E 0 5-3\rmin N E' | gc)" = "$(printf -- '-5\n3')" ] \
+  && ok "⊔ ⊓ still unsigned: rmax(-5,3) = -5, rmin(-5,3) = 3" || no "raw max/min unsigned"
+[ "$(printf '%s' '0 5-3\max N E 5R 2-0\min QE' | gref)" = "$(printf '%s' '0 5-3\max N E 5R 2-0\min QE' | gc)" ] \
+  && ok "oracle: signed ⌈ ⌊ identical in golfref" || no "oracle signed max/min"
 
 # @@ W9-1B-STRINGS @@
 

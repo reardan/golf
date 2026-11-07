@@ -183,8 +183,15 @@
 :\vadd \ref\radd D;
 :\vsub \ref\rsub D;
 :\vmul \ref\rmul D;
-:\vmin \ref\rmin D;
-:\vmax \ref\rmax D;
+# ⩍ ⩌ are SIGNED (W9-1A), like the bare ⌊ ⌈ that hook to them.  They cannot hand
+# D `′⌊`/`′⌈`: those thunks hold the polymorphic template, whose filter sends a
+# negative int straight back here — unbounded recursion.  So int,int is done in
+# place with raw ops and ^ returns: a b -> a d (d=b-a) -> a d g (g = a≻a+d, i.e.
+# a>b signed) -> a + (d&g) is min, a + (d&~g) is max.  Swap-free on purpose: no
+# source uses the swap byte, whose `decode -m` form does not re-encode.  Any list
+# shape goes to D with the word ITSELF as fn, so Z/K/G re-enter it per element.
+:\vmin &T2\rmul&T\radd3\rsub[&\rsub&&&\radd\sgt$\radd^]\ref\vmin D;
+:\vmax &T2\rmul&T\radd3\rsub[&\rsub&&&\radd\sgt~$\radd^]\ref\vmax D;
 # --- W2-CHAIN words ---
 # Tacit combinators (M-CHAIN).  ∘ compose · ⇉ pipeline · ⑂ fork.  A quotation is
 # just a code address (what ′ pushes), and the whole load segment is RWX, so ∘
