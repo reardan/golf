@@ -423,12 +423,14 @@ echo "Growable heap (M-MEM): ⌸ brk, the list heap is the kernel's, not a BSS h
 # return stack starts there instead of at 0xC00000.  Everything above is heap.
 [ "$(printf '%s' '0\brk 6291456\rlt1\radd48+)' | atom)" = "1" ] \
   && ok "the break starts above the shrunken BSS (0x600000)" || no "brk above bss"
-# The prelude's init publishes what the kernel gave into the M-TAG bounds cells.
+# The prelude's init publishes what the kernel gave into A's base/span cells.
 # The base is ASLR-shifted (observed anywhere from ~0x1C00000 to ~0x3B000000),
 # so only its relation to the static image is assertable — never its value.
+# W9-2A/M-TAG2: a list VALUE is addr | 2^48, so the address is masked out with
+# (v<<16)>>16 before it is compared against the window.
 [ "$(printf '%s' '0 5177400@\rlt1\radd N E' | gc)" = "0" ] \
   && ok "heap span cell is non-zero (brk handed back the initial chunk)" || no "brk heap span"
-[ "$(printf '%s' '5⍳ 5177396@\rsub 5177400@\rlt1\radd N E' | gc)" = "0" ] \
+[ "$(printf '%s' '5⍳16\shl16> 5177396@\rsub 5177400@\rlt1\radd N E' | gc)" = "0" ] \
   && ok "a fresh list lands inside [base, base+span)" || no "list inside bounds"
 # Nothing that is not a list may fall inside the moved window: the M-CHAIN thunk
 # arena, a word address and a -1 flag all still classify as ints.
@@ -1301,6 +1303,39 @@ done
   || no "tutorial: $w9dn examples extracted (need 6-10), failing:$w9dbad"
 
 # @@ W9-2A-TAG2 @@
+echo "M-TAG2: a list value is addr | 2^48; T and the M-VEC filter test the tag, not a range"
+# The regression the range test could not pass: the heap BASE, read out of A's
+# cell as a plain integer, sat inside [base, base+span) and so was dispatched
+# as a list.  It is an int now, and bare + is scalar on it.
+[ "$(printf '%s' '5⍳_ 5177396@ 1+ 5177396@ 1\radd≡N E' | gc)" = "-1" ] \
+  && ok "the heap base as an INTEGER: bare + is scalar addition" || no "tag2 base int +"
+[ "$(printf '%s' '5⍳_ 5177396@ T N E' | gc)" = "1" ] \
+  && ok "T: an integer equal to a heap address is an int" || no "tag2 base T"
+[ "$(printf '%s' '5⍳16\shl16> T N E' | gc)" = "1" ] \
+  && ok "T: a list's untagged address is an int" || no "tag2 raw addr T"
+[ "$(printf '%s' '5⍳16\shl16>→a ←a 3* ←a 3\rmul≡N E' | gc)" = "-1" ] \
+  && ok "bare * on an untagged heap address is scalar" || no "tag2 raw addr *"
+[ "$(printf '%s' '5⍳48>N E' | gc)" = "1" ] \
+  && ok "a list value carries the tag: v >> 48 == 1" || no "tag2 tag bit"
+[ "$(printf '%s' '0 1-T N E' | gc)" = "1" ] && ok "T: -1 is still an int" || no "tag2 -1"
+[ "$(printf '%s' '0 1 63\shl- T N E' | gc)" = "1" ] && ok "T: -2^63 is an int" || no "tag2 min int"
+[ "$(printf '%s' '0 1000000000000000-T N E 0 1000000000000000- 7+N E' | gc)" = "$(printf '1\n-999999999999993')" ] \
+  && ok "a large negative is an int, and bare + is scalar on it" || no "tag2 big negative"
+[ "$(printf '%s' '1 48\shl1\rsub T N E 1 49\shl T N E' | gc)" = "$(printf '1\n1')" ] \
+  && ok "T: 2^48-1 and 2^49 are ints (only [2^48, 2^49) is sacrificed)" || no "tag2 edges"
+[ "$(printf '%s' '5⍳→x←x T N E ←x Q E ←x 10+Q E' | gc)" = "$(printf '0\n0 1 2 3 4 \n10 11 12 13 14 ')" ] \
+  && ok "a list round-trips through →x/←x and still vectorizes" || no "tag2 var round trip"
+# Lists of lists: R's result stored as an element stays a tagged list, so it
+# indexes, measures and vectorizes like the outer one.
+[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 1 48\shl| "T N E "0 I T N E "0 I Q E 0 I 100+Q E' | gc)" = "$(printf '0\n0\n0 1 2 \n100 101 102 ')" ] \
+  && ok "a list of lists stores and indexes; the inner element is a tagged list" || no "tag2 nested"
+[ "$(printf '%s' ':s3⍳;3⍳\refs M "L N E 1 I"L N E ∑N E' | gc)" = "$(printf '3\n3\n3')" ] \
+  && ok "map building a list per element (inner lists keep the tag)" || no "tag2 map of lists"
+# A hand-built block from A is a raw address: every list word accepts it (the
+# masking is idempotent), but it is an INT to T and the bare operators until it
+# is tagged with 1 48≪|.
+[ "$(printf '%s' '3A 2&\store 5&8\radd\store 6&16\radd\store "S N E "T N E 1 48\shl| 1+Q E' | gc)" = "$(printf '11\n1\n6 7 ')" ] \
+  && ok "hand-built list: list words take it raw; tagging it makes it vectorize" || no "tag2 hand-built"
 
 # @@ W9-2B-CHECKS @@
 echo "Runtime checks (W9-2B): I bounds, ÷ ∣ divide by zero — message on fd 2, exit 1"

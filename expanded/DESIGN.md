@@ -137,10 +137,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **854** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2012** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **5812** bytes |
-| assertions in the run2 suite | **351** |
+| the template blob itself | **844** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
+| assertions in the run2 suite | **364** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -183,15 +183,16 @@ the golf2 fixpoint included. In order:
   list is a fixed point rather than garbage, and `Z` truncates to the shorter of
   its two inputs instead of reading off the end.
 - **M-TAG — shape polymorphism as a library.** `T` answers "list or int" by range
-  (`v - base <u span` against the runtime heap-bounds cells), `D` dispatches a
-  binary op on the shapes of both operands, and `∔ ∸ ⨰ ⩍ ⩌` are the polymorphic
-  arithmetic words built on it.
+  (`v - base <u span` against the runtime heap-bounds cells — a range test that
+  M-TAG2 replaced with a real tag), `D` dispatches a binary op on the shapes of
+  both operands, and `∔ ∸ ⨰ ⩍ ⩌` are the polymorphic arithmetic words built on it.
 - **M-VEC — the bare operators vectorize.** `4⍳3+` is `3 4 5 6`, `4⍳4⍳*∑` is a
   dot product, with no type tag on the value and no change to the compiler's
-  logic. Each of `+ - * ⌈ ⌊` keeps its scalar body and gains a 38-byte preamble:
+  logic. Each of `+ - * ⌈ ⌊` keeps its scalar body and gains a preamble (38 bytes
+  then, 36 since M-TAG2):
   `cmp qword [hook],0; je scalar` (hook table: 256 cells of 8 bytes at `0x4F0100`,
   indexed by op byte — REGISTRY.md §3), then a conservative `(a|b) <u heap-base`
-  filter, then `call qword [hook]`. **The prelude is authoritative, not the
+  filter (exact on the tag since M-TAG2), then `call qword [hook]`. **The prelude is authoritative, not the
   filter:** the hooks point at `∔ ∸ ⨰ ⩌ ⩍`, whose dispatcher re-tests both
   operands with `T` and falls back to the raw scalar op — so a `-1` flag from
   `<`, which the cheap filter cannot reject, is still added, not indexed. The
@@ -347,6 +348,23 @@ the golf2 fixpoint included. In order:
   divisor of `-1` skips `idiv`, `÷` negates (wrapping, so INT64_MIN ÷ -1 is
   INT64_MIN, like `*`) and `∣` gives 0. Cost: the two templates grew from 8 to
   71/70 bytes, the blob from 714 to 839.
+- **M-TAG2 (W9-2A) — a real tag bit.** `T` was a range test, so an *integer*
+  that happened to equal a heap address — the heap base read out of its own
+  cell, say — was vectorized as a list. Now a list value handed to user code is
+  its address with bit 48 set (`addr | 2^48`): `T` is `v >> 48 == 1`, and the
+  M-VEC filter is exact — `cmp word [rsp+6],1` per operand, the top 16 bits of
+  each, no cell read, two bytes *shorter* than the range filter it replaced. The
+  sign bit was never an option (every negative number has it); a high-byte tag
+  sacrifices only the integers in `[2^48, 2^49)` and leaves negatives and
+  everything below `2^48` as ints. Every list word masks on the way in with
+  `(v<<16)>>16` — idempotent, so a raw `A` block still works as input — and tags
+  its result on the way out with `1 48≪|` (not the literal `2^48`, which the seed
+  would truncate and so break seed ≡ golf2 on the prelude). `A` stays a plain
+  allocator returning a raw address; the heap base/span cells are now its state
+  alone. Library and template only: the compiler's logic did not change, and its
+  hook cells stay zero, so the fixpoint held. A list of lists stores tagged
+  inner lists, so the per-element "is this a list?" that nested data needs is
+  now a shift and a compare rather than a heuristic.
 
 ## Invariants we do not break
 
@@ -383,7 +401,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 854 bytes, which is what keeps the compiler re-derivable in an
+  blob at 844 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
@@ -424,10 +442,16 @@ unbuilt, and three defects this list does not yet cover — see
   compiler ends a literal at the first `0x8E`; the encoder rejects the latter
   with an error rather than emit a broken block. A byte block that needs either
   must be built at run time.
-- **The heap-bounds cells are 32-bit too.** `0x4F0034`/`0x4F0038` are read by
-  `T` and are baked into all five M-VEC templates as a 32-bit compare operand.
-  The break is ASLR-shifted but far below 4 GB in practice; a program that grew
-  the break past `2^32` would need those cells — and the templates — widened.
+- **The allocator's cells are 32-bit.** `A` keeps the heap base and how far it
+  has pushed the break in the 4-byte cells `0x4F0034`/`0x4F0038`, and its bump
+  pointer `H` is a 4-byte offset, so one process's list heap must stay under
+  4 GB. Nothing else reads them any more — since M-TAG2 neither `T` nor the
+  M-VEC templates do — so widening them is a prelude-only change.
+- **The integers in `[2^48, 2^49)` are lists.** A list value is `addr | 2^48`,
+  so an integer whose top 16 bits are exactly `0x0001` (281 to 562 trillion) is
+  shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
+  deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
+  M-TAG2); negatives and everything below `2^48` are ints.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different
@@ -461,17 +485,6 @@ unbuilt, and three defects this list does not yet cover — see
   emits — `golf2` and `golf2'` included — but not `seed`, which the frozen v1c
   builds with v1's startup and `0xC00000` stack; the seed's only job is to
   compile golf2 once, a handful of frames deep.
-- **KNOWN ISSUE — an integer inside the heap window looks like a list.** `T` is
-  a range test (`v - base <u span`), so any *integer* whose value happens to
-  land in `[base, base+span)` is dispatched as a list by `D` and by the five
-  polymorphic templates. Pre-existing since M-TAG, unfixed, and it moved rather
-  than went away when M-MEM put the heap at the break. Known-safe values are
-  covered — a `-1` compare flag, a word address, an `0x4D0000` thunk are all
-  outside the window and are regression-tested — but nothing rules out a program
-  whose arithmetic genuinely produces a heap-sized number. The fix is a real tag
-  bit on the value, which is item 3 of the forward queue — where the
-  originally specified scheme (bit 63) is now recorded as wrong, because every
-  negative integer has that bit set.
 
 ## Layout
 

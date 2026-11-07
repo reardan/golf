@@ -180,14 +180,15 @@ ATOMS = [
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
 # These five op bytes keep their v1/atom scalar body but get a shape-dispatch
-# preamble in front of it.  Layout (38 bytes + the untouched scalar body):
+# preamble in front of it.  Layout (36 bytes + the untouched scalar body):
 #
 #     48 83 3C 25 <hook> 00     cmp qword [hook], 0     ; per-op hook cell
-#     74 1B                     je  .scalar             ; no dispatcher -> scalar
-#     48 8B 04 24               mov rax, [rsp]          ; b  (TOS)
-#     48 0B 44 24 08            or  rax, [rsp+8]        ; | a
-#     3B 04 25 <heapbase>       cmp eax, [heap base]
-#     72 09                     jb  .scalar             ; both below the heap
+#     74 19                     je  .scalar             ; no dispatcher -> scalar
+#     66 83 7C 24 06 01         cmp word [rsp+6], 1     ; b's tag  (TOS)
+#     74 08                     je  .call
+#     66 83 7C 24 0E 01         cmp word [rsp+14], 1    ; a's tag
+#     75 09                     jne .scalar             ; neither is a list
+#   .call:
 #     FF 14 25 <hook>           call qword [hook]       ; (a b) still on the stack
 #     EB <len(scalar)>          jmp .done
 #   .scalar:  <the original scalar template, byte for byte>
@@ -204,23 +205,22 @@ ATOMS = [
 #     emit the same bytes.  (v1c carries v1's blob and so emits different code —
 #     that divergence is absorbed at the v1c -> seed rung, which is never
 #     compared against anything.)
-#   * **The filter is conservative, never authoritative.**  `or` only sets bits,
-#     so (a|b) >= a: if EITHER operand is a heap address the compare cannot send
-#     us to the scalar path.  False positives are fine and expected (a -1 flag
-#     from `<` looks huge): they reach the PRELUDE's dispatcher D, which re-tests
-#     both operands exactly and applies the raw scalar op when both are ints.
+#   * **The filter is EXACT (M-TAG2).**  A list value is its heap address with
+#     bit 48 set — `addr | 2^48`, so `v >> 48 == 1` — and the top 16 bits of a
+#     little-endian qword are the word at byte offset 6.  So `cmp word [rsp+6],1`
+#     is exactly `T`, with no cell to read: an operand is a list iff its high
+#     word is 0x0001.  Negative integers (high word 0xFFFF) and everything below
+#     2^48 (high word 0) take the scalar path without ever reaching the prelude;
+#     the only integers that dispatch are those in [2^48, 2^49), the range the
+#     tag sacrifices.  Until M-TAG2 this was a conservative `(a|b) <u heap base`
+#     against the 32-bit cell 0x4F0034 — a range test that sent a -1 flag to the
+#     prelude and let an integer that happened to equal a heap address in.
 #   * **Stack-neutral.**  `call` pushes its return address on the DATA stack and
 #     the hooked word's PROLOGUE parks it on the return stack, so the word sees
 #     exactly (a b) and leaves one result — the scalar path's net effect.
-#
-# The heap-base compare is 32-bit on purpose.  0x4F0034 is a 4-byte cell whose
-# neighbour 0x4F0038 (the heap span) is non-zero, so a 64-bit read there would
-# yield span<<32 | base and put the bound above every real address, disabling
-# dispatch entirely.  Heap addresses are < 2^32 and low32(a|b) >= low32(a) = a,
-# so the 32-bit test keeps the same one-sided guarantee.
 HOOK_BASE = 0x4F0100       # hook table (REGISTRY.md §3), 256 entries
 HOOK_STRIDE = 8            # 8, not 4: `call qword [disp32]` reads 64 bits
-HEAP_BASE_CELL = 0x4F0034  # runtime heap base, installed by the prelude's init
+LIST_TAG = 1 << 48         # M-TAG2: a list value is addr | LIST_TAG (lib/prelude.golfj)
 
 def hook_addr(byte):
     """The hook cell for op `byte`."""
@@ -232,19 +232,18 @@ def _u32(v):
 
 def _poly(byte, scalar):
     """Wrap a scalar template in the hook-cell shape dispatch shown above."""
-    hook, base, scalar = _u32(hook_addr(byte)), _u32(HEAP_BASE_CELL), list(scalar)
+    hook, scalar = _u32(hook_addr(byte)), list(scalar)
     assert len(scalar) < 128, "scalar body too long to jump over with a rel8"
-    fast = ([0x48, 0x8B, 0x04, 0x24]                  # mov rax, [rsp]
-            + [0x48, 0x0B, 0x44, 0x24, 0x08]          # or  rax, [rsp+8]
-            + [0x3B, 0x04, 0x25] + base               # cmp eax, [heap base]
-            + [0x72, 9]                               # jb  .scalar  (7+2 ahead)
-            + [0xFF, 0x14, 0x25] + hook               # call qword [hook]
-            + [0xEB, len(scalar)])                    # jmp .done
-    assert fast[17] == 9 and len(fast) - 18 == 9, "jb displacement"
+    call = [0xFF, 0x14, 0x25] + hook + [0xEB, len(scalar)]   # call [hook]; jmp .done
+    b_tag = [0x66, 0x83, 0x7C, 0x24, 0x06, 0x01]   # cmp word [rsp+6], 1   (b: TOS)
+    a_tag = [0x66, 0x83, 0x7C, 0x24, 0x0E, 0x01]   # cmp word [rsp+14], 1  (a)
+    fast = (b_tag + [0x74, len(a_tag) + 2]          # je  .call
+            + a_tag + [0x75, len(call)]             # jne .scalar
+            + call)
     tpl = ([0x48, 0x83, 0x3C, 0x25] + hook + [0x00]   # cmp qword [hook], 0
            + [0x74, len(fast)]                        # je  .scalar
            + fast + scalar)
-    assert len(tpl) == 38 + len(scalar) <= 255, (byte, len(tpl))
+    assert len(tpl) == 36 + len(scalar) <= 255, (byte, len(tpl))
     return tpl
 
 # --- M-FRAME: every definition gets a private slab of locals ----------------
@@ -363,8 +362,9 @@ LGET_BYTE = 0xB3    # ⇐x push a local slot
 # Everything ABOVE the segment is the brk heap.  The kernel starts the break at
 # the page-aligned end of the last PT_LOAD and then ASLR-shifts it by up to
 # 32 MB, so the heap base is NOT 0x600000 and cannot be hard-coded anywhere —
-# which is exactly why the prelude reads it with `0⌸` at startup and publishes
-# it in the 0x4F0034/0x4F0038 bounds cells the M-VEC templates and `T` read.
+# which is exactly why the prelude reads it with `0⌸` at startup and keeps it
+# in the 0x4F0034/0x4F0038 cells that only its allocator `A` reads (since
+# M-TAG2 neither `T` nor the M-VEC templates look at the heap's bounds at all).
 #
 # The frozen v1 compiler keeps v1's numbers: data/v1.hex is untouched, so v1c
 # and the `seed` it builds still run with a 0xC00000 return stack.  Only what the v2
