@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **844** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2539** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **7895** bytes |
-| assertions in the run2 suite | **427** |
+| assertions in the run2 suite | **441** |
 | assertions in the selfcheck suite | **41** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -436,6 +436,21 @@ the golf2 fixpoint included. In order:
   inner list compares by its tagged value (after every int below 2^48, and by
   address among lists). `∊` is `list x -> 0/1` — zero-is-true like `T`, raw
   cell equality like `≡`, stopping at the first hit; the empty list gives 1.
+- **W9-4C — input for user programs (M6b).** The first prelude words with LONG
+  names, so no letter or high byte was spent: `‹readall›` `‹readline›`
+  `‹getc›` `‹words›` `‹num›` `‹ints›` `‹args›`, ported from `lib/tio.golfj` and
+  `lib/ttext.golfj` to the prelude's rules (X/Y frames, raw atoms, masked
+  inputs, tagged results, no `→x`). The stdin words share one 8 KB read buffer,
+  allocated on first use; its raw address lives in the cell `0x4F0050`
+  (REGISTRY §3), the only new fixed state. `‹readline›` returns the line and a
+  zero-is-true flag (1 = end of input with nothing read); `‹num›` skips leading
+  whitespace, takes one `+`/`-`, and stops at the first non-digit (no digits →
+  0). `‹words›` is two passes (count, then copy) so the result is allocated
+  once; `‹readall›` grows by doubling and gives each outgrown block back with
+  `⌫`. A 1.2 MB input reads in well under a second. The prelude's eight long
+  names count against a program's 256; run2's M2 "same bytes as before M2"
+  check now feeds the pre-M2 compiler a prelude with those definitions cut out.
+  Demo: `examples/input.golfj`.
 
 ## Invariants we do not break
 
@@ -499,11 +514,16 @@ These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 - **Long names (M2) are bounded and global.** 256 per program (the prelude's
-  count too), at most 60 bytes each, interned in a fixed compiler table; a 257th
+  count too — eight since W9-4C's input words), at most 60 bytes each, interned in a fixed compiler table; a 257th
   is refused. Only long names can be forward-referenced — a one-byte name is
   still define-before-use. `⇒`/`⇐` locals still name the slots `a`–`h`; named
   locals are W9-4D's. And there are no scopes: a long name, like a letter, is
   one dictionary entry and one variable cell for the whole program.
+- **`(` and the input words are two readers.** `‹readall›`, `‹readline›`,
+  `‹getc›` and `‹ints›` read through the prelude's 8 KB buffer; `(` is a raw
+  one-byte `read` that bypasses it, so mixing the two loses or reorders bytes.
+  A user program also still writes one byte per `write` (`)`); only the tools'
+  `lib/tio.golfj` buffers output.
 
 For the limits that only show up when GOLF is held against another language —
 what Python and Jelly have that this does not, which of it is refused rather than

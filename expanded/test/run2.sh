@@ -1477,9 +1477,13 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
 [ "$(printf '%s' '‹›' | und)" = "2" ] && [ "$(printf '%s' '‹abc' | und)" = "2" ] \
   && [ "$(printf '%s' '‹abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk›' | und)" = "2" ] \
   && ok "an empty, unterminated or 61-byte long name is rejected" || no "empty/unterminated/long"
-w93n=""; for k in $(seq 1 257); do w93n="$w93n:‹w$k›;"; done
-[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w257›" ] \
-  && ok "the 257th long name is refused (256 fit the table)" || no "too many long names"
+# The prelude's own long names (W9-4C on) share the 256: und compiles with the
+# prelude, so the user program's first refused name is number 257 - P.
+w93p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
+w93n=""; for k in $(seq 1 $((257 - w93p))); do w93n="$w93n:‹w$k›;"; done
+[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((257 - w93p))›" ] \
+  && [ "$(printf '%s' "${w93n%:*}" | und)" = "0" ] \
+  && ok "the 257th long name is refused (256 fit the table; $w93p of them are the prelude's)" || no "too many long names"
 # The other half of the contract: a program without ‹ compiles to the bytes it
 # always did.  Against the compiler logic of the commit before M2 (rebuilt with
 # today's blob, so a template change elsewhere does not count) when this clone
@@ -1495,13 +1499,35 @@ sys.stdout.buffer.write(enc.replace(mkblob2.BLOB_MARKER, mkblob2.blob_escape()))
 PY
   "$TMP/golf2" < "$TMP/pre-m2.golf" > "$TMP/pre-m2" 2>/dev/null && chmod +x "$TMP/pre-m2" && w93ref=pre-m2
 fi
+# Since W9-4C the prelude itself defines long-named words (‹readall› …), which
+# a pre-M2 compiler cannot read, so this comparison feeds both compilers the
+# prelude with every `:‹name›…;` definition cut out (the encoded bytes, walked
+# so a `;` inside “…“ or after ' does not end one), and skips the examples that
+# use ‹ themselves — the contract under test is "a program without ‹".
+python3 - lib/prelude.golfj > "$TMP/pre-m1.gb" <<'PY'
+import sys; sys.path.insert(0, "tools"); import mkblob2, codepage
+b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
+out, i, skip = bytearray(), 0, False
+while i < len(b):
+    c = b[i]
+    if c == 0x3A and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True
+    if c == 0x27: n = 2
+    elif c == mkblob2.STR_BYTE: n = b.index(mkblob2.STR_BYTE, i + 1) + 1 - i
+    else: n = 1
+    if not skip: out += b[i:i+n]
+    elif c == 0x3B: skip = False
+    i += n
+if mkblob2.LNAME_BYTE in out: sys.exit(1)
+sys.stdout.buffer.write(out)
+PY
 w93bad=""; w93n=0
 for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj; do
+  case "$f" in *.golfj) grep -qF '‹' "$f" && continue;; esac
   case "$f" in
-    *.golfj) { cat "$TMP/pre.gb"
+    *.golfj) { cat "$TMP/pre-m1.gb"
                case "$f" in gtools/*) for l in lib/t*.golfj; do python3 tools/codepage.py encode < "$l"; done;; esac
                python3 tools/codepage.py encode < "$f"; } > "$TMP/w93.src";;
-    *.g2) cat "$TMP/pre.gb" "$f" > "$TMP/w93.src";;
+    *.g2) cat "$TMP/pre-m1.gb" "$f" > "$TMP/w93.src";;
     *) cp "$f" "$TMP/w93.src";;
   esac
   "$TMP/golf2" < "$TMP/w93.src" > "$TMP/w93.new" 2>/dev/null
@@ -1509,7 +1535,7 @@ for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj;
   else python3 boot/golfref.py < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null; fi
   cmp -s "$TMP/w93.new" "$TMP/w93.old" || w93bad="$w93bad $f"; w93n=$((w93n+1))
 done
-[ -z "$w93bad" ] && [ "$w93n" -gt 20 ] \
+[ -z "$w93bad" ] && [ "$w93n" -gt 20 ] && [ -s "$TMP/pre-m1.gb" ] \
   && ok "every existing example and gtools program compiles to the same bytes as before M2 (${w93ref:-oracle}, $w93n programs)" \
   || no "M2 changed the bytes of:$w93bad"
 
@@ -1632,6 +1658,43 @@ W94T=$(( ($(date +%s%N) - W94T) / 1000000 ))
   && ok "∊ inside a map; an inner list is found only as the same (tagged) list" || no "member map/nested"
 
 # @@ W9-4C-INPUT @@
+echo "Input words (W9-4C): ‹readall› ‹readline› ‹words› ‹num› ‹ints› ‹args› ‹getc›"
+# gc cannot feed a program stdin (its stdin IS the source), so gin compiles the
+# program given as $1 and runs it on gin's own stdin, with any further
+# arguments as the program's argv.
+gin(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/pin" 2>/dev/null \
+         && chmod +x "$TMP/pin" && shift && "$TMP/pin" "$@"; }
+[ "$(printf '1 2 3' | gin '‹ints›∑Ṅ␤')" = "6" ] && ok "NEXT_STEPS's acceptance test: '1 2 3' on stdin sums to 6" || no "ints sum"
+[ "$(printf '' | gin '‹readall›≢Ṅ ‹readall›T Ṅ ‹readline›Ṅ≢Ṅ ‹ints›≢Ṅ ‹getc›Ṅ')" = "00100-1" ] \
+  && ok "empty stdin: ‹readall› an empty (tagged) list, ‹readline› EOF flag 1, ‹ints› empty, ‹getc› -1" || no "empty input"
+[ "$(printf 'ab\n\ncd\nlast' | gin ':‹l›‹readline›"Ṅ[⊐]␤;‹l›‹l›‹l›‹l›‹l›‹l›')" = "$(printf '0ab\n0\n0cd\n0last\n1\n1')" ] \
+  && ok "‹readline› line by line: an empty line, a last line without '\\n', then EOF (and EOF again)" || no "readline lines"
+[ "$(printf 'x 1\ny 2\n' | gin '‹readline›_⊐␤‹getc›Ṅ␤‹readall›⊐')" = "$(printf 'x 1\n121\n 2')" ] \
+  && ok "‹readline›, ‹getc› and ‹readall› share one buffer and interleave" || no "shared buffer"
+[ "$(printf 'hello\nworld\n' | gin '‹readall›⊐')" = "$(printf 'hello\nworld')" ] && ok "‹readall› echoed with ⊐ (cat)" || no "readall cat"
+[ "$(printf '  foo bar\t\tbaz  ' | gin '‹readall›‹words›"≢Ṅ⍕ “   “⊃‹words›≢Ṅ 0⍳‹words›≢Ṅ')" = "3[102 111 111] [98 97 114] [98 97 122] 00" ] \
+  && ok "‹words›: runs of spaces/tabs, leading/trailing blanks, no empty words; blank and empty input" || no "words"
+[ "$(printf ' a\n\n b\r\nc\x0bd\x0ce' | gin '‹readall›‹words›′≢€⍕')" = "1 1 1 1 1 " ] \
+  && ok "‹words› splits on all of 9-13 and 32" || no "words whitespace set"
+[ "$(printf '' | gin '“-42“⊃‹num›Ṅ␤“+9x“⊃‹num›Ṅ␤“ 007“⊃‹num›Ṅ␤“abc“⊃‹num›Ṅ␤“-“⊃‹num›Ṅ␤0⍳‹num›Ṅ␤“-9223372036854775808“⊃‹num›Ṅ')" \
+     = "$(printf -- '-42\n9\n7\n0\n0\n0\n-9223372036854775808')" ] \
+  && ok "‹num›: signs, leading blanks, stops at a non-digit, garbage and empty give 0, -2^63" || no "num"
+[ "$(printf -- ' -5\n+7 10\t\t x 3 -0 12abc' | gin '‹ints›⍕')" = "-5 7 10 0 3 0 12 " ] \
+  && ok "‹ints›: negative numbers parse; a non-number word counts as 0" || no "ints negative"
+[ "$(printf '' | gin '‹args›"≢Ṅ⍕' one 'a b' '')" = "3[111 110 101] [97 32 98] [] " ] \
+  && [ "$(printf '' | gin '‹args›≢Ṅ')" = "0" ] \
+  && ok "‹args› sees argv[1..] (a space inside one, an empty one); none gives an empty list" || no "args"
+python3 -c 'import sys; sys.stdout.write("".join("%d\n" % (i*7919 % 100003 - 50000) for i in range(200000)))' > "$TMP/big.in"
+W94C=$(gin '‹readall›"≢Ṅ␤∑Ṅ␤' < "$TMP/big.in")
+[ "$W94C" = "$(python3 -c 'd=open("'"$TMP/big.in"'","rb").read(); print(len(d)); print(sum(d))')" ] && [ "$(wc -c < "$TMP/big.in")" -gt 1000000 ] \
+  && ok "a $(wc -c < "$TMP/big.in")-byte input is read fully (length and byte sum)" || no "1 MB readall: $W94C"
+[ "$(gin '‹ints›"≢Ṅ␤∑Ṅ' < "$TMP/big.in")" = "$(python3 -c 'v=[i*7919 % 100003 - 50000 for i in range(200000)]; print(len(v)); print(sum(v))')" ] \
+  && ok "‹ints› of that input: 200000 numbers, sum matches Python" || no "1 MB ints"
+tools/golfc -j examples/input.golfj "$TMP/input" 2>/dev/null </dev/null
+[ "$(printf 'a list\n3 -4 10\n' | "$TMP/input" x y 2>/dev/null)" = "$(printf 'a list\n9\nx\ny')" ] \
+  && ok "golfc examples/input.golfj (first line, sum of the rest, the arguments)" || no "input.golfj"
+[ "$(printf 'a list\n3 -4 10\n' | oracle input)" = "$(printf 'a list\n9')" ] \
+  && ok "oracle: input.golfj behaves identically (no arguments)" || no "oracle input.golfj"
 
 # @@ W9-4D-FRAMES @@
 

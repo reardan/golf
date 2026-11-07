@@ -182,6 +182,12 @@ allocation here, but a prelude long name is visible to every user program, so
 prelude long names should still be listed below their wave's anchor in
 `lib/prelude.golfj` and kept few: they count against the program's 256.
 
+Prelude long names in use (all **shipped**):
+
+| names | wave | anchor |
+|---|---|---|
+| `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›`, and the helper `‹_inread›` (names starting `‹_in` are reserved for it) | W9-4C | `W9-4C-INPUT` |
+
 > **Rule: the prelude must NEVER use `→x` / `←x`.** The variable bank at
 > `0x4E0000` is user space — one global cell per name — so a prelude word that
 > stored to `→i` would silently clobber a user's `i`. Prelude state goes in the
@@ -320,7 +326,9 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `A` grows the break when a block would pass it. Allocator state only since M-TAG2 (it was `T`'s `v - base <u span` bound) | shipped |
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
-| `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
+| `0x4F0048`–`0x4F004F` | 5177416 | reserved for future scratch (run2.sh's W1 atom test round-trips a value through it) | free |
+| `0x4F0050` | 5177424 | **prelude input buffer** (W9-4C): the RAW address of the stdin buffer block `[pos][len][8192 bytes]` that `‹getc›`/`‹readline›`/`‹readall›`/`‹ints›` share; 0 (BSS) until the first read allocates it with `A` | shipped |
+| `0x4F0058`–`0x4F005F` | 5177432 | reserved for future scratch | free |
 | `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp (`A` and `⌫` only), `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
 | `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
 | `0x4F00C0`–`0x4F00F8` | 5177536 · 5177544 · … · 5177592 | **free-list heads** for `A`/`⌫` (W9-3C, M-MEM2), **stride 8**, one per size class: class `k` = 0…6 at `5177536+8k` holds blocks of exactly `4<<k` cells (4, 8, … 256); class 7 at 5177592 holds every larger block (`max(c, 512)` cells, popped only when the head fits). Each head is a raw payload address or 0 (BSS) = empty; a free block's payload cell 0 links to the next. See the note below on the block header | shipped |
@@ -402,7 +410,8 @@ Notes:
 ## W9 — the gap-fix waves
 
 Allocated up front (W9-0A) so the parallel tasks never contend. Every other
-W9 word — slice, unique, index-of, flatten, the input words — waits for W9-3A
+W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
+§2) — waits for W9-3A
 (multi-character names, now **shipped** as `‹name›`, `0xB4`/`0xB5`) and takes a
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. A task that needs anything not listed here asks the
