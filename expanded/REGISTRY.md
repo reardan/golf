@@ -121,15 +121,10 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xC7` | `\fork` | `⑂` | fork: `x ′f ′g ′h -> h(f x, g x)` | shipped |
 | `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | shipped |
 | `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | shipped |
+| `0xCA` | `\free` | `⌫` | `list ->`: release a list (tagged) or raw `A` block to the allocator's size-classed free list; explicit only (W9-3C, M-MEM2) | shipped |
 | `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | shipped |
 | `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | shipped |
 | `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | shipped |
-| `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | reserved |
-| `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | reserved |
-| `0xCA` | `\free` | `⌫` | `list ->`: release a list (tagged) or raw `A` block to the allocator's size-classed free list; explicit only (W9-3C, M-MEM2) | shipped |
-| `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | reserved |
-| `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | reserved |
-| `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | reserved |
 | `0xCE` | `\sort` | `⍋` | ascending signed sort, returns a new list (W9-4B) | reserved |
 | `0xCF` | `\memb` | `∊` | `list x -> f`: 0 if x is an element (zero-is-true, like `T`), 1 otherwise (W9-4B) | reserved |
 
