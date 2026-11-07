@@ -1166,6 +1166,36 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
   && ok "a valid program still compiles, exit 0" || no "valid program regression"
 [ -z "$(cat "$TMP/u.err")" ] && ok "... with fd 2 silent" || no "valid program stderr"
 
+# Gap-fix waves (W9): one anchor per agent task; each task adds its tests
+# directly under its own anchor and nowhere else.  Keep them in order.
+# @@ W9-1A-SIGNED @@
+
+# @@ W9-1B-STRINGS @@
+
+# @@ W9-1C-REFDIAG @@
+
+# @@ W9-1D-REFERENCE @@
+
+# @@ W9-2A-TAG2 @@
+
+# @@ W9-2B-CHECKS @@
+
+# @@ W9-2C-GUARD @@
+
+# @@ W9-3A-NAMES @@
+
+# @@ W9-3B-NESTED @@
+
+# @@ W9-3C-FREE @@
+
+# @@ W9-4A-LISTWORDS1 @@
+
+# @@ W9-4B-LISTWORDS2 @@
+
+# @@ W9-4C-INPUT @@
+
+# @@ W9-4D-FRAMES @@
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

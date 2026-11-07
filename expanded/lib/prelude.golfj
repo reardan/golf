@@ -297,6 +297,21 @@
 # increment: A extends to (needed + 1 MB), so one oversized allocation still
 # takes exactly one syscall.
 0\brk"5177396!1048576\radd\brk 5177396@\rsub5177400!
+# --- Gap-fix waves (W9): one anchor per task; a task adds its words directly
+# under its own anchor.  Words must be defined before use, so a task that needs
+# another task's word waits for that wave to merge. ---
+# @@ W9-2B-CHECKS @@
+
+# @@ W9-3B-NESTED @@
+
+# @@ W9-3C-FREE @@
+
+# @@ W9-4A-LISTWORDS1 @@
+
+# @@ W9-4B-LISTWORDS2 @@
+
+# @@ W9-4C-INPUT @@
+
 # --- W3 hook installation (top-level init; must stay LAST) ---
 # M-VEC — implicit vectorization.  The bare + - * ⌈ ⌊ now compile to a
 # polymorphic template: it calls through a per-op HOOK CELL when that cell is

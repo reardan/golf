@@ -76,8 +76,8 @@ for the range immediately above them; do not fill them opportunistically.
 | `0x85` | `\hlv` | `⊘` | TOS >> 1 | shipped |
 | `0x86` | `\gt` | `»` | unsigned greater | shipped |
 | `0x87` | `\eq` | `≡` | equal | shipped |
-| `0x88` | `\max` | `⌈` | unsigned max | shipped |
-| `0x89` | `\min` | `⌊` | unsigned min | shipped |
+| `0x88` | `\max` | `⌈` | unsigned max — **W9-1A makes it signed** (`cmovl`); unsigned max stays available as `⊔` | reserved |
+| `0x89` | `\min` | `⌊` | unsigned min — **W9-1A makes it signed** (`cmovg`); unsigned min stays available as `⊓` | reserved |
 | `0x8A` | `\sdv` | `÷` | signed divide | shipped |
 | `0x8B` | `\smd` | `∣` | signed modulo | shipped |
 | `0x8C` | `\ref` | `′` | push a word's address (compiler prefix) | shipped |
@@ -119,6 +119,14 @@ for the range immediately above them; do not fill them opportunistically.
 | `0xC5` | `\comp` | `∘` | compose two quotations (writes a 39-byte thunk into the code arena) | shipped |
 | `0xC6` | `\pipe` | `⇉` | pipeline (thread a value through a list of quotations) | shipped |
 | `0xC7` | `\fork` | `⑂` | fork: `x ′f ′g ′h -> h(f x, g x)` | shipped |
+| `0xC8` | `\match` | `≣` | structural equality of two values, recursing into nested lists: `a b -> -1/0` (W9-3B) | reserved |
+| `0xC9` | `\depth` | `⍤` | nesting depth: an int is 0, a flat list 1, a list of lists 2 … (W9-3B) | reserved |
+| `0xCA` | `\free` | `⌫` | release a list block to the allocator's free list (W9-3C) | reserved |
+| `0xCB` | `\cat` | `⧺` | concatenate two lists (W9-4A) | reserved |
+| `0xCC` | `\take` | `↑` | `list n -> list`: the first n elements (W9-4A) | reserved |
+| `0xCD` | `\drop` | `↓` | `list n -> list`: all but the first n elements (W9-4A) | reserved |
+| `0xCE` | `\sort` | `⍋` | ascending signed sort, returns a new list (W9-4B) | reserved |
+| `0xCF` | `\memb` | `∊` | `list x -> f`: 0 if x is an element (zero-is-true, like `T`), 1 otherwise (W9-4B) | reserved |
 
 `0x91`–`0x96` are the raw scalar atoms M-VEC needs (see NEXT_STEPS.md §3): they
 keep the non-polymorphic behavior of `+ - * ⌊ ⌈ <` so the prelude's own pointer
@@ -304,7 +312,7 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0048`–`0x4F005F` | 5177416–5177439 | reserved for future scratch | free |
 | `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp, `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
 | `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
-| `0x4F00C0`–`0x4F00FF` | 5177536–5177599 | reserved for future scratch | free |
+| `0x4F00C0` | 5177536 | W9-3C free-list head(s) for `A`/`⌫`: up to eight 8-byte cells `0x4F00C0`–`0x4F00F8` (one per size class), owned by W9-3C | reserved |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | scratch spill stack (the region `X`/`Y` push and pop) — 28 frames of 64 bytes (8 cells × 8 bytes; it was 56 × 32 before W4A) | shipped |
 | `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
@@ -362,6 +370,19 @@ Notes:
   templates, the hook cells or the seed.
 
 ---
+
+## W9 — the gap-fix waves
+
+Allocated up front (W9-0A) so the parallel tasks never contend. Every other
+W9 word — slice, unique, index-of, flatten, the input words — waits for W9-3A
+(multi-character names) and takes a *name*, not a byte; `0xC8`–`0xCF` is now
+fully allocated. A task that needs anything not listed here asks the
+integrator; it does not pick it.
+
+String literals (W9-1B): the encoder copies everything between two `“` as
+UTF-8 bytes, verbatim — no mnemonics, no glyph encoding — except the escape
+`\“`, which stands for the UTF-8 bytes of `“` itself. A string whose UTF-8
+contains the raw byte `0x8E` (the delimiter) is an encode error.
 
 ## 4. Adding something
 
