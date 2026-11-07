@@ -1829,6 +1829,13 @@ python3 boot/golfref.py < "$TMP/w94d.src" > "$TMP/w94d.ref" 2>/dev/null
 cmp -s "$TMP/w94d.g2" "$TMP/w94d.ref" \
   && ok "oracle: identical bytes for sized frames (long, mixed, zero locals, ^)" || no "oracle sized-frame bytes"
 
+# W10 — the remaining-limits round: one anchor per task.
+# @@ W10-A-NAMES @@
+
+# @@ W10-B-V1DIV @@
+
+# @@ W10-C-SPILL @@
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
