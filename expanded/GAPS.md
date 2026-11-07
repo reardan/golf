@@ -261,9 +261,13 @@ Python, and it appears nowhere in DESIGN.md's limits.
 
 ### 2.5 Memory
 
-- **Nothing is freed.** `A` bump-allocates; `M`, `W`, `V`, `Z`, `K`, `G` each
-  allocate per call, so a map in a loop climbs forever. Queued as M-MEM2 (§3),
-  accurately.
+- **Freeing is manual (was: nothing is freed).** `A` bump-allocated and `M`,
+  `W`, `V`, `Z`, `K`, `G` each allocate per call, so a map in a loop climbed
+  forever. **Since W9-3C (M-MEM2)** `⌫` hands a block back to a size-classed
+  free list that `A` checks first, so a loop that frees what it maps keeps the
+  break flat. It is explicit — nothing frees on its own, there is no GC and no
+  ownership, and a use after `⌫` is undefined — so against Python this is
+  C's `free`, not reference counting.
 - **The `∘` compose arena has no bounds check, and overruns into user data.**
   See §3 below — this one is a live defect, not a design limit.
 

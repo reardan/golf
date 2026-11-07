@@ -1423,6 +1423,44 @@ W9GS=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; print
 # @@ W9-3B-NESTED @@
 
 # @@ W9-3C-FREE @@
+echo "M-MEM2 (W9-3C): ⌫ free — a size-classed free list in front of A's bump pointer"
+# Every A block has a header cell [cap] in front of the address A returns; ⌫
+# pushes a block on its class's list (heads at 0x4F00C0..0x4F00F8) and A pops
+# the head of the matching class before bumping.  The program break (0⌸) is the
+# witness: a loop that frees what it maps stays flat, the same loop without ⌫
+# climbs by one 72-byte block per iteration (the break moves in 1 MB steps,
+# so ~71 MB, not exactly 72).
+[ "$(printf '%s' ':d\dbl;5R→l 0\brk→b 1000000→i{←l\refdM\free←i1-"→i0\eq}0\brk←b-N E ←l Q E' | gc)" = "$(printf '0\n0 1 2 3 4 ')" ] \
+  && ok "1,000,000 × (map, ⌫): the program break does not move" || no "free loop keeps brk flat"
+w93c=$(printf '%s' ':d\dbl;5R→l 0\brk→b 1000000→i{←l\refdM_←i1-"→i0\eq}0\brk←b-N E' | gc)
+[ "$w93c" -ge 64000000 ] 2>/dev/null \
+  && ok "the same loop without ⌫ grows the break ($w93c bytes)" || no "no-free loop: break grew '$w93c', want >= 64000000"
+[ "$(printf '%s' '5R"→a\free 5R←a\eq N E 3A"→b\free 3A←b\eq N E' | gc)" = "$(printf -- '-1\n-1')" ] \
+  && ok "a freed block is reused by the next same-size request (tagged list and raw A block)" || no "free reuse"
+# Classes are powers of two (4 8 … 256 cells) so any request of the class fits:
+# 5R takes 6 cells, 7R 8 — both class 8.  Above 256 cells one list, head-only fit.
+[ "$(printf '%s' '5R→a←a\free 7R"←a\eq N E Q E 1000R→a←a\free 900R"←a\eq N E∑N E' | gc)" = "$(printf -- '-1\n0 1 2 3 4 5 6 \n-1\n404550')" ] \
+  && ok "reuse within a size class (5⍳→7⍳, 1000⍳→900⍳), contents fresh" || no "class reuse"
+[ "$(printf '%s' '5R→a←a\free 100R"←a\eq N E∑N E 5R←a\eq N E 1000R\free 2000R∑N E' | gc)" = "$(printf -- '0\n4950\n-1\n1999000')" ] \
+  && ok "a different-size request bumps instead; the freed block waits for its own class" || no "different sizes"
+[ "$(printf '%s' '5R→a 5R→b ←a\free←b\free 5R←b\eq N E 5R←a\eq N E 5R"←a\eq N E ←b\eq N E' | gc)" = "$(printf -- '-1\n-1\n0\n0')" ] \
+  && ok "the free list is LIFO; once it is empty A bumps a fresh block" || no "free list LIFO"
+[ "$(printf '%s' '5R"→a\free 5R\free 5R←a\eq N E' | gc)" = "-1" ] \
+  && ok "a reused block can be freed again (A restores its header)" || no "free after reuse"
+[ "$(printf '%s' ':s3R;4R\refsM"0 I\free"1 I\free\free 3R"Q E 3R Q E' | gc)" = "$(printf '0 1 2 \n0 1 2 ')" ] \
+  && ok "freeing inner lists and the outer list of a list of lists" || no "nested free"
+w93cf(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/c" 2>/dev/null \
+           && chmod +x "$TMP/c" && "$TMP/c" > "$TMP/c.out" 2> "$TMP/c.err"; echo "$?"; }
+w93cdied(){ [ "$1" = 1 ] && [ "$(cat "$TMP/c.err")" = "GOLF: $2" ] && [ "$(cat "$TMP/c.out")" = "$3" ]; }
+w93cdied "$(printf '%s' '7N E 7\free 8N E' | w93cf)" "free of a non-heap value" "7" \
+  && ok "⌫ of an int: exit 1, message on fd 2" || no "free of an int"
+w93cdied "$(printf '%s' '“abc“\free' | w93cf)" "free of a non-heap value" "" \
+  && ok "⌫ of a string literal (code segment) is refused too" || no "free of a string"
+w93cdied "$(printf '%s' '5R"\free\free' | w93cf)" "double free" "" \
+  && ok "⌫ twice on one block: exit 1, double free" || no "double free"
+[ "$(printf '%s' ':d\dbl;5R→l 3→i{←l\refdM"Q E\free←i1-"→i0\eq}100R\refdM\free 9R∑N E' | gref)" \
+    = "$(printf '%s' ':d\dbl;5R→l 3→i{←l\refdM"Q E\free←i1-"→i0\eq}100R\refdM\free 9R∑N E' | gc)" ] \
+  && ok "oracle: golfref runs the same free list" || no "oracle free"
 
 # @@ W9-4A-LISTWORDS1 @@
 

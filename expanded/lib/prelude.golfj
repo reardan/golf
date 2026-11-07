@@ -26,7 +26,8 @@
 #                        s4 result · s5 alloc temp · s6 filter count · s7 zip l2
 #                        5177440 5177448 5177456 5177464 5177472 5177480
 #                        5177488 5177496
-#   0x4F00A0             first free scratch
+#   0x4F00A0..0x4F00B8   lib/tio.golfj state
+#   0x4F00C0..0x4F00F8   free-list heads, one per size class (A and ⌫, W9-3C)
 #   0x4F0900..0x4F0FFF   scratch spill stack — 28 frames of 64 bytes (X/Y)
 #   ..0x600000           return stack, growing DOWN from the top of the BSS
 #   0x600000+ (moving)   the BRK HEAP — W6/M-MEM: the list heap is whatever the
@@ -49,8 +50,8 @@
 # lifted onto the data stack *before* Y, which is stack-neutral.  X and Y use no
 # scratch themselves — only the data stack and absolute addresses — so they are
 # trivially re-entrant.  This is what lets a mapped function call map/sum/range.
-# s5 is A-only and is never held across a call, so A needs no frame of its own
-# (X's save set covers it anyway).  I is scratch-free and stays unwrapped — it
+# s5 is A-only (and ⌫'s, the allocator's other leaf) and is never held across
+# a call, so neither needs a frame of its own (X's save set covers it anyway).  I is scratch-free and stays unwrapped — it
 # is the hot path.
 #
 # Totality.  `{…}` is a DO-while, so an unguarded loop body runs once even on an
@@ -81,7 +82,8 @@
 #   H  -> addr             address of the heap pointer
 #   X  ->                  push a scratch spill frame (callee-save s0..s7)
 #   Y  ->                  pop a scratch spill frame
-#   A  cells -> addr       bump-allocate cells*8 bytes
+#   A  cells -> addr       allocate cells*8 bytes (free list first, then bump)
+#   ⌫  list ->             free: give a list / A block back to A (W9-3C)
 #   L  list -> n           length
 #   I  list i -> x         index
 #   R  n -> list           range [0..n-1]
@@ -106,16 +108,32 @@
 # \fetch/\store, which is the whole point: a scratch cell may now hold -1.
 :X5177392@5179648\radd 5177440\fetch&\store5177448\fetch&8\radd\store5177456\fetch&16\radd\store5177464\fetch&24\radd\store5177472\fetch&32\radd\store5177480\fetch&40\radd\store5177488\fetch&48\radd\store5177496\fetch&56\radd\store_5177392@64\radd5177392!;
 :Y5177392@64\rsub"5177392!5179648\radd"\fetch5177440\store"8\radd\fetch5177448\store"16\radd\fetch5177456\store"24\radd\fetch5177464\store"32\radd\fetch5177472\store"40\radd\fetch5177480\store"48\radd\fetch5177488\store"56\radd\fetch5177496\store_;
-# A: alloc(cells) -> addr.  Bump allocation out of the BRK heap (W6/M-MEM — see
-# the "W6 allocator" block near the bottom for the whole story).  s5 = the byte
-# size; H is still the bump OFFSET from the heap base, so the block starts at
-# base+H; when the new offset would pass the break, extend the break and
-# republish the span.  A is an ALLOCATOR, not a list word: it returns a RAW
-# address (no tag), because the tool libraries hand its blocks to syscalls.
-# \brk is an atom, not a call, so s5 is never held across one and A still needs
-# no spill frame.
-:A8\rmul5177480\store 5177396@H@\radd H@5177480\fetch\radd"5177400@\rlt[
-  "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!;
+# A: alloc(cells) -> addr.  W9-3C/M-MEM2: a size-classed free list in front of
+# the bump allocator of W6/M-MEM (see the "W6 allocator" block near the bottom).
+# Every block now carries a HEADER cell in front of the address A returns:
+#     [cap][payload: cap cells]      A returns the payload address, header at -8
+# cap is the block's capacity in cells, which is the request ROUNDED UP to its
+# size class: class k (0..6) holds exactly 4<<k cells (4, 8, … 256); class 7
+# holds everything larger, at max(c, 512) cells.  The class of c is a straight
+# line of seven unsigned compares — k = #{t in 4 8 16 32 64 128 256 : c >u t} —
+# so A stays loop-free.  Head of class k: the cell 0x4F00C0 + 8k (5177536 +
+# 8k, REGISTRY §3).  A pops the head when it is non-zero AND its capacity is >=
+# c (always true in classes 0..6; class 7 checks only its head, first-fit-at-
+# head, never walks); otherwise it bumps as before, with the header in front.
+# A freed block's header holds -cap (⌫'s double-free mark), so the fit test
+# negates it and a pop writes +cap back.  s5 holds the class cell, then the
+# popped block or the new block's base — never across a call (\brk is an
+# atom), so A still needs no spill frame.  A is an ALLOCATOR, not a list word:
+# it returns a RAW address (no tag), because the tool libraries hand its blocks
+# to syscalls; the header is invisible to every caller, which only ever used
+# the payload.
+:A0&4\gt\rsub&8\gt\rsub&16\gt\rsub&32\gt\rsub&64\gt\rsub&128\gt\rsub&256\gt\rsub
+ 8\rmul5177536\radd"5177480\store\fetch
+ "0\eq[&&8\rsub\fetch\neg\gt["8\rsub"\fetch\neg&\store_"\fetch5177480\fetch\store5177480\store_5177480\fetch^]]_
+ 1 5177480\fetch5177536\rsub3>2\radd\shl\rmax
+ "1\radd8\rmul5177480\store 5177396@H@\radd H@5177480\fetch\radd"5177400@\rlt[
+  "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!
+ "5177480\store\store5177480\fetch8\radd;
 :L16\shl16>\fetch;                                           # L: len(list)
 # I: index(list,i).  W9-2B: CHECKED.  `&\fetch&\gt` is len >u i, so one unsigned
 # compare rejects i >= len AND every negative i (which is huge unsigned); `[`
@@ -326,6 +344,33 @@
 # @@ W9-3B-NESTED @@
 
 # @@ W9-3C-FREE @@
+# ⌫  list ->   W9-3C/M-MEM2: release a block to A's free list.  Takes a TAGGED
+# list (the tag is masked off, like every list word) or a RAW block from A —
+# both name the same payload address.  Explicit only: no prelude word frees its
+# inputs; ⌫ is how a long-running loop gives back what M/W/V/Z/K/G/R/U made.
+# Pushes the block on the head of its class (class of its header cap, computed
+# exactly as in A, so a block always goes back to the list it can serve):
+# payload cell 0 becomes the link, the header becomes -cap.  The list's
+# contents are gone — using it after ⌫ is undefined.  Two cheap guards, both
+# exit 1 with a message on fd 2 (like I's): a value whose header would lie
+# outside [heap base, base+span) is "free of a non-heap value" (an int, a
+# string literal, a code address), and a block whose header is already
+# negative is a "double free".  A pointer into the MIDDLE of a block, or a
+# block freed, reallocated and freed again through a stale copy, is not caught.
+# A leaf like A: s5 only (the payload), no call, no frame.
+:\free16\shl16>"8\rsub5177396@\rsub5177400@\rlt[
+ “GOLF: free of a non-heap value“5177440\store
+ 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
+ 10 5177448\store 2 5177448 1 1\sys_
+ 1.]
+ "8\rsub\fetch0\slt1\radd[
+ “GOLF: double free“5177440\store
+ 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
+ 10 5177448\store 2 5177448 1 1\sys_
+ 1.]
+ "5177480\store8\rsub\fetch0&4\gt\rsub&8\gt\rsub&16\gt\rsub&32\gt\rsub&64\gt\rsub&128\gt\rsub&256\gt\rsub
+ 8\rmul5177536\radd"\fetch5177480\fetch\store5177480\fetch&\store_
+ \neg5177480\fetch8\rsub\store;
 
 # @@ W9-4A-LISTWORDS1 @@
 

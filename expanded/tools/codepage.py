@@ -64,6 +64,8 @@ LIB = [
     (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
     (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
     (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
+    # --- W9-3C LIB row ---
+    (0xCA, "free", "⌫", "free(list|block): release an A block to the free list"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

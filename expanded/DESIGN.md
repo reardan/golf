@@ -140,7 +140,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **844** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2002** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **5802** bytes |
-| assertions in the run2 suite | **364** |
+| assertions in the run2 suite | **376** |
 | assertions in the selfcheck suite | **38** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -348,6 +348,27 @@ the golf2 fixpoint included. In order:
   divisor of `-1` skips `idiv`, `÷` negates (wrapping, so INT64_MIN ÷ -1 is
   INT64_MIN, like `*`) and `∣` gives 0. Cost: the two templates grew from 8 to
   71/70 bytes, the blob from 714 to 839.
+- **M-MEM2 (W9-3C) — a free list for the allocator.** `A` bump-allocated and
+  nothing was ever freed, so `M` in a loop climbed the break forever (a
+  1,000,000-iteration map over `5⍳` took ~71 MB). New word `⌫` (`\free`, 0xCA):
+  `list ->` pushes a block onto a free list and `A` pops one before it bumps;
+  the same loop with a `⌫` after each map now leaves the break exactly where it
+  was. Every `A` block grew a **header cell** in front of the address `A`
+  returns — `[cap][payload]` — because an `A` block is not always a list (the
+  tool libraries' byte buffers have no length cell), and no caller ever touched
+  anything but the payload, so the prelude, `lib/t*.golfj` and `gtools/` were
+  unchanged and gtools parity held. **Size classes, no search:** eight heads at
+  `0x4F00C0`–`0x4F00F8`; class `k` = 0…6 holds blocks of exactly `4<<k` cells
+  (4 … 256), so any request of the class fits the head; class 7 holds the rest
+  at `max(c, 512)` cells and is popped only when its head is big enough
+  (first-fit at the head, never a walk). The class is seven unsigned compares,
+  so `A` stays a loop-free leaf on `s5` with no frame; `⌫` is the same shape.
+  Accepts a tagged list or a raw `A` block (it masks, like every list word).
+  Guards, both exit 1 with a `GOLF:` line on fd 2: a value whose header would
+  lie outside the heap ("free of a non-heap value": an int, a string literal, a
+  code address) and a block whose header is already negative — a freed block's
+  header holds `-cap` — ("double free"). Explicit only: no existing word frees
+  its inputs.
 - **M-TAG2 (W9-2A) — a real tag bit.** `T` was a range test, so an *integer*
   that happened to equal a heap address — the heap base read out of its own
   cell, say — was vectorized as a list. Now a list value handed to user code is
@@ -447,6 +468,14 @@ unbuilt, and three defects this list does not yet cover — see
   pointer `H` is a 4-byte offset, so one process's list heap must stay under
   4 GB. Nothing else reads them any more — since M-TAG2 neither `T` nor the
   M-VEC templates do — so widening them is a prelude-only change.
+- **`⌫` is manual, and the free list is simple.** Nothing frees on its own:
+  a program that wants a flat heap calls `⌫` on what it is done with, and a
+  freed list must not be used again (its first cell becomes the free-list link).
+  Caught: freeing a non-heap value and freeing one block twice in a row.
+  Not caught: a pointer into the middle of a block, or a stale copy freed after
+  the block was handed out again. Blocks are never split or coalesced; small
+  blocks round up to a power of two (≤ 2x), and the >256-cell class checks only
+  its head, so a large freed block can be passed over by a bigger request.
 - **The integers in `[2^48, 2^49)` are lists.** A list value is `addr | 2^48`,
   so an integer whose top 16 bits are exactly `0x0001` (281 to 562 trillion) is
   shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the

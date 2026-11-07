@@ -240,6 +240,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xC5` | `∘` | `\comp` | — | compose: ′f ′g -> ′(x -> g(f x)) |
 | `0xC6` | `⇉` | `\pipe` | — | pipeline: x qlist -> y (apply each quotation in turn) |
 | `0xC7` | `⑂` | `\fork` | — | fork: x ′f ′g ′h -> h(f x, g x) |
+| `0xCA` | `⌫` | `\free` | — | free(list\|block): release an A block to the free list |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
