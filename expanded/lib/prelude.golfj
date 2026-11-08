@@ -3006,7 +3006,10 @@
 # timeout it reaps the child, then drains what is left in the pipes without
 # blocking (64 reads at most per pipe, in case a grandchild holds them open).
 # Every word is a ⊡ word or a plain one with no state: no runtime cells, no
-# scratch held across a call, re-entrant.  Names that start with ‹_14b› are
+# scratch held across a call, re-entrant.  Like the rest of the prelude, no
+# swap byte (0x5C): `decode -m | encode` must give the same bytes back
+# (gtools.sh), and a decoded swap runs into the mnemonic after it, so the
+# words use locals instead.  Names that start with ‹_14b› are
 # the helpers:
 #   ‹_14b_ename› e -> list        errno name (adds ESRCH E2BIG ENOEXEC ECHILD
 #                                 EAGAIN ENOMEM ETXTBSY EPIPE to 1B's table)
@@ -3036,25 +3039,25 @@
 #   ‹_14b_cap0›  v i -> a o q b n p   ‹capture›'s pipes and spawn
 :‹_14b_ename›"3﹣[_“ESRCH“U^]"7﹣[_“E2BIG“U^]"8﹣[_“ENOEXEC“U^]"10﹣[_“ECHILD“U^]
  "11﹣[_“EAGAIN“U^]"12﹣[_“ENOMEM“U^]"26﹣[_“ETXTBSY“U^]"32﹣[_“EPIPE“U^]‹_1b_ename›;
-⊡‹_14b_fail›⇒s U s⧺“ (“U⧺\\0\\﹣‹_14b_ename›⧺“)“U⧺‹throw›;
-:‹_14b_pid›“pid “U\\‹fmt›⧺;
+⊡‹_14b_fail›⇒s U⇒v⇒r v s⧺“ (“U⧺0 r﹣‹_14b_ename›⧺“)“U⧺‹throw›;
+⊡‹_14b_pid›‹fmt›⇒f“pid “U f⧺;
 :‹_14b_close›0 0 3⎈_;
 :‹_14b_envp›5177408⊙"⊙3≪﹢16﹢;
 ⊡‹_14b_path›‹_14b_envp›⇒e
  {e⊙0≡⋄e⊙⇒s s@1213481296﹣[s4﹢?61﹣[s5﹢⇒s0⇒n{s n﹢?0≡⋄⇡n}s n‹_1b_tolist›^]]e8﹢⇒e}
  “/bin:/usr/bin“U;
-⊡‹_14b_cand›⇒d"⇒a d≢[“.“U⇒d]d“/“U"⇒u⧺"⇒t a⧺"‹_1b_tobytes›\\⌫t⌫u⌫;
+⊡‹_14b_cand›⇒d"⇒a d≢[“.“U⇒d]d“/“U"⇒u⧺"⇒t a⧺⇒w w‹_1b_tobytes›w⌫t⌫u⌫;
 ⊡‹_14b_frees›"⇒l≢⇒n0⇒i{i n≡⋄l i⊇⌫⇡i}l⌫;
 ⊡‹_14b_cands›⇒a a47∊a≢﹡[1⍳0 a‹_1b_tobytes›⍈^]
- ‹_14b_path›"⇒p58‹split›"⇒q a\\′‹_14b_cand›€\\_ q‹_14b_frees›p⌫;
+ ‹_14b_path›"⇒p58‹split›⇒q a q′‹_14b_cand›€⇒r_q‹_14b_frees›p⌫r;
 ⊡‹_14b_argvc›"⇒v≢"⇒n⊕A⇒b0⇒i{i n≡⋄v i⊇‹_1b_tobytes›b i3≪﹢⊛⇡i}0 b n3≪﹢⊛b;
 ⊡‹_14b_argvf›"⇒b⇒p{p⊙0≡⋄p⊙⌫p8﹢⇒p}b⌫;
 ⊡‹_14b_try›⇒e⇒c⇒k0⇒x0⇒y k≢⇒n0⇒j{j n≡⋄k j⊇c e 59⎈"⇒y13﹢[1⇒x]⇡j}x[y⋄0 13﹣];
 ⊡‹_14b_die›⇒r⇒w1A⇒b0 r﹣b⊛w b 8 1⎈_127 0 0 60⎈;
 ⊡‹_14b_child›⇒w⇒z⇒e⇒c⇒k
  w 1030 3 72⎈"0≺[⇒w⋄_]
- z[⋄3A⇒t0⇒j{j3≡⋄z j⊇"0 1﹣≡[1030 3 72⎈"0≺[⋄w\\‹_14b_die›]]t j3≪﹢⊛⇡j}
-  0⇒j{j3≡⋄t j3≪﹢⊙"0 1﹣≡[j 0 33⎈"0≺[⋄w\\‹_14b_die›]]_⇡j}]
+ z[⋄3A⇒t0⇒j{j3≡⋄z j⊇"0 1﹣≡[1030 3 72⎈"0≺[⋄⇒m w m‹_14b_die›]]t j3≪﹢⊛⇡j}
+  0⇒j{j3≡⋄t j3≪﹢⊙"0 1﹣≡[j 0 33⎈"0≺[⋄⇒m w m‹_14b_die›]]_⇡j}]
  w k c e‹_14b_try›‹_14b_die›;
 ⊡‹pipe›1A⇒b b 524288 0 293⎈"0≺[_⋄“cannot make a pipe“0⍳‹_14b_fail›]b@b4﹢@b⌫;
 ⊡‹spawn›⇒z⇒v v≢[“cannot run an empty argv“U‹throw›]
@@ -3066,8 +3069,8 @@
  n0≻[p⋄p 0 0 0 0 0 61⌁_0 x﹣“cannot run “v0⊇‹_14b_fail›];
 ⊡‹_14b_w4›⇒o⇒p19A⇒b p b o b8﹢0 0 61⌁"0≺[⋄“cannot wait for “p‹_14b_pid›‹_14b_fail›]⇒r
  b@b40﹢⊙b⌫r;
-:‹_14b_st›"127$"[_8≫255$⋄\\_0\\﹣];
-:‹waitr›0‹_14b_w4›_\\‹_14b_st›\\;
+⊡‹_14b_st›⇒s s127$"[_s8≫255$⋄±];
+⊡‹waitr›0‹_14b_w4›_⇒k‹_14b_st›k;
 :‹wait›‹waitr›_;
 :‹run›0‹spawn›‹wait›;
 ⊡‹exec›⇒v v≢[“cannot run an empty argv“U‹throw›]‹flush›
@@ -3079,11 +3082,11 @@
  “signal “U"⇒g n‹fmt›"⇒f⧺f⌫g⌫;
 ⊡‹_14b_now›2A⇒b1 b0 228⎈_b⊙1000﹡b8﹢⊙1000000/﹢b⌫;
 ⊡‹_14b_reap›⇒d⇒p d1﹢[p‹wait›^]0⇒k
- {k[p1‹_14b_w4›⇒r_⇒s r⋄1]⋄d‹_14b_now›﹣"0≻[_p9‹kill›p‹wait›_1⇒k⋄0\\0\\10⊓7⎈_]}
+ {k[p1‹_14b_w4›⇒r_⇒s r⋄1]⋄d‹_14b_now›﹣"0≻[_p9‹kill›p‹wait›_1⇒k⋄⇒m0 0 m10⊓7⎈_]}
  k[s‹_14b_st›⋄0 256﹣];
 ⊡‹_14b_nb›⇒f f 3 0 72⎈2048|⇒g f 4 g 72⎈_;
 ⊡‹_14b_ign›4A⇒n4A⇒o1 n⊛0 n8﹢⊛0 n16﹢⊛0 n24﹢⊛13 n o 8 0 0 13⌁_n⌫o;
-:‹_14b_rst›"13\\0 8 0 0 13⌁_⌫;
+⊡‹_14b_rst›⇒o13 o0 8 0 0 13⌁_o⌫;
 ⊡‹_14b_rec›3A⇒r8192A r⊛65536 r8﹢⊛0 r16﹢⊛r;
 ⊡‹_14b_rd›⇒r⇒f r8﹢⊙r16﹢⊙﹣65536≺1﹢[r8﹢⊙2﹡⇒c c3≫A⇒n r⊙⇒o0⇒k r16﹢⊙7﹢3≫⇒e
   {k e≡⋄o k3≪﹢⊙n k3≪﹢⊛⇡k}o⌫n r⊛c r8﹢⊛]
