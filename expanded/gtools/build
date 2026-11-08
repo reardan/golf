@@ -39,6 +39,7 @@ for lib in "$HERE"/lib/t*.golfj; do
   [ -e "$lib" ] || continue                     # no tool libraries yet: fine
   $cp < "$lib" >> "$src"
 done
+printf '\f' >> "$src"   # W11-3B: as in tools/golfc, compile errors count lines from the program
 $cp < "$prog" >> "$src"
 
 "$GOLF2" < "$src" > "$out"

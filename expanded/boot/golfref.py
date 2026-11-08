@@ -94,11 +94,35 @@ def compile_bytes(src: bytes) -> bytes:
                         # number LONG_BASE + i, exactly as golf2 interns them
     pending = {}        # M2/W10-A: name -> call/jmp sites awaiting its body
     included = []       # W11-2A: include-once table, the paths as written
-    ends = []           # W11-2A: where each open include's spliced bytes end
+    # W11-2A: the open includes, innermost last.  W11-3B made each a record of
+    # where its spliced bytes start and end, which file it is (k+1 for
+    # `included[k]`; the program is file 0, `top`), where its line count starts
+    # (its start, or just past a form feed between tokens) and the ranges its
+    # own closed includes were spliced into, whose lines are not its own.
+    top = {"start": 0, "end": None, "file": 0, "reset": 0, "holes": []}
+    segs = []
+    pending_at = {}     # W11-3B: name -> where() of its first forward use
     i, n = 0, len(src)
 
     def emit(bs):
         out.extend(bs)
+
+    def where(at):
+        """W11-3B: golf2's ‹where› — ` at [path ]line N` for source offset `at`,
+        N counted in the file that is being read there."""
+        seg = segs[-1] if segs else top
+        lo = seg["reset"]
+        nl = src.count(b"\n", lo, at)
+        for a, b in seg["holes"]:
+            if b > lo:
+                nl -= src.count(b"\n", max(a, lo), min(b, at))
+        name = included[seg["file"] - 1] + b" " if seg["file"] else b""
+        return b" at " + name + b"line " + str(nl + 1).encode()
+
+    def die(msg):
+        """A golf2-format compile error at the current offset, exit 2."""
+        sys.stderr.buffer.write(b"GOLF: " + msg + where(i) + b"\n")
+        raise SystemExit(2)
 
     def patch32(at, target):
         """Store the rel32 that jumps from just-after-`at` to `target`.  Both are
@@ -153,28 +177,41 @@ def compile_bytes(src: bytes) -> bytes:
         patches the site (golf2 threads the same sites through the placeholders,
         so once patched the bytes are identical)."""
         emit([op]); pending.setdefault(name, []).append(len(out))
+        pending_at.setdefault(name, where(i))
         emit(b"\0\0\0\0")
 
     def define(name):
         """Bind `name` to the body starting here, and patch its forward sites."""
         dict_[name] = len(out)
+        pending_at.pop(name, None)
         for site in pending.pop(name, []):
             patch32(site, dict_[name])
 
+    def shown(name):
+        """A name number as golf2's diagnostics show it: the byte, or ‹name›."""
+        if name < mkblob2.LONG_BASE:
+            return bytes([name])
+        return "‹".encode() + longs[name - mkblob2.LONG_BASE] + "›".encode()
+
     def read_long():
-        """M2: the bytes after ‹ up to ›, interned to a name number."""
+        """M2: the bytes after ‹ up to ›, interned to a name number.  Checked
+        byte by byte in golf2's order, so a bad name is reported as golf2 does
+        (W11-3B): what was read before the offending byte, at that byte."""
         nonlocal i
         start = i
-        while i < n and src[i] != RNAME_BYTE:
-            i += 1
-        name = src[start:i]
-        ok = all(chr(b).isascii() and (chr(b).isalnum() or b in b"_-") for b in name)
-        if i >= n or not ok or not name or len(name) > mkblob2.LONG_LEN:
-            raise SystemExit(f"golfref: bad long name at byte {start}")
-        i += 1
+        while True:
+            eof = i >= n                               # golf2 reads 0 there
+            b = 0 if eof else src[i]
+            i += 0 if eof else 1
+            if b == RNAME_BYTE and i - 1 > start:
+                break
+            if (b == RNAME_BYTE or not (chr(b).isascii() and (chr(b).isalnum() or b in b"_-"))
+                    or i - 1 - start >= mkblob2.LONG_LEN):
+                die("bad long name ‹".encode() + src[start:i if eof else i - 1] + "›".encode())
+        name = src[start:i - 1]
         if name not in longs:
             if len(longs) >= mkblob2.LONG_MAX:
-                raise SystemExit("golfref: too many long names")
+                die("too many long names ‹".encode() + name + "›".encode())
             longs.append(name)
         return mkblob2.LONG_BASE + longs.index(name)
 
@@ -211,8 +248,7 @@ def compile_bytes(src: bytes) -> bytes:
         nonlocal src, n
         path = b""
         def bad(what):
-            sys.stderr.buffer.write(b"GOLF: " + what + b" " + path + b"\n")
-            raise SystemExit(2)
+            die(what + b" " + path)
         if i >= n or src[i] != STR_BYTE:
             bad(b"cannot include")
         j = i + 1
@@ -224,7 +260,7 @@ def compile_bytes(src: bytes) -> bytes:
         rest = j + 1                                 # just past the closing “
         if path in included:
             return rest, b""
-        if len(ends) >= mkblob2.IMPORT_DEPTH:
+        if len(segs) >= mkblob2.IMPORT_DEPTH:
             bad(b"includes nested too deeply")
         if len(included) >= mkblob2.IMPORT_FILES:
             bad(b"too many includes")
@@ -240,11 +276,14 @@ def compile_bytes(src: bytes) -> bytes:
         bad(b"cannot include")
 
     while i < n:
-        while ends and i >= ends[-1]:                # W11-2A: left an include
-            ends.pop()
+        while segs and i >= segs[-1]["end"]:         # W11-2A: left an include
+            done = segs.pop()
+            (segs[-1] if segs else top)["holes"].append((done["start"], done["end"]))
         c = src[i]; i += 1
         ch = chr(c)
         if c <= 32:
+            if c == 12:                              # W11-3B: a form feed
+                (segs[-1] if segs else top)["reset"] = i   # restarts the count
             continue
         if ch == '#':                                # comment to end of line
             while i < n and src[i] != 10:
@@ -363,15 +402,15 @@ def compile_bytes(src: bytes) -> bytes:
         if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
             name = take_name()                       # a..h, or a ‹long name›
             if name < 256 and not 0 <= name - ord('a') < 8:
-                raise SystemExit(f"golfref: local out of range at byte {i-1}")
+                die(b"local out of range " + shown(name))
             if not frame:                            # outside ⊡: M-FRAME's fixed
                 if name >= 256:                      # a..h slot; a long name has
-                    raise SystemExit(f"golfref: local out of range at byte {i-1}")
+                    die(b"local out of range " + shown(name))
                 slot = name - ord('a')               # nowhere to go
             else:                                    # M-FRAME2: first appearance
                 if name not in flocals:              # claims the next slot
                     if len(flocals) >= mkblob2.FRAME_MAX_LOCALS:
-                        raise SystemExit(f"golfref: too many locals at byte {i-1}")
+                        die(b"too many locals " + shown(name))
                     flocals.append(name)
                 slot = flocals.index(name)
             if c == LSET_BYTE:                       # pop rax; mov [rbp+d],rax
@@ -384,7 +423,10 @@ def compile_bytes(src: bytes) -> bytes:
             i, data = include()
             if data:
                 src = src[:i] + data + src[i:]; n = len(src)
-                ends[:] = [e + len(data) for e in ends] + [i + len(data)]
+                for seg in segs:
+                    seg["end"] += len(data)
+                segs.append({"start": i, "end": i + len(data), "reset": i,
+                             "file": len(included), "holes": []})
             continue
         if c == CHAIN_BYTE:                          # ⊚name … ; : a tacit chain
             name = take_name()                       # the header is ':'s
@@ -416,12 +458,16 @@ def compile_bytes(src: bytes) -> bytes:
 
     if stack:
         raise SystemExit(f"golfref: unbalanced blocks: {stack}")
+    def undefined(shown, name):                      # W11-3B: golf2's message,
+        sys.stderr.buffer.write(b"GOLF: undefined word " + shown  # at the
+                                + pending_at[name] + b"\n")       # first use
+        raise SystemExit(2)
     for b in range(mkblob2.LONG_BASE):               # W10-A: a one-byte name
         if b in pending:                             # called, never defined
-            raise SystemExit(f"golfref: undefined word 0x{b:02x}")
+            undefined(bytes([b]), b)
     for k, name in enumerate(longs):                 # M2: called, never defined
         if mkblob2.LONG_BASE + k in pending:
-            raise SystemExit(f"golfref: undefined word ‹{name.decode()}›")
+            undefined("‹".encode() + name + "›".encode(), mkblob2.LONG_BASE + k)
     emit(mkblob2.AUTOEXIT2)                          # W11-1C: flush hook, exit(0)
     if len(out) > CAP:                               # W11-1E: golf2's diagnostic
         sys.stderr.write("GOLF: program too large\n")

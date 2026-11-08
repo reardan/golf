@@ -4,6 +4,25 @@
 #   golfc PROG.g2  OUT      # PROG is raw code-page bytes
 #   golfc -j PROG.golfj OUT # PROG is glyph/\mnemonic source (encoded first)
 #   golfc -n PROG OUT       # no prelude (bare program)
+#   golfc -g ... PROG OUT   # also write OUT.map: one `name 0xaddr` per word
+#
+# Flags combine (-j -g, -n -g, ...).  A compile error is `GOLF: <what> at line
+# N` (or `at FILE line N` inside an included file), exit 2 (W11-3B): N is a
+# line of YOUR file, because golfc puts a form feed — which restarts golf2's
+# line count — between the prelude and the program, and names an included
+# .golfj by its own path rather than the encoded temp copy golf2 actually read.
+#
+# -g (W11-3B): golf2 -g writes the symbol map to fd 2 once the compile has
+# succeeded; golfc saves it as OUT.map, one line per defined word, in name-number
+# order (one-byte names by byte value, then long names in order of first
+# appearance; a word defined twice shows its last body):
+#
+#     NAME 0xADDR
+#
+# NAME is the word as the source spells it — a glyph, an ASCII letter or
+# `‹long›`; ADDR is the runtime virtual address of the word's body, in hex
+# (file offset + 0x400000, the program's one PT_LOAD).  The prelude's words
+# are listed too.  The binary is byte-identical with and without -g.
 #
 # `⎘“path“` includes resolve against the current directory, then lib/ (W11-2A);
 # an included .golfj is encoded on the way, a .g2 is read raw.
@@ -42,18 +61,22 @@ if [ -n "$stale" ]; then
   "$BUILD/seed"  < "$HERE/self/golf2.golf" > "$GOLF2";      chmod +x "$GOLF2"
 fi
 
-prelude="$HERE/lib/prelude.golfj"; encode=""; noprelude=""
+prelude="$HERE/lib/prelude.golfj"; encode=""; noprelude=""; gflag=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -j) encode=1; shift;;
     -n) noprelude=1; shift;;
+    -g) gflag=-g; shift;;
     *) break;;
   esac
 done
 prog=$1; out=$2
 src=$(mktemp)
 cp="python3 $HERE/tools/codepage.py encode"
-[ -z "$noprelude" ] && $cp < "$prelude" >> "$src"     # prelude is code-page source
+if [ -z "$noprelude" ]; then
+  $cp < "$prelude" >> "$src"                     # prelude is code-page source
+  printf '\f' >> "$src"     # W11-3B: line 1 of the program is line 1 again
+fi
 if [ -n "$encode" ]; then $cp < "$prog" >> "$src"
 else cat "$prog" >> "$src"; fi
 # W11-2A: `⎘“path“` makes golf2 read that file's bytes as they are — raw code
@@ -64,6 +87,8 @@ else cat "$prog" >> "$src"; fi
 # include-once still holds).  A path that resolves to nothing is left alone
 # and golf2 reports it under its own name.  Any other path is untouched.
 incs=$(mktemp -d); trap 'rm -rf "$src" "$incs"' EXIT
+# The temp copy -> path-as-written table goes to $incs/names, so that a
+# diagnostic inside an included .golfj names the user's file (W11-3B).
 python3 - "$src" "$incs" "$HERE/tools" <<'PY'
 import os, re, sys
 src, incs = sys.argv[1], sys.argv[2]
@@ -86,6 +111,8 @@ def fix(data):
                 enc = fix(codepage.encode(f.read()))
             with open(done[key], "wb") as f:
                 f.write(enc)
+            with open(os.path.join(incs, "names"), "ab") as f:
+                f.write(done[key] + b"\0" + p + b"\0")
         return b"\xb6\x8e" + done[key] + b"\x8e"
     return re.sub(rb"\xb6\x8e([^\x8e]*)\x8e", one, data)
 with open(src, "rb") as f:
@@ -93,4 +120,29 @@ with open(src, "rb") as f:
 with open(src, "wb") as f:
     f.write(fix(data))
 PY
-"$GOLF2" < "$src" > "$out"; chmod +x "$out"
+rc=0; "$GOLF2" $gflag < "$src" > "$out" 2> "$incs/err" || rc=$?
+python3 - "$incs" "$rc" "$out" "$HERE/tools" "$gflag" <<'PY'
+import os, sys
+incs, rc, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+sys.path.insert(0, sys.argv[4]); import codepage
+err = open(os.path.join(incs, "err"), "rb").read()
+if rc:                     # a diagnostic: put the user's include names back
+    try:
+        f = open(os.path.join(incs, "names"), "rb").read().split(b"\0")
+    except OSError:
+        f = []
+    for tmp, orig in zip(f[0::2], f[1::2]):
+        err = err.replace(b" at " + tmp + b" line ", b" at " + orig + b" line ")
+    sys.stderr.buffer.write(err)
+elif sys.argv[5]:          # -g: the map, with each one-byte name as its glyph
+    lines = []
+    for ln in err.split(b"\n")[:-1]:
+        name, addr = ln.rsplit(b" ", 1)
+        if not name.startswith("‹".encode()):
+            name = codepage.decode(name).encode("utf-8", "surrogateescape")
+        lines.append(name + b" " + addr + b"\n")
+    with open(out + ".map", "wb") as f:
+        f.writelines(lines)
+PY
+[ "$rc" = 0 ] || exit "$rc"
+chmod +x "$out"

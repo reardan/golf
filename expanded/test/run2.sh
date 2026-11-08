@@ -114,6 +114,7 @@ echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
 
 echo "List type (prelude library): A alloc R range L len I index S sum N num M map F fold Q print"
 python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"    # encoded prelude
+printf '\f' >> "$TMP/pre.gb"   # + the form feed golfc puts after it: lines count from the program (W11-3B)
 gc(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
         && chmod +x "$TMP/p" && "$TMP/p"; }
 [ "$(printf '%s' '5R L N E'    | gc)" = "5" ]    && ok "range + len"       || no "range/len"
@@ -1133,10 +1134,10 @@ echo "Per-call locals (M-FRAME): ⊡name … ; owns a frame, ⇒x / ⇐x reach i
 # Unchecked, ⇒z is displacement 200 — a NEGATIVE disp8 (-56), landing in the
 # frame of a word not yet called — and ⇒A wraps to 0 and silently aliases slot a.
 [ "$(printf '%s' '\dlocf\lsetz;1fN' | und)" = "2" ] \
-  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range z" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range z at line 1" ] \
   && ok "a slot name past h is refused, not silently wrapped" || no "lset range"
 [ "$(printf '%s' '\dlocf\lgetA;1fN' | und)" = "2" ] \
-  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range A" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range A at line 1" ] \
   && ok "... and one before a, which would have aliased slot a" || no "lget range"
 tools/golfc -j examples/locals.golfj "$TMP/loc" 2>/dev/null
 [ "$("$TMP/loc" 2>/dev/null)" = "$(printf '55\n10\n0 2 4 6 8 \nneg\n0\n7')" ] \
@@ -1157,7 +1158,7 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
 # must be defined before use, of every attempt at mutual recursion.
 [ "$(printf '%s' '5qN' | und)" = "2" ] \
   && ok "a call to an undefined word exits 2 instead of emitting the call" || no "undefined word status"
-[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "... naming the offending byte, on fd 2" || no "undefined word message"
 [ ! -s "$TMP/u.out" ] \
   && ok "... and no partial binary reaches fd 1" || no "undefined word stdout"
@@ -1239,10 +1240,10 @@ echo "Diagnostics: ′name of an undefined name is reported, not wrapped as an a
 # to `e`, which is the undefined-word diagnostic already.
 [ "$(printf '%s' '3⍳′q€⍕' | und)" = "2" ] \
   && ok "′ of an undefined name exits 2 instead of building a thunk" || no "ref undefined status"
-[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "... with the same message as a plain call, on fd 2" || no "ref undefined message"
 [ ! -s "$TMP/u.out" ] && ok "... and no partial binary on fd 1" || no "ref undefined stdout"
-[ "$(printf '%s' '⊚mq≢÷;5⍳mṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(printf '%s' '⊚mq≢÷;5⍳mṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "a chain link to an undefined name is reported the same way" || no "chain link undefined"
 # Atoms and defined words keep compiling, to the bytes they did before.
 [ "$(printf '%s' '3⍳′⊗€⍕' | gc)" = "0 2 4 " ] && ok "′⊗ still auto-wraps the atom"  || no "ref ⊗"
@@ -1473,14 +1474,14 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
   && ok "′ of a long name defined further down (a jmp thunk, patched)" || no "forward quotation"
 [ "$(printf '%s' ':‹ab›1;:‹abc›2;:‹a›3;‹abc›Ṅ‹ab›Ṅ‹a›Ṅ' | gc)" = "213" ] \
   && ok "‹ab› ‹abc› ‹a› are three names (no prefix collision)" || no "long-name prefixes"
-[ "$(printf '%s' '5‹nope›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹nope›" ] \
+[ "$(printf '%s' '5‹nope›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹nope› at line 1" ] \
   && [ ! -s "$TMP/u.out" ] \
   && ok "a long name never defined: GOLF: undefined word ‹nope›, exit 2, no binary" || no "undefined long name"
-[ "$(printf '%s' ':‹f›‹g›;1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹g›" ] \
+[ "$(printf '%s' ':‹f›‹g›;1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹g› at line 1" ] \
   && ok "... reported at end of input, even from inside a definition" || no "undefined long name in a body"
-[ "$(printf '%s' '5qṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(printf '%s' '5qṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "a one-byte name never defined: same message as before (at end of input since W10-A)" || no "one-byte undefined regression"
-[ "$(printf '%s' '‹a b›' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: bad long name ‹a›" ] \
+[ "$(printf '%s' '‹a b›' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: bad long name ‹a› at line 1" ] \
   && ok "a byte outside 0-9 A-Z a-z _ - is rejected" || no "bad long-name byte"
 [ "$(printf '%s' '‹›' | und)" = "2" ] && [ "$(printf '%s' '‹abc' | und)" = "2" ] \
   && [ "$(printf '%s' '‹abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk›' | und)" = "2" ] \
@@ -1490,7 +1491,7 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
 # number 1025 - P.
 w93p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
 w93n=""; for k in $(seq 1 $((1025 - w93p))); do w93n="$w93n:‹w$k›;"; done
-[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((1025 - w93p))›" ] \
+[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((1025 - w93p))› at line 1" ] \
   && [ "$(printf '%s' "${w93n%:*}" | und)" = "0" ] \
   && ok "the 1025th long name is refused (1024 fit the table; $w93p of them are the prelude's)" || no "too many long names"
 # The other half of the contract: a program without ‹ compiles to the bytes it
@@ -1843,9 +1844,9 @@ w9g '⊡‹z›"[^]1-‹z›;100000‹z›N E'
 [ "$(printf '%s' '⊡‹ev›⇒‹n›⇐‹n›[1^]⇐‹n›1-‹od›;⊡‹od›⇒‹n›⇐a_⇐‹n›[0^]⇐‹n›1-‹ev›0[^]7;30000‹ev›N 30001‹ev›N E' | gc)" = "10" ] \
   && ok "two frame sizes, mutually recursive through early ^, 30,000 deep" || no "mutual sized frames"
 [ "$(printf '%s' '⊡f⇒‹a1›⇒‹a2›⇒‹a3›⇒‹a4›⇒‹a5›⇒‹a6›⇒‹a7›⇒‹a8›⇒‹a9›⇒‹a10›⇒‹a11›⇒‹a12›⇒‹a13›⇒‹a14›⇒‹a15›⇒‹a16›⇒‹a17›;' | und)" = "2" ] \
-  && [ "$(cat "$TMP/u.err")" = "GOLF: too many locals ‹a17›" ] && [ ! -s "$TMP/u.out" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: too many locals ‹a17› at line 1" ] && [ ! -s "$TMP/u.out" ] \
   && ok "a 17th local is refused (16 keep every slot a disp8), exit 2" || no "too many locals"
-[ "$(printf '%s' ':g⇐‹x›;' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range ‹x›" ] \
+[ "$(printf '%s' ':g⇐‹x›;' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range ‹x› at line 1" ] \
   && ok "a long local outside a ⊡ word is refused (there is no frame to hold it)" || no "long local outside ⊡"
 w94dsrc='⊡‹t›"⇒‹n›⇒a⇐‹n›[0^]⇐‹n›1-‹t›⇐a+0[^]9;⊡‹m›⇒a⇒‹x›⇒b⇐a⇐‹x›-⇐b*⇐a+;⊡‹z›1+;50‹t›N 2 7 3‹m›N 4‹z›N'
 cat "$TMP/pre.gb" <(printf '%s' "$w94dsrc" | python3 tools/codepage.py encode) > "$TMP/w94d.src"
@@ -1875,10 +1876,10 @@ echo "W10-A: forward references for one-byte names; 1024 long names"
 # word of that byte is defined later.
 [ "$(printf '%s' '3⊗Ṅ :⊗99; 3⊗Ṅ' | gc)" = "66" ] \
   && ok "an atom byte is still its template, never a forward call" || no "template before forward"
-[ "$(printf '%s' ':‹a›b;5‹a›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word b" ] \
+[ "$(printf '%s' ':‹a›b;5‹a›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word b at line 1" ] \
   && [ ! -s "$TMP/u.out" ] \
   && ok "a one-byte name never defined: GOLF: undefined word b at end of input, exit 2, no binary" || no "one-byte undefined at end"
-[ "$(printf '%s' '′q_ 1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(printf '%s' '′q_ 1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "... and ′q of one never defined, the same" || no "one-byte undefined quotation at end"
 # The oracle agrees byte for byte on forward one-byte calls, ′ and chains.
 W10AP=':a"0≡[_0^]1-b; :b"0≡[_1^]1-a; 7aṄ 3′d⍎Ṅ ⊚mq≢÷; :q∑; 5⍳mṄ :d⊗;'
@@ -1895,7 +1896,7 @@ w10n=$((1024 - w93p)); w10s=""
 for k in $(seq 1 $w10n); do w10s="$w10s:‹v$k›$k→‹v$k›;"; done
 w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
 w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
-[ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z›" ] \
+[ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z› at line 1" ] \
   && ok "1024 long names fill the table: one more (‹z›) is refused" || no "1024 cap: $(cat "$TMP/u.err")"
 w10s="${w10s/:‹z›;/}"
 [ "$(printf '%s' "$w10s" | und)" = "0" ] && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1$((w10n-1))$w10n" ] \
@@ -2186,7 +2187,7 @@ cmp -s "$TMP/inc/p" "$TMP/inc/p.one" && ok "... and compiles to exactly the byte
   && ok "a file included three times compiles once (include-once; same bytes as one include)" || no "double include"
 [ "$(printf '%s' '⎘“cube.g2“⎘“sq.g2“3‹cube›Ṅ␤4‹sq›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "$(printf '27\n16')" ] \
   && ok "nested: lib/cube.g2 (found through lib/) includes sq.g2, which is then not included again" || no "nested include: $(cat "$TMP/inc/err")"
-[ "$(printf '%s' '⎘“nope.g2“1Ṅ' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include nope.g2" ] && [ ! -s "$TMP/inc/p" ] \
+[ "$(printf '%s' '⎘“nope.g2“1Ṅ' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include nope.g2 at line 1" ] && [ ! -s "$TMP/inc/p" ] \
   && ok "a missing file: GOLF: cannot include nope.g2 on fd 2, exit 2, nothing on fd 1" || no "missing include: $(cat "$TMP/inc/err")"
 [ "$(printf '%s' '⎘“nope.g2“1Ṅ' | w112a "$TMP/seed")" = 2 ] && [ ! -s "$TMP/inc/err" ] && [ ! -s "$TMP/inc/p" ] \
   && ok "... the seed exits 2 silently, as for every compile error" || no "seed missing include"
@@ -2203,16 +2204,16 @@ printf '%s' '7)' > "$TMP/inc/d8.g2"
 [ "$(printf '%s' '⎘“d1.g2“8)' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "$(printf '\007\010')" ] \
   && ok "includes nest 8 deep" || no "8-deep include: $(cat "$TMP/inc/err")"
 printf '%s' '⎘“d9.g2“' | w112enc > "$TMP/inc/d8.g2"; : > "$TMP/inc/d10.g2"
-[ "$(printf '%s' '⎘“d1.g2“' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: includes nested too deeply d9.g2" ] && [ ! -s "$TMP/inc/p" ] \
+[ "$(printf '%s' '⎘“d1.g2“' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: includes nested too deeply d9.g2 at d8.g2 line 1" ] && [ ! -s "$TMP/inc/p" ] \
   && ok "a 9th level: GOLF: includes nested too deeply d9.g2, exit 2" || no "9-deep include: $(cat "$TMP/inc/err")"
 w112many=""; for k in $(seq 1 61); do : > "$TMP/inc/e$k.g2"; w112many="$w112many⎘“e$k.g2“"; done
 [ "$(printf '%s' "${w112many%⎘“e61.g2“}1Ṅ" | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 1 ] \
-  && [ "$(printf '%s' "${w112many}" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: too many includes e61.g2" ] \
+  && [ "$(printf '%s' "${w112many}" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: too many includes e61.g2 at line 1" ] \
   && ok "60 distinct files may be included; the 61st: GOLF: too many includes e61.g2" || no "include table bound: $(cat "$TMP/inc/err")"
 w112long=$(printf 'x%.0s' $(seq 1 251))
-[ "$(printf '%s' "⎘“$w112long“" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include ${w112long%x}" ] \
-  && [ "$(printf '%s' '⎘5' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include " ] \
-  && [ "$(printf '%s' '⎘“sq.g2' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include sq.g2" ] \
+[ "$(printf '%s' "⎘“$w112long“" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include ${w112long%x} at line 1" ] \
+  && [ "$(printf '%s' '⎘5' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include  at line 1" ] \
+  && [ "$(printf '%s' '⎘“sq.g2' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include sq.g2 at line 1" ] \
   && ok "a path over 250 bytes, ⎘ without “, an unclosed path: GOLF: cannot include …, exit 2" || no "bad include syntax: $(cat "$TMP/inc/err")"
 w112p='⎘“cube.g2“⎘“twelve.g2“‹cube›Ṅ⎘“d1.g2“'
 printf '%s' '7)' > "$TMP/inc/d8.g2"
@@ -2222,7 +2223,7 @@ printf '%s' '7)' > "$TMP/inc/d8.g2"
   && [ "$("$TMP/inc/p.g2")" = "$(printf '1728\007')" ] \
   && ok "seed, golf2 and boot/golfref.py emit the same bytes for nested and repeated includes" || no "include parity (seed/golf2/golfref)"
 [ "$(printf '%s' '⎘“nope.g2“' | w112a "$TMP/golf2")" = 2 ] && (cd "$TMP/inc" && python3 "$EXP/boot/golfref.py" < src > p.ref 2>err.ref; [ $? = 2 ]) \
-  && [ "$(cat "$TMP/inc/err.ref")" = "GOLF: cannot include nope.g2" ] \
+  && [ "$(cat "$TMP/inc/err.ref")" = "GOLF: cannot include nope.g2 at line 1" ] \
   && ok "golfref: the same missing-file message and status" || no "golfref missing include"
 [ "$(printf '%s' '\import\strx.g2\str ⎘“y“' | w112enc | od -An -tx1 | tr -d ' \n')" = "b68e782e67328e20b68e798e" ] \
   && [ "$(printf '\266\216a#b\216' | python3 tools/codepage.py decode)" = "⎘“a#b“" ] \
@@ -2237,7 +2238,7 @@ printf '%s' ':‹r›6;' | w112enc > "$TMP/incj/raw.g2"
 printf '%s' '⎘“gone.golfj“1Ṅ' > "$TMP/incj/bad.golfj"
 (cd "$TMP/incj" && "$EXP/tools/golfc" -j main.golfj m >/dev/null 2>&1) && [ "$("$TMP/incj/m")" = "$(printf '81\n25\n6')" ] \
   && ok "golfc -j: nested .golfj includes (via lib/) are encoded, a .g2 one read raw, the same file once" || no "golfc -j with .golfj includes"
-[ "$(cd "$TMP/incj" && "$EXP/tools/golfc" -j bad.golfj b 2>&1 >/dev/null; echo "rc=$?")" = "$(printf 'GOLF: cannot include gone.golfj\nrc=2')" ] \
+[ "$(cd "$TMP/incj" && "$EXP/tools/golfc" -j bad.golfj b 2>&1 >/dev/null; echo "rc=$?")" = "$(printf 'GOLF: cannot include gone.golfj at line 1\nrc=2')" ] \
   && ok "golfc -j: a missing .golfj include is reported under its own name, exit 2" || no "golfc missing .golfj include"
 # REFERENCE.md's Modules example, cut out of the doc and run as it says.
 mkdir -p "$TMP/incr/lib"
@@ -2478,6 +2479,95 @@ done < <(sed -n '/^### Errors$/,/^## /p' REFERENCE.md | sed -n '/^```$/,/^```$/p
   && ok "REFERENCE.md's Errors examples print what they say" || no "REFERENCE Errors examples:$w113bad"
 
 # === W11-3B ===
+echo "W11-3B: compile errors say where (line, file); golf2 -g / golfc -g write a symbol map"
+# golf2 counts newlines as it reads (‹read>), per file, and a form feed between
+# tokens restarts the count — pre.gb ends with one, as golfc's input does, so
+# these lines are the program's own.  w113b <compiler> runs prelude + stdin in
+# $TMP/inc (w112a's directory, with its sq.g2), leaving "rc message".
+w113b(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && $1 < src > p 2>err; echo "$? $(cat err)"); }
+[ "$(printf '1Ṅ\n\n5qṄ\n' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 3" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "an undefined word on line 3: GOLF: undefined word q at line 3, exit 2, no binary" || no "undefined line: $(cat "$TMP/inc/err")"
+[ "$(printf ':‹a›b;\n\n:‹c›b;\n5‹a›Ṅ' | w113b "$TMP/golf2")" = "2 GOLF: undefined word b at line 1" ] \
+  && [ "$(printf '\n\n:f‹g›;\n‹g›\n' | w113b "$TMP/golf2")" = "2 GOLF: undefined word ‹g› at line 3" ] \
+  && [ "$(printf '\n\n3⍳′q€⍕' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 3" ] \
+  && [ "$(printf '\n⊚m\nq≢÷;5⍳mṄ' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 3" ] \
+  && ok "a forward reference never defined is reported at its FIRST use (call, ‹long›, ′, chain link)" || no "first-use line: $(cat "$TMP/inc/err")"
+[ "$(printf '\n\n‹a b›' | w113b "$TMP/golf2")" = "2 GOLF: bad long name ‹a› at line 3" ] \
+  && [ "$(printf '\n:g⇐‹x›;' | w113b "$TMP/golf2")" = "2 GOLF: local out of range ‹x› at line 2" ] \
+  && [ "$(printf '1\n⎘“sq.g2“\n\n⎘“nope.g2“' | w113b "$TMP/golf2")" = "2 GOLF: cannot include nope.g2 at line 4" ] \
+  && ok "immediate errors carry the line too (bad long name, local out of range, cannot include)" || no "immediate error lines: $(cat "$TMP/inc/err")"
+[ "$(printf '“a\nb“ # c\n`3 x\ny\n\n\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 7" ] \
+  && ok "newlines inside a string, a comment's end and a raw blob all count" || no "newline counting: $(cat "$TMP/inc/err")"
+w113bp=$(python3 tools/codepage.py encode < lib/prelude.golfj | tr -cd '\n' | wc -c | tr -d ' ')
+[ "$(python3 tools/codepage.py encode < lib/prelude.golfj | cat - <(printf '5qṄ') | "$TMP/golf2" 2>&1 >/dev/null)" \
+    = "GOLF: undefined word q at line $((w113bp + 1))" ] \
+  && [ "$(printf '1\n2\n\f3\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 2" ] \
+  && ok "without the form feed the prelude's $w113bp lines count; a form feed between tokens restarts at line 1" || no "form feed reset"
+# Includes: each file has its own count, saved and restored per level; inside
+# one the message names it as its ⎘ wrote it.
+printf '# a comment\n⎘“sq.g2“\n\n:‹cube›"‹sq›*;\n‹oops›\n' | w112enc > "$TMP/inc/w113cube.g2"
+printf '\n\n:‹bad›⇒z;\n' | w112enc > "$TMP/inc/w113loc.g2"
+[ "$(printf '1\n⎘“w113cube.g2“\n3‹cube›Ṅ\n' | w113b "$TMP/golf2")" = "2 GOLF: undefined word ‹oops› at w113cube.g2 line 5" ] \
+  && [ "$(printf '1\n⎘“sq.g2“\n⎘“w113loc.g2“' | w113b "$TMP/golf2")" = "2 GOLF: local out of range z at w113loc.g2 line 3" ] \
+  && ok "an error inside an included file: … at w113cube.g2 line 5 (its own line, its own name)" || no "include error names the file: $(cat "$TMP/inc/err")"
+printf '%s' '⎘“d9.g2“' | w112enc > "$TMP/inc/d8.g2"     # W11-2A's chain, 9 deep again
+[ "$(printf '1\n⎘“w113cube.g2“\n\n:‹oops›;\n\n\n‹z›' | w113b "$TMP/golf2")" = "2 GOLF: undefined word ‹z› at line 7" ] \
+  && [ "$(printf '%s' '⎘“d1.g2“' | w113b "$TMP/golf2")" = "2 GOLF: includes nested too deeply d9.g2 at d8.g2 line 1" ] \
+  && ok "the includer's count resumes after a (nested) include; a 9th level is reported inside d8.g2" || no "count across includes: $(cat "$TMP/inc/err")"
+w113bbad=""
+for w113bs in '1\n⎘“w113cube.g2“\n3‹cube›Ṅ\n' '1\n⎘“sq.g2“\n⎘“w113loc.g2“' '1\n⎘“w113cube.g2“\n\n:‹oops›;\n\n\n‹z›' \
+              '1\n⎘“sq.g2“\n\n⎘“nope.g2“' '\n\n‹a b›' '\n‹abc' '\n⊡f⇒a⇒z;' '1Ṅ\n\n5qṄ\n' '1\n2\n\f3\nq' '⎘“d1.g2“'; do
+  w113bg=$(printf "$w113bs" | w113b "$TMP/golf2")
+  w113br=$(printf "$w113bs" | w113b "python3 $EXP/boot/golfref.py")
+  [ "$w113bg" = "$w113br" ] || w113bbad="$w113bbad [$w113bs: $w113bg | $w113br]"
+done
+[ -z "$w113bbad" ] && ok "boot/golfref.py reports the same message, place and status for each" || no "golfref positions:$w113bbad"
+# golfc: a .golfj program and a .golfj include, through the prelude.
+mkdir -p "$TMP/w113/lib"
+printf '# helpers\n\n:‹sq›"*;\n‹nope›\n' > "$TMP/w113/lib/h.golfj"
+printf '1Ṅ\n⎘“h.golfj“\n5‹sq›Ṅ\n' > "$TMP/w113/a.golfj"
+printf '1Ṅ\n\n5qṄ\n' > "$TMP/w113/b.golfj"
+[ "$(cd "$TMP/w113" && "$EXP/tools/golfc" -j b.golfj b 2>&1; echo "rc=$?")" = "$(printf 'GOLF: undefined word q at line 3\nrc=2')" ] \
+  && [ "$(cd "$TMP/w113" && "$EXP/tools/golfc" -j a.golfj a 2>&1; echo "rc=$?")" = "$(printf 'GOLF: undefined word ‹nope› at h.golfj line 4\nrc=2')" ] \
+  && ok "golfc -j: the line is the user's file's (prelude not counted); an included .golfj is named, not its temp copy" || no "golfc lines"
+# -g: the map.  golf2 -g writes `name 0xaddr` lines to fd 2 after a good
+# compile, the binary unchanged; golfc -g turns that into OUT.map, glyphs and all.
+printf ':‹sq›"*;\n:f‹sq›;\n5fṄ\n' > "$TMP/w113/c.golfj"
+(cd "$TMP/w113" && "$EXP/tools/golfc" -j -g c.golfj c && "$EXP/tools/golfc" -j c.golfj c2) >/dev/null 2>&1
+[ "$("$TMP/w113/c")" = 25 ] && cmp -s "$TMP/w113/c" "$TMP/w113/c2" \
+  && ok "golfc -g: the binary is byte-identical with and without -g" || no "golfc -g binary"
+cat "$TMP/pre.gb" <(w112enc < "$TMP/w113/c.golfj") > "$TMP/w113/c.src"
+"$TMP/golf2" -g < "$TMP/w113/c.src" > "$TMP/w113/g.bin" 2> "$TMP/w113/g.map"
+"$TMP/seed" -g < "$TMP/w113/c.src" > "$TMP/w113/s.bin" 2>/dev/null
+cmp -s "$TMP/w113/g.bin" "$TMP/w113/c" && cmp -s "$TMP/w113/s.bin" "$TMP/w113/c" \
+  && [ "$(grep -c . "$TMP/w113/g.map")" = "$(grep -c . "$TMP/w113/c.map")" ] \
+  && ok "golf2 -g: the same binary as golf2 and the seed, the map on fd 2 ($(grep -c . "$TMP/w113/c.map") words)" || no "golf2 -g"
+python3 - "$TMP/w113/c" "$TMP/w113/c.map" "$EXP/boot" <<'PY' && ok "every c.map address is a word body in c (the prologue is there), f's call lands on ‹sq›, ⌫ is a glyph" || no "map vs binary"
+import re, sys
+sys.path.insert(0, sys.argv[3]); import v1
+img = open(sys.argv[1], "rb").read()
+words = {}
+for ln in open(sys.argv[2], encoding="utf-8"):
+    m = re.fullmatch(r"(\S+) 0x([0-9a-f]+)\n", ln)
+    assert m, ln
+    words[m.group(1)] = int(m.group(2), 16) - 0x400000
+pro = bytes(v1.PROLOGUE)
+assert all(img[a:a + len(pro)] == pro for a in words.values()), "a body without the prologue"
+f = words["f"] + len(pro)                       # f's body: prologue, then call ‹sq›
+assert img[f] == 0xE8
+assert f + 5 + int.from_bytes(img[f + 1:f + 5], "little", signed=True) == words["‹sq›"]
+assert "⌫" in words and "‹throw›" in words and "A" in words
+PY
+printf '%s' ':‹sq›"*;3‹sq›48+)' > "$TMP/w113/d.g2.src"; w112enc < "$TMP/w113/d.g2.src" > "$TMP/w113/d.g2"
+w113bd=$(python3 -c 'import sys; sys.path.insert(0, "tools"); import mkblob2; print("%x" % (0x400000 + 120 + len(mkblob2.STARTUP2) + 5))')
+(cd "$TMP/w113" && "$EXP/tools/golfc" -n -g d.g2 d) && [ "$(cat "$TMP/w113/d.map")" = "‹sq› 0x$w113bd" ] && [ "$("$TMP/w113/d")" = 9 ] \
+  && ok "golfc -n -g, no prelude: one word, ‹sq› 0x$w113bd (header, startup stub, the jmp over the body)" || no "golfc -n -g: $(cat "$TMP/w113/d.map")"
+[ "$(printf '%s' '5qṄ' | w113b "$TMP/golf2 -g")" = "2 GOLF: undefined word q at line 1" ] \
+  && ok "a failed compile with -g writes the diagnostic only, no map" || no "-g on error"
+# REFERENCE.md's Compile errors example says what golf2 says.
+w113bex=$(sed -n '/^### Compile errors$/,/^### /p' REFERENCE.md | grep -m1 -B1 'stderr: GOLF: undefined word q at line 2' | sed 's/ *#.*//')
+[ "$(printf '%s' "$w113bex" | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 2" ] && grep -q '^### Debugging$' REFERENCE.md \
+  && ok "REFERENCE.md's Compile errors example is what golf2 reports; ### Debugging documents -g" || no "REFERENCE compile errors example"
 
 # === W11-3C ===
 

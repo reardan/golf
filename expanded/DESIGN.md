@@ -140,9 +140,9 @@ against the thing it describes, so none of it can go stale quietly.
 | operator atoms in `mkblob2.ATOMS` | **34** |
 | the template blob itself | **1146** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **3559** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **10485** bytes |
-| assertions in the run2 suite | **617** |
-| assertions in the selfcheck suite | **53** |
+| the generated v2 compiler (`self/golf2.golf`) | **11804** bytes |
+| assertions in the run2 suite | **632** |
+| assertions in the selfcheck suite | **54** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -642,13 +642,20 @@ person does not have to guess whether they were forgotten.
   a parse-time arity algebra, and matching it means a real front end — a
   different project, not a milestone. `⊚` chain definitions are as far as the
   single-pass model goes.
-- **Diagnostics, in general.** The compiler is single-pass with no source
-  positions; it cannot say "line 4" because it does not know what a line is.
-  The failures worth naming are named (an undefined word, an exhausted compose
-  arena, a local out of range, a malformed long name) and each cost a
-  byte-count that had to be justified.
-  A general error-reporting layer is not coming; it would be a large fraction of
-  a 4.8 KB compiler.
+- **Diagnostics, in general.** The compiler is single-pass, and the failures
+  worth naming are named (an undefined word, an exhausted compose arena, a
+  local out of range, a malformed long name, a missing include) and each cost
+  a byte-count that had to be justified. Since W11-3B every compile message
+  but `program too large` also says **where**: `GOLF: undefined word b at
+  line 3`, or `at x.golfj line 3` inside an included file, with lines counted
+  per file and from the user's program (golfc's form feed after the prelude
+  restarts the count). An undefined word, only known at end of input, is
+  reported at its first use, whose position rides in the last placeholder of
+  its forward-reference list. That cost golf2 about 1.5 KB of binary,
+  together with `-g`'s symbol map (`name 0xaddr` per word, tools/golfc
+  `-g` → `OUT.map`). Still not coming: a column, a caret under the source, a
+  second error after the first, or any check that would need a second pass.
+  The seed still exits 2 silently (its v1 GOLF has no stderr).
 
 The first two are permanent. The third is a budget, not a principle — a
 specific silent failure can earn its diagnostic, as those two did.

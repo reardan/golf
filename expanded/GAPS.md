@@ -329,6 +329,14 @@ differential comparison, "no diagnostics at all" is a defensible cost — but it
 the single biggest difference in *what it feels like* to write GOLF versus
 Python, and it appears nowhere in DESIGN.md's limits.
 
+**Compile-error positions — closed by W11-3B.** Every compile diagnostic but
+`program too large` now ends with where it happened, in the user's terms:
+`GOLF: undefined word b at line 3`, or `… at x.golfj line 3` inside an
+included file (lines counted per file; golfc's form feed after the prelude
+restarts the count, and golfc names an included `.golfj` by its own path). An
+undefined word is reported at the line of its first use. Still no column, and
+still one error per compile.
+
 ### 2.5 Memory
 
 - **Freeing is manual (was: nothing is freed).** `A` bump-allocated and `M`,
@@ -354,6 +362,11 @@ No modules or namespaces (textual includes: W11-2A, below), no standard
 library beyond the prelude, no package ecosystem, no REPL, no debugger, no
 introspection, no threads or async, and one target: x86-64 Linux, ELF64,
 statically laid out. A retargetable IR is also M9.
+
+**Symbols — closed by W11-3B (the debugger itself is W11-4D).** `golfc -g`
+writes `OUT.map`, one `name 0xaddr` line per defined word (the address of its
+body in the running program), so a crash address or a gdb `break *0x…` can be
+tied to a word name; the binary is unchanged by `-g`.
 
 **Includes — closed by W11-2A.** `⎘“path“` compiles that file's bytes in
 place: nested (8 deep), include-once, searched as written and then in `lib/`
