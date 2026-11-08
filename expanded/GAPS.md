@@ -366,7 +366,8 @@ still one error per compile.
 ### 2.6 Everything around the language
 
 No modules or namespaces (textual includes: W11-2A, below), no standard
-library beyond the prelude, no package ecosystem, no REPL, no debugger, no
+library beyond the prelude, no package ecosystem (pinned packages: W11-4E,
+below), no REPL, no debugger, no
 introspection, no threads or async, and one target: x86-64 Linux, ELF64,
 statically laid out. A retargetable IR is also M9.
 
@@ -380,6 +381,17 @@ place: nested (8 deep), include-once, searched as written and then in `lib/`
 (REFERENCE.md "Modules"). It is textual inclusion, like C's `#include` with
 an include guard, not Python's modules: there are no namespaces, so an
 included file's names are the includer's names.
+
+**Package manager — closed by W11-4E.** A project's `golf.deps` pins each
+package as `name git-url tag sha256`, shaped like the root `SEEDS` file.
+`tools/golfdeps fetch` clones each tag into `vendor/<name>/`. It refuses a
+package whose content hash differs from the pin and leaves nothing behind when
+it does. The hash is a sha256 over the sorted files' own hashes, so the clone's
+metadata does not affect it. `verify` catches a modified vendor copy
+(REFERENCE.md "Packages"). Programs include package files as
+`⎘“<name>/<file>.golfj“` through W11-4A's `vendor/` search path. There is no
+registry, no version solving and no transitive dependencies: a package's own
+`golf.deps` is not read, so the project pins everything it needs.
 
 ---
 

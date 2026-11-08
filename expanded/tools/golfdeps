@@ -1,0 +1,189 @@
+#!/bin/sh
+# golfdeps — fetch and check a project's pinned GOLF packages (W11-4E).
+#
+#   tools/golfdeps fetch  [-f golf.deps]   clone each package into vendor/<name>/
+#   tools/golfdeps verify [-f golf.deps]   re-check what is already in vendor/
+#   tools/golfdeps list   [-f golf.deps]   one line per package: name tag state
+#   tools/golfdeps hash   DIR              print DIR's package hash (to fill a pin)
+#
+# The manifest, golf.deps (default: ./golf.deps), is shaped like the repo's root
+# SEEDS file: `#` starts a comment (at the start of a line or after a blank),
+# blank lines are ignored, and every other line is one package, four fields:
+#
+#     # name   git-url                           tag    sha256
+#     mathx    https://example.org/mathx.git     v1.2   9f86d081884c7d65…(64 hex)
+#
+#   name    the directory under vendor/: letters, digits, `_` `-` `.`, not
+#           starting with `.` (so it can never climb out of vendor/)
+#   git-url anything `git clone` accepts: https://, ssh, file://, a local path
+#   tag     a tag (or branch) of that repository, cloned with --depth 1
+#   sha256  the package hash below, 64 lowercase hex digits
+#
+# vendor/ is created next to the manifest, not in the current directory.  A
+# GOLF program in that directory includes a package's file as
+#
+#     ⎘“<name>/<file>.golfj“        (through the vendor/ search path, W11-4A)
+#     ⎘“vendor/<name>/<file>.golfj“ (the same file spelled as written)
+#
+# THE PACKAGE HASH is computed over the files, never over git's metadata, so it
+# does not depend on the clone (depth, packing, git version, remote):
+#
+#   1. every regular file under the package directory, except the top-level
+#      .git/ directory, by its path relative to that directory (no "./");
+#   2. sorted bytewise (LC_ALL=C sort);
+#   3. one line per file:  <sha256 of its bytes, 64 lowercase hex> SP <path> LF
+#   4. the package hash is the sha256 of those lines, concatenated.
+#
+# File modes, timestamps and empty directories are not part of it.  A symlink,
+# a device or a file name holding a newline makes the package unhashable: it
+# is refused rather than given a hash that might not mean what it says.  The
+# same hash by hand, in the package directory:
+#
+#     find . -path ./.git -prune -o -type f -print | sed 's|^\./||' | LC_ALL=C sort |
+#       while IFS= read -r f; do printf '%s %s\n' "$(sha256sum < "$f" | cut -d' ' -f1)" "$f"; done |
+#       sha256sum
+#
+# fetch: a package already in vendor/<name>/ whose hash matches its pin is left
+# alone ("up to date"), so fetch is idempotent.  Anything else is cloned afresh
+# into a temporary vendor/.<name>.tmp/, its .git/ removed, and hashed.  On a
+# match it replaces vendor/<name>/; on a mismatch both the clone and any old
+# vendor/<name>/ are removed (nothing unpinned is ever left to be included),
+# the wanted and the computed hash are printed, and fetch exits 1.  An all-zero
+# pin is the way to ask for a hash: fetch refuses it and prints the hash the
+# tag has, as SEEDS does before a release.
+#
+# verify: hashes each vendor/<name>/ and compares; a missing or modified
+# package is reported and verify exits 1.  It changes nothing — `fetch` puts a
+# modified package back.
+#
+# Exit status: 0 all good; 1 a package failed (clone, hash, verify); 2 a usage
+# or manifest error (the message names the manifest line).  Needs git, find,
+# sort and sha256sum (or shasum -a 256).  No network unless a URL needs one.
+set -u
+
+me=golfdeps
+die(){ echo "$me: $*" >&2; exit 2; }
+
+sha_stdin() {
+	if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+	else shasum -a 256 | cut -d' ' -f1; fi
+}
+
+# pkg_hash DIR — the package hash of DIR on stdout; status 1 (and a message)
+# if DIR holds something the hash cannot stand for.
+pkg_hash() {
+	odd=$(cd "$1" && find . -path ./.git -prune -o ! -type f ! -type d -print | head -n 1)
+	if [ -n "$odd" ]; then
+		echo "$me: $1: ${odd#./} is not a regular file (symlinks and devices are refused)" >&2
+		return 1
+	fi
+	nl='
+'
+	odd=$(cd "$1" && find . -path ./.git -prune -o -name "*$nl*" -print | head -n 1)
+	if [ -n "$odd" ]; then
+		echo "$me: $1: a file name holds a newline; refused" >&2
+		return 1
+	fi
+	(cd "$1" && find . -path ./.git -prune -o -type f -print | sed 's|^\./||' | LC_ALL=C sort |
+		while IFS= read -r f; do printf '%s %s\n' "$(sha_stdin < "$f")" "$f"; done) | sha_stdin
+}
+
+usage(){
+	echo "usage: $me fetch|verify|list [-f golf.deps]   or   $me hash DIR" >&2
+	exit 2
+}
+
+[ $# -ge 1 ] || usage
+cmd=$1; shift
+case "$cmd" in
+hash)
+	[ $# = 1 ] && [ -d "$1" ] || usage
+	pkg_hash "$1" || exit 1
+	exit 0;;
+fetch|verify|list) ;;
+-h|--help|help) sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0;;
+*) usage;;
+esac
+
+manifest=golf.deps
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-f) [ $# -ge 2 ] || usage; manifest=$2; shift 2;;
+	*) usage;;
+	esac
+done
+[ -f "$manifest" ] || die "no manifest $manifest"
+root=$(cd "$(dirname "$manifest")" && pwd)
+vendor=$root/vendor
+
+# The manifest, parsed and checked whole before anything is fetched: one
+# "lineno name url tag sha" record per package, or a message and exit 2.
+entries=$(awk '
+	{ sub(/(^|[ \t])#.*/, "") }
+	NF == 0 { next }
+	NF != 4 { printf "E %d expected 4 fields (name git-url tag sha256), found %d\n", NR, NF; exit }
+	$1 !~ /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/ { printf "E %d bad package name %s\n", NR, $1; exit }
+	$4 !~ /^[0-9a-f]+$/ || length($4) != 64 { printf "E %d sha256 of %s must be 64 lowercase hex digits\n", NR, $1; exit }
+	seen[$1]++ { printf "E %d package %s is listed twice\n", NR, $1; exit }
+	{ print NR, $1, $2, $3, $4 }
+' "$manifest")
+bad=$(printf '%s\n' "$entries" | grep '^E ')
+if [ -n "$bad" ]; then set -f; set -- $bad; shift; ln=$1; shift; die "$manifest line $ln: $*"; fi
+
+zero=0000000000000000000000000000000000000000000000000000000000000000
+st=0
+[ "$cmd" = fetch ] && [ -n "$entries" ] && { mkdir -p "$vendor" || die "cannot create $vendor"; }
+
+# state NAME SHA — ok | missing | modified (hash differs or unhashable)
+state() {
+	[ -d "$vendor/$1" ] || { echo missing; return; }
+	got=$(pkg_hash "$vendor/$1" 2>/dev/null) || { echo modified; return; }
+	[ "$got" = "$2" ] && echo ok || echo modified
+}
+
+echo "$entries" | {
+while read -r ln name url tag want; do
+	[ -n "$name" ] || continue
+	dest=$vendor/$name
+	case "$cmd" in
+	list)
+		printf '%s %s %s\n' "$name" "$tag" "$(state "$name" "$want")";;
+	verify)
+		s=$(state "$name" "$want")
+		case "$s" in
+		ok) echo "$me: $name $tag: ok";;
+		missing) echo "$me: $name $tag: missing from vendor/ (run $me fetch)" >&2; st=1;;
+		*) echo "$me: $name $tag: vendor/$name does not match its sha256 pin (modified; run $me fetch)" >&2; st=1;;
+		esac;;
+	fetch)
+		if [ "$want" != "$zero" ] && [ "$(state "$name" "$want")" = ok ]; then
+			echo "$me: $name $tag: up to date"; continue
+		fi
+		tmp=$vendor/.$name.tmp
+		rm -rf "$tmp"
+		if ! git -c advice.detachedHead=false clone --quiet --no-local --depth 1 --branch "$tag" -- "$url" "$tmp" >/dev/null 2>"$vendor/.$name.err"; then
+			sed 's/^/  /' "$vendor/.$name.err" >&2
+			rm -rf "$tmp" "$vendor/.$name.err"
+			echo "$me: $name: cannot clone tag $tag of $url" >&2
+			st=1; continue
+		fi
+		rm -f "$vendor/.$name.err"
+		rm -rf "$tmp/.git"
+		got=$(pkg_hash "$tmp") || { rm -rf "$tmp" "$dest"; st=1; continue; }
+		if [ "$got" != "$want" ]; then
+			rm -rf "$tmp" "$dest"
+			if [ "$want" = "$zero" ]; then
+				echo "$me: $name $tag has no sha256 pin yet; refusing it. Its hash is:" >&2
+			else
+				echo "$me: $name $tag does not match the sha256 pinned in $manifest; refusing it" >&2
+				echo "$me:   want $want" >&2
+			fi
+			echo "$me:   got  $got" >&2
+			st=1; continue
+		fi
+		rm -rf "$dest" && mv "$tmp" "$dest" || { rm -rf "$tmp"; echo "$me: $name: cannot install into $dest" >&2; st=1; continue; }
+		echo "$me: $name $tag: fetched into vendor/$name";;
+	esac
+done
+exit $st
+}

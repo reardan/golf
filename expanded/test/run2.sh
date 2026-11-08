@@ -2665,6 +2665,87 @@ printf '%s' ':‹boom›3⍳9⊇;:‹safe›′‹boom›‹catch›;' | w112enc
 # === W11-4D ===
 
 # === W11-4E ===
+echo "W11-4E: tools/golfdeps — golf.deps pins packages (name git-url tag sha256), fetched into vendor/"
+# The package is a local git repo made here (no network): mathx.golfj defines
+# ‹pkgcube›.  Each project is its own directory holding golf.deps + vendor/.
+w114e="$TMP/deps"; w114gd="$EXP/tools/golfdeps"; w114n=11
+w114z=0000000000000000000000000000000000000000000000000000000000000000
+w114bad=1111111111111111111111111111111111111111111111111111111111111111
+# w114 DIR ARGS... — run golfdeps in DIR; stdout+stderr to $w114e/out, status on stdout
+w114(){ w114d=$1; shift; (cd "$w114d" && "$w114gd" "$@" > "$w114e/out" 2>&1; echo $?); }
+mkdir -p "$w114e/src/sub" "$w114e/p1" "$w114e/p2" "$w114e/p3" "$w114e/probe/vendor/w114probe"
+printf '%s\n' '# mathx: a test package' ':‹pkgcube›""**;' > "$w114e/src/mathx.golfj"
+printf 'not golf\n' > "$w114e/src/sub/notes.txt"
+if command -v git >/dev/null 2>&1 && (cd "$w114e/src" && git init -q && git add . \
+     && git -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -qm pkg \
+     && git -c tag.gpgsign=false tag v1.0) >/dev/null 2>&1; then
+  w114h=$("$w114gd" hash "$w114e/src")
+  # The definition, computed independently: sha256 over "<sha256> <path>\n", paths sorted, .git/ left out.
+  w114py=$(python3 -c '
+import hashlib, os, sys
+r = sys.argv[1]; fs = []
+for d, ds, ns in os.walk(r):
+    if d == r and ".git" in ds: ds.remove(".git")
+    fs += [os.path.relpath(os.path.join(d, n), r) for n in ns]
+print(hashlib.sha256(b"".join(b"%s %s\n" % (hashlib.sha256(open(os.path.join(r, f), "rb").read()).hexdigest().encode(), f.encode())
+      for f in sorted(fs, key=os.fsencode))).hexdigest())' "$w114e/src")
+  echo "mathx  $w114e/src  v1.0  $w114z   # not pinned yet" > "$w114e/p1/golf.deps"
+  [ "$(w114 "$w114e/p1" fetch)" = 1 ] && grep -q "has no sha256 pin yet" "$w114e/out" && grep -q "got  $w114h" "$w114e/out" \
+    && [ ! -e "$w114e/p1/vendor/mathx" ] && [ -z "$(ls -A "$w114e/p1/vendor")" ] \
+    && ok "an all-zero pin is refused (exit 1, nothing in vendor/), printing the hash the tag has" || no "zero pin: $(cat "$w114e/out")"
+  [ -n "$w114h" ] && [ "$w114h" = "$w114py" ] \
+    && ok "golfdeps hash = sha256 of sorted '<sha256> <path>' lines, .git/ excluded (as REFERENCE.md defines it)" || no "package hash '$w114h' vs '$w114py'"
+  printf '# mathx, pinned\nmathx file://%s v1.0 %s  # the test package\n' "$w114e/src" "$w114h" > "$w114e/p1/golf.deps"
+  [ "$(w114 "$w114e" fetch -f p1/golf.deps)" = 0 ] && grep -q "fetched into vendor/mathx" "$w114e/out" \
+    && cmp -s "$w114e/src/mathx.golfj" "$w114e/p1/vendor/mathx/mathx.golfj" && [ ! -e "$w114e/p1/vendor/mathx/.git" ] \
+    && [ "$(ls -A "$w114e/p1/vendor")" = mathx ] && [ ! -e "$w114e/vendor" ] \
+    && ok "fetch clones the tag into vendor/mathx/ next to the manifest (-f), without .git/ or leftovers" || no "fetch: $(cat "$w114e/out")"
+  printf '%s\n' '⎘“vendor/mathx/mathx.golfj“' '3‹pkgcube›Ṅ' > "$w114e/p1/main.golfj"
+  (cd "$w114e/p1" && "$EXP/tools/golfc" -j main.golfj main > /dev/null 2>&1) && [ "$("$w114e/p1/main")" = 27 ] \
+    && ok "a program includes the fetched package (⎘“vendor/mathx/mathx.golfj“) and uses its word: 27" || no "use a package"
+  [ "$(w114 "$w114e/p1" fetch)" = 0 ] && [ "$(cat "$w114e/out")" = "golfdeps: mathx v1.0: up to date" ] \
+    && [ "$(w114 "$w114e/p1" verify)" = 0 ] && [ "$(w114 "$w114e/p1" list)" = 0 ] && [ "$(cat "$w114e/out")" = "mathx v1.0 ok" ] \
+    && ok "fetch again is a no-op (up to date); verify exits 0; list says 'mathx v1.0 ok'" || no "re-fetch: $(cat "$w114e/out")"
+  printf 'tampered\n' >> "$w114e/p1/vendor/mathx/sub/notes.txt"
+  [ "$(w114 "$w114e/p1" verify)" = 1 ] && grep -q "vendor/mathx does not match its sha256 pin" "$w114e/out" \
+    && [ "$(w114 "$w114e/p1" list)" = 0 ] && [ "$(cat "$w114e/out")" = "mathx v1.0 modified" ] \
+    && [ "$(w114 "$w114e/p1" fetch)" = 0 ] && [ "$(w114 "$w114e/p1" verify)" = 0 ] \
+    && cmp -s "$w114e/src/sub/notes.txt" "$w114e/p1/vendor/mathx/sub/notes.txt" \
+    && ok "verify catches a tampered vendor file (exit 1, list: modified); fetch restores it" || no "tamper: $(cat "$w114e/out")"
+  cp -R "$w114e/p1/vendor" "$w114e/p2/"
+  printf 'mathx %s v1.0 %s\n' "$w114e/src" "$w114bad" > "$w114e/p2/golf.deps"
+  [ "$(w114 "$w114e/p2" fetch)" = 1 ] && grep -q "does not match the sha256 pinned in golf.deps; refusing it" "$w114e/out" \
+    && grep -q "want $w114bad" "$w114e/out" && grep -q "got  $w114h" "$w114e/out" \
+    && [ ! -e "$w114e/p2/vendor/mathx" ] && [ -z "$(ls -A "$w114e/p2/vendor")" ] \
+    && ok "a wrong hash is refused: exit 1, want/got printed, vendor/mathx (even an old copy) removed" || no "wrong hash: $(cat "$w114e/out")"
+  printf 'mathx %s v9.9 %s\n' "$w114e/src" "$w114h" > "$w114e/p3/golf.deps"
+  [ "$(w114 "$w114e/p3" fetch)" = 1 ] && grep -q "mathx: cannot clone tag v9.9" "$w114e/out" && [ -z "$(ls -A "$w114e/p3/vendor")" ] \
+    && [ "$(w114 "$w114e/p3" verify)" = 1 ] && grep -q "mathx v9.9: missing from vendor/" "$w114e/out" \
+    && ok "a tag that does not exist: cannot clone, exit 1, nothing left; verify: missing, exit 1" || no "bad tag: $(cat "$w114e/out")"
+  w114m=""
+  for w114l in "mathx $w114e/src v1.0" "../up $w114e/src v1.0 $w114h" ".hid $w114e/src v1.0 $w114h" "m x v1.0 ABC" \
+               "m x v1.0 $w114h|m y v1.0 $w114h"; do
+    printf '# header\n\n%s\n' "$w114l" | tr '|' '\n' > "$w114e/p3/bad.deps"
+    [ "$(w114 "$w114e/p3" list -f bad.deps)" = 2 ] && grep -q "^golfdeps: bad.deps line [34]: " "$w114e/out" || w114m="$w114m [$w114l]"
+  done
+  [ -z "$w114m" ] && [ "$(w114 "$w114e/p3" fetch -f none.deps)" = 2 ] && [ "$(w114 "$w114e/p3" frob)" = 2 ] \
+    && ok "manifest errors exit 2 naming the line: 3 fields, ../ or . names, a short hash, a name twice; no manifest" || no "manifest errors:$w114m"
+  sed -n '/^### Packages$/,/^### /p' REFERENCE.md | awk '/^```$/{n++; next} n==1' > "$w114e/p3/golf.deps"
+  [ "$(w114 "$w114e/p3" list)" = 0 ] && [ "$(cat "$w114e/out")" = "$(printf 'mathx v1.2 missing\ntextx v0.3 missing')" ] \
+    && ok "REFERENCE.md's golf.deps example parses (golfdeps list: two packages, missing)" || no "REFERENCE golf.deps example: $(cat "$w114e/out")"
+  # The bare ⎘“<name>/<file>“ form needs W11-4A's vendor/ search path in the
+  # compiler and golfc.  Probe golf2 with a raw .g2 in a vendor/ dir; until it
+  # searches there the test is counted as skipped (one ok either way).
+  printf '%s' ':‹w114p›5;' | w112enc > "$w114e/probe/vendor/w114probe/p.g2"
+  if printf '%s' '⎘“w114probe/p.g2“‹w114p›Ṅ' | w112enc | cat "$TMP/pre.gb" - | (cd "$w114e/probe" && "$TMP/golf2" > p 2>/dev/null); then
+    sed -n '/^### Packages$/,/^### /p' REFERENCE.md | awk '/^```$/{n++; next} n==5' > "$w114e/p1/bare.golfj"
+    (cd "$w114e/p1" && "$EXP/tools/golfc" -j bare.golfj bare > /dev/null 2>&1) && [ "$("$w114e/p1/bare")" = 27 ] \
+      && grep -q '^⎘“mathx/mathx.golfj“' "$w114e/p1/bare.golfj" \
+      && ok "REFERENCE.md's ⎘“mathx/mathx.golfj“ example finds the package through vendor/ and prints 27" || no "bare package include"
+  else ok "bare ⎘“mathx/mathx.golfj“ include: the compiler does not search vendor/ yet (W11-4A), skipped"; fi
+else
+  for k in $(seq 1 "$w114n"); do ok "golfdeps: git not available, skipped"; done
+fi
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
