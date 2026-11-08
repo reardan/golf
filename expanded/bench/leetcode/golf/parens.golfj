@@ -1,2 +1,2 @@
 :c"40≡&91≡|&123≡|1+["40≡+2+←b\\⍆→b0^]←b≢[_1→k0^]←b⍅\\_-[0^]1→k0;
-‹readall›‹trim›‹vec›→b′c€_←k←b≢|[“true“🗲0.]“false“🗲
+‹readall›‹trim›‹vec›→b′c€_←k←b≢|[“true“⋄“false“]🗲

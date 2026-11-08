@@ -22,6 +22,14 @@ code had four or five inline ops. Old and new on the same inputs, best of 5,
 same session: parens 96 → 137 ms, islands 67 → 130 ms, slidemax 208 → 294 ms.
 | W12-P3 before (base 7a867ca), 2026-11-08 | 0.139 | 0.120 | 0.096 | 0.086 | 0.171 | 0.448 | 0.073 | 0.189 | 0.199 | 0.024 | 898 |
 | W12-P3, 2026-11-08 | 0.129 | 0.097 | 0.082 | 0.080 | 0.126 | 0.440 | 0.061 | 0.107 | 0.202 | 0.020 | 898 |
+| W12-A7, 2026-11-08 | 0.069 | 0.112 | 0.070 | 0.075 | 0.131 | 0.094 | 0.100 | 0.117 | 0.248 | 0.024 | 815 |
+
+W12-A7 rewrote two solutions with `⋄`: parens ends `[“true“⋄“false“]🗲`
+(113 → 111 bytes) and queens' column loop is a top-tested `{⇐v0≡⋄…}` in place
+of a `[0^]` guard plus a bottom test (110 → 106); 821 → 815 for all ten.
+Outputs match the old binaries and Python. Old and new on the same inputs,
+best of 7, same session: queens 17–20 → 18–22 ms, parens 115–123 → 116–122 ms,
+i.e. noise (the while form costs one `jmp` per pass).
 
 ## Micro, ns per element
 

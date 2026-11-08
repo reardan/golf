@@ -471,6 +471,7 @@ REC_BYTE = 0xB7     # ⊜  ⊜‹point›‹x›‹y›; defines constructor/acc
 REC_FIELDS = 0x43C000     # field k's name number at REC_FIELDS + 4*k
 REC_MAX = 256             # fields one record may have
 VENDOR_PATH = 0x43F000    # the C string `vendor/path` the third include try opens
+ELSE_BYTE = 0xB8    # ⋄  the else of c[a⋄b] and the test of {c⋄body} (W12-A7); no memory
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).

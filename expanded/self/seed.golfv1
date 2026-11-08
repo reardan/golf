@@ -201,10 +201,15 @@
 # word releases its frame.  Then the ordinary epilogue and backpatch, which are
 # the same for every kind of definition.
 "59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!{m92+@@m88+@8*m92+@!m92+!m92+@1<}72o129o197om88+@8*w]94Ek^] # ';' end def -- and close a chain
-"91-[_2E133oP0w^]                                       # '[' if
-"93-[_k^]                                               # ']' end if
-"'{-[_P^]                                               # '{' loop start ('{ = 123)
-"'}-[_2E132oP4+-w^]                                     # '}' loop end  ('} = 125)
+# W12-A7: `[` and `{` push a tag above their address (golf2.golfj's dispatcher
+# header has the table): 1000001 `[`, 1000002 `{`, 1000003 after `[…⋄`,
+# 1000004 after `{c⋄` (the exit site sits between it and the target).  `]`
+# drops whichever tag; `}` after a 1000004 jumps back unconditionally and lands
+# the exit (S holds it a moment).
+"91-[_2E133oP0w1000001^]                                # '[' if
+"93-[__k^]                                              # ']' end if (or else)
+"'{-[_P1000002^]                                        # '{' loop start ('{ = 123)
+"'}-[_"1000004-[_S!233oP4+-wS@k^]_2E132oP4+-w^]         # '}' loop end  ('} = 125), or a while's
 "96-[_D233o"wP606208-S!{(o1-"1<}_LS@w^]                  # '`' blob
 # ---------------------------------------------------------------------------
 # Everything from here to the `e;` fallthrough is v2's, not v1's: the compiler
@@ -305,6 +310,10 @@
 # ‹ (0xB4) as a TOKEN: read and intern the long name, and let its number take
 # the char's place and fall through — so the LINK case and `e` below treat it
 # exactly like a one-byte name.
+# ⋄ (0xB8, W12-A7) — in a `[`: jmp to `]` and send the `[`'s jnz to the else
+# branch; in a `{`: pop c and leave the loop unless it is 0.  Anywhere else
+# golf2 says `GOLF: ⋄ outside [ ] or { }` (or `twice in one block`); the seed exits 2.
+"184-[_"1000001-[_233oP0w\k1000003^]"1000002-[_2E133oP0w1000004^]2.] # 0xB8  ⋄  else / while test
 "182-[_I^]                                              # 0xB6  ⎘  include a file (W11-2A)
 "183-[_y^]                                              # 0xB7  ⊜  a record header (W11-4A)
 "180-[_N]                                               # 0xB4  ‹  a long name used as a token
