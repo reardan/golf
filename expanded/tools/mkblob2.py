@@ -160,7 +160,7 @@ ATOMS = [
     # partner `ref` (push a word's address) is a compiler prefix, not an atom —
     # REF_BYTE below, with a case in each of the three compilers — and together
     # they give higher-order functions (map/fold).
-    (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
+    (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a function (a code address, or a ∘ ⊸ closure record), call it"),
     # Raw scalar ops — byte-for-byte copies of the original scalar templates for
     # `+ - * ⌊ ⌈ <` (⊓ ⊔ keep the UNSIGNED cmova/cmovb that ⌊ ⌈ had before W9-1A
     # made those signed — pointer math wants unsigned).  M-VEC will make those bare ops *polymorphic* (dispatch on
@@ -450,6 +450,46 @@ def _numchk(scalar):
 NUMCHK_BYTES = (0x80, 0x81, 0x82, 0x83, 0x84, 0x85)   # ± ⊕ ⊖ ² ⊗ ⊘
 OVERRIDES.update({b: _numchk(_ATOM_TPL[b]) for b in NUMCHK_BYTES})
 
+# W13-H: ⍎ dispatches on CLOSURE RECORDS.  Through W12-O2 `∘` and `⊸` wrote
+# machine-code thunks into heap blocks, which needed an executable (RWX) brk
+# heap.  Now a closure is DATA — a 3-cell A block [a, b, kind], whose raw
+# untagged payload address r is the function value and whose cell 2 holds
+# the address of the prelude word that runs it (lib/prelude.golfj, W13-H) —
+# and the heap is RW only.  Every callable CODE address (a word, a ′-thunk,
+# a ⟦⟧ block, a prelude word) lies in the program image, below the heap
+# floor 0x600000, and every heap address lies at or above it, so one
+# unsigned compare tells the two apart:
+#
+#     58                        pop rax
+#     48 3D 00 00 60 00         cmp rax, 0x600000        ; EXEC_FLOOR
+#     72 06                     jb  .call                ; code: call it
+#     50                        push rax                 ; a record: r stays on
+#     FF 50 10                  call qword [rax+16]      ;   the stack for its kind
+#     EB 02                     jmp .done
+#   .call:
+#     FF D0                     call rax
+#   .done:
+#
+# A code address pays a compare and a taken branch (17 bytes instead of 3);
+# a record's kind word is entered with `… r` on the data stack, exactly as a
+# word is entered with its arguments, so the threading contract holds.  No
+# hook cell and no prelude support needed to tell them apart: a program
+# without the prelude never makes a record, and a non-function at or above
+# the floor (a tagged list, a big int) faults reading [rax+16] as calling it
+# faulted before.  The kind words check ⌫'s poison in cell 0 (⌫ writes only
+# cells 0 and 1, so cell 2 survives a free): calling a freed closure is
+# `GOLF: use after free`.
+EXEC_FLOOR = 0x600000                 # == RSTACK_TOP (asserted below)
+EXEC_KIND = 16                        # the record cell holding its kind word
+_EXEC = ([0x58]                                            # pop rax
+         + [0x48, 0x3D] + list(EXEC_FLOOR.to_bytes(4, "little"))   # cmp rax, imm32
+         + [0x72, 0x06]                                    # jb .call
+         + [0x50, 0xFF, 0x50, EXEC_KIND]                   # push rax; call [rax+16]
+         + [0xEB, 0x02]                                    # jmp .done
+         + [0xFF, 0xD0])                                   # .call: call rax
+assert len(_EXEC) == 17 and _EXEC[:1] + _EXEC[-2:] == _ATOM_TPL[0x8D]
+OVERRIDES[0x8D] = _EXEC
+
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
 # emits a record.  They are bytes the COMPILER handles itself — prefixes that
@@ -592,6 +632,7 @@ assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime
 # is unaffected.
 MEMSZ = 0x200000                    # v2 p_memsz (v1: 0x800000)
 RSTACK_TOP = v1.BASE + MEMSZ        # 0x600000: return-stack top AND heap floor
+assert EXEC_FLOOR == RSTACK_TOP     # W13-H: ⍎'s code/closure split is the heap floor
 MEMSZ_OFF = 64 + 40                 # Phdr at file offset 64; p_memsz at +40
 
 # --- W11-1E: the program-size cap ---------------------------------------------

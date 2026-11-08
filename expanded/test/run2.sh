@@ -279,16 +279,17 @@ compose_n(){ printf ':d\\dbl;:i\\inc;1234\\setv 0{\\refd\\refi\\comp_ 1\\radd"%s
 [ "$(compose_n 100000 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
   && ok "100000 live composes fit, and the canary is intact" || no "compose 100000"
 [ ! -s "$TMP/ar.err" ] && ok "... with nothing written to fd 2" || no "compose 100000 stderr"
-# brk memory is R+W but not executable by default.  W12-O2 mprotects the heap
-# RWX at startup and after every growth, which is what lets a thunk live there.
-# (A bare 0xC3 is a valid GOLF callee — ⍎ does `call rax` and `ret` pops that
-# address right back.)
+# brk memory is R+W but not executable by default.  W12-O2 mprotected the heap
+# RWX so thunks could live there; W13-H made closures data and dropped that, so
+# heap bytes are data again.  A bare 0xC3 (`ret`) on the heap, made the flush
+# hook (called at the end of the program), faults instead of returning; ⍎ no
+# longer jumps to heap addresses at all (it takes them for closure records).
 [ "$(printf '%s' '1\alloc\seth 195\geth, \geth?N E' | gc)" = "195" ] \
   && ok "a heap byte written through the allocator reads back" || no "heap rw"
-[ "$(printf '%s' '1\alloc\seth 195\geth, \geth\exec 7N' | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "7" ] \
-  && ok "... and calling it returns: the heap is executable (W12-O2)" || no "heap x"
-[ "$(printf '%s' '3000000\range_ 1\alloc\seth 195\geth, \geth\exec 7N' | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "7" ] \
-  && ok "... and so is memory the heap grew into after startup" || no "heap x grown"
+[ "$(printf '%s' '1\alloc\seth 195\geth, \geth 5179792\store' | arena)" = "139" ] \
+  && ok "... and jumping to it faults: the heap is not executable (W13-H; W12-O2 made it RWX)" || no "heap x"
+[ "$(printf '%s' '3000000\range_ 1\alloc\seth 195\geth, \geth 5179792\store' | arena)" = "139" ] \
+  && ok "... nor is memory the heap grew into after startup" || no "heap x grown"
 tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
 [ "$("$TMP/chain" 2>/dev/null)" = "$(printf '11\n2\n11')" ] && ok "golfc examples/chain.golfj" || no "chain.golfj"
 [ "$(oracle chain)" = "$(printf '11\n2\n11')" ] \
@@ -2357,10 +2358,10 @@ w112cc=':d⊗;3⍳10′+⊸′d∘€⍕ 3⍳′d10′+⊸∘€⍕ 5′⊗′�
 # ⊸ inside a map: a fresh thunk per element (X/Y frames nest), each its own x.
 [ "$(printf '%s' ':b′⍳⊸;3⍳′b€′⍎€⍕' | gc)" = "[] [0] [0 1] " ] \
   && ok "⊸ inside €: one thunk per element, each with its own x" || no "w11-2c in map"
-# W12-O2: a bind thunk is an A block — 38 bytes of code in a 5-cell request,
-# one 8-cell block, 72 bytes with its header in ‹heapstats›.
-[ "$(printf '%s' '‹heapstats›1′⊕⊸_‹heapstats›→d→c→b→a ←c←a-Ṅ ←d←b-Ṅ' | gc)" = "172" ] \
-  && ok "a bind thunk is one 72-byte A block in ‹heapstats›" || no "w11-2c thunk size"
+# W12-O2: a bind is an A block; since W13-H a 3-cell record [f x kind], one
+# 4-cell block, 40 bytes with its header in ‹heapstats› (a 72-byte thunk before).
+[ "$(printf '%s' '‹heapstats›1′⊕⊸_‹heapstats›→d→c→b→a ←c←a-Ṅ ←d←b-Ṅ' | gc)" = "140" ] \
+  && ok "a bind is one 40-byte A block in ‹heapstats› (W13-H record)" || no "w11-2c thunk size"
 # No arena bound since W12-O2, for ⊸ alone or mixed with ∘.  The canary v is a
 # variable the old arena's overrun would have reached.
 w112c(){ printf '1234→v 0→i{%s←i1+"→i%s\\rlt1+}%s←vṄ' "$1" "$2" "${3-}" | arena; }
@@ -3888,8 +3889,8 @@ w12o2t0=$(date +%s%N); w12o2o=$("$TMP/o2loop"); w12o2t1=$(date +%s%N)
 [ "$w12o2o" = "0 0" ] && [ "$(printf '%s' "$w12o2p" | gref)" = "0 0" ] \
   && ok "1M ∘ and 1M ⊸ thunks made and freed in a loop: ‹heapstats› flat (oracle too); $(( (w12o2t1-w12o2t0)/2000000 )) ns per make+free" \
   || no "W12-O2 1M loop: $w12o2o"
-[ "$(printf '%s' '‹heapstats›→b→n ′⊗′⊕∘‹heapstats›←b-Ṅ32)←n-Ṅ32)"TṄ32)⌫‹heapstats›←b-Ṅ32)←n-Ṅ' | gc)" = "72 1 1 0 0" ] \
-  && ok "one ∘ thunk is one live 72-byte block, an int to T; ⌫ gives it back" || no "W12-O2 one thunk"
+[ "$(printf '%s' '‹heapstats›→b→n ′⊗′⊕∘‹heapstats›←b-Ṅ32)←n-Ṅ32)"TṄ32)⌫‹heapstats›←b-Ṅ32)←n-Ṅ' | gc)" = "40 1 1 0 0" ] \
+  && ok "one ∘ closure is one live 40-byte block (W13-H record), an int to T; ⌫ gives it back" || no "W12-O2 one thunk"
 # A freed thunk's block is the next one A hands out, and the new thunk works.
 [ "$(printf '%s' ':d⊗;:i⊕;′d′i∘"→f⌫ ′i′d∘→g ←g←f-Ṅ32)5←g⍎Ṅ' | gc)" = "0 12" ] \
   && ok "the freed block is reused by the next ∘, which runs correctly" || no "W12-O2 reuse"
@@ -3902,10 +3903,11 @@ w12o2n=':d⊗;:i⊕;:m′+⊸;‹heapstats›→b→n ′d′i∘→a ←a′d�
 [ "$(w110 '′⊕′⊖∘"⌫⌫')" = "rc=1 0 GOLF: double free" ] && [ "$(w110 '5′+⊸"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
   && [ "$(printf '%s' ':f′⊕′⊖∘"⌫⌫;′f‹catch›⊐ 5′⊕′⊗∘⍎Ṅ' | gc)" = "double free12" ] \
   && ok "freeing a ∘ or ⊸ thunk twice: GOLF: double free (catchable, and ∘ works after)" || no "W12-O2 double free"
-# Calling a freed thunk is not a GOLF: error (⍎ is a bare call): ⌫'s poison
-# over its first bytes is a privileged instruction, so it dies loudly.
-[ "$(printf '%s' ':d⊗;:i⊕;′d′i∘"⌫5\\⍎Ṅ' | arena)" -gt 128 ] && [ ! -s "$TMP/ar.out" ] \
-  && ok "calling a freed thunk dies with a signal (not silently)" || no "W12-O2 call after free"
+# Calling a freed thunk died of a signal through W13-G (⍎ was a bare call
+# into the poison).  Since W13-H the closure's kind word sees ⌫'s poison in
+# cell 0 and throws: GOLF: use after free.
+[ "$(w110 ':d⊗;:i⊕;′d′i∘"⌫5\\⍎Ṅ')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "calling a freed closure: GOLF: use after free (W13-H; a signal before)" || no "W12-O2 call after free"
 # Old behaviour: ∘ ⊸ ⇉ ⑂ results unchanged; a thunk in a ‹catch› that throws.
 [ "$(printf '%s' ':d⊗;:i⊕;5′d′i∘⍎Ṅ32)5⍳′d′i∘€⍕10→n ←n′+⊸→k 99→n 3⍳←k€⍕:t′d′i∘_“x“⊃‹throw›;′t‹catch›⊐' | gc)" = "11 1 3 5 7 9 10 11 12 x" ] \
   && ok "∘ and ⊸ results unchanged (map, closures, a thunk made inside a caught throw)" || no "W12-O2 old behaviour"
@@ -4898,6 +4900,82 @@ w13io='ℤ"⌊⍀-Ṁ 5⍳⟦3%⟧⍖⍕⊡f⇒a⇒b a b ʘg;12 18fṄ“1 2;3 4
 [ "$(printf '7 1 5 3 6 4' | gin "$w13io")" = "2 1 4 0 3 6[2 3] [4 5] 5" ] \
   && [ "$(cat "$TMP/pre.gb" <(printf '%s' "$w13io" | python3 tools/codepage.py encode) | python3 boot/golfref.py | cmp -s - "$TMP/pin" && echo same)" = same ] \
   && ok "oracle: golfref emits the same binary for the cross-feature program" || no "W13-INT oracle"
+
+# === W13-H ===
+echo "W13-H: closures are data records (∘ ⊸), ⍎ dispatches on them, and the heap is not executable"
+# The brk heap's mapping, read from /proc/self/maps by the program itself: at
+# startup and after a 3M-cell list grew it, every [heap] line is rw-p (W12-O2
+# had it rwxp).  The jump test (a `ret` byte on the heap made the flush hook)
+# is in the M-CHAIN block above; its control here: the hook pointed at an
+# image word returns normally, so the fault there is the heap's NX alone.
+w13hm(){ printf '%s' "$1“/proc/self/maps“⊃‹readfile›⊐" | gc | grep '\[heap\]'; }
+w13hm0=$(w13hm ''); w13hm1=$(w13hm '3000000⍳_ ')
+[ -n "$w13hm0" ] && [ -n "$w13hm1" ] \
+  && [ -z "$(printf '%s\n%s\n' "$w13hm0" "$w13hm1" | awk '$2 != "rw-p"')" ] \
+  && ok "/proc/self/maps: the brk heap is rw-p (not executable), at startup and after growth" \
+  || no "W13-H heap mapping: $w13hm0 / $w13hm1"
+[ "$(printf '%s' ':r;7N‹flush› 1\alloc\seth 195\geth, \refr 5179792\store' | arena)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 7 ] \
+  && [ "$(printf '%s' '1\alloc\seth 195\geth, \geth 5179792\store 7N' | arena)" = 139 ] \
+  && ok "a ret on the heap faults as a jump target; the same hook on an image word returns (the control)" \
+  || no "W13-H heap jump"
+# The record: [f, g, kind] for ∘ and [f, x, kind] for ⊸, kind a prelude word
+# in the image (below 0x600000), the value the raw block address (an int).
+w13hr=':d⊗;:i⊕;′d′i∘"⊙′d≡Ṅ"8+⊙′i≡Ṅ"16+⊙6291456<Ṅ"TṄ32)16+⊙5′i⊸"⊙′i≡Ṅ"8+⊙Ṅ32)16+⊙≡Ṅ'
+[ "$(printf '%s' "$w13hr" | gc)" = "-1-1-11 -15 0" ] && [ "$(printf '%s' "$w13hr" | gref)" = "-1-1-11 -15 0" ] \
+  && ok "∘ and ⊸ build records [f g kind] / [f x kind]: cells as documented, kind in the image, two kinds (golf2 and the oracle)" \
+  || no "W13-H record: $(printf '%s' "$w13hr" | gc)"
+# ⍎ on every kind of function value: a word, an atom thunk, a ⟦⟧ block, a
+# long-named word, a compose, a bind, records of records, through €/⇤/⍀/⊞/⌿.
+w13hx=':d⊗;:‹i›⊕;5′d⍎Ṅ32)5′⊕⍎Ṅ32)5⟦3*⟧⍎Ṅ32)5′‹i›⍎Ṅ32)5′d′‹i›∘⍎Ṅ32)5 2′+⊸⍎Ṅ32)5 2′+⊸′d∘⍎Ṅ32)1 2′+⊸′d∘⊸⍎Ṅ32)4⍳′+′⊕∘⍀⍕3⍳1′+⊸′d∘€⍕3⍳0′+′d∘⇤Ṅ32)3⍳"′+′d∘⊞⍕4⍳2′∣⊸⌿⍕'
+w13hxw='10 6 15 6 11 7 14 6 0 2 5 9 2 4 6 8 0 4 8 0 2 '
+[ "$(printf '%s' "$w13hx" | gc)" = "$w13hxw" ] && [ "$(printf '%s' "$w13hx" | gref)" = "$w13hxw" ] \
+  && ok "⍎ runs words, atom thunks, ⟦⟧ blocks, long names, ∘, ⊸ and records of records; € ⍀ ⇤ ⊞ ⌿ take records (the W13-G atom paths never mistake one)" \
+  || no "W13-H exec kinds: $(printf '%s' "$w13hx" | gc)"
+# Threading contract: a record's function sees the caller's stack directly
+# under its argument (here the 5 below the list), through ∘ and ⊸ alike.
+[ "$(printf '%s' '5 3⍳⟦&+⟧′⊕∘€⍕Ṅ32)5 3⍳0⟦+&+⟧⊸€⍕Ṅ' | gc)" = "6 7 8 5 5 6 7 5" ] \
+  && ok "threading contract through a compose and a bind (the caller's 5 under each element)" || no "W13-H threading"
+# Use after free: ⌫ of a ∘ or ⊸ record, then ⍎ (directly, or as €'s function)
+# is GOLF: use after free, catchable (`30⍳`, not `3⍳`: €'s 4-cell result block
+# would reuse the freed record, the stale-copy case nothing catches); a record freed and handed out again to a
+# new closure runs the new one; double free is unchanged.
+[ "$(w110 '5′⊕⊸"⌫⍎')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 '30⍳′⊕′⊗∘"⌫ €')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(printf '%s' ':f5′⊕⊸"⌫⍎;′f‹catch›⊐ :g′⊕′⊗∘"⌫5\\⍎;′g‹catch›⊐ 9′⊕⊸"⌫_ 4′⊗′⊕∘⍎Ṅ' | gc)" = "use after freeuse after free9" ] \
+  && [ "$(w110 '7′⊕⊸"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
+  && ok "⍎ of a freed ∘/⊸ record: GOLF: use after free (catchable); reuse by a new closure runs it; double free unchanged" \
+  || no "W13-H use after free"
+# Records nest deep: ∘ over ∘ 2000 times (each adds one), ⊸ over ⊸ 2000
+# times (each pushes the one inside and ⍎s it), 3000-deep recursion through a bind.
+w13hd='′⊕→f 0→i{←f′⊕∘→f ←i1+"→i2000<1+}0←f⍎Ṅ32)′⊕→g 0→i{←g′⍎⊸→g ←i1+"→i2000<1+}0←g⍎Ṅ32)'
+w13hd="$w13hd"':‹r›"[⋄⊖←‹R›⍎];0⟦+‹r›⟧⊸→‹R›3000‹r›Ṅ'
+[ "$(printf '%s' "$w13hd" | gc)" = "2001 1 0" ] \
+  && ok "records nest: ∘ 2000 deep, ⊸ 2000 deep, 3000-deep recursion through a bind" || no "W13-H deep: $(printf '%s' "$w13hd" | gc)"
+# ⍎'s template: one compare against the heap floor, a call on code, a call
+# through cell 2 on a record.
+python3 - <<'PY' && ok "mkblob2: ⍎ is pop / cmp rax,0x600000 / jb / push; call [rax+16] / call rax (17 bytes, heap floor = RSTACK_TOP)" || no "W13-H template"
+import sys; sys.path.insert(0, "tools"); import mkblob2 as m
+t = bytes(m.OVERRIDES[0x8D])
+assert t == bytes.fromhex("58 48 3d 00 00 60 00 72 06 50 ff 50 10 eb 02 ff d0"), t.hex()
+assert m.EXEC_FLOOR == m.RSTACK_TOP and m.EXEC_KIND == 16
+PY
+# Nothing in the prelude asks for PROT_EXEC any more (mprotect is syscall 10;
+# the only mprotect left is STARTUP2's guard page, PROT_NONE).
+! grep -v '^ *#' lib/prelude.golfj | grep -qF '10\sys' \
+  && grep -q '===== W13-H =====' lib/prelude.golfj \
+  && grep -q 'W13-H' REFERENCE.md && grep -q 'W13-H' DESIGN.md && grep -q 'W13-H' REGISTRY.md \
+  && ok "no mprotect in the prelude; REFERENCE, DESIGN and REGISTRY describe W13-H" || no "W13-H docs / mprotect"
+# golfgdb names the frames of a call through a record: the return address of
+# ⍎'s `call [rax+16]` counts (golf-bt walks ‹inner› ‹outer› ‹_13h_cmp› (top level)).
+if command -v gdb >/dev/null 2>&1 && [ "$(gdb -nx -batch -ex 'python print(4*4)' 2>/dev/null)" = 16 ]; then
+  mkdir -p "$TMP/w13h"
+  printf '%s' ':‹inner›6;:‹outer›‹inner›;′‹outer›′⊕∘⍎Ṅ' > "$TMP/w13h/c.golfj"
+  printf '%s\n' 'golf-break inner' run golf-bt continue > "$TMP/w13h/cmds"
+  w13hg=$(cd "$TMP/w13h" && "$EXP/tools/golfc" -j -g c.golfj c >/dev/null 2>&1 && "$EXP/tools/golfgdb" --batch-script cmds ./c 2>&1)
+  [ "$(echo "$w13hg" | grep -E '^#[0-9]' | sed 's/.* in //; s/+.*//' | tr '\n' ' ')" = "‹inner› ‹outer› ‹_13h_cmp› (top level) " ] \
+    && ok "golfgdb: golf-bt through a ∘ record (‹inner› ‹outer› ‹_13h_cmp› (top level))" || no "W13-H golfgdb: $w13hg"
+else
+  ok "golfgdb through a record (skipped: no gdb with Python)"
+fi
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

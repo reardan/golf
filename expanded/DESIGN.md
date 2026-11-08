@@ -138,10 +138,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **38** |
-| the template blob itself | **1366** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **5086** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **16877** bytes |
-| assertions in the run2 suite | **915** |
+| the template blob itself | **1380** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **5100** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **16891** bytes |
+| assertions in the run2 suite | **926** |
 | assertions in the selfcheck suite | **69** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -203,7 +203,7 @@ the golf2 fixpoint included. In order:
   prelude, so its cells stay zero and it always takes the scalar path.
 - **M-CHAIN — tacit combinators.** `∘` compose writes a 39-byte thunk into the
   RWX code arena at `0x4D0000` and returns its address, so composed quotations
-  are ordinary callables; `⇉` pipeline and `⑂` fork are built on it —
+  are ordinary callables (since W13-H a data record that `⍎` dispatches on); `⇉` pipeline and `⑂` fork are built on it —
   `5⍳′∑′≢′÷⑂` is a mean. Library only, no compiler change.
 - **M4 — 64 bits, signed, big literals.** List cells and the prelude scratch bank
   widened to 8 bytes (the bank was *relocated* to `0x4F0060` rather than widened
@@ -280,7 +280,8 @@ the golf2 fixpoint included. In order:
   nothing can be freed, since a thunk's address may have escaped anywhere.
   (W12-O2 later took the other road: the prelude makes the brk heap
   executable with `mprotect`, thunks become `A` blocks, and freeing one is
-  the program's explicit `⌫`. See Known limits.)
+  the program's explicit `⌫`. W13-H then dropped the code altogether: a
+  closure is a data record and the heap is RW only. See Known limits.)
   **An undefined word is reported.** `e` emitted `call rel32` with
   `rel32 = dict[name] - (p+4)` without ever reading `dict[name]`; for a
   never-defined name that cell is BSS-zero, so the *compile* succeeded and the
@@ -808,25 +809,42 @@ unbuilt, and three defects this list does not yet cover — see
   five ops per user `⊇`. Blocks are never split or coalesced; small
   blocks round up to a power of two (≤ 2x), and the >256-cell class checks only
   its head, so a large freed block can be passed over by a bigger request.
-- **Thunks are heap blocks, and the heap is executable (W12-O2).** `∘` and
-  `⊸` take their 39/38-byte thunk from `A` (a 5-cell request, one 72-byte
-  class-1 block), so `⌫` frees one, `‹heapstats›` counts it, and the old
-  lifetime cap (1680 thunks in the fixed 64 KB arena at `0x4D0000`, then
-  `compose arena exhausted`) is gone. For that the prelude `mprotect`s the
-  whole brk heap `PROT_READ|PROT_WRITE|PROT_EXEC` at startup and again each
-  time `A` moves the break: two prelude lines, no compiler or ELF change
-  (x86-64 Linux never makes brk memory executable by itself; a separate
-  `mmap(PROT_EXEC)` arena would have needed a second free list, a second `⌫`
-  path and its own counters). **Costs:** list memory is executable too, so
-  W^X is not kept (the load segment never kept it), and a kernel or policy
-  that refuses an executable heap (SELinux `execheap`, PaX) breaks `∘`/`⊸`.
-  **Checked:** freeing a thunk twice (`double free`) and freeing a non-heap
-  address. **Not checked:** calling a freed thunk (`⍎` is a bare `call`; the
-  poison `⌫` writes over its first bytes is a privileged instruction, so it
-  dies with SIGSEGV, or, once the block is reused, runs whatever is there),
-  and freeing a thunk another thunk still calls. The old arena is unused.
-  Thunk code addresses must stay below 2^32 (each is written as a 4-byte
-  imm64 low half), which the allocator's 32-bit cells already require.
+- **Closures are data records, and the heap is not executable (W13-H).**
+  W12-O2 moved `∘` and `⊸`'s machine-code thunks (39/38 bytes) from the
+  fixed 1680-thunk arena at `0x4D0000` to `A` blocks, and for that the
+  prelude `mprotect`ed the whole brk heap `PROT_READ|PROT_WRITE|PROT_EXEC` at
+  startup and after every growth — so list memory was executable too, and a
+  kernel or policy refusing an executable heap (SELinux `execheap`, PaX)
+  broke `∘`/`⊸`. W13-H makes a closure DATA: a 3-cell `A` block
+  `[f, g, kind]` (compose) or `[f, x, kind]` (bind), whose raw untagged
+  address is the function value, `kind` (cell 2) the address of the prelude
+  word that runs it (`‹_13h_cmp›`, `‹_13h_bnd›`). Both `mprotect` lines are
+  gone; the heap keeps the kernel's RW. **Dispatch:** every code address a
+  program can call (words, `′`-thunks, `⟦ ⟧` blocks, prelude words) is in the
+  image, below `0x600000` (`RSTACK_TOP`, the BSS end), and every heap address
+  is at or above it, so `⍎`'s template (`mkblob2._EXEC`, 17 bytes for 3) is
+  `pop rax; cmp rax,0x600000; jb .call; push rax; call [rax+16]; jmp .done;
+  .call: call rax`. A code call pays one compare and one taken branch; a
+  record's kind word starts with `… r` on the data stack, as a word starts
+  with its arguments, so the threading contract is untouched, and everything
+  that calls a function value (`€ ⇤ ⌿ ⍀ ⍁ ⍸ ⊞ ⊟ ⍣ ⇉ ⑂ ‹catch› ‹memo›`,
+  streams) does so through `⍎` and took records with no change. No hook cell
+  and no prelude support are needed for the split itself, so a bare program
+  and the compilers are unaffected (they never make a record). The kind
+  sits in cell 2 because `⌫` writes only cells 0 (the poison) and 1 (the
+  free-list link): a freed closure still reaches its kind word, which tests
+  cell 0 (a live one holds `f`, a function value, never the poison) and
+  throws `use after free` — before W13-H a freed thunk executed the poison
+  and died of SIGSEGV. **Cost** (bench/RESULTS.md, W13-H): ⍎ of a code
+  address within noise (≤0.3 ns); a call through a record about 2 ns more
+  than through a thunk (a bind 2.6 → 4.7 ns, a compose 3.2 → 5.4 ns), since
+  the kind words are GOLF code (an inline poison test, the record read
+  through the stack) rather than two hand-placed `mov`/`call`s; a closure is
+  a 40-byte block instead of 72. **Not checked**, as before: a stale copy
+  of a closure whose block was handed out again (it runs or misreads the new
+  owner), freeing a closure another one still calls, and a non-function at or
+  above the floor (a tagged list, a large int), which faults reading
+  `[rax+16]` as calling it faulted before. The old arena stays unused.
 - **The integers in `[0x7FFF<<48, 2^63)` are lists.** A list value is
   `addr | 0x7FFF<<48` (W11-1A; it was `addr | 2^48`, which sacrificed the
   everyday `[2^48, 2^49)`), so an integer whose top 16 bits are exactly `0x7FFF`

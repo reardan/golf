@@ -37,3 +37,10 @@ zipadd   | 10000000  | 10000000⍳"′+⊞_
 zipmin   | 10000000  | 10000000⍳"′⩍⊞_
 eachimul | 10000000  | 10000000⍳′*⍸_
 filtneg  | 10000000  | 10000000⍳′±⌿_
+# W13-H: ⍎ of a code address and of closure records (data since W13-H); the
+# `loop` row is the bare 100M-iteration loop these three include
+exec     | 100000000 | :f;′f→q 100000000{←q⍎⊖"0≡}_
+bind     | 100000000 | 0′_⊸→q 100000000{←q⍎⊖"0≡}_
+comp     | 100000000 | :f;′f′f∘→q 100000000{←q⍎⊖"0≡}_
+mapbind  | 10000000  | 10000000⍳1′+⊸€_
+mapcomp  | 10000000  | :f;10000000⍳′f′f∘€_
