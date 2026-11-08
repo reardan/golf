@@ -425,8 +425,8 @@ the golf2 fixpoint included. In order:
   that happened to equal a heap address — the heap base read out of its own
   cell, say — was vectorized as a list. Now a list value handed to user code is
   its address with bit 48 set (`addr | 2^48`; W11-1A moved it to
-  `addr | 0x7FFF<<48`, see W11 decisions): `T` is `v >> 48 == 1`, and the
-  M-VEC filter is exact — `cmp word [rsp+6],1` per operand, the top 16 bits of
+  `addr | 0x7FFF<<48`, see W11 decisions): `T` was `v >> 48 == 1` (now
+  `== 0x7FFF`), and the M-VEC filter is exact — `cmp word [rsp+6],1` per operand, the top 16 bits of
   each, no cell read, two bytes *shorter* than the range filter it replaced. The
   sign bit was never an option (every negative number has it); a high-byte tag
   sacrifices only the integers in `[2^48, 2^49)` and leaves negatives and

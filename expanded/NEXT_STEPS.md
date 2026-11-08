@@ -10,6 +10,25 @@ the `v1c` binary pinned by `../SEEDS`) is never touched.
 
 ## Where we are
 
+**W11 — the Python/Rust gap round — has landed** (four waves, sixteen tasks;
+[`GAPS.md`](GAPS.md) "After W11" has the per-area summary). Correctness and
+I/O: the list tag moved to the top-16 value `0x7FFF`, file words, an 8 KB
+output buffer, text words, and a 192 KB program cap that is checked. Data and
+modules: `⎘“path“` includes (cwd, `lib/`, `vendor/`), dicts and sets, `⊸`
+closures by value, use-after-free detection. Errors: `‹catch›`/`‹throw›`,
+compile errors with a line number, a `-g` symbol map, checked arithmetic.
+Records and tooling: `⊜` records, `‹assert›`/`‹expect›` with
+`tools/golftest`, the `tools/golfi` REPL, `tools/golfgdb`, and
+`tools/golfdeps` packages. Two limits to watch: the list tag still owns one
+band of the integers, `[0x7FFF<<48, 2^63)` (the 2^48 values just below
+INT64_MAX read as lists), and any further value tag — records or dicts as
+shapes of their own, say — has to come out of that band or take another; and a
+program, prelude included (an empty program is about 43 KB), must fit in
+192 KB, below the 1C buffer at `0x430000`. The next
+candidates are still M7 (codegen) and M9 (C backend / arm64) under "As needed".
+
+Before W11:
+
 **W9 — the gap-fix waves — closed the queue below.** Every numbered item
 (M-TAG2, M-FRAME2, M-MEM2, M2, M6b) has shipped, along with signed `⌈ ⌊`,
 literal strings, a `′undefined` diagnostic, index and divide-by-zero checks, a
@@ -49,8 +68,9 @@ Four facts about the implementation shape everything below:
 2. **The whole load segment is RWX** and a quotation is just an address, so the
    prelude can write machine code at runtime. `∘` already does; anything that
    wants to synthesize a closure can too, with no compiler change.
-3. **`T` is a tag test (since M-TAG2).** A list value is `addr | 2^48`, so
-   "is this a list?" is `v >> 48 == 1` — exact, cell-free, and cheap enough to
+3. **`T` is a tag test (since M-TAG2).** A list value is `addr | 0x7FFF<<48`
+   (it was `addr | 2^48` until W11-1A), so "is this a list?" is
+   `v >> 48 == 0x7FFF` — exact, cell-free, and cheap enough to
    ask of every element, which is what nested data needs. It used to be a range
    test against the heap window; item 1 below records why, and why the first
    scheme specified to replace it (bit 63) was wrong.
@@ -269,8 +289,9 @@ output buffering for user programs (`)` is still one `write` per byte).
   offset (needs a relocation pass), and a size-preserving one is perf-only. The
   real win is a register-based (top-of-stack-in-a-register) codegen, and it
   wants the relocation pass first.
-- **M9 — reach.** `include`/modules; an object-file emitter so output links with
-  `cc`; a small IR to retarget (arm64) or emit C.
+- **M9 — reach.** An object-file emitter so output links with `cc`; a small IR
+  to retarget (arm64) or emit C. (Textual includes shipped as `⎘`, W11-2A;
+  namespaces/lexical scope and transitive package deps are still open.)
 - **Shape checks.** `Z` truncates to the shorter list and nothing reports a rank
   mismatch. With a real tag (item 1) `D` can afford to say so.
 
@@ -294,6 +315,37 @@ output buffering for user programs (`)` is still one `write` per byte).
   change moves one of them, the suite tells you which doc to edit.
 
 ## The wave just landed
+
+**W11 — Python and Rust gaps, four waves.** Each task ran in its own worktree
+from the wave's base and was merged in a fixed order, with `test/gate.sh` green
+after every merge and the `golf2 == golf2'` fixpoint never traded.
+
+- **Wave 1, correctness and I/O.** 1A moved the list tag to `0x7FFF<<48`
+  (`16777216 16777216* 1+Ṅ` is an integer again); 1B file words on `⎈` with
+  errno-named failures; 1C buffered printers (`‹flush›`, flushed at exit and
+  before every `GOLF:`); 1D text words (`‹fmt› ‹hex› ‹split› ‹trim› …`). 1E, a
+  serial fix: the program image cap is 192 KB and checked by both compilers.
+- **Wave 2, data and modules.** 2A `⎘“path“` (fd-0 swap, include-once, nested);
+  2D a poisoned length cell catches use after free, `‹heapstats›`; 2B an
+  open-addressing dict and set over `‹hash›`; 2C `⊸` bind.
+- **Wave 3, errors and diagnostics.** 3A `‹catch›` over two new atoms that read
+  and set rsp/rbp, unwinding the spill stack and output state too; 3B compile
+  errors `at line N` (file too, inside an include) and `golfc -g`'s map; 3C
+  `‹cadd› ‹csub› ‹cmul›`.
+- **Wave 4, records and tooling.** 4A `⊜` records (`‹point›`, `‹point-x›`,
+  `‹set-point-x›`) and `vendor/` on the include path; 4B `‹assert› ‹expect›`
+  and `tools/golftest`; 4C `‹stack›` and the replaying `tools/golfi`; 4D
+  `tools/golfgdb` (break, backtrace and data stack by word name); 4E
+  `tools/golfdeps` and `golf.deps` (sha256-pinned git packages into `vendor/`).
+
+Left for later, on purpose: floats, bignums, static types, a GC or borrow
+checker, and threads stay refused (GAPS.md); M7 codegen, M9's C backend and
+arm64, transitive package dependencies and lexical scope stay queued. The two
+limits W11 leaves: integers in the list-tag band `[0x7FFF<<48, 2^63)` still
+read as lists, and the image is capped at 192 KB (the prelude is about 43 KB of
+it).
+
+## Earlier waves
 
 **M-FRAME — per-call locals, opt in.** The worst remaining defect in the
 language: `→x` inside recursion returned a quietly wrong number, and now `⊡` +
@@ -327,7 +379,6 @@ exit 1 instead of returning garbage or dying of SIGFPE. `INT64_MIN ÷ -1` is
 defined (wraps to `INT64_MIN`; `∣` gives 0). v1's unsigned `/` `%` were frozen
 and still trapped until W10-B overrode them in the v2 blob with the same check.
 
-## Earlier waves
 
 **M3W then M-CHAIN2.** Both lived entirely in the compiler's front end
 (`self/golf2.golfj`, `mkblob2.py`'s v1-GOLF seed cases, `boot/golfref.py`) and

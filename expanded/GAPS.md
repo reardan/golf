@@ -17,6 +17,31 @@ cited; where it is *not* queued, that is called out — those are the useful row
 
 ---
 
+## After W11 — Python and Rust
+
+The W11 round (four waves, sixteen tasks) took the Python-shaped gaps below and
+the ones a Rust programmer would name first. Per area, what a program has now
+and what is still missing; *refused* means a non-goal (DESIGN.md), *queued*
+means it is on [`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+| Area | Now exists | Remains |
+|---|---|---|
+| Types | one 64-bit word; lists tagged exactly (`addr \| 0x7FFF<<48`, W11-1A), so only integers in `[0x7FFF<<48, 2^63)` read as lists; checked `‹cadd› ‹csub› ‹cmul›` (W11-3C) | refused: floats, bignums, static types. Records and dicts are lists, not shapes of their own |
+| Data structures | lists, nested lists, code-list strings, dicts and sets over `‹hash›` (W11-2B), `⊜` records with accessors and setters (W11-4A) | no tuples or enums as distinct values; a record is not type-checked (any list of the right length passes) |
+| Modules | `⎘“path“` textual includes, include-once, nested, searched in cwd, `lib/`, `vendor/` (W11-2A, 4A); pinned git packages via `golf.deps` and `tools/golfdeps` (W11-4E) | queued: lexical scope / namespaces (every name is global), transitive dependencies (a package's own `golf.deps` is not read); no registry or version solving |
+| Errors | `′f‹catch›` returns `0` or the message, `‹throw›` raises (W11-3A); every runtime error the prelude raises is catchable; compile errors carry the line and file (W11-3B) | one error value (a message string), no typed exceptions or `Result`; a return-stack overflow is still a SIGSEGV; one compile error per run |
+| I/O | file words with errno-named failures (W11-1B), an 8 KB stdout buffer (W11-1C), line/number input (W9-4C), argv, raw `⎈` syscalls | no sockets, processes or directory listing beyond raw syscalls |
+| Stdlib | the prelude: list words, text words `‹fmt› ‹hex› ‹split› ‹trim› ‹joinwith› ‹pad›…` (W11-1D), dicts, `⊸` closures by value (W11-2C) | no regex, JSON, dates or math library; `⍋` sorts ascending only (no key or comparator) |
+| Memory | a `brk` heap with size-class free lists, manual `⌫`, poisoned frees that make use after free a catchable error, `‹heapstats›` (W11-2D) | refused: a GC or a borrow checker. A stale copy of a freed-then-reused block and interior pointers are not caught |
+| Tooling | `tools/golftest` + `‹assert› ‹expect›` (W11-4B), the replaying REPL `tools/golfi` + `‹stack›` (W11-4C), `golfc -g` symbol maps (W11-3B) and `tools/golfgdb` (break, backtrace, data stack by word name; W11-4D), `tools/golfdeps` (W11-4E) | no formatter or LSP; the REPL replays the whole session per line; no source-line stepping in gdb |
+| Performance | single-pass template compiler, implicit vectorization, buffered output; 100k dict inserts+lookups well under a second | queued: M7 (a relocation pass, then register-based codegen); no optimizer today |
+| Platforms | x86-64 Linux, static ELF64, no libc; programs up to 192 KB (W11-1E) | queued: M9 (C backend or object files, arm64); refused: threads and async |
+
+The rest of this file is the audit as it was written, with each gap's closing
+line added as the waves landed.
+
+---
+
 ## 0. The three languages are not trying to do the same thing
 
 | | GOLF/2 | Jelly | Python |
