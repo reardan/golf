@@ -727,6 +727,48 @@ _
 _
 ´readnameµ
 ]
+"           
+189’
+[
+_
+´digraphµ
+]
+;
+
+
+
+
+
+
+
+
+:´digraphµ  
+´readµ
+´chµ
+´freshµ
+95          
+´recbyteµ
+100         
+´recbyteµ
+103         
+´recbyteµ
+´chµ
+4>          
+´hexitµ
+´chµ
+15$         
+´hexitµ
+´internµ
+;
+
+:´hexitµ    
+"
+10<
+[           
+7‘
+]
+48‘
+´recbyteµ
 ;
 
 :´forwardµ  
@@ -2326,6 +2368,13 @@ _
 ]
 
 "
+189-
+[           
+_           
+´digraphµ
+]
+
+"
 180-
 [           
 _           
@@ -2427,8 +2476,8 @@ B
 
 
 
-`1278 HƒíE XH…ÀH‰$%@ O j
-X¿ O j^1Ò½  ` . ELF>x@ @4@688@DR@Z@bj qH‹%	O H…ÀtÿĞ1ÿj<X"ÿ4$_X\XYPQ&ÿt$++Hƒ<%XO  tf|$ÿt	f|$ÿu	ÿ%XO ëXH$-+Hƒ<%hO  tf|$ÿt	f|$ÿu	ÿ%hO ëXH)$*-Hƒ<%PO  tf|$ÿt	f|$ÿu	ÿ%PO ëYXH¯ÁP/ZYXH…ÉuMH‹%O H…ÀtÿĞH‹%	O H…ÀtÿĞH5   j_jZjXj_j<XGOLF: divide by zero
+`1333 HƒíE XH…ÀH‰$%@ O j
+X¿ O j^1Ò½  ` . ELF>x@ @4@688@DR@Z@bj q%H‹% 	O H…ÀtÿĞH‹%	O H…ÀtÿĞ1ÿj<X"ÿ4$_X\XYPQ&ÿt$++Hƒ<%XO  tf|$ÿt	f|$ÿu	ÿ%XO ëXH$-+Hƒ<%hO  tf|$ÿt	f|$ÿu	ÿ%hO ëXH)$*-Hƒ<%PO  tf|$ÿt	f|$ÿu	ÿ%PO ëYXH¯ÁP/ZYXH…ÉuMH‹%O H…ÀtÿĞH‹%	O H…ÀtÿĞH5   j_jZjXj_j<XGOLF: divide by zero
 1ÒH÷ñP%ZYXH…ÉuMH‹%O H…ÀtÿĞH‹%	O H…ÀtÿĞH5   j_jZjXj_j<XGOLF: divide by zero
 1ÒH÷ñR<	YXH)ÈHÀP@X‹ P!XY‰?X¶ P,XYˆ(H‹%	O H…ÀtÿĞj 1À1ÿH‰æjZ)H‹%	O H…ÀtÿĞjX‰ÇH‰æ‰ÂX.H‹%	O H…ÀtÿĞ_j<X^ÿu HƒÅÃ~XH÷ĞP$XH!$|XH	$=XH1$>YHÓ,$€€|$uH‹%ÀO H…ÀtÿĞXH÷ØP€|$uH‹%ÀO H…ÀtÿĞHÿ$‚€|$uH‹%ÀO H…ÀtÿĞHÿ$ƒ€|$uH‹%ÀO H…ÀtÿĞXH¯ÀP„€|$uH‹%ÀO H…ÀtÿĞHÑ$$…€|$uH‹%ÀO H…ÀtÿĞHÑ,$†	YXH9ÁHÀP‡YXH)ÈHƒèHÀPˆ0Hƒ<%@O  tf|$ÿt	f|$ÿu	ÿ%@O ë
 YXH9ÈHLÁP‰0Hƒ<%HO  tf|$ÿt	f|$ÿu	ÿ%HO ë
@@ -2436,7 +2485,7 @@ YXH9ÈHOÁPŠeYXH…ÉuMH‹%O H…ÀtÿĞH‹%	O H…ÀtÿĞH5   j_jZjXj_j<XGOLF:
 HƒùÿuH÷ØëH™H÷ùP‹dYXH…ÉuMH‹%O H…ÀtÿĞH‹%	O H…ÀtÿĞH5   j_jZjXj_j<XGOLF: divide by zero
 Hƒùÿu1ÒëH™H÷ùRXÿĞ‘XH$’XH)$“YXH¯ÁP”
 YXH9ÈHGÁP•
-YXH9ÈHBÁP–	YXH)ÈHÀP YXH9ÈœÀ¶ÀH÷ØP¡YXH9ÈŸÀ¶ÀH÷ØP¢YHÓ$$£YHÓ<$¤XH‹ P¥XYH‰¦_jXP§XZ^_P¨TU©]\ 
+YXH9ÈHBÁP–	YXH)ÈHÀP YXH9ÈœÀ¶ÀH÷ØP¡YXH9ÈŸÀ¶ÀH÷ØP¢YHÓ$$£YHÓ<$¤XH‹ P¥XYH‰¦_jXP§XZ^_P¨TU©]\ªXóH¸ÀP«XóH¼ÀP¬XóH½ÀP­H‹$H÷ØH!$ 
 
 
 

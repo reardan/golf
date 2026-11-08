@@ -55,8 +55,8 @@ space, shown as glyphs; `tools/codepage.py` converts glyph/mnemonic source ⇄ r
 bytes and the compiler dispatches any byte in its template table. What it can do
 now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
 
-- **34 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
-  div/mod, shifts, 64-bit fetch/store, `brk`, negate/inc/dec/square/double/halve.
+- **38 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
+  div/mod, shifts, 64-bit fetch/store, `brk`, negate/inc/dec/square/double/halve, popcount/trailing-/leading-zero count/low bit.
 - a **list type** on a `brk`-grown heap (`[len, e0, …]`, 64-bit cells) with a
   GOLF standard library (`lib/prelude.golfj`): range, len, index, sum, product,
   reverse, filter, and a number/list printer.
@@ -157,7 +157,7 @@ result:
 GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
-`bash test/run2.sh` is **863 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **874 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

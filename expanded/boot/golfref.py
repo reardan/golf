@@ -73,6 +73,7 @@ REC_BYTE = mkblob2.REC_BYTE  # ⊜  ⊜‹point›‹x›‹y›; a record heade
 ELSE_BYTE = mkblob2.ELSE_BYTE  # ⋄  c[a⋄b] if-else, {c⋄body} top-tested while (W12-A7)
 VINC_BYTE = mkblob2.VINC_BYTE  # ⇡x  inc qword [x] (W12-Z2)
 VDEC_BYTE = mkblob2.VDEC_BYTE  # ⇣x  dec qword [x]
+DIGRAPH_BYTE = mkblob2.DIGRAPH_BYTE  # ʘB  the long name ‹_dgHH› (W13-B, S6)
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -222,9 +223,20 @@ def compile_bytes(src: bytes) -> bytes:
             longs.append(name)
         return mkblob2.LONG_BASE + longs.index(name)
 
+    def digraph():
+        """W13-B (S6): ʘ then any byte B is the long name ‹_dgHH› (HH = B in
+        upper-case hex), interned like the same text after ‹.  golf2's ‹read›
+        gives 0 at end of input, so a trailing ʘ is ‹_dg00› there too."""
+        nonlocal i
+        b = src[i] if i < n else 0
+        i += 1 if i < n else 0
+        return intern(b"_dg%02X" % b)
+
     def take_name():
-        """A prefix's operand: one byte, or a whole ‹long name›."""
+        """A prefix's operand: one byte, a whole ‹long name›, or ʘB (W13-B)."""
         b = take()
+        if b == DIGRAPH_BYTE:
+            return digraph()
         return read_long() if b == LNAME_BYTE else b
 
     def call_or_template(b):
@@ -310,6 +322,8 @@ def compile_bytes(src: bytes) -> bytes:
             return src[i - 1]
         b = rbyte()
         rec = read_long() if b == LNAME_BYTE else b
+        if b == DIGRAPH_BYTE:                        # W13-B: golf2's ‹getname›
+            rec = digraph()
         if rec < mkblob2.LONG_BASE and not legal(rec):
             die(b"bad record name " + bytes([rec]))
         fields = []
@@ -564,7 +578,9 @@ def compile_bytes(src: bytes) -> bytes:
             emit(v1.PROLOGUE)
             chain = []                               # links from here to ';'
             continue
-        if c == LNAME_BYTE:                          # M2: ‹name› as a token — its
+        if c == DIGRAPH_BYTE:                        # W13-B: ʘB as a token is
+            c = digraph()                            # ‹_dgHH›, a link or a call
+        elif c == LNAME_BYTE:                        # M2: ‹name› as a token — its
             c = read_long()                          # number then stands for it,
                                                      # as a link or as a call
         if chain is not None:

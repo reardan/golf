@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **63** are now spent, leaving **48** free. It is partitioned as follows
+space; **68** are now spent, leaving **43** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -169,7 +169,7 @@ prefix-free against the 75 mnemonics of the three tables and each other), no gly
 |------|----------|-------|---------|------|--------|
 | `0xA8` | `\spr` | `⊷` | atom: push the data-stack pointer and the return-stack pointer, `-> sp bp` (rsp as it was before the atom pushed anything, then rbp; template `push rsp; push rbp`) — what `‹catch›` saves | W11-3A | shipped |
 | `0xA9` | `\spw` | `⊶` | atom: `sp bp ->` set rbp, then rsp (pops both first, so the values are consumed before rsp moves; template `pop rbp; pop rsp`) — what `‹throw›` restores | W11-3A | shipped |
-| `0xAA`, `0xAB` | — | — | spare, **W11-3A only** (e.g. if the read/set split wants four atoms); anyone else asks. W11-3A did not need them (two atoms were enough) | W11-3A | reserved |
+| `0xAA`, `0xAB` | — | — | spare, **W11-3A only** (e.g. if the read/set split wants four atoms); anyone else asks. W11-3A did not need them (two atoms were enough); W13 took them for the bit atoms (§1.5) | W11-3A | released |
 | `0xB6` | `\import` | `⎘` | compiler op, include prefix: `⎘“path“` compiles that file's source in place (fd-0 swap, include-once, search `.` then `lib/` then `vendor/` — the last added by W11-4A) — see the decision below; `codepage.COMPILER` row, cases in `self/golf2.golfj`, the seed and `boot/golfref.py` | W11-2A | shipped |
 | `0xB7` | `\rec` | `⊜` | compiler op, record definition header: `⊜‹point›‹x›‹y›;` defines a constructor `‹point›` and per-field accessors `‹point-x›` / setters `‹set-point-x›` over a plain list, synthesized at compile time from `⍳ ⊇ & \ _ ≪ > ﹢ ⊛`; `codepage.COMPILER` row, cases in `self/golf2.golfj`, the seed and `boot/golfref.py` | W11-4A | shipped |
 | `0xB8` | — | — | spare compiler op, for the W11 front-end owners (2A / 3B / 4A); unused in W11, now W12-A7's `\else` `⋄` (§1.4 below) | W11-2A/3B/4A | released |
@@ -249,6 +249,38 @@ W12-6 used all nine Z1 bytes, so none goes back to free. `0xE4`–`0xEF`
 mnemonics are letters only and prefix-free against the shipped ones:
 `\dget` and `\dput` because `\get` (`←`) is a compiler op and `\puts` and
 `\putat` exist.
+
+### 1.5 W13 assignments (W13-B's part)
+
+W13's bytes were decided up front (the W13 brief); these rows are the ones
+W13-B ships. The mnemonics are letters only and prefix-free against every
+shipped one (`\pcnt`, not `\popc`: `\pop` is `⍅`), checked by
+`python3 tools/codepage.py check`; no glyph was in use.
+
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0xAA` | `\pcnt` | `♯` | atom: `x -> n` popcount (`popcnt`), raw (no list dispatch) | W13-B | shipped |
+| `0xAB` | `\ctz` | `⊣` | atom: `x -> n` trailing zero bits (`tzcnt`), 64 for 0, raw | W13-B | shipped |
+| `0xAC` | `\clz` | `⊢` | atom: `x -> n` leading zero bits (`lzcnt`), 64 for 0, raw | W13-B | shipped |
+| `0xAD` | `\lsb` | `⊥` | atom: `x -> x & -x`, the lowest set bit (0 for 0), raw | W13-B | shipped |
+| `0xBD` | `\dig` | `ʘ` | compiler op, prefix: `ʘB` (B any byte) compiles exactly as the long name `‹_dgHH›`, HH = B in upper-case hex — a call, `′`, a chain link, a prefix's operand (`→ ← ⇒ ⇐ ⇡ ⇣ : ⊡ ⊚ ⊜`), a forward reference; undefined is `GOLF: undefined word ‹_dgHH›`. Cases in `self/golf2.golfj` (‹digraph›), the seed (`O`, `p`) and `boot/golfref.py` | W13-B | shipped |
+
+#### Digraph page
+
+`ʘ` + byte B is the long name `‹_dgHH›`; a library gives a word a digraph by
+defining `:‹_dgHH›‹realname›;` (or the word itself under that name), and
+`tools/codepage.py reference` lists every such prelude definition in
+REFERENCE.md's generated "Digraph page" table. The second byte is
+partitioned so the W13 agents never contend (printable ASCII only;
+`+` and `-` are W13-B's test bytes, used only in test programs, never in
+the prelude). One row per digraph the prelude defines:
+
+| Digraph | Bytes | Long name | Word | Task | Status |
+|---------|-------|-----------|------|------|--------|
+| `ʘA`–`ʘZ` | `BD 41`–`BD 5A` | `‹_dg41›`–`‹_dg5A›` | existing popular long names | W13-C | reserved (partition) |
+| `ʘa`–`ʘm`, `ʘ0`–`ʘ4` | `BD 61`–`BD 6D`, `BD 30`–`BD 34` | | | W13-D | reserved (partition) |
+| `ʘn`–`ʘz`, `ʘ5`–`ʘ9` | `BD 6E`–`BD 7A`, `BD 35`–`BD 39` | | | W13-E | reserved (partition) |
+| `ʘ+`, `ʘ-` | `BD 2B`, `BD 2D` | `‹_dg2B›`, `‹_dg2D›` | test programs only (run2 block W13-B) | W13-B | reserved (tests) |
 
 ## 2. Prelude word letters
 
@@ -560,7 +592,7 @@ to the integrator. Decimals are what you type.
 |------|------------|-----------------|-------------|-------------------|
 | 1A | `0x4F0900`–`0x4F093F` | 5179648 | — | 5179648 … 5179704 (all eight) |
 | 1B | `0x4F0940`–`0x4F097F` | 5179712 | `0x4F0940` 5179712: last errno, positive, stored before the throw (never cleared) · shipped, private to the file words: 5179720 the errno-name list · 5179728 the message's path (0 = an fd word) · 5179736 the message's fd · 5179744 the path buffer, then `‹_1b_dec›`'s n · 5179752 / 5179760 `‹_1b_dec›`'s buffer / cursor | 5179768 |
-| 1C | `0x4F0980`–`0x4F09BF` | 5179776 | `0x4F0980` 5179776: bytes pending in the output buffer at `0x430000` (0 = empty, BSS) · `0x4F0988` 5179784: the buffer's fd (0 = use fd 1) · `0x4F0990` 5179792: the **flush hook** — the address of `‹flush›`, stored by the prelude's init; `.` `)` `(`, the end-of-program exit and the divide-by-zero exit call it when non-zero (`tools/mkblob2.FLUSH_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0998` 5179800: `‹flush›`'s drain offset (shipped) | 5179808 … 5179832 |
+| 1C | `0x4F0980`–`0x4F09BF` | 5179776 | `0x4F0980` 5179776: bytes pending in the output buffer at `0x430000` (0 = empty, BSS) · `0x4F0988` 5179784: the buffer's fd (0 = use fd 1) · `0x4F0990` 5179792: the **flush hook** — the address of `‹flush›`, stored by the prelude's init; `.` `)` `(`, the end-of-program exit and the divide-by-zero exit call it when non-zero (`tools/mkblob2.FLUSH_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0998` 5179800: `‹flush›`'s drain offset (shipped) · `0x4F09A0` 5179808: the **end hook** (W13-B, S3 implicit output) — the address of `‹_13b_end›`, stored by the prelude's init; ONLY the end-of-program exit calls it, before the flush hook (`tools/mkblob2.END_HOOK`; BSS 0 in a bare program and in the compiler) | 5179816 … 5179832 |
 | 1D | `0x4F09C0`–`0x4F09FF` | 5179840 | — | 5179840 … 5179896 (all eight) |
 | 2A | `0x4F0A00`–`0x4F0A3F` | 5179904 | — (compiler work; its state is in `m+160` and `0x438000`) | 5179904 … 5179960 |
 | 2B | `0x4F0A40`–`0x4F0A7F` | 5179968 | dict scratch (shipped, private to the dict words): `0x4F0A40` 5179968 `‹_2b_h8›`'s byte source · `0x4F0A48` 5179976 / `0x4F0A50` 5179984 / `0x4F0A58` 5179992 short-lived temps (entry address, probe slot, new entry) · spares used: 5180008 `‹_2b_zero›`'s end address (5180000 / 5180016 free again since W12-P2's unrolled `‹_2b_zero›`; W12-P2 also uses 5179984 for a moment in `‹_2b_find›`) | 5180000 · 5180016 · 5180024 |
@@ -617,7 +649,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 186 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47 and W12-O6 1, helpers included) — 1024 since W10-A, so 838 are left
+prelude now uses 188 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1 and W13-B 2, helpers included) — 1024 since W10-A, so 836 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

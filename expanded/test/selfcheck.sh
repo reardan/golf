@@ -185,7 +185,7 @@ both include "$TMP/src.include"
 # a setter — and an include found through vendor/ (the third search place),
 # through both source forms.
 mkdir -p "$TMP/rec/vendor"
-printf '%s' '⊜‹pt›‹x›‹y›;:‹n2›"‹pt-x›²&‹pt-y›²+;' | python3 tools/codepage.py encode > "$TMP/rec/vendor/rpt.g2"
+printf '%s' '⊜‹pt›‹x›‹y›;:‹n2›"‹pt-x›²\\‹pt-y›²+;' | python3 tools/codepage.py encode > "$TMP/rec/vendor/rpt.g2"
 printf '%s' ':‹fy›‹q-b›;⎘“rpt.g2“⊜q a ‹b›;3 4‹pt›‹n2›Ṅ7 8q9‹set-q-a›"‹fy›\\‹q-a›+Ṅ7→‹v›←‹v›Ṅ' \
   | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.records"
 ( cd "$TMP/rec" && "$TMP/seed" < "$TMP/src.records" > "$TMP/old.records" 2>/dev/null; chmod +x "$TMP/old.records"

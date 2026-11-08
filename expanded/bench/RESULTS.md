@@ -121,3 +121,11 @@ the same. `⍒` adds n key calls through `€`, the key block and the gather.
 key and its unpacking. It went from 100 to 67 bytes and from 0.0885 to
 0.0852 s (best of 5, same session), with output equal to Python's on
 `gen.py 1 in`.
+
+W13-B shipped the bit atoms `♯ ⊣ ⊢ ⊥` (popcount, trailing and leading zero
+count, low bit), one inline instruction each (`popcnt` / `tzcnt` / `lzcnt`,
+and `mov; neg; and` for `x & -x`). Micro rows `popcnt` and `lowbit`, best of
+3: the bare `loop` row is 0.82 ns/iteration and `"♯_` / `"⊣_` / `"⊥_` inside
+it 1.12–1.14, so each atom with its dup and drop costs about 0.3 ns. Implicit
+output adds 15 bytes to the end-of-program exit (a load, a test and a call
+at exit only), and nothing to any loop.

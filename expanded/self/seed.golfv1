@@ -80,7 +80,9 @@
 :bm64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!;                # b: ch -> ; append it to the name
 :im64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@1024<[2.]m60+@"1+m60+!256+^]m80+@256+64*4702208+m72+!x[m80+@256+^]m80+@1+m80+!0}; # i: -> the built name's number, interned
 :Nn{("181-[_i^]d[2.]b0};
-:G("180-[_N];                                           # G: a prefix's operand -- one byte, or a whole ‹long name›
+:p"10<[7+]48+b;                                          # p: d -> ; append nibble d as an upper-case hex digit (W13-B)
+:O(n95b100b103b"16/p16%pi;                               # O: -> ʘB's name number, ‹_dgHH› interned (W13-B, S6)
+:G("180-[_N]"189-[_O];                                  # G: a prefix's operand -- one byte, a whole ‹long name›, or ʘB (W13-B)
 :F\o4*4785152+"@P\w\!;                                  # F: op name -> emit `op rel32`, the site joining name's pending list
 :R"Y@m84+!4*4785152+"@\0\!{"[_^]"@\"m84+@\-4-\!0};       # R: name -> patch its pending sites to its (just stored) body
 :z0m80+!{m80+@m60+@256+-[^]m80+@4*4785152+@1<[2.]m80+@1+m80+!0}; # z: end of input -- any name (one-byte or long) still pending is undefined
@@ -325,6 +327,7 @@
 "184-[_"1000001-[_233oP0w\k1000003^]"1000002-[_2E133oP0w1000004^]2.] # 0xB8  ⋄  else / while test
 "182-[_I^]                                              # 0xB6  ⎘  include a file (W11-2A)
 "183-[_y^]                                              # 0xB7  ⊜  a record header (W11-4A)
+"189-[_O]                                               # 0xBD  ʘ  a digraph, ‹_dgHH› as a token (W13-B)
 "180-[_N]                                               # 0xB4  ‹  a long name used as a token
 
 # A token inside a chain is a LINK.  This case must sit LAST, just before the
