@@ -260,6 +260,11 @@ Four tracks. Item ids are what the waves (section 4) schedule.
     atom stays one instruction on ints.
   - The alternative is to vectorize them like `+`.
   - The choice is the user's. See open questions.
+  - **Shipped (W12-O1): throw.** The user chose the recommendation. The
+    six unary arithmetic atoms `± ⊕ ⊖ ² ⊗ ⊘` raise `not a number`. The
+    bitwise atoms stay raw, because the prelude's tag arithmetic needs them.
+    The check is a top-byte compare in the template plus an exact hook
+    (slot O1 cell 5180864), not the M-VEC table. See DESIGN.md, Known limits.
 - **O2. Freeable thunks.**
   - Allocate `∘` and `⊸` thunks from the heap (an executable size class) so
     `⌫` can release them.

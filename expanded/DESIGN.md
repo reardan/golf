@@ -138,10 +138,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **34** |
-| the template blob itself | **1146** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **4201** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **13834** bytes |
-| assertions in the run2 suite | **713** |
+| the template blob itself | **1278** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **4333** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **13966** bytes |
+| assertions in the run2 suite | **706** |
 | assertions in the selfcheck suite | **57** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -749,6 +749,21 @@ unbuilt, and three defects this list does not yet cover — see
   catches nest as deep as the 4096-frame spill stack allows (sharing it with
   the list words). A return-stack overflow is a SIGSEGV on the guard page and
   is not catchable.
+- **Only the unary arithmetic atoms check for a list (W12-O1).** `± ⊕ ⊖ ² ⊗
+  ⊘` on a list raise `GOLF: not a number` through `‹throw›`. Their templates
+  test TOS's top byte for `0x7F` and only then call the hook cell `0x4F0DC0`
+  (REGISTRY §3.2, slot O1). The prelude fills that cell with `‹_12o1_nan›`,
+  which throws only for a tagged value whose address lies in the list heap.
+  So `INT64_MAX` and the rest of `[0x7F<<56, 2^63)` stay numbers, and the
+  only integers lost are those whose bits are exactly a live heap list's
+  tagged address. The hot path is one `cmp byte [rsp+7]` and a not-taken
+  `jne`, measured at +0.1 to +0.2 ns per op in a loop
+  (`bench/micro`, `loop` and `inc2`). Each use costs 22 more bytes of code.
+  A bare program (`golfc -n`) and the compilers never fill the cell, so they
+  call nothing. **Not checked, by design:** the bitwise atoms `~ $ | = > ≪ ≫`
+  (the prelude builds and strips the tag with them), the raw `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`,
+  and the comparisons. On a list these still work on its tagged address.
+  The binary `+ - * ⌈ ⌊` vectorize instead (M-VEC).
 - **Raw memory access is unchecked.** `⊙`/`⊛`/`@`/`!` are raw memory access
   by design; only `⊇` (prelude `I`) bounds-checks, and only `/ % ÷ ∣` check
   their divisor.

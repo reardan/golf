@@ -133,6 +133,33 @@ broadcasts: `4⍳3+` is `3 4 5 6`, and `4⍳4⍳*` is `0 1 4 9`. The raw forms
 that falls inside the heap's address range is taken for a list. See
 `DESIGN.md`, Known limits.
 
+The unary arithmetic atoms `± ⊕ ⊖ ² ⊗ ⊘` do not vectorize. Given a list, they
+raise `GOLF: not a number` through `‹throw›`, so the program exits 1, or a
+`‹catch›` gets the message (W12-O1). Before W12 they quietly computed on the
+list's tagged address.
+
+```
+5⍳⊕⍕  ->  GOLF: not a number
+:‹f›3⍳²;′‹f›‹catch›⊐  ->  not a number
+3⍳′⊕€⍕  ->  1 2 3
+9223372036854775807⊖Ṅ  ->  9223372036854775806
+```
+
+(The first prints on stderr and exits 1.)
+
+On integers they are unchanged. The cost is one compare and branch on the
+value's top byte, about 0.1 to 0.2 ns per op. Only a value whose top byte
+is `0x7F` reaches the prelude's check, which raises the error only for a
+tagged value whose address is in the list heap. So `INT64_MAX` and the other
+large integers still work as numbers. Without the prelude (`golfc -n`, and the
+compiler itself) the hook cell is zero, so nothing is ever called and the
+atoms compute on the bits. To map one of them over a list, write `′⊕€`.
+
+The bitwise atoms `~ $ | = > ≪ ≫` stay **raw** on purpose. They work on a
+list's bits with no check, because building and stripping the tag
+(`32767 48≪|`, `16≪16>`) is bit arithmetic on exactly those values. The same
+goes for the raw forms `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`, and for the comparisons `< » ≡ ≺ ≻`.
+
 ### Special forms
 
 | byte | syntax | meaning |
@@ -169,12 +196,12 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0x7C` | `\|` | `\or` | bitwise OR |
 | `0x3D` | `=` | `\xor` | bitwise XOR |
 | `0x3E` | `>` | `\shr` | shift right (by TOS) |
-| `0x80` | `±` | `\neg` | negate TOS |
-| `0x81` | `⊕` | `\inc` | TOS + 1 |
-| `0x82` | `⊖` | `\dec` | TOS - 1 |
-| `0x83` | `²` | `\sqr` | TOS * TOS |
-| `0x84` | `⊗` | `\dbl` | TOS * 2 |
-| `0x85` | `⊘` | `\hlv` | TOS >> 1 |
+| `0x80` | `±` | `\neg` | negate TOS (a list: not a number) |
+| `0x81` | `⊕` | `\inc` | TOS + 1 (a list: not a number) |
+| `0x82` | `⊖` | `\dec` | TOS - 1 (a list: not a number) |
+| `0x83` | `²` | `\sqr` | TOS * TOS (a list: not a number) |
+| `0x84` | `⊗` | `\dbl` | TOS * 2 (a list: not a number) |
+| `0x85` | `⊘` | `\hlv` | TOS >> 1 (a list: not a number) |
 | `0x86` | `»` | `\gt` | a b -> (a>b unsigned ? -1 : 0) |
 | `0x87` | `≡` | `\eq` | a b -> (a==b ? -1 : 0) |
 | `0x88` | `⌈` | `\max` | a b -> max(a,b) signed |

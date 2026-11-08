@@ -577,7 +577,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | P1 input | `0x4F0D00`–`0x4F0D3F` | 5180672 | 5180672 … 5180728 — all eight used (shipped): `‹ints›` `‹words›` `‹num›` `‹readbytes›` `‹readall›` state, see the prelude's W12-P1 section |
 | P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | 5180736 … 5180792 |
 | P3 list loops | `0x4F0D80`–`0x4F0DBF` | 5180800 | 5180800 … 5180856 |
-| O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 |
+| O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 (W12-O1 uses one: 5180864, the not-a-number hook cell `mkblob2.NAN_HOOK` that the prelude fills with `‹_12o1_nan›`; 5180872 … 5180920 spare) |
 | Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180984 |
 | A2 scan / reduce | `0x4F0E40`–`0x4F0E7F` | 5180992 | 5180992 … 5181048 |
 | A3 each-indexed | `0x4F0E80`–`0x4F0EBF` | 5181056 | 5181056 … 5181112 |
