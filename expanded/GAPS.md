@@ -307,8 +307,15 @@ Python, and it appears nowhere in DESIGN.md's limits.
   forever. **Since W9-3C (M-MEM2)** `⌫` hands a block back to a size-classed
   free list that `A` checks first, so a loop that frees what it maps keeps the
   break flat. It is explicit — nothing frees on its own, there is no GC and no
-  ownership, and a use after `⌫` is undefined — so against Python this is
-  C's `free`, not reference counting.
+  ownership — so against Python this is C's `free`, not reference counting.
+- **A use after `⌫` is caught (was: undefined).** **Closed by W11-2D:** `⌫`
+  poisons the freed list's length cell and every list word checks it on entry,
+  so `5⍳"⌫∑` stops with `GOLF: use after free` (exit 1) instead of summing a
+  recycled block; `‹heapstats›` (`-> blocks bytes`) shows what is live, so a
+  test can assert that a map-and-free loop stays flat. Still open, as in C
+  with a debug allocator: a stale copy of a block that was freed and then
+  reallocated is not caught (the new owner's list is live), nor is an
+  interior pointer.
 - **The `∘` compose arena has no bounds check, and overruns into user data.**
   See §3 below — this one is a live defect, not a design limit.
 

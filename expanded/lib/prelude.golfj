@@ -162,18 +162,38 @@
 # it returns a RAW address (no tag), because the tool libraries hand its blocks
 # to syscalls; the header is invisible to every caller, which only ever used
 # the payload.
+# W11-2D: a freed block holds the POISON -559038737 in payload cell 0 (its
+# length cell) and the free-list link in payload cell 1 (every class has >= 4
+# cells, so cell 1 always exists).  A pop reads the link from cell 1 and writes
+# 0 over the poison, so a reused block is never mistaken for a freed one, even
+# by a caller that fills the length last.  Both paths count the block into
+# ‹heapstats›'s cells: 5180096 live blocks += 1, 5180104 live bytes += the
+# whole block, header included, (cap+1)*8 (the bump path has it in s5 already).
 :A0&4\gt\rsub&8\gt\rsub&16\gt\rsub&32\gt\rsub&64\gt\rsub&128\gt\rsub&256\gt\rsub
  8\rmul5177536\radd"5177480\store\fetch
- "0\eq[&&8\rsub\fetch\neg\gt["8\rsub"\fetch\neg&\store_"\fetch5177480\fetch\store5177480\store_5177480\fetch^]]_
+ "0\eq[&&8\rsub\fetch\neg\gt["8\rsub"\fetch\neg"1\radd8\rmul5180104\fetch\radd5180104\store&\store_"8\radd\fetch5177480\fetch\store0&\store5177480\store_5180096\fetch1\radd5180096\store5177480\fetch^]]_
  1 5177480\fetch5177536\rsub3>2\radd\shl\rmax
  "1\radd8\rmul5177480\store 5177396@H@\radd H@5177480\fetch\radd"5177400@\rlt[
   "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!
+ 5180104\fetch5177480\fetch\radd5180104\store5180096\fetch1\radd5180096\store
  "5177480\store\store5177480\fetch8\radd;
-:L16\shl16>\fetch;                                           # L: len(list)
 # U chars(str) -> list is defined here, ahead of I, rather than with O and J
 # below (W11-0): I's failure path builds its message with U, and a prelude a
 # pre-W10-A compiler can read (run2.sh's M2 check) calls nothing forward.
 :U X5177440\store5177440\fetch@"1\radd A"5177472\store\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]5177472\fetch32767 48\shl| Y;
+# ‹_2d_chk›  v -> addr   W11-2D: the list-entry mask WITH the use-after-free
+# check — `16\shl16>` (strip the tag, or Q's 0x7FFE marker) and then, if the
+# length cell holds ⌫'s poison -559038737, `GOLF: use after free` via
+# ‹throw›.  No real length is negative, so the poison is unambiguous.  The list
+# words (∑ ≢ ⍕ € ⇤ ∏ ⌽ ⌿ ⊐ ⊞ K G, so D and the bare + - * on lists, ≣ ⍤ ⧺ ↑
+# ↓ ⍋ ∊ and the W9-4B/4C long words) call it once on entry instead of the bare
+# mask; ⊇ (I, the per-element hot path) has its own cheaper inline form.  A
+# leaf on the happy path (no scratch); defined here, after U and ‹throw› and
+# before L, because it must precede every caller.  The 2D section near the end
+# of this file has the rest (‹heapstats›).
+:‹_2d_chk›16\shl16>"\fetch559038737\neg\eq1\radd[
+ “use after free“U‹throw›];
+:L‹_2d_chk›\fetch;                                           # L: len(list)
 # I: index(list,i).  W9-2B: CHECKED.  `&\fetch&\gt` is len >u i, so one unsigned
 # compare rejects i >= len AND every negative i (which is huge unsigned); `[`
 # then runs the failure path, which writes `GOLF: index out of range` to fd 2
@@ -184,11 +204,24 @@
 # check is its own step in front of the untouched address arithmetic.
 # W9-2A/M-TAG2: the list is masked ((v<<16)>>16) for the length read and again
 # for the address arithmetic, so a tagged list and a raw A block both index.
-:I&16\shl16>\fetch&\gt[
- “index out of range“U‹throw›]
+# W11-2D: the length is clamped to 0 when negative (`"0\slt~$`) before the
+# compare, so ⌫'s poison -559038737 (huge unsigned) fails it for every i; the
+# cold path then asks ‹_2d_chk› first, so a freed list says `use after free`
+# and only a live one `index out of range`.  Hot-path cost: five ops, which
+# the prelude's own loops skip by calling ‹_2d_ix› below instead.
+:I&16\shl16>\fetch"0\slt~$&\gt[
+ &‹_2d_chk›_“index out of range“U‹throw›]
+ 8\rmul\radd16\shl16>8\radd\fetch;
+# ‹_2d_ix›  list i -> x   W11-2D: I exactly as it was before the clamp — the
+# per-element index of the prelude's own loops (∑ € ⇤ ∏ ⌽ ⌿ ⊐ ⊞ K G ⍕ ≣ ⍤).
+# Each of them checked its list with ‹_2d_chk› on entry, so the five-op clamp
+# would only re-ask, once per element, what was answered once per call (it
+# cost ~13% on a map/sum/reverse benchmark); user code's ⊇ is I, checked.
+:‹_2d_ix›&16\shl16>\fetch&\gt[
+ &‹_2d_chk›_“index out of range“U‹throw›]
  8\rmul\radd16\shl16>8\radd\fetch;
 :R X"1\radd A"5177440\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177448\fetch"8\rmul5177440\fetch\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177440\fetch32767 48\shl| Y;
-:S X16\shl16>5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch+5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
+:S X‹_2d_chk›5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›5177456\fetch+5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
 # N: print signed decimal.  W4A added the sign check — cells hold negatives now,
 # so `-5 N` must print -5 and not 2^64-5.  `"0\slt1\radd[…]` runs the block only
 # when n <s 0: emit '-' (45) and \neg, then fall into the unsigned recursion.
@@ -197,14 +230,14 @@
 # W11-1C section below) instead of a raw `)` write per byte.
 :N"0\slt1\radd[45‹_1c_put›\neg]"10\rlt1\radd[48\radd‹_1c_put›^]"10/N10%48\radd‹_1c_put›;
 :E10‹_1c_put›;                                      # E: newline
-:M X5177464\store16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
-:F X5177464\store5177472\store16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177472\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
+:M X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
+:F X5177464\store5177472\store‹_2d_chk›5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177472\fetch5177440\fetch5177448\fetch‹_2d_ix›5177464\fetch\exec5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
 # Q show(list) is defined under the W9-3B-NESTED anchor below: it is recursive
 # now and calls T, which must be defined first.
 # P product(list)   V reverse(list)->list   W filter(list pred)->list  (keep where pred==0)
-:P X16\shl16>5177440\store1 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch*5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
-:V X16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177472\fetch5177440\fetch\fetch5177448\fetch\rsub8\rmul\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
-:W X5177464\store16\shl16>"5177440\store\fetch"1\radd A"5177472\store__0 5177488\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I"5177456\store5177464\fetch\exec[5177488\fetch1\radd5177488\store5177456\fetch5177472\fetch5177488\fetch8\rmul\radd\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177488\fetch5177472\fetch\store5177472\fetch32767 48\shl| Y;
+:P X‹_2d_chk›5177440\store1 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›5177456\fetch*5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
+:V X‹_2d_chk›"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›5177472\fetch5177440\fetch\fetch5177448\fetch\rsub8\rmul\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
+:W X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177472\store__0 5177488\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›"5177456\store5177464\fetch\exec[5177488\fetch1\radd5177488\store5177456\fetch5177472\fetch5177488\fetch8\rmul\radd\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177488\fetch5177472\fetch\store5177472\fetch32767 48\shl| Y;
 # O puts(str): print a “...“ byte block.  U chars(str)->list: byte block to code
 # list (so list ops apply; U itself sits above I).  J join(list): print a code
 # list as text (cell->byte).
@@ -213,11 +246,11 @@
 # with the 32-bit `@` and the bytes with `?` at str+4+i.  Only U's OUTPUT is a
 # list, and it is an ordinary 8-byte-cell one.  J's input is a real list.
 :O X5177440\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?‹_1c_put›5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]Y;
-:J X16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I‹_1c_put›5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
+:J X‹_2d_chk›5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›‹_1c_put›5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
 # Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
 # shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved in s7, the common length
 # min(≢l1, ≢l2) in s2.
-:Z X5177464\store16\shl16>5177496\store16\shl16>5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"5177456\store"1\radd A"5177472\store\store0 5177448\store5177456\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177456\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
+:Z X5177464\store‹_2d_chk›5177496\store‹_2d_chk›5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"5177456\store"1\radd A"5177472\store\store0 5177448\store5177456\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›5177496\fetch5177448\fetch‹_2d_ix›5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177456\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
 # --- W2-TAG words ---
 # M-TAG — shape polymorphism.  Since M-TAG2 (W9-2A) a GOLF value is a LIST iff
 # its top 16 bits are exactly 0x7FFF (W11-1A; 0x0001 before) — a heap address
@@ -248,8 +281,8 @@
 # W4A: s7 is a 64-bit cell now, so the parked scalar keeps its full width — the
 # old wart where `-3 ⍳4 +` broadcast 4294967293 (a 32-bit round trip through
 # scratch) is GONE, and a negative or >= 2^32 broadcast scalar survives intact.
-:K X5177464\store5177496\store16\shl16>5177440\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177496\fetch5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
-:G X5177464\store16\shl16>5177440\store5177496\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177496\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
+:K X5177464\store5177496\store‹_2d_chk›5177440\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›5177496\fetch5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
+:G X5177464\store‹_2d_chk›5177440\store5177496\store5177440\fetch\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177496\fetch5177440\fetch5177448\fetch‹_2d_ix›5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch32767 48\shl| Y;
 # D  a b fn -> c   the binary shape dispatcher, and the calling convention M-VEC
 # will route the bare + - * ⌈ ⌊ templates through: fn is a quotation address.
 # a and b are NEVER parked in scratch — they stay on the data stack, so the
@@ -403,18 +436,18 @@
 # level of nesting.  An element prints through two guards: a list (T == 0)
 # recurses and leaves 0x7FFF<<48 behind, which the int guard (T == 1) then skips; an
 # int fails the first guard and is printed by the second.
-:Q X"48>32766\eq1\radd5177456\store16\shl16>5177440\store0 5177448\store5177456\fetch[91‹_1c_put›]5177440\fetch\fetch0\eq[{5177448\fetch0\eq5177456\fetch|[32‹_1c_put›]5177440\fetch5177448\fetch I"T[1 48\shl\rsub Q 32767 48\shl]"T1\rsub[N 0]_5177456\fetch1\rsub[32‹_1c_put›]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch[93‹_1c_put›]Y;
+:Q X"48>32766\eq1\radd5177456\store‹_2d_chk›5177440\store0 5177448\store5177456\fetch[91‹_1c_put›]5177440\fetch\fetch0\eq[{5177448\fetch0\eq5177456\fetch|[32‹_1c_put›]5177440\fetch5177448\fetch‹_2d_ix›"T[1 48\shl\rsub Q 32767 48\shl]"T1\rsub[N 0]_5177456\fetch1\rsub[32‹_1c_put›]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch[93‹_1c_put›]Y;
 # ≣ match  a b -> -1/0 (≡'s convention): structural equality.  Shape code as in D
 # (2*T(a)+T(b)): 3 int,int is \eq; 1/2 int vs list is 0; 0 list,list compares
 # lengths, then elements pairwise by recursion, stopping at the first mismatch.
 # s0 a · s7 b · s1 index · s2 the running flag (-1 until a mismatch), X/Y-framed.
 # The loop guard is (len==0) | ~s2, so lists of different lengths never index
 # past the shorter one; the loop condition is (i < len) & s2.
-:\match &T2\rmul&T\radd"3\rsub[_\eq^][X16\shl16>5177496\store16\shl16>5177440\store0 1\rsub5177456\store0 5177448\store5177440\fetch\fetch5177496\fetch\fetch\eq[0 5177456\store]5177440\fetch\fetch0\eq5177456\fetch~|[{5177440\fetch5177448\fetch I5177496\fetch5177448\fetch I\match 5177456\fetch$5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177456\fetch$1\radd}]5177456\fetch Y^]__0;
+:\match &T2\rmul&T\radd"3\rsub[_\eq^][X‹_2d_chk›5177496\store‹_2d_chk›5177440\store0 1\rsub5177456\store0 5177448\store5177440\fetch\fetch5177496\fetch\fetch\eq[0 5177456\store]5177440\fetch\fetch0\eq5177456\fetch~|[{5177440\fetch5177448\fetch‹_2d_ix›5177496\fetch5177448\fetch‹_2d_ix›\match 5177456\fetch$5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177456\fetch$1\radd}]5177456\fetch Y^]__0;
 # ⍤ depth  v -> n: an int is 0; a list is 1 + the largest depth among its
 # elements, so a flat (or empty) list is 1 and a list of lists 2.  s0 list ·
 # s1 index · s2 the running max (depths are >= 0, so the unsigned \rmax is exact).
-:\depth "T[X16\shl16>5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I\depth 5177456\fetch\rmax5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch1\radd Y^]_0;
+:\depth "T[X‹_2d_chk›5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch‹_2d_ix›\depth 5177456\fetch\rmax5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch1\radd Y^]_0;
 
 # @@ W9-3C-FREE @@
 # ⌫  list ->   W9-3C/M-MEM2: release a block to A's free list.  Takes a TAGGED
@@ -423,20 +456,30 @@
 # inputs; ⌫ is how a long-running loop gives back what M/W/V/Z/K/G/R/U made.
 # Pushes the block on the head of its class (class of its header cap, computed
 # exactly as in A, so a block always goes back to the list it can serve):
-# payload cell 0 becomes the link, the header becomes -cap.  The list's
-# contents are gone — using it after ⌫ is undefined.  Two cheap guards, both
-# exit 1 with a message on fd 2 (like I's): a value whose header would lie
-# outside [heap base, base+span) is "free of a non-heap value" (an int, a
-# string literal, a code address), and a block whose header is already
-# negative is a "double free".  A pointer into the MIDDLE of a block, or a
-# block freed, reallocated and freed again through a stale copy, is not caught.
+# payload cell 1 becomes the link, the header becomes -cap, and (W11-2D)
+# payload cell 0 — the length cell — becomes the POISON -559038737, so every
+# list word that later reads it (‹_2d_chk› on entry, I's inline clamp) throws
+# `use after free` instead of running over a recycled block.  ⌫ also takes the
+# block out of ‹heapstats› (5180096 blocks -= 1, 5180104 bytes -= (cap+1)*8).
+# Two cheap guards, both exit 1 with a message on fd 2 (like I's): a value
+# whose header would lie outside [heap base, base+span) is "free of a non-heap
+# value" (an int, a string literal, a code address), and a block whose header
+# is already negative is a "double free".  The double-free test stays on the
+# header (-cap), not the poison: A blocks that are byte buffers, not lists
+# (‹_1b_tobytes›), may hold any bit pattern in cell 0, while the header is
+# A's alone; the two marks are written and cleared together, so a freed block
+# always carries both.  NOT caught: a pointer into the MIDDLE of a block, and a
+# stale copy of a block that was freed and then REALLOCATED — A clears the
+# poison on reuse, so the stale copy reads (or frees) the new owner's list.
 # A leaf like A: s5 only (the payload), no call, no frame.
 :\free16\shl16>"8\rsub5177396@\rsub5177400@\rlt[
  “free of a non-heap value“U‹throw›]
  "8\rsub\fetch0\slt1\radd[
  “double free“U‹throw›]
  "5177480\store8\rsub\fetch0&4\gt\rsub&8\gt\rsub&16\gt\rsub&32\gt\rsub&64\gt\rsub&128\gt\rsub&256\gt\rsub
- 8\rmul5177536\radd"\fetch5177480\fetch\store5177480\fetch&\store_
+ 8\rmul5177536\radd"\fetch5177480\fetch8\radd\store5177480\fetch&\store_
+ 5180104\fetch&1\radd8\rmul\rsub5180104\store5180096\fetch1\rsub5180096\store
+ 559038737\neg5177480\fetch\store
  \neg5177480\fetch8\rsub\store;
 
 # @@ W9-4A-LISTWORDS1 @@
@@ -451,7 +494,7 @@
 # lists (shared, not deep-copied).  Raw \fetch/\store on cells — no I: every
 # index is in range by construction.  X/Y-framed.
 # ⧺: s7 l2 · s0 l1 · s4 result · s1 index.  l2's i-th cell lands at ≢l1 + i.
-:\cat X16\shl16>5177496\store16\shl16>5177440\store
+:\cat X‹_2d_chk›5177496\store‹_2d_chk›5177440\store
  5177440\fetch\fetch5177496\fetch\fetch\radd"1\radd A"5177472\store\store
  0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
  0 5177448\store5177496\fetch\fetch0\eq[{5177496\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177440\fetch\fetch5177448\fetch\radd8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177496\fetch\fetch\rlt1\radd}]
@@ -459,7 +502,7 @@
 # ↑: s2 n · s0 list · s6 count c = min(|n|, len) · s7 start (0, or len-c when
 # n < 0) · s4 result · s1 index.  |n| via the N idiom; \neg of -2^63 is itself,
 # which \rmin (unsigned) still clamps to len.
-:\take X5177456\store16\shl16>5177440\store
+:\take X5177456\store‹_2d_chk›5177440\store
  5177456\fetch"0\slt1\radd[\neg]5177440\fetch\fetch\rmin5177488\store
  0 5177496\store5177456\fetch0\slt1\radd[5177440\fetch\fetch5177488\fetch\rsub5177496\store]
  5177488\fetch"1\radd A"5177472\store\store
@@ -468,7 +511,7 @@
 # ↓ is a take: keep m = len - min(|n|, len) cells, from the END when n >= 0
 # (take -m) and from the front when n < 0 (take m).  s1 len · s2 n; the list
 # stays on the data stack for ↑, which brings its own frame.
-:\drop X5177456\store"16\shl16>\fetch5177448\store
+:\drop X5177456\store"‹_2d_chk›\fetch5177448\store
  5177448\fetch5177456\fetch"0\slt1\radd[\neg]5177448\fetch\rmin\rsub
  5177456\fetch0\slt[\neg]\take Y;
 
@@ -513,7 +556,7 @@
 # zero-is-true like T, so `∊[…]` runs on a hit.  The empty list gives 1.
 # s0 list · s2 x · s1 index · s4 found flag (-1 once hit); the loop stops at the
 # first hit: it continues while (i < len) & ~found.
-:\memb X5177456\store16\shl16>5177440\store0 5177472\store0 5177448\store
+:\memb X5177456\store‹_2d_chk›5177440\store0 5177472\store0 5177448\store
  5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\fetch\eq5177472\fetch|5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177472\fetch~$1\radd}]
  5177472\fetch1\radd Y;
 # ‹slice›    l i n -> l   a NEW list of the n cells starting at index i.  i < 0
@@ -525,7 +568,7 @@
 #                         s0 list, then the intermediate · s1 i · s2 n.  (No
 #                         swap anywhere in these four words: `decode -m` writes
 #                         the swap byte as a bare \, which does not re-encode.)
-:‹slice›X5177456\store5177448\store16\shl16>5177440\store
+:‹slice›X5177456\store5177448\store‹_2d_chk›5177440\store
  5177448\fetch0\slt1\radd[5177440\fetch\fetch5177448\fetch\radd5177448\store]
  5177448\fetch0\slt1\radd[0 5177448\store]
  5177456\fetch0\slt1\radd[0 5177456\store]
@@ -536,7 +579,7 @@
 #                         the empty list).  s0 list · s2 x · s1 index · s4 the
 #                         answer (-1 until a hit); the loop runs while
 #                         (i < len) & (s4 == -1).
-:‹indexof›X5177456\store16\shl16>5177440\store0 1\rsub5177472\store0 5177448\store
+:‹indexof›X5177456\store‹_2d_chk›5177440\store0 1\rsub5177472\store0 5177448\store
  5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\fetch\eq1\radd[5177448\fetch5177472\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177472\fetch0 1\rsub\eq$1\radd}]
  5177472\fetch Y;
 # ‹unique›   l -> l       a NEW list of the first occurrence of each distinct
@@ -554,7 +597,7 @@
 #                         content t (A and ⌫ use s5 only outside the loop) ·
 #                         s6 count · s7 slot h.  A probe step reads list[t-1]
 #                         even when t == 0: the list's own length cell (harmless).
-:‹unique›X16\shl16>5177440\store
+:‹unique›X‹_2d_chk›5177440\store
  5177440\fetch\fetch1\radd A5177472\store
  63 5177464\store
  {1 64 5177464\fetch\rsub\shl5177440\fetch\fetch2\rmul\rlt1\radd"[5177464\fetch1\rsub5177464\store]}
@@ -591,7 +634,7 @@
 #                         s7 "another pass" flag.  Each element goes through
 #                         Q's two guards: a list splices and leaves 0x7FFF<<48
 #                         behind, which the int guard then skips.
-:‹flatten›X16\shl16>5177440\store0 5177464\store
+:‹flatten›X‹_2d_chk›5177440\store0 5177464\store
  {0 5177488\store0 5177448\store0 5177496\store
   5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"48>32767\eq"1\radd[_16\shl16>\fetch0 1\rsub][_1]5177488\fetch\radd5177488\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
   5177488\fetch"1\radd A"5177472\store\store
@@ -655,7 +698,7 @@
 # and at each word end copies src[start..i) into a fresh list stored straight
 # into result[k] (then tagged).  s0 src · s2 len · s1 i · s3 start (-1 = none)
 # · s4 result · s6 k · s7 copy index.
-:‹words›X16\shl16>"5177440\store\fetch5177456\store0 5177496\store0 1\rsub5177464\store0 5177448\store
+:‹words›X‹_2d_chk›"5177440\store\fetch5177456\store0 5177496\store0 1\rsub5177464\store0 5177448\store
  5177456\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt
   "~5177464\fetch$\neg5177496\fetch\radd5177496\store5177464\store
   5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
@@ -674,7 +717,7 @@
 # sign into s3 (-1 for '-'; '+' is skipped), accumulate digits in s4.  Each
 # phase's stop flag is (i >= len) | (not this phase's kind of byte), computed
 # without reading l[len]: `<i> <len> \rlt~"[_ …]` leaves -1 when out of range.
-:‹num›X16\shl16>"5177440\store\fetch5177456\store0 5177448\store0 5177464\store0 5177472\store
+:‹num›X‹_2d_chk›"5177440\store\fetch5177456\store0 5177448\store0 5177464\store0 5177472\store
  {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt~]"[5177448\fetch1\radd5177448\store]}
  5177448\fetch5177456\fetch\rlt1\radd[5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch45\eq"5177464\store
   5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch43\eq|\neg5177448\fetch\radd5177448\store]
@@ -933,6 +976,17 @@
 # === W11-2C bind ===
 
 # === W11-2D use after free ===
+# ⌫ writes the poison -559038737 (0xFFFFFFFFDEADBEEF) into a freed block's
+# length cell and keeps the free-list link in cell 1; A clears the poison when
+# it reuses the block; ‹_2d_chk› (defined up by L, ahead of every caller) is
+# the checked list-entry mask, and I clamps a negative length so the poison
+# fails its bounds test.  See the notes at A, ‹_2d_chk›, I and ⌫.
+# ‹heapstats›  -> blocks bytes   the A blocks now live (allocated and not
+# given back by ⌫) and their total size in bytes, each block counted whole:
+# (cap+1)*8, its header cell and its class-rounded capacity.  A and ⌫ keep the
+# two cells (REGISTRY §3.1: 5180096, 5180104); the prelude's own startup
+# blocks (the stdin buffer, …) count too, so compare readings, not absolutes.
+:‹heapstats›5180096\fetch5180104\fetch;
 
 # === W11-3A catch ===
 

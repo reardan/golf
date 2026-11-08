@@ -243,14 +243,14 @@ Prelude long names in use (all **shipped**):
 | `‹flush›`, and the helpers `‹_1c_put›` `‹_1c_init›` | W11-1C (**shipped**) | `W11-1C buffered output` |
 | `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›`, and the helpers `‹_1d_utoa›` `‹_1d_sub›` `‹_1d_put›` | W11-1D (**shipped**) | `W11-1D Text` |
 | `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›` | W11-2B (reserved) | `W11-2B dict and set` |
-| `‹heapstats›` | W11-2D (reserved) | `W11-2D use after free` |
+| `‹heapstats›`, and the helpers `‹_2d_chk›` `‹_2d_ix›` (defined up by `L`/`I`, ahead of their callers) | W11-2D (**shipped**) | `W11-2D use after free` |
 | `‹catch›` | W11-3A (reserved; `‹throw›` above is 3A's too) | `W11-3A catch` |
 | `‹cadd›` `‹csub›` `‹cmul›` | W11-3C (reserved) | `W11-3C checked arithmetic` |
 | `‹assert›` `‹expect›` | W11-4B (reserved) | `W11-4B test words` |
 | `‹stack›` | W11-4C (reserved) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 
 The table heading says shipped; the W11 rows marked *reserved* are allocated,
-not live (shipped so far: `‹throw›` and the W11-1B, 1C and 1D rows). **W11 helper names:** a W11 task that
+not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D and 2D rows). **W11 helper names:** a W11 task that
 needs a private helper word names it `‹_<id>…›` with its lowercase task id,
 e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
 `‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers
@@ -510,7 +510,7 @@ to the integrator. Decimals are what you type.
 | 2A | `0x4F0A00`–`0x4F0A3F` | 5179904 | — (compiler work; its state is in `m+160` and `0x438000`) | 5179904 … 5179960 |
 | 2B | `0x4F0A40`–`0x4F0A7F` | 5179968 | dict scratch: `0x4F0A40` 5179968 · `0x4F0A48` 5179976 · `0x4F0A50` 5179984 · `0x4F0A58` 5179992 (e.g. table, mask, probe index, hash) | 5180000 … 5180024 |
 | 2C | `0x4F0A80`–`0x4F0ABF` | 5180032 | — (`⊸` uses the `∘` arena pointer `0x4F003C`) | 5180032 … 5180088 (all eight) |
-| 2D | `0x4F0AC0`–`0x4F0AFF` | 5180096 | `0x4F0AC0` 5180096: live blocks · `0x4F0AC8` 5180104: live bytes (for `‹heapstats›`) | 5180112 … 5180152 |
+| 2D | `0x4F0AC0`–`0x4F0AFF` | 5180096 | shipped: `0x4F0AC0` 5180096: live blocks · `0x4F0AC8` 5180104: live bytes, each block `(cap+1)*8` (header included); `A` adds, `⌫` subtracts, `‹heapstats›` reads; BSS 0 | 5180112 … 5180152 |
 | 3A | `0x4F0B00`–`0x4F0B3F` | 5180160 | `0x4F0B00` 5180160: **catch handler chain head** (0 = no handler: `‹throw›` prints and exits) · `0x4F0B08` 5180168: the message in flight | 5180176 … 5180216 |
 | 3B | `0x4F0B40`–`0x4F0B7F` | 5180224 | — (compiler work; `m+176`) | 5180224 … 5180280 |
 | 3C | `0x4F0B80`–`0x4F0BBF` | 5180288 | — | 5180288 … 5180344 (all eight) |
@@ -523,10 +523,11 @@ to the integrator. Decimals are what you type.
 **The W11-2D poison value** is a constant, not a cell: **`-559038737`**
 (`0xFFFFFFFFDEADBEEF` as a 64-bit word), spelled `559038737±` (the literal is
 under `2^31`, so the seed can compile it). `⌫` writes it into a freed list's
-**length cell** (payload cell 0); no live list has a negative length. Note for
-2D: today `⌫` puts the free-list **link** in payload cell 0 — the same cell —
-so 2D must move the link (e.g. to payload cell 1; every block has at least 4
-cells) and update `A`'s pop to match.
+**length cell** (payload cell 0); no live list has a negative length.
+**Shipped (W11-2D):** a freed block is `[-cap][poison][link][…]` — the
+free-list link moved to payload cell 1 (every block has at least 4 cells), `A`'s
+pop reads it there and writes `0` over the poison, and the list words check
+cell 0 on entry through `‹_2d_chk›` (`I` clamps a negative length instead).
 
 ---
 

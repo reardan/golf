@@ -521,6 +521,35 @@ exit status 2, and no binary. So do a 9th level of nesting
 (`GOLF: too many includes <path>`), and a path that is too long, unclosed, or
 not a `“…“` literal (`GOLF: cannot include …`).
 
+### Memory
+
+`⌫` gives a list (or an `A` block) back to the allocator, and the next
+allocation of the same size class reuses it. Since W11-2D a freed list is
+**poisoned**: `⌫` writes `-559038737` into its length cell, and every list
+word checks that cell on entry (`∑ ≢ ⍕ € ⇤ ∏ ⊇ ⌽ ⌿ ⊐ ⊞ ⧺ ↑ ↓ ⍋ ∊ ≣ ⍤`, the
+bare `+ - *` on lists, and the long-named list and text words built on them).
+A freed list that reaches one stops the program with `GOLF: use after free`
+(exit 1). Freeing it again is still `GOLF: double free`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹heapstats›` | `-> blocks bytes` | the number of allocator blocks now live (allocated and not yet freed) and their total size in bytes. A block counts whole: its header cell plus its size class, so `5⍳` (6 cells, class 8) is `(8+1)*8 = 72` bytes. The prelude's own blocks count too, so compare two readings |
+
+```
+‹heapstats›_→n 5⍳‹heapstats›_←n-Ṅ                          ->  1
+‹heapstats›→b_ 5⍳‹heapstats›←b-Ṅ                           ->  72
+:d⊗;5⍳→l‹heapstats›_→n 1000→i{←l′d€⌫←i1-"→i0≡}‹heapstats›_←n-Ṅ  ->  0
+5⍳"⌫ 5⍳"≢Ṅ                                                 ->  5
+5⍳"⌫∑Ṅ      # stderr: GOLF: use after free     exit status 1
+```
+
+In the fourth example the second `5⍳` gets the freed block back, and it is an
+ordinary live list: `A` clears the poison when it hands a block out again.
+That is also what is **not** caught: a stale copy of a list that was freed and
+then reused reads (or frees) the new owner's list without an error. A value
+pointing into the middle of a block is not checked either. Names that start
+with `‹_2d` are helpers.
+
 ### Errors
 
 A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
@@ -535,8 +564,9 @@ one word, which a program may call too:
 “no input“⊃‹throw›       # stderr: GOLF: no input     exit status 1
 ```
 
-`⊇` (`index out of range`), `∘` (`compose arena exhausted`) and `⌫`
-(`free of a non-heap value`, `double free`) go through `‹throw›`. The spill
+`⊇` (`index out of range`), `∘` (`compose arena exhausted`), `⌫`
+(`free of a non-heap value`, `double free`) and every list word (`use after
+free`, see Memory above) go through `‹throw›`. The spill
 stack's `spill stack exhausted` and the divide-by-zero check of `/ % ÷ ∣` print
 the same way without it. Compile errors (`GOLF: undefined word x` …) exit 2.
 So does a program whose binary would pass 192 KB (196608 bytes, the prelude's

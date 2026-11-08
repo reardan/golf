@@ -1520,6 +1520,9 @@ fi
 # Since W11-1C the printers N E O J Q emit through ‹_1c_put› (the output
 # buffer): that call is cut to a raw `)` instead, so the cut prelude still
 # prints, unbuffered, exactly what it used to.
+# Since W11-2D the list words enter through ‹_2d_chk› (the mask plus the
+# use-after-free check) and their loops index through ‹_2d_ix›: those calls
+# are cut to the bare mask `16\shl16>` and to `I`, what they replaced.
 python3 - lib/prelude.golfj > "$TMP/pre-m1.gb" <<'PY'
 import sys; sys.path.insert(0, "tools"); import mkblob2, codepage
 b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
@@ -1530,6 +1533,8 @@ while i < len(b):
     if c == mkblob2.LNAME_BYTE and not skip:
         j = b.index(mkblob2.RNAME_BYTE, i) + 1
         if b[i+1:j-1] == b"_1c_put": out += b")"   # W11-1C: the raw byte write
+        if b[i+1:j-1] == b"_2d_chk": out += codepage.encode("16\\shl16>")   # W11-2D: the bare mask
+        if b[i+1:j-1] == b"_2d_ix": out += b"I"   # W11-2D: the loops' index is I
         i = j; continue
     if c == 0x27: n = 2
     elif c == mkblob2.STR_BYTE: n = b.index(mkblob2.STR_BYTE, i + 1) + 1 - i
@@ -2248,6 +2253,46 @@ sed -n '/^# main.golfj/,/^```$/p' "$TMP/incr/ex" | grep -v '^```$' > "$TMP/incr/
 # === W11-2C ===
 
 # === W11-2D ===
+echo "W11-2D: use after free — ⌫ poisons the length cell, list words check it; ‹heapstats›"
+# ⌫ writes -559038737 into a freed block's length cell (the free-list link
+# moved to payload cell 1) and A writes 0 over it on reuse.  Every list word
+# enters through ‹_2d_chk› (I clamps a negative length), so a freed list that
+# reaches one dies with `GOLF: use after free`, exit 1, stdout flushed first.
+[ "$(w110 '7Ṅ5⍳"⌫∑Ṅ')" = "rc=1 1 GOLF: use after free" ] \
+  && ok "a freed list passed to ∑: GOLF: use after free, exit 1 (earlier output kept)" || no "uaf sum: $(w110 '7Ṅ5⍳"⌫∑Ṅ')"
+w112dbad=""
+for w in '≢Ṅ' '⍕' "′⊕€_" '0′+⇤_' '∏_' '2⊇_' '0⊇_' '⌽_' "′⊕⌿_" '⊐' '9⍳⧺_' '9⍳&⧺__' '2↑_' '2↓_' '⍋_' '3∊_' '9⍳≣_' '⍤_' \
+         '1+_' '1-_' '2*_' '9⍳+_' '1&-__' '9⍳&*__' "9⍳′+⊞_" '‹words›_' '1 2‹slice›_' '3‹indexof›_' '‹unique›_' '‹flatten›_'; do
+  r=$(w110 "5⍳\"⌫$w")
+  [ "$r" = "rc=1 0 GOLF: use after free" ] || w112dbad="$w112dbad [$w: $r]"
+done
+[ -z "$w112dbad" ] && ok "≢ ⍕ € ⇤ ∏ ⊇ ⌽ ⌿ ⊐ ⧺ ↑ ↓ ⍋ ∊ ≣ ⍤ ⊞, bare + - * (D, either side) and the W9 long words all refuse a freed list" \
+  || no "uaf entry points:$w112dbad"
+[ "$(w110 '3⍳′⍳€"2⊇⌫⍕')" = "rc=1 7 GOLF: use after free" ] \
+  && ok "a freed INNER list is caught when ⍕ recurses into it" || no "uaf nested: $(w110 '3⍳′⍳€"2⊇⌫⍕')"
+[ "$(w110 '3⍳"⌫⌫')" = "rc=1 0 GOLF: double free" ] && [ "$(w110 '3A"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
+  && [ "$(w110 '3⍳9⊇')" = "rc=1 0 GOLF: index out of range" ] && [ "$(w110 '3⍳0 1-⊇')" = "rc=1 0 GOLF: index out of range" ] \
+  && ok "double free (list and raw block) and index out of range on a live list are unchanged" || no "uaf: other messages"
+[ "$(printf '%s' '5⍳"⌫ 5⍳"≢Ṅ␤"∑Ṅ␤ 3A"⌫ 3A\fetch Ṅ␤ 5⍳"→a⌫ 5⍳_ ←a∑Ṅ' | gc)" = "$(printf '5\n10\n0\n10')" ] \
+  && ok "a reused block is live again (A clears the poison, raw blocks too); a stale copy of it is NOT caught" || no "uaf reuse"
+[ "$(printf '%s' '‹heapstats›→b→n 5⍳ ‹heapstats›←b-Ṅ␤←n-Ṅ␤ ⌫ 1000⍳"⌫ ‹heapstats›←b-Ṅ␤←n-Ṅ␤' | gc)" = "$(printf '72\n1\n0\n0')" ] \
+  && ok "‹heapstats› -> blocks bytes: 5⍳ adds one 72-byte block ((8+1)*8), ⌫ takes it back, a class-7 block too" || no "heapstats basic"
+[ "$(printf '%s' ':d⊗;5⍳→l ‹heapstats›→b→n 100000→i{←l′d€"∑_⌫←i1-"→i0≡}‹heapstats›←b-Ṅ␤←n-Ṅ␤ 100→i{←l′d€_←i1-"→i0≡}‹heapstats›←b-Ṅ␤←n-Ṅ' | gc)" \
+    = "$(printf '0\n0\n7200\n100')" ] \
+  && ok "100,000 × (map, ∑, ⌫): live blocks stay flat; the same loop without ⌫ adds a block per pass" || no "heapstats flat loop"
+[ "$(printf '%s' '5⍳"⌫∑Ṅ' | gref; echo " $?")" = " 1" ] \
+  && [ "$(printf '%s' ':d⊗;5⍳→l 50→i{←l′d€⌫←i1-"→i0≡}‹heapstats›Ṅ␤Ṅ␤3A"⌫3A\fetch Ṅ' | gref)" \
+       = "$(printf '%s' ':d⊗;5⍳→l 50→i{←l′d€⌫←i1-"→i0≡}‹heapstats›Ṅ␤Ṅ␤3A"⌫3A\fetch Ṅ' | gc)" ] \
+  && ok "oracle: golfref runs the poison, the reuse and ‹heapstats› the same" || no "uaf oracle"
+# REFERENCE.md's Memory examples print what the doc says.
+w112dbad=""
+while IFS= read -r w112dl; do
+  w112dp=${w112dl%%  ->*}; w112dp=${w112dp%"${w112dp##*[! ]}"}; w112dw=${w112dl##*->  }
+  [ "$(printf '%s' "$w112dp" | gc)" = "$w112dw" ] || w112dbad="$w112dbad [$w112dp]"
+done < <(sed -n '/^### Memory$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w112dbad" ] && [ "$(sed -n '/^### Memory$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 4 ] \
+  && [ "$(w110 '5⍳"⌫∑Ṅ')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "REFERENCE.md's Memory examples print what they say" || no "REFERENCE Memory examples:$w112dbad"
 
 # === W11-3A ===
 
