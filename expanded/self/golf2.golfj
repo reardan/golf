@@ -119,6 +119,15 @@
 # and one compiler-only table outside the bank: the name number of local slot i
 # is the 4-byte cell at m+96+4*i = 4259936+4*i, i < 16 (../REGISTRY.md §3).
 #
+# W11-2A (include) adds three, live for the whole compile, and its own region
+# at 0x438000 (the path, the saved-fd stack, the include-once table — see the
+# Include section below).  It borrows ‹len› ‹ch› ‹entry› ‹other› ‹left› ‹idx›
+# from M2 while a ⎘ is read, when no long name is:
+#
+#   ‹depth›     how many included files are open (0 = reading the program)
+#   ‹includes›  how many paths the include-once table holds
+#   ‹fd›        the descriptor being entered or left
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -128,7 +137,7 @@
 #
 # Words, in definition-before-use order: B Y Z U ‹say› ‹toolarge› a o L w W k c C f E V
 # ‹die› ‹badname› ‹same› ‹readname› ‹getname› ‹forward› ‹resolve› ‹undefined›
-# e D g h X ‹badlocal› ‹slot› t H.  The M2 words have long names for the same reason their state
+# e D ‹badinclude› ‹import› ‹unnest› ‹inbyte› g h X ‹badlocal› ‹slot› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -709,12 +718,251 @@ Z           # fold the digit in
 }
 ;
 
+# ---------------------------------------------------------------------------
+# Include (W11-2A): ⎘“path“
+# ---------------------------------------------------------------------------
+#
+# `⎘“path“` (byte 0xB6, then a “…“ string) makes the compiler read that file's
+# bytes as if they stood where the ⎘ is.  The reader never changes: `(` still
+# reads one byte from fd 0.  ‹import› dup()s fd 0 (the includer's input, at
+# its current offset), open()s the file and dup2()s it onto fd 0; when fd 0
+# reaches end of file inside an include, ‹inbyte› dup2()s the saved descriptor
+# back (‹unnest›) and goes on reading the includer from where it stopped.  So
+# includes nest — 8 deep — and a token never spans two files: a file's end
+# is its last token's end.
+#
+# Search: the path as written (relative to the compiler's cwd), then `lib/`
+# + path.  Include-once: a path already included (the same BYTES, as written)
+# is skipped, so a file included twice — or including itself — compiles once.
+# The bytes read are the compiler's input form: raw code-page bytes, exactly
+# what fd 0 carries (tools/golfc encodes an included .golfj first).
+#
+# Memory, compiler-only (../REGISTRY.md §3, the W11-2A region):
+#
+#   0x438000   [len:4][path bytes][0]: the path being included.  The C string
+#              open() takes starts at 0x438004; for the `lib/` retry, the
+#              length cell is overwritten with the 4 bytes `lib/`, making
+#              0x438000 the C string `lib/path`.  At most 250 bytes of path.
+#   0x438100   the saved-fd stack: the dup() of fd 0 for include level k at
+#              0x438100 + 4*k, k < 8
+#   0x438200   the include-once table: path k, k < 60, at 0x438200 + 256*k
+#              in the same [len:4][bytes] form, so ‹same› compares two
+#
+# State in the bank: ‹depth› (open includes), ‹includes› (table entries), ‹fd›
+# (the file being entered or left).  The seed holds the same three in its
+# scratch at m+160, m+164, m+168 (m+172 is its copy countdown).
+
+:‹badinclude› # ‹badinclude› : `<msg><path>` + newline to fd 2, exit 2 [ msg -> !!! ]
+‹say›
+2
+4423684     # the path's bytes, as far as they were read
+←‹len›
+1⎈
+_
+10          # a newline, staged in m+52
+4259892!
+2
+4259892
+1
+1⎈
+_
+2.          # exit(2); nothing has been written to fd 1
+;
+
+:‹import›   # ‹import› : the ⎘ case — enter the file named next [ -> ]
+0→‹len›
+(
+142﹣
+1<
+[           # ⎘ must be followed by a “path“
+“GOLF: cannot include “
+‹badinclude›
+]
+{           # read the path, up to the closing “
+(
+→‹ch›
+←‹ch›
+142﹣
+1<          # -1 at the closing “, which ends the loop
+"
+[           # an ordinary byte of the path
+←‹ch›
+[           #   end of input inside it
+“GOLF: cannot include “
+‹badinclude›
+]
+←‹len›
+250<
+[           #   longer than the 250 bytes the buffer holds
+“GOLF: cannot include “
+‹badinclude›
+]
+←‹ch›
+←‹len›
+4423684﹢
+,
+←‹len›
+1﹢
+→‹len›
+]
+}
+0           # NUL-terminate it for open()
+←‹len›
+4423684﹢
+,
+←‹len›
+4423680!    # and give it its length cell: [len][bytes], a table entry's form
+4423680
+→‹entry›
+0
+→‹idx›
+{           # include-once: is it in the table already?
+←‹idx›
+←‹includes›
+﹣
+1<          # -1 when every entry has been looked at
+"
+[
+←‹idx›
+256﹡
+4424192﹢
+→‹other›
+‹same›
+[           #   the same path: it has been compiled, so there is nothing to do
+_
+^
+]
+←‹idx›
+1﹢
+→‹idx›
+]
+}
+←‹depth›
+8<
+[           # a 9th nested include
+“GOLF: includes nested too deeply “
+‹badinclude›
+]
+←‹includes›
+60<
+[           # a 61st distinct file
+“GOLF: too many includes “
+‹badinclude›
+]
+←‹includes› # remember it, before the `lib/` retry clobbers its length cell
+256﹡
+4424192﹢
+→‹other›
+←‹len›
+4﹢
+→‹left›
+{
+←‹left›
+1﹣
+→‹left›
+4423680
+←‹left›
+﹢
+?
+←‹other›
+←‹left›
+﹢
+,
+←‹left›
+1<
+}
+←‹includes›
+1﹢
+→‹includes›
+4423684     # open(path, O_RDONLY)
+0
+0
+2⎈
+"
+1048576<    # a descriptor; a failure is a negative errno, huge unsigned
+[
+_
+794978668  #   0x2F62696C: the bytes `lib/`, over the length cell
+4423680!
+4423680     #   open(lib/path, O_RDONLY)
+0
+0
+2⎈
+"
+1048576<
+[
+“GOLF: cannot include “
+‹badinclude›
+]
+]
+→‹fd›
+0           # dup(0): the includer's input, saved at this level
+0
+0
+32⎈
+←‹depth›
+4﹡
+4423936﹢
+!
+←‹depth›
+1﹢
+→‹depth›
+←‹fd›       # dup2(fd, 0): fd 0 now reads the file
+0
+0
+33⎈
+_
+←‹fd›       # close(fd): fd 0 holds it
+0
+0
+3⎈
+_
+;
+
+:‹unnest›   # ‹unnest› : leave the innermost include             [ -> ]
+←‹depth›
+1﹣
+→‹depth›
+←‹depth›
+4﹡
+4423936﹢
+@
+→‹fd›
+←‹fd›       # dup2(saved, 0): back to the includer, where it stopped
+0
+0
+33⎈
+_
+←‹fd›       # close(saved)
+0
+0
+3⎈
+_
+;
+
+:‹inbyte›   # ‹inbyte› : one input byte, across include boundaries  [ -> ch ]
+0           # a dummy for the first `_` below
+{
+_
+(
+"
+[           # 0: the end of this file
+←‹depth›
+[           #   of the outermost one: the real end of input
+^
+]
+‹unnest›    #   of an included one: go on with the includer
+]
+"
+}
+;
+
 :g          # g : the next input char, honouring the pushback      [ -> ch ]
 ←q
 "
 [           # nothing pushed back ->
 _
-(           #   read a fresh byte from stdin (0 at EOF)
+‹inbyte›    #   read a fresh byte (0 at the end of input)
 ^
 ]
 0
@@ -1272,6 +1520,14 @@ w           #   ... emitted as a placeholder, and left on the stack for ';'
 1E          #   the word prologue (blob record 1)
 1→u         #   in a chain from here to the matching ';'
 0→K         #   with no links yet
+^
+]
+
+"
+182-
+[           # 0xB6 ⎘ : include a file (W11-2A)
+_
+‹import›
 ^
 ]
 

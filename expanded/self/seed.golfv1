@@ -76,6 +76,35 @@
 :F\o4*4785152+"@P\w\!;                                  # F: op name -> emit `op rel32`, the site joining name's pending list
 :R"Y@m84+!4*4785152+"@\0\!{"[_^]"@\"m84+@\-4-\!0};       # R: name -> patch its pending sites to its (just stored) body
 :z0m80+!{m80+@m60+@256+-[^]m80+@4*4785152+@1<[2.]m80+@1+m80+!0}; # z: end of input -- any name (one-byte or long) still pending is undefined
+# ---------------------------------------------------------------------------
+# W11-2A — include, ⎘“path“ (0xB6).  The compiler reads the file's bytes as if
+# they stood where the ⎘ is, by swapping fd 0: dup(0) saves the includer's
+# input, open + dup2 puts the file on fd 0, and at its end j dup2s the saved fd
+# back (J).  Search: the path as written, then lib/path.  Include-once: a path
+# already included (same bytes) is skipped.  At most 8 deep, 60 files.  Layout
+# (compiler-only, ../REGISTRY.md §3): 0x438000 [len:4][path][0] (the len cell
+# becomes `lib/` for the retry) · 0x438100 the saved-fd stack, 4 bytes a level
+# · 0x438200 the table, 256 bytes an entry, [len:4][bytes] so x compares them.
+# Seed-side scratch: m160 depth · m164 table count · m168 the fd · m172 the
+# copy countdown; the path's length is m64 and x's entries m68/m72, M2's
+# scratch, idle between tokens.  (self/golf2.golfj: ‹depth› ‹includes› ‹fd›.)
+#
+# v1 GOLF has no syscall op, so K is one: its body is a raw blob escape holding
+# ⎈'s template plus `jmp +5` (tools/mkblob2.py splices SEED_SYS in at @SYS@).
+# As compiled, K jumps over the blob and returns the blob's address; main calls
+# it once at startup and zeroes that jmp's rel32 (the code segment is RWX), and
+# from then on K falls into the blob: a1 a2 a3 num -> result, like ⎈.  O is K
+# with a2 = a3 = 0, V the path's address.  Every failure exits 2 silently; golf2
+# says `GOLF: cannot include <path>` (and the like) on fd 2.
+# ---------------------------------------------------------------------------
+:K@SYS@;:O0\0\K;:V4423684;                              # K: syscall (armed at startup) · O: a1 num -> r · V: the path
+:Jm160+@1-m160+!m160+@4*4423936+@m168+!m168+@33O_m168+@3O_; # J: leave an include -- dup2(saved,0), close(saved)
+:j0{_("[m160+@[^]J]"};                                  # j: the next input byte; an included file's end resumes its includer
+:r0m64+!{("142-[_^]"[2.]m64+@250<[2.]m64+@V+,m64+@1+m64+!0}; # r: read the path up to the closing “ (EOF, or past 250 bytes: exit 2)
+# I: the ⎘ case.  “ must follow; read the path, NUL-terminate it, give it its
+# length cell; skip it if the table has it; else check depth and count, copy it
+# into the table, open it (or lib/path), save fd 0 and dup2 the file onto it.
+:I(142-1<[2.]r0m64+@V+,m64+@V4-!V4-m68+!0m80+!{m80+@m164+@-1<"[m80+@256*4424192+m72+!x[_^]m80+@1+m80+!]}m160+@8<[2.]m164+@60<[2.]m164+@256*4424192+m72+!m64+@4+m172+!{m172+@1-m172+!V4-m172+@+?m72+@m172+@+,m172+@1<}m164+@1+m164+!V2O"1048576<[_794978668V4-!V4-2O"1048576<[2.]]m168+!0""32Km160+@4*4423936+!m160+@1+m160+!m168+@33O_m168+@3O_;
 # e — the default: emit a table op, or compile a call to a user word.
 #
 # v1's `e` emitted `call rel32` with rel32 = dict[name] - (P+4) and never looked
@@ -103,7 +132,7 @@
 # since W10-A; z rejects whatever is still pending at end of input.
 :e"f"?[_"Y@"[_232\F^]\_232oP4+-w^]\_C;                 # e: table op or call (undefined word -> forward, checked by z)
 :D0{("U[_^]Z0};                                         # D: read decimal
-:gQ@"[_(^]0Q!;                                          # g: get char (pending Q)
+:gQ@"[_j^]0Q!;                                          # g: get char (pending Q); a fresh one through j (W11-2A)
 :h{("10-[_^]"[_^]_0};                                   # h: skip comment line
 # X — push the address of the word or atom named by the byte on top.
 #
@@ -247,6 +276,7 @@
 # ‹ (0xB4) as a TOKEN: read and intern the long name, and let its number take
 # the char's place and fall through — so the LINK case and `e` below treat it
 # exactly like a one-byte name.
+"182-[_I^]                                              # 0xB6  ⎘  include a file (W11-2A)
 "180-[_N]                                               # 0xB4  ‹  a long name used as a token
 
 # A token inside a chain is a LINK.  This case must sit LAST, just before the
@@ -261,8 +291,9 @@ e;                                                      # default: e
 # The template blob, spliced in here by tools/mkblob2.py.
 @BLOB@
 
-# main: store the blob address, write the ELF header, set P = B+120, emit
+# main: store the blob address, arm K (zero the rel32 of its jmp over the
+# syscall blob, W11-2A), write the ELF header, set P = B+120, emit
 # the startup stub, run the token loop, check no long name is left undefined
 # (z), exit, write the image size into p_filesz (header offset 96, W11-1E),
 # then flush the output buffer.
-m8+!HB120+m4+!3E{g"m!tm@1<}z5EPB-B96+!B{"?)1+"P<1+}_
+m8+!K4-0\!HB120+m4+!3E{g"m!tm@1<}z5EPB-B96+!B{"?)1+"P<1+}_

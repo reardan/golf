@@ -387,6 +387,14 @@ LSET_BYTE = 0xB2    # ⇒x pop TOS into a local slot
 LGET_BYTE = 0xB3    # ⇐x push a local slot
 LNAME_BYTE = 0xB4   # ‹  opens a long name: ‹name› (M2, W9-3A)
 RNAME_BYTE = 0xB5   # ›  closes it
+IMPORT_BYTE = 0xB6  # ⎘  ⎘“path“ compiles that file's bytes in place (W11-2A)
+# W11-2A's compiler-only memory (../REGISTRY.md §3; layout in self/golf2.golfj):
+IMPORT_PATH = 0x438000    # [len:4][path][0]; the len cell becomes `lib/` to retry
+IMPORT_FDS = 0x438100     # saved dup() of fd 0 per include level, 4 bytes each
+IMPORT_TABLE = 0x438200   # include-once table, 256 bytes per path: [len:4][bytes]
+IMPORT_DEPTH = 8          # includes nest at most this deep
+IMPORT_FILES = 60         # distinct files one compile may include
+IMPORT_LEN = 250          # the longest include path, in bytes
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).
@@ -603,6 +611,15 @@ def blob_escape():
     return b"`" + str(len(blob)).encode() + b" " + blob
 
 BLOB_MARKER = b"@BLOB@"          # where both sources want the blob spliced in
+# W11-2A: the seed's syscall.  v1 GOLF has no syscall op, and include needs
+# open/dup/dup2/close, so self/seed.golfv1's word K carries one as a raw blob
+# escape spliced in at @SYS@: ⎈'s template, then `jmp +5` over the `push imm32`
+# the blob escape emits after its data.  The seed's main zeroes the rel32 of
+# the escape's own jmp-over once (v1's code segment is RWX), so K falls into
+# these bytes from then on.  Replaced in the stripped source, before the
+# template blob goes in, so the blob's raw bytes are never searched.
+SYS_MARKER = b"@SYS@"
+SEED_SYS = bytes(_ATOM_TPL[0xA7]) + bytes([0xEB, 0x05])   # ⎈; jmp +5
 GOLFV1 = os.path.join(HERE, "..", "self", "seed.golfv1")
 GOLFJ = os.path.join(HERE, "..", "self", "golf2.golfj")
 
@@ -625,8 +642,13 @@ def build_seed():
     if n != 1:
         raise SystemExit(f"mkblob2: expected exactly one {BLOB_MARKER.decode()} "
                          f"marker in self/seed.golfv1, found {n}")
-    pre, post = src.split(BLOB_MARKER.decode())
-    return pre.encode() + blob_escape() + post.encode()
+    if src.count(SYS_MARKER.decode()) != 1:
+        raise SystemExit(f"mkblob2: expected exactly one {SYS_MARKER.decode()} "
+                         f"marker in self/seed.golfv1")
+    sys_esc = b"`" + str(len(SEED_SYS)).encode() + b" " + SEED_SYS
+    pre, post = (s.encode().replace(SYS_MARKER, sys_esc)
+                 for s in src.split(BLOB_MARKER.decode()))
+    return pre + blob_escape() + post
 
 def build_golf2():
     """self/golf2.golf — the compiler proper, logic in v2 GOLF.

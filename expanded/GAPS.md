@@ -314,10 +314,16 @@ Python, and it appears nowhere in DESIGN.md's limits.
 
 ### 2.6 Everything around the language
 
-No modules or imports (`include` is listed under "as needed", M9), no standard
+No modules or namespaces (textual includes: W11-2A, below), no standard
 library beyond the prelude, no package ecosystem, no REPL, no debugger, no
 introspection, no threads or async, and one target: x86-64 Linux, ELF64,
 statically laid out. A retargetable IR is also M9.
+
+**Includes — closed by W11-2A.** `⎘“path“` compiles that file's bytes in
+place: nested (8 deep), include-once, searched as written and then in `lib/`
+(REFERENCE.md "Modules"). It is textual inclusion, like C's `#include` with
+an include guard, not Python's modules: there are no namespaces, so an
+included file's names are the includer's names.
 
 ---
 

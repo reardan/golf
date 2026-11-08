@@ -212,6 +212,7 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xB3` | `⇐` | `\lget` | prefix: ⇐x pushes local x (a..h or ‹name›) |
 | `0xB4` | `‹` | `\lname` | opens a long name: ‹name› stands wherever a one-byte name can |
 | `0xB5` | `›` | `\rname` | closes a long name |
+| `0xB6` | `⎘` | `\import` | prefix: ⎘“path“ compiles that file in place (once; searches . then lib/) |
 
 ### Library words
 
@@ -479,6 +480,46 @@ zero-is-true, like `∊` and `T`.
 ```
 
 Names that start with `‹_1d` are these words' helpers.
+
+### Modules
+
+`⎘“path“` (byte `0xB6`, mnemonic `\import“path“`) includes a file (W11-2A).
+The compiler reads that file's bytes as if they stood where the `⎘` is, then
+goes on after the closing `“`. It is textual, like C's `#include`: the file's
+definitions become the program's, and there are no namespaces. It may stand
+anywhere a token may, but by convention the includes come first.
+
+- **Search order:** the path as written, relative to the directory the
+  compiler runs in, then `lib/` + path. (W11-4A adds `vendor/`.) An absolute
+  path is used as it is.
+- **Include-once:** a path that was already included is skipped, so a file
+  included twice compiles once, and a file that includes itself is harmless.
+  Paths are compared byte for byte as written, so `x.g2` and `lib/x.g2` count
+  as two paths. The main program is not in the table.
+- **Nesting:** an included file may include others, 8 levels deep. At most 60
+  distinct files may be included, and a path may be at most 250 bytes.
+- **Boundaries:** a file's end also ends its last token. So a number, a name or
+  a `#` comment at the very end of a file never runs into the includer.
+- **Form:** the compiler reads the bytes raw. That is code-page bytes, the form
+  `golf2` reads on stdin (`.g2`). `tools/golfc` encodes every included `.golfj`
+  file on the way, as it encodes the program itself (`-j`). So glyph source may
+  include glyph source.
+
+```
+# lib/geom.golfj
+:‹sq›"*;
+:‹hyp2›‹sq›→a‹sq›←a+;          # a b -> a²+b²
+
+# main.golfj — tools/golfc -j main.golfj main && ./main   prints 25
+⎘“geom.golfj“⎘“geom.golfj“      # found in lib/; the second one is skipped
+3 4‹hyp2›Ṅ
+```
+
+A missing file stops the compile: `GOLF: cannot include <path>` on stderr,
+exit status 2, and no binary. So do a 9th level of nesting
+(`GOLF: includes nested too deeply <path>`), a 61st file
+(`GOLF: too many includes <path>`), and a path that is too long, unclosed, or
+not a `“…“` literal (`GOLF: cannot include …`).
 
 ### Errors
 
