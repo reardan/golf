@@ -297,6 +297,7 @@ Prelude long names in use (all **shipped**):
 | `‹assert›` `‹expect›`, and the helpers `‹_4b_show›` `‹_4b_exit›` `‹_4b_fail›` | W11-4B (**shipped**) | `W11-4B test words` |
 | `‹stack›` | W11-4C (**shipped**) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 | `‹getor›` `‹bump›` `‹upd›`, and the helpers `‹_12p2_ins›` `‹_12p2_huge›` (W12-P2 also rewrote the W11-2B words `‹_2b_find›` `‹_2b_grow›` `‹_2b_zero›` `‹put›` `‹get›` `‹has›` `‹del›` `‹dict›` in place) | W12-P2 (**shipped**) | `W12-P2 dicts that hash once` |
+| `‹bisect›` `‹bisectr›` `‹bsearch›` `‹append›` `‹groupby›` `‹mostcommon›` `‹union›` `‹inter›` `‹diff›` `‹argmax›` `‹argmin›` `‹any›` `‹all›` `‹countif›` `‹takewhile›` `‹dropwhile›` `‹chunk›` `‹prefix›` `‹rangesum›` `‹diffapply›` `‹lexcmp›` `‹gcd›` `‹lcm›` `‹abs›` `‹sign›` `‹powmod›` `‹isqrt›` `‹divmod›` `‹sieve›` `‹isdigit›` `‹isalpha›` `‹isalnum›` `‹isspace›` `‹isupper›` `‹islower›` `‹upper›` `‹lower›` `‹find›` `‹ispal›` (39), the helpers `‹_13d_rng›` `‹_13d_sub›` `‹_13d_a›` `‹_13d_cl›` `‹_13d_new›` `‹_13d_addall›` `‹_13d_fi›` `‹_13d_mm›` (names starting `‹_13d_` are reserved for them), and the 18 digraph names `‹_dg61›`…`‹_dg6D›` `‹_dg30›`…`‹_dg34›` (see "Digraph page" below): 65 in all | W13-D (**shipped**) | `===== W13-D =====` (the end of the file) |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -316,6 +317,36 @@ data, not names, and need no row.
 > `0x4E0000` is user space — one global cell per name — so a prelude word that
 > stored to `→i` would silently clobber a user's `i`. Prelude state goes in the
 > fixed scratch cells of §3.
+
+### Digraph page
+
+W13-S6: `ʘ` (`0xBD`) followed by any byte `B` compiles as a call to the long
+name `‹_dgHH›`, `HH` the two uppercase hex digits of `B`. A library gives a
+word a digraph by defining `:‹_dgHH›‹realname›;`. Second bytes are
+partitioned by task (ASCII printable only): `A`–`Z` W13-C (existing popular
+long names), `a`–`m` and `0`–`4` W13-D, `n`–`z` and `5`–`9` W13-E. Each
+digraph name is one of the program's 1024 long names.
+
+| Digraph | Name | Word | Task | Status |
+|---|---|---|---|---|
+| `ʘa` | `‹_dg61›` | `‹any›` | W13-D | shipped |
+| `ʘb` | `‹_dg62›` | `‹bisect›` | W13-D | shipped |
+| `ʘc` | `‹_dg63›` | `‹countif›` | W13-D | shipped |
+| `ʘd` | `‹_dg64›` | `‹divmod›` | W13-D | shipped |
+| `ʘe` | `‹_dg65›` | `‹all›` ("every") | W13-D | shipped |
+| `ʘf` | `‹_dg66›` | `‹find›` | W13-D | shipped |
+| `ʘg` | `‹_dg67›` | `‹gcd›` | W13-D | shipped |
+| `ʘh` | `‹_dg68›` | `‹bsearch›` ("halving") | W13-D | shipped |
+| `ʘi` | `‹_dg69›` | `‹inter›` | W13-D | shipped |
+| `ʘj` | `‹_dg6A›` | `‹groupby›` | W13-D | shipped |
+| `ʘk` | `‹_dg6B›` | `‹mostcommon›` (top k) | W13-D | shipped |
+| `ʘl` | `‹_dg6C›` | `‹lcm›` | W13-D | shipped |
+| `ʘm` | `‹_dg6D›` | `‹argmax›` | W13-D | shipped |
+| `ʘ0` | `‹_dg30›` | `‹argmin›` | W13-D | shipped |
+| `ʘ1` | `‹_dg31›` | `‹abs›` | W13-D | shipped |
+| `ʘ2` | `‹_dg32›` | `‹isdigit›` | W13-D | shipped |
+| `ʘ3` | `‹_dg33›` | `‹union›` | W13-D | shipped |
+| `ʘ4` | `‹_dg34›` | `‹ispal›` | W13-D | shipped |
 
 ### 2.1 Tool-library letters (lowercase)
 
@@ -572,7 +603,7 @@ to the integrator. Decimals are what you type.
 | 4A | `0x4F0BC0`–`0x4F0BFF` | 5180352 | — (compiler work; `m+192`, `0x43C000`) | 5180352 … 5180408 |
 | 4B | `0x4F0C00`–`0x4F0C3F` | 5180416 | shipped: `0x4F0C00` 5180416: failure count (`‹assert›`/`‹expect›`; BSS 0) · spares used: `0x4F0C08` 5180424 the flush hook (`‹flush›`) saved when the first failure installs `‹_4b_exit›` in the 1C hook cell 5179792 · 5180432 / 5180440 / 5180448 `‹expect›`'s actual, expected, msg (`‹assert›` uses 5180448 too) · 5180456 `‹_4b_exit›`'s rbp | 5180464 … 5180472 |
 | 4C | `0x4F0C40`–`0x4F0C7F` | 5180480 | shipped: `0x4F0C40` 5180480: the data-stack base `‹stack›` prints from (rsp at the end of prelude init) · `0x4F0C48` 5180488 sp · `0x4F0C50` 5180496 depth · `0x4F0C58` 5180504 index (‹stack›'s loop state) | 5180512 … 5180536 |
-| 4D | `0x4F0C80`–`0x4F0CBF` | 5180544 | — | 5180544 … 5180600 (all eight) |
+| 4D | `0x4F0C80`–`0x4F0CBF` | 5180544 | — (W13-D needs none: its words keep their state in `⊡` locals, so they are re-entrant without fixed cells) | 5180544 … 5180600 (all eight) |
 | 4E | `0x4F0CC0`–`0x4F0CFF` | 5180608 | — | 5180608 … 5180664 (all eight) |
 
 **The W11-2D poison value** is a constant, not a cell: **`-559038737`**
@@ -617,7 +648,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 186 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47 and W12-O6 1, helpers included) — 1024 since W10-A, so 838 are left
+prelude now uses 251 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1 and W13-D 65, helpers and digraph names included) — 1024 since W10-A, so 773 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

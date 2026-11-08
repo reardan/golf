@@ -121,3 +121,16 @@ the same. `⍒` adds n key calls through `€`, the key block and the gather.
 key and its unpacking. It went from 100 to 67 bytes and from 0.0885 to
 0.0852 s (best of 5, same session), with output equal to Python's on
 `gen.py 1 in`.
+
+W13-D shipped the LeetCode library (REFERENCE.md "LeetCode library").
+Best of 3 on this session's machine, input read from stdin and included
+(`ℤ≢` alone is 0.047 s for 10^6 random ints, `⎕≢` 0.017 s for 2·10^6
+chars): `ℤ′e‹countif›` 0.057 s (`ℤ′e⌿≢` 0.060 s), `ℤ‹argmax›` 0.049 s,
+`ℤ10‹mostcommon›` 0.17 s, `‹union›`/`‹inter›`/`‹diff›` of two 10^6 lists
+0.15/0.21/0.15 s (`‹unique›` of one 0.13 s), `‹groupby›` into 100 keys
+0.11 s, `‹prefix›` 0.06 s, `3‹chunk›` 0.07 s; 10^6 `‹bisect›` queries on a
+sorted 10^6 list about 0.3 s past the 0.58 s sort (~300 ns a query);
+`‹find›` (KMP) over 2·10^6 chars 0.05 s; `10000000‹sieve›` 0.14 s; 10^6
+`‹powmod›` with a 30-bit modulus 0.26 s (a 62-bit modulus takes the
+shift-and-add mulmod, about 10 µs a call); 10^6 `‹isqrt›` 0.07 s. The words
+keep their state in `⊡` locals, so none of them takes a spill frame.

@@ -2138,3 +2138,190 @@
 :\keys‹keys›;
 :\bump‹bump›;
 :\vec‹vec›;
+
+# ===== W13-D =====
+# The LeetCode library: binary search, counting and sets, list utilities,
+# math, text (REFERENCE.md "LeetCode library: search, counting, lists, math,
+# text").  Every word here is a ⊡ word: its loop state lives in its own
+# per-call locals on the return stack, never in s0..s7 or a fixed cell, so
+# the words are re-entrant with no X/Y frame, and a higher-order word calls
+# its function with exactly the caller's stack under the element (the A1
+# threading contract).  A list argument is checked once on entry
+# (‹_2d_chk›, so a freed list is `use after free`) and walked by pointer.
+# Flags follow the house rule for predicates: 0 is true, 1 is false
+# (‹has› ∊ ‹startswith› ⌿), so the is-words feed ⌿ ‹countif› ‹any› directly.
+# Every list result is a NEW tagged list; no word writes its input.  W13-D
+# needs no fixed cells (slot 4D, 5180544 … 5180600, stays spare).
+# Helpers are ‹_13d_…›.  Digraphs ʘa…ʘm, ʘ0…ʘ4 are the ‹_dgHH› aliases at
+# the end.
+#
+# ‹_13d_rng›  l -> p e   check l; p = &l[0], e = one past its last element.
+:‹_13d_rng›‹_2d_chk›8﹢"8﹣⊙8﹡&﹢;
+# ‹_13d_sub›  p k -> l   a new list of the k cells from raw address p on
+⊡‹_13d_sub›⇒k⇒p⇐k1﹢A⇒r⇐k⇐r⊛⇐r8﹢⇒q⇐k8﹡⇐p﹢⇒e{⇐p⇐e≡⋄⇐p⊙⇐q⊛⇐p8﹢⇒p⇐q8﹢⇒q}⇐r32767 48≪|;
+# ‹_13d_a›  x -> |x|   scalar abs (INT64_MIN stays INT64_MIN).
+:‹_13d_a›"0≺1﹢[±];
+# ‹_13d_cl›  x h -> x clamped to [0, h]
+⊡‹_13d_cl›⇒h"0≺1﹢[_0]"⇐h≻1﹢[_⇐h];
+# --- binary search ---
+# ‹bisect›  l x -> i    lower bound: the first i with l[i] >= x (signed),
+#                        ≢l if none.  l sorted ascending.  O(log n).
+# ‹bisectr› l x -> i    upper bound: the first i with l[i] > x.
+# ‹bsearch› lo hi ′p -> v  the first v in [lo, hi) where p v is 0 (true),
+#                        assuming p is false (non-zero) then true; hi if
+#                        none.  p runs O(log(hi-lo)) times, with the caller's
+#                        stack under v.
+⊡‹bisect›⇒x‹_2d_chk›"⊙⇒h8﹢⇒b0⇒l{⇐l⇐h≺1﹢⋄⇐l⇐h﹢1>⇒m⇐m8﹡⇐b﹢⊙⇐x≺1﹢[⇐m1﹢⇒l⋄⇐m⇒h]}⇐l;
+⊡‹bisectr›⇒x‹_2d_chk›"⊙⇒h8﹢⇒b0⇒l{⇐l⇐h≺1﹢⋄⇐l⇐h﹢1>⇒m⇐x⇐m8﹡⇐b﹢⊙≺1﹢[⇐m⇒h⋄⇐m1﹢⇒l]}⇐l;
+⊡‹bsearch›⇒f⇒h⇒l{⇐l⇐h≺1﹢⋄⇐h⇐l﹣1>⇐l﹢⇒m⇐m⇐f⍎[⇐m⇒h⋄⇐m1﹢⇒l]}⇐l;
+# --- counting and sets ---
+# ‹append›  d k x -> d   push x on the list held at key k (a missing key gets
+#                        a new one-element list).  One lookup when the list
+#                        has room; a growth re-puts the moved list.
+# ‹groupby› l ′k -> d    a dict from each key k x to the list of the x with
+#                        that key, in order; keys in first-appearance order.
+# ‹mostcommon› l k -> l' the k most frequent values, most frequent first,
+#                        ties in order of first appearance (k is clamped to
+#                        [0, distinct]).  A ‹bump› counter, then ‹grade› of
+#                        the negated counts (stable).  O(n + u log u).
+# ‹union› a b -> l  ‹inter› a b -> l  ‹diff› a b -> l   set operations on
+#                        lists: each value once, in the order it first
+#                        appears in a (then in b, for ‹union›).  Values are
+#                        compared as dict keys (≣).  O(|a| + |b|) expected.
+⊡‹append›⇒x⇒k"⇐k0‹getor›"⇒v"[_‹vec›]⇐x⍆"⇐v≡1﹢[_⋄⇒v"⇐k⇐v‹put›_];
+⊡‹groupby›⇒f‹_13d_rng›⇒e⇒p‹dict›⇒d{⇐p⇐e≡⋄⇐p⊙⇐f⍎⇒y⇐d⇐y⇐p⊙‹append›_⇐p8﹢⇒p}⇐d;
+⊡‹mostcommon›⇒k‹_13d_rng›⇒e⇒p‹dict›⇒d{⇐p⇐e≡⋄⇐d⇐p⊙‹bump›_⇐p8﹢⇒p}
+ ⇐d‹vals›"⇒w‹_13d_rng›⇒e⇒p{⇐p⇐e≡⋄⇐p⊙±⇐p⊛⇐p8﹢⇒p}
+ ⇐w‹grade›⇒g⇐d‹keys›⇒y⇐k⇐g≢‹_13d_cl›⇒t⇐t1﹢A⇒r⇐t⇐r⊛
+ ⇐g16≪16>8﹢⇒q⇐q⇐t8﹡﹢⇒z⇐r8﹢⇒o⇐y16≪16>8﹢⇒b
+ {⇐q⇐z≡⋄⇐q⊙8﹡⇐b﹢⊙⇐o⊛⇐o8﹢⇒o⇐q8﹢⇒q}⇐w⌫⇐g⌫⇐y⌫⇐r32767 48≪|;
+# ‹_13d_new›  s v l -> s v   push onto v each x of l not yet in set s, adding it
+# ‹_13d_addall›  s l -> s   add every x of l to s
+⊡‹_13d_new›‹_13d_rng›⇒e⇒p⇒v⇒s{⇐p⇐e≡⋄⇐p⊙⇒x⇐s⇐x‹has›0≡[⇐s⇐x‹add›_⇐v⇐x⍆⇒v]⇐p8﹢⇒p}⇐s⇐v;
+⊡‹_13d_addall›‹_13d_rng›⇒e⇒p{⇐p⇐e≡⋄⇐p⊙‹add›⇐p8﹢⇒p};
+⊡‹union›⇒b⇒a‹set›‹vec›⇐a‹_13d_new›⇐b‹_13d_new›⇒v_⇐v;
+⊡‹diff›⇒b⇒a‹set›⇐b‹_13d_addall›‹vec›⇐a‹_13d_new›⇒v_⇐v;
+⊡‹inter›⇒b⇒a‹set›⇐b‹_13d_addall›⇒s‹vec›⇒v⇐a‹_13d_rng›⇒e⇒p{⇐p⇐e≡⋄⇐p⊙⇒x⇐s⇐x‹has›[⇐s⇐x‹del›_⇐v⇐x⍆⇒v]⇐p8﹢⇒p}⇐v;
+# --- list utilities ---
+# ‹argmax› l -> i  ‹argmin› l -> i   index of the first largest / smallest
+#                        element (signed); -1 for the empty list.
+# ‹any› l ′p -> f        0 if p x is 0 for some x (stops at the first), else 1
+# ‹all› l ′p -> f        0 if p x is 0 for every x (stops at the first that
+#                        is not; the empty list gives 0), else 1
+# ‹countif› l ′p -> n    how many x have p x = 0
+# ‹takewhile› l ′p -> l' the longest prefix whose every x has p x = 0
+# ‹dropwhile› l ′p -> l' the rest of l after that prefix
+#   p runs with the caller's stack under x, in order, and only as far as the
+#   word needs (the early exits call it no further).
+# ‹chunk› l n -> ls      consecutive pieces of n elements; the last may be
+#                        shorter.  n < 1 is `chunk size < 1`.
+# ‹prefix› l -> p        prefix sums, one longer than l: p[0] = 0 and
+#                        p[i+1] = p[i] + l[i]
+# ‹rangesum› p i j -> s  p[j] - p[i] (= l[i] + … + l[j-1] for p = l‹prefix›)
+# ‹diffapply› n ups -> l a list of n zeros with each update [i j v] of ups
+#                        adding v to l[i] … l[j-1] (half-open, clamped to
+#                        [0, n]), by a difference array: O(n + |ups|)
+# ‹lexcmp› a b -> c      -1, 0 or 1 as a sorts before, with or after b:
+#                        elementwise (signed), then shorter first
+# ‹_13d_fi›  l ′p z -> i   the first index where (p x = 0) is z (-1: true,
+#                          0: false), or ≢l
+⊡‹_13d_fi›⇒z⇒f‹_13d_rng›⇒e"⇒b⇒p{⇐p⇐e≡[⇐p⊙⇐f⍎0≡⇐z≡⋄1]⋄⇐p8﹢⇒p}⇐p⇐b﹣3>;
+⊡‹argmax›‹_13d_rng›⇒e"⇒b"⇒q⇒p⇐p⇐e≡1﹢[0 1﹣^]⇐p⊙⇒m{⇐p⇐e≡⋄⇐p⊙"⇐m≻1﹢[⇒m⇐p⇒q⋄_]⇐p8﹢⇒p}⇐q⇐b﹣3>;
+⊡‹argmin›‹_13d_rng›⇒e"⇒b"⇒q⇒p⇐p⇐e≡1﹢[0 1﹣^]⇐p⊙⇒m{⇐p⇐e≡⋄⇐p⊙"⇐m≺1﹢[⇒m⇐p⇒q⋄_]⇐p8﹢⇒p}⇐q⇐b﹣3>;
+⊡‹any›⇒f"≢⇒n⇐f0 1﹣‹_13d_fi›⇐n≡±;
+⊡‹all›⇒f"≢⇒n⇐f0‹_13d_fi›⇐n≡1﹢;
+⊡‹countif›⇒f‹_13d_rng›⇒e⇒p0⇒c{⇐p⇐e≡⋄⇐p⊙⇐f⍎[⇡c]⇐p8﹢⇒p}⇐c;
+⊡‹takewhile›⇒f"⇒l⇐f0‹_13d_fi›⇒i⇐l‹_2d_chk›8﹢⇐i‹_13d_sub›;
+⊡‹dropwhile›⇒f"⇒l⇐f0‹_13d_fi›⇒i⇐l‹_2d_chk›⇒r⇐r8﹢⇐i8﹡﹢⇐r⊙⇐i﹣‹_13d_sub›;
+⊡‹chunk›⇒n⇐n1≺1﹢[“chunk size < 1“U‹throw›]‹_13d_rng›⇒e⇒p⇐e⇐p﹣3>⇐n﹢1﹣⇐n/‹vecn›⇒v
+ {⇐p⇐e≡⋄⇐e⇐p﹣3>⇐n⊓⇒k⇐v⇐p⇐k‹_13d_sub›⍆⇒v⇐k8﹡⇐p﹢⇒p}⇐v;
+⊡‹prefix›‹_13d_rng›⇒e⇒p⇐e⇐p﹣3>"⇒n2﹢A⇒r⇐n1﹢⇐r⊛0⇐r8﹢⊛⇐r16﹢⇒q0⇒s
+ {⇐p⇐e≡⋄⇐s⇐p⊙﹢"⇒s⇐q⊛⇐q8﹢⇒q⇐p8﹢⇒p}⇐r32767 48≪|;
+⊡‹rangesum›⇒j⇒i⇒p⇐p⇐j⊇⇐p⇐i⊇﹣;
+⊡‹diffapply›⇒u"0≺1﹢[_0]⇒n⇐n2﹢A⇒r⇐r8﹢"⇒b⇒p⇐n8﹡⇐b﹢⇒z{0⇐p⊛⇐p"8﹢⇒p⇐z≡}
+ ⇐u‹_13d_rng›⇒e⇒p{⇐p⇐e≡⋄⇐p⊙"0⊇⇐n‹_13d_cl›⇒i"1⊇⇐n‹_13d_cl›⇒j2⊇⇒v
+  ⇐i⇐j≺1﹢[⇐i8﹡⇐b﹢⇒w⇐w⊙⇐v﹢⇐w⊛⇐j8﹡⇐b﹢⇒w⇐w⊙⇐v﹣⇐w⊛]⇐p8﹢⇒p}
+ ⇐n⇐r⊛0⇒s⇐b⇒p{⇐p⇐z≡⋄⇐s⇐p⊙﹢"⇒s⇐p⊛⇐p8﹢⇒p}⇐r32767 48≪|;
+⊡‹lexcmp›‹_13d_rng›⇒f⇒q‹_13d_rng›⇒e⇒p
+ {⇐p⇐e≡[⇐q⇐f≡[⇐p⊙⇐q⊙≡1﹢⋄1]⋄1]⋄⇐p8﹢⇒p⇐q8﹢⇒q}
+ ⇐p⇐e≡[⇐q⇐f≡[⇐p⊙⇐q⊙≺[1⋄0 1﹣]⋄1]⋄⇐q⇐f≡[0 1﹣⋄0]];
+# --- math ---
+# ‹gcd› a b -> g         greatest common divisor, >= 0; gcd(0, 0) = 0
+# ‹lcm› a b -> m         least common multiple, >= 0; 0 if a or b is 0
+# ‹abs› x -> |x|  ‹sign› x -> -1/0/1   on an int, or on every element of a
+#                        list (nested lists too), giving a new list
+# ‹powmod› b e m -> r    b^e mod m in [0, m) (b may be negative; e <= 0
+#                        gives 1 mod m).  m must be >= 1 (0: divide by
+#                        zero).  Square-and-multiply; for m >= 2^32 each
+#                        product goes through an overflow-free mulmod.
+# ‹isqrt› n -> r         floor(sqrt n), Newton from min(n, 2^32).  n < 0 is
+#                        `isqrt of negative`
+# ‹divmod› a b -> q r    FLOOR division, as Python's divmod: a = q*b + r with
+#                        r of b's sign (÷ ∣ truncate).  b = 0: divide by zero
+# ‹sieve› n -> ps        the primes below n, ascending (a byte per number)
+⊡‹gcd›‹_13d_a›⇒b‹_13d_a›⇒a{⇐b0≡⋄⇐a⇐b%⇐b⇒a⇒b}⇐a;
+⊡‹lcm›‹_13d_a›⇒b‹_13d_a›⇒a⇐a⇐b‹gcd›"[_0^]⇒g⇐a⇐g/⇐b﹡;
+:‹abs›"T[′‹abs› €⋄‹_13d_a›];
+⊡‹sign›"T[′‹sign› €⋄⇒x⇐x0≺⇐x0≻﹣];
+# ‹_13d_mm›  a b m -> a*b mod m, for a, b < m < 2^63 (shift and add)
+⊡‹_13d_mm›⇒m⇒b⇒a0⇒r{⇐b0≡⋄⇐b1$0≡[⇐r⇐a﹢"⇐m<[⇐m﹣]⇒r]⇐a"﹢"⇐m<[⇐m﹣]⇒a⇐b1>⇒b}⇐r;
+⊡‹powmod›⇒m⇒e⇒b⇐b⇐m∣"0≺1﹢[⇐m﹢]⇒b1⇐m∣⇒r
+ ⇐m1 32≪<1﹢[{⇐e0≻1﹢⋄⇐e1$0≡[⇐r⇐b﹡⇐m%⇒r]⇐b"﹡⇐m%⇒b⇐e1>⇒e}
+ ⋄{⇐e0≻1﹢⋄⇐e1$0≡[⇐r⇐b⇐m‹_13d_mm›⇒r]⇐b"⇐m‹_13d_mm›⇒b⇐e1>⇒e}]⇐r;
+⊡‹isqrt›⇒n⇐n0≺1﹢[“isqrt of negative“U‹throw›]⇐n2<1﹢[⇐n^]⇐n1 32≪⊓⇒x
+ {⇐x⇐n⇐x/﹢1>"⇐x<1﹢⋄⇒x}_⇐x;
+⊡‹divmod›⇒b⇒a⇐a⇐b÷⇒q⇐a⇐b∣⇒r⇐r0≡[⇐r0≺⇐b0≺≡[⇐q1﹣⇒q⇐r⇐b﹢⇒r]]⇐q⇐r;
+⊡‹sieve›⇒n‹vec›⇒v⇐n3≺1﹢[⇐v^]⇐n8/2﹢"⇒m A⇒c0⇒k{0⇐k8﹡⇐c﹢⊛⇐k1﹢"⇒k⇐m≡}⇐c⇐n﹢⇒z
+ 2⇒i{⇐i⇐i﹡⇐n≺1﹢⋄⇐c⇐i﹢?[⇐i⇐i﹡⇐c﹢⇒q{⇐q⇐z<1﹢⋄1⇐q,⇐q⇐i﹢⇒q}]⇐i1﹢⇒i}
+ 2⇒i{⇐i⇐n≺1﹢⋄⇐c⇐i﹢?[⇐v⇐i⍆⇒v]⇐i1﹢⇒i}⇐c⌫⇐v;
+# --- text (code lists) ---
+# ‹isdigit› ‹isalpha› ‹isalnum› ‹isspace› ‹isupper› ‹islower›  c -> f
+#                        ASCII classes, 0 (true) or 1; on a list, a new list
+#                        of flags (nested lists too).  Space is 9-13 and 32.
+# ‹upper› ‹lower›  c -> c'   ASCII case mapping; on a list, a new list
+# ‹find› h n -> i        the first index of the sublist n in h, -1 if none
+#                        (an empty n is found at 0).  KMP: O(|h| + |n|).
+#                        Elements compare with ≡
+# ‹ispal› l -> f         0 if l reads the same both ways, else 1
+:‹isdigit›"T[′‹isdigit› €⋄48﹣10<1﹢];
+:‹isalpha›"T[′‹isalpha› €⋄32|97﹣26<1﹢];
+⊡‹isalnum›"T[′‹isalnum› €⋄⇒c⇐c48﹣10<⇐c32|97﹣26<|1﹢];
+⊡‹isspace›"T[′‹isspace› €⋄⇒c⇐c32≡⇐c9﹣5<|1﹢];
+:‹isupper›"T[′‹isupper› €⋄65﹣26<1﹢];
+:‹islower›"T[′‹islower› €⋄97﹣26<1﹢];
+:‹upper›"T[′‹upper› €⋄"97﹣26<1﹢[32﹣]];
+:‹lower›"T[′‹lower› €⋄"65﹣26<1﹢[32﹢]];
+⊡‹find›‹_2d_chk›"⊙⇒m8﹢⇒s‹_2d_chk›"⊙⇒n8﹢⇒h⇐m[0^]⇐m⇐n≻1﹢[0 1﹣^]
+ ⇐m A⇒f0⇐f⊛0⇒k1⇒i
+ {⇐i⇐m≺1﹢⋄⇐i8﹡⇐s﹢⊙⇒x
+  {⇐k0≡[⇐x⇐k8﹡⇐s﹢⊙≡⋄1]⋄⇐k1﹣8﹡⇐f﹢⊙⇒k}
+  ⇐x⇐k8﹡⇐s﹢⊙≡1﹢[⇐k1﹢⇒k]⇐k⇐i8﹡⇐f﹢⊛⇐i1﹢⇒i}
+ 0⇒k⇐h⇒p⇐n8﹡⇐h﹢⇒e0 1﹣⇒r
+ {⇐p⇐e≡⋄⇐p⊙⇒x
+  {⇐k0≡[⇐x⇐k8﹡⇐s﹢⊙≡⋄1]⋄⇐k1﹣8﹡⇐f﹢⊙⇒k}
+  ⇐x⇐k8﹡⇐s﹢⊙≡1﹢[⇐k1﹢⇒k]
+  ⇐k⇐m≡1﹢[⇐p⇐h﹣3>⇐m﹣1﹢⇒r⇐e⇒p⋄⇐p8﹢⇒p]}⇐f⌫⇐r;
+⊡‹ispal›‹_13d_rng›8﹣⇒e⇒p{⇐p⇐e<[1⋄⇐p⊙⇐e⊙≡1﹢]⋄⇐p8﹢⇒p⇐e8﹣⇒e}⇐p⇐e<±;
+# --- digraphs (S6: ʘB calls ‹_dgHH›, HH = hex of B; W13-D owns a-m, 0-4) ---
+#   ʘa ‹any›     ʘb ‹bisect›   ʘc ‹countif›   ʘd ‹divmod›   ʘe ‹all›
+#   ʘf ‹find›    ʘg ‹gcd›      ʘh ‹bsearch›   ʘi ‹inter›    ʘj ‹groupby›
+#   ʘk ‹mostcommon›  ʘl ‹lcm›  ʘm ‹argmax›    ʘ0 ‹argmin›   ʘ1 ‹abs›
+#   ʘ2 ‹isdigit› ʘ3 ‹union›    ʘ4 ‹ispal›
+:‹_dg61›‹any›;
+:‹_dg62›‹bisect›;
+:‹_dg63›‹countif›;
+:‹_dg64›‹divmod›;
+:‹_dg65›‹all›;
+:‹_dg66›‹find›;
+:‹_dg67›‹gcd›;
+:‹_dg68›‹bsearch›;
+:‹_dg69›‹inter›;
+:‹_dg6A›‹groupby›;
+:‹_dg6B›‹mostcommon›;
+:‹_dg6C›‹lcm›;
+:‹_dg6D›‹argmax›;
+:‹_dg30›‹argmin›;
+:‹_dg31›‹abs›;
+:‹_dg32›‹isdigit›;
+:‹_dg33›‹union›;
+:‹_dg34›‹ispal›;

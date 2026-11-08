@@ -637,7 +637,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 186 in all after W12-O6, helpers included), so a program has 838 for itself.
+has 251 in all after W13-D, helpers included), so a program has 773 for itself.
 
 ### Sorting by key
 
@@ -1077,8 +1077,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`), the prelude has 186 long
-names, which leaves 838 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names), the prelude has 251 long
+names, which leaves 773 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1379,6 +1379,158 @@ for `‹cadd›` when `(a^r)&(b^r)` is negative, for `‹csub›` when `(a^b)&(a
 is, and for `‹cmul›` when `a≠0` and either `r÷a ≠ b` or `a = -1, b = INT64_MIN`
 (the one case the divide test misses, since `÷` defines `INT64_MIN÷-1` as
 `INT64_MIN`).
+
+### LeetCode library: search, counting, lists, math, text
+
+W13-D adds the words LeetCode solutions keep rewriting: binary search,
+grouping and counting, set operations on lists, early-exit predicates,
+prefix sums and difference arrays, number theory, and character classes.
+They are long names, and the eighteen most useful also have a two-byte
+**digraph** `ʘB` (W13-S6: `ʘ` then one byte compiles as a call to
+`‹_dgHH›`, HH the byte in hex).
+
+The house rules hold throughout:
+
+- **A flag is zero-is-true**, like `∊`, `‹has›` and `⌿`'s predicate: `0` is
+  true and `1` is false. So `‹isdigit›` is a predicate for `⌿`, `‹countif›`
+  and `‹any›` as it is, and `‹tf›` prints a flag as `true`/`false`. A
+  comparison `≡ ≺ ≻` gives `-1` for true: add `1+` to get a flag, or use `±`
+  to turn its `-1` into `1` (the opposite flag).
+- **Higher-order words keep the threading contract**: the function runs with
+  the caller's stack under its argument and must leave exactly one result.
+  The words keep their own state in `⊡` locals, so they nest in each other
+  and in `€ ⇤ ⌿ ⊞` freely.
+- Every list result is a **new** list, and no word writes its input. A freed
+  list is `GOLF: use after free`. Elements compare as `⍋` compares them
+  (signed, on the raw cell), except in the set words, which compare as dict
+  keys (`≣`).
+
+**Binary search.** O(log n).
+
+| word | digraph | stack effect | meaning |
+|---|---|---|---|
+| `‹bisect›` | `ʘb` | `l x -> i` | lower bound: the first `i` with `l[i] >= x`, or `≢l`. `l` must be sorted ascending |
+| `‹bisectr›` | | `l x -> i` | upper bound: the first `i` with `l[i] > x`, or `≢l` |
+| `‹bsearch›` | `ʘh` | `lo hi ′p -> v` | binary search on the answer: the first `v` in `[lo, hi)` for which `p v` is `0` (true), assuming `p` is false up to some point and true from there on; `hi` if it never holds. `p` runs about log2(hi-lo) times |
+
+**Counting and sets.**
+
+| word | digraph | stack effect | meaning |
+|---|---|---|---|
+| `‹groupby›` | `ʘj` | `l ′k -> d` | a dict from each key `k x` to the list of the `x` with that key, in their order. `‹keys›` gives the keys in order of first appearance |
+| `‹append›` | | `d k x -> d` | push `x` on the list that key `k` holds; a missing key gets the one-element list `[x]`. One lookup unless the list has to grow |
+| `‹mostcommon›` | `ʘk` | `l k -> l'` | the `k` most frequent values, most frequent first; **ties in order of first appearance** in `l`. `k` is clamped to `0` … the number of distinct values. O(n + u log u) for u distinct values |
+| `‹union›` | `ʘ3` | `a b -> l` | every value of `a` or `b` once: `a`'s in their first-appearance order, then `b`'s new ones |
+| `‹inter›` | `ʘi` | `a b -> l` | the values of `a` that are in `b`, once each, in `a`'s order |
+| `‹diff›` | | `a b -> l` | the values of `a` that are not in `b`, once each, in `a`'s order |
+
+The set words use a hash set, so they take expected time linear in the two
+lengths.
+
+**List utilities.**
+
+| word | digraph | stack effect | meaning |
+|---|---|---|---|
+| `‹argmax›` | `ʘm` | `l -> i` | the index of the first largest element; `-1` for the empty list |
+| `‹argmin›` | `ʘ0` | `l -> i` | the index of the first smallest element; `-1` for the empty list |
+| `‹any›` | `ʘa` | `l ′p -> f` | `0` if `p x` is `0` for some `x`, else `1`. Stops at the first hit |
+| `‹all›` | `ʘe` | `l ′p -> f` | `0` if `p x` is `0` for every `x` (so `0` for the empty list), else `1`. Stops at the first miss |
+| `‹countif›` | `ʘc` | `l ′p -> n` | how many `x` have `p x` = `0` |
+| `‹takewhile›` | | `l ′p -> l'` | the longest prefix of `l` whose every `x` has `p x` = `0` |
+| `‹dropwhile›` | | `l ′p -> l'` | what is left after that prefix |
+| `‹chunk›` | | `l n -> ls` | `l` cut into pieces of `n`; the last piece may be shorter. `n < 1` is `GOLF: chunk size < 1` |
+| `‹prefix›` | | `l -> p` | prefix sums, one longer than `l`: `p[0] = 0`, `p[i+1] = p[i] + l[i]` |
+| `‹rangesum›` | | `p i j -> s` | `p[j] - p[i]`: for `p = l‹prefix›`, the sum of `l[i] … l[j-1]` in O(1). `i` and `j` are checked like `⊇` |
+| `‹diffapply›` | | `n ups -> l` | `n` zeros, after each update `[i j v]` of `ups` adds `v` to `l[i] … l[j-1]` (half-open; `i` and `j` are clamped to `0 … n`). A difference array: O(n + number of updates). For an inclusive `[i, j]`, pass `j+1` |
+| `‹lexcmp›` | | `a b -> c` | `-1`, `0` or `1` as `a` sorts before, equal to, or after `b`: element by element, and a proper prefix first |
+
+`‹any›`, `‹all›`, `‹takewhile›` and `‹dropwhile›` call `p` in order and only
+as far as they need to.
+
+**Math.**
+
+| word | digraph | stack effect | meaning |
+|---|---|---|---|
+| `‹gcd›` | `ʘg` | `a b -> g` | the greatest common divisor, never negative; `gcd(0, 0)` is `0` |
+| `‹lcm›` | `ʘl` | `a b -> m` | the least common multiple, never negative; `0` when `a` or `b` is `0` |
+| `‹abs›` | `ʘ1` | `x -> y` | the absolute value; on a list, a new list of them (nested lists too) |
+| `‹sign›` | | `x -> y` | `-1`, `0` or `1`; on a list, elementwise like `‹abs›` |
+| `‹powmod›` | | `b e m -> r` | `b^e mod m`, in `0 … m-1`. `b` may be negative; `e <= 0` gives `1 mod m`. `m` must be at least 1 (`0` is `GOLF: divide by zero`). Below `m = 2^32` each step is one multiply; above, an overflow-free shift-and-add mulmod (slower, still exact) |
+| `‹isqrt›` | | `n -> r` | `floor(sqrt n)`, exact for every non-negative int. A negative `n` is `GOLF: isqrt of negative` |
+| `‹divmod›` | `ʘd` | `a b -> q r` | **floor** division, as Python's `divmod`: `a = q*b + r` with `r` of `b`'s sign (`÷` and `∣` truncate toward zero). `b = 0` is `GOLF: divide by zero` |
+| `‹sieve›` | | `n -> ps` | the primes below `n`, ascending: a sieve of Eratosthenes, one byte per number |
+
+**Text.** These work on code lists (see "Text" above) and on single codes.
+
+| word | digraph | stack effect | meaning |
+|---|---|---|---|
+| `‹isdigit›` | `ʘ2` | `c -> f` | `0` for `0`–`9`, else `1` |
+| `‹isalpha›` | | `c -> f` | `0` for an ASCII letter |
+| `‹isalnum›` | | `c -> f` | `0` for a letter or a digit |
+| `‹isspace›` | | `c -> f` | `0` for tab, `\n`, `\v`, `\f`, `\r` and space |
+| `‹isupper›` `‹islower›` | | `c -> f` | `0` for `A`–`Z` / `a`–`z` |
+| `‹upper›` `‹lower›` | | `c -> c'` | ASCII case mapping; every other code is unchanged |
+| `‹find›` | `ʘf` | `h n -> i` | the first index at which the list `n` occurs in `h`, `-1` if nowhere; the empty `n` is found at `0`. Knuth-Morris-Pratt, so linear in both lengths whatever the input. Elements compare with `≡` |
+| `‹ispal›` | `ʘ4` | `l -> f` | `0` if `l` reads the same backwards, else `1` |
+
+The class and case words take an int or a list: on a list they give a new
+list, one result per element (nested lists too), so `“a1“⊃‹isdigit›` is
+`1 0`. They are ASCII only.
+
+```
+5⍳2*3‹bisect›Ṅ                                   ->  2
+5⍳2*4‹bisectr›Ṅ                                  ->  3
+:p²50≺±;0 100′p‹bsearch›Ṅ                        ->  8
+:k3∣;7⍳′k‹groupby›"‹keys›⍕‹vals›⍕                ->  0 1 2 [0 3 6] [1 4] [2 5]
+Ḋ"1 5‹append›"1 6‹append›"2 7‹append›‹vals›⍕     ->  [5 6] [7]
+“mississippi“⊃2‹mostcommon›⊐                      ->  is
+“abcab“⊃“bcd“⊃‹union›⊐                            ->  abcd
+“abcab“⊃“bcd“⊃‹inter›⊐                            ->  bc
+“abcab“⊃“bcd“⊃‹diff›⊐                             ->  a
+“31415926“⊃"‹argmax›Ṅ‹argmin›Ṅ                    ->  51
+0⍳‹argmax›Ṅ                                      ->  -1
+:e2∣;5⍳"′e‹any›Ṅ"′e‹all›Ṅ′e‹countif›Ṅ            ->  013
+:e2∣;0⍳"′e‹any›Ṅ′e‹all›Ṅ                         ->  10
+“123ab“⊃′‹isdigit›‹takewhile›⊐                   ->  123
+“  hi“⊃′‹isspace›‹dropwhile›⊐                    ->  hi
+:c\\⊕\\2∣;0 6⍳′c‹any›ṄṄ                          ->  01
+7⍳3‹chunk›⍕                                      ->  [0 1 2] [3 4 5] [6]
+5⍳1+‹prefix›"⍕1 4‹rangesum›Ṅ                     ->  0 1 3 6 10 15 9
+:u‹words›′‹num›€;5Ṿ“0 2 10“⊃u⍆“1 9 5“⊃u⍆‹diffapply›⍕  ->  10 15 5 5 5
+“abc“⊃“abd“⊃‹lexcmp›Ṅ“ab“⊃“a“⊃‹lexcmp›Ṅ            ->  -11
+12 18‹gcd›Ṅ 4 6‹lcm›Ṅ                             ->  612
+5⍳2-"‹abs›⍕‹sign›⍕                                ->  2 1 0 1 2 -1 -1 0 1 1
+3 200 1000000007‹powmod›Ṅ                        ->  136318165
+99‹isqrt›Ṅ 1 62≪‹isqrt›Ṅ                         ->  92147483648
+0 7- 2‹divmod›ṄṄ                                 ->  1-4
+30‹sieve›⍕                                       ->  2 3 5 7 11 13 17 19 23 29
+“a1 B“⊃‹isdigit›⍕                                ->  1 0 1 1
+“Hi 5“⊃"‹upper›⊐‹lower›⊐                          ->  HI 5hi 5
+“hello world“⊃“wor“⊃‹find›Ṅ“abc“⊃“x“⊃‹find›Ṅ        ->  6-1
+“A man, a plan, a canal: Panama“⊃′‹isalnum›⌿‹lower›‹ispal›‹tf›⊐  ->  true
+5⍳0‹chunk›                                       ->  GOLF: chunk size < 1
+0 1-‹isqrt›                                      ->  GOLF: isqrt of negative
+```
+
+Notes on the examples. `p` in the `‹bsearch›` line is "x² is not below 50"
+(`≺` gives `-1` for below, and `±` makes that `1`, false), so the answer is
+8. The `‹any›` line counts its calls in the `0` left under the list: it
+stops after the first element. `‹divmod›` leaves `q r`, so `ṄṄ` prints `r`
+first. The last line is LeetCode 125, Valid Palindrome. The two `GOLF:`
+lines print on stderr and exit 1; under `‹catch›` they give back the
+message. The digraph is the same call in two bytes: `ʘg` is `‹gcd›`, and
+`′ʘ2` quotes `‹isdigit›` (through its alias `‹_dg32›`).
+
+**Speed** (1M random ints or 2M chars on stdin, best of 3, reading the
+input included): `ℤ′e‹countif›` 0.057 s against `ℤ′e⌿≢` 0.060 s;
+`ℤ10‹mostcommon›` 0.17 s; `‹union›`, `‹inter›` and `‹diff›` of two 1M
+lists 0.15–0.21 s (`‹unique›` of one is 0.13 s); `‹groupby›` 0.11 s;
+`‹prefix›` 0.06 s; 1M `‹bisect›` queries on a sorted 1M list 0.3 s on top of
+the sort; `‹find›` over 2M chars 0.05 s; `10000000‹sieve›` 0.14 s; 1M
+`‹powmod›` calls with a 30-bit modulus 0.26 s; 1M `‹isqrt›` 0.07 s.
+
+Names that start with `‹_13d_` are these words' helpers, and the `‹_dgHH›`
+are the digraph names (REGISTRY.md, "Digraph page").
 
 ### Errors
 
