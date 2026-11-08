@@ -383,19 +383,24 @@ from your program. Text arrives as a **code list**, one byte per element, which
 | `‹getc›` | `-> b` | the next byte, `0`–`255`, or `-1` at end of input |
 | `‹words›` | `list -> list` | split a code list on runs of ASCII whitespace (tab, `\n`, `\v`, `\f`, `\r`, space) into a list of code lists. Never yields an empty word |
 | `‹num›` | `list -> n` | parse a signed decimal: skip leading whitespace, one optional `+` or `-`, then digits up to the first non-digit. No digits gives `0` (`“12ab“⊃‹num›` is 12, `“x“⊃‹num›` is 0). Overflow wraps at 64 bits |
-| `‹ints›` | `-> list` | all of stdin as integers: `‹readall›‹words›′‹num›€`. A word that is not a number counts as `0` |
+| `‹ints›` | `-> list` | all of stdin as integers, the same list as `‹readall›‹words›′‹num›€`: words split on the same whitespace, each parsed like `‹num›`, so a word that is not a number counts as `0` (`12ab` is 12, `x` is 0) and overflow wraps. Since W12-P1 it scans the input buffer directly into one list (1M ints: 0.05 s, 16 MB peak), with no code list or word lists in between |
+| `‹readbytes›` | `-> block` | the rest of stdin as a byte block in the `“…“` layout, a 32-bit length then one byte per byte, so `🗲` prints it and `⊃` turns it into a code list. A raw block, not a tagged list (as a `“…“` literal is): list words do not take it, `⌫` frees it. Empty input gives length `0` |
 | `‹args›` | `-> list` | the command-line arguments after the program name, as a list of code lists |
 
 ```
 ‹ints›∑Ṅ                 # printf '1 2 3' | ./sum   prints 6
 {‹readline›"[_⊐␤0]}      # echo stdin line by line, until end of input
 ‹args›′‹num›€∑Ṅ          # ./add 2 40               prints 42
+‹readbytes›🗲             # cat, at one byte per byte of input
+‹readbytes›⊃≢Ṅ           # printf 'ab\n' | ./len   prints 3
 ```
 
-The stdin words share one 8 KB buffer, so `‹readline›`, `‹getc›` and
-`‹readall›` may be mixed freely. The raw `(` reads around that buffer: do not
-use it in a program that uses these words. Names that start with `‹_in` are
-the prelude's own helpers. See `examples/input.golfj`.
+The stdin words share one 8 KB buffer, so `‹readline›`, `‹getc›`,
+`‹readall›`, `‹readbytes›` and `‹ints›` may be mixed freely (`‹readall›`,
+`‹readbytes›` and `‹ints›` read to the end). `‹readall›` is `‹readbytes›`
+widened into a list, so it peaks at about 10 bytes per input byte. The raw `(`
+reads around that buffer: do not use it in a program that uses these words.
+Names that start with `‹_in` or `‹_12p1` are the prelude's own helpers. See `examples/input.golfj`.
 
 ### Files
 
@@ -729,8 +734,8 @@ A word count over stdin:
 
 It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`), the prelude has 73 long
-names, which leaves 951 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers), the prelude has 81 long
+names, which leaves 943 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
