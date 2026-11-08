@@ -4729,6 +4729,115 @@ while IFS= read -r w14el; do
 done < <(sed -n '/^### Filesystem (W14-E)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
 [ -z "$w14ebad" ] && [ "$w14en" -ge 12 ] \
   && ok "REFERENCE.md's Filesystem examples print what they say ($w14en)" || no "REFERENCE Filesystem examples:$w14ebad"
+# === W14-J ===
+# Seeded generators and SHA-256.  Python is the oracle: random.Random(seed)
+# for every MT word (the same 32-bit outputs in the same order), a ten-line
+# xoshiro256** / splitmix64 for ‹rng›, hashlib for the digests.
+echo "W14-J: ‹rng› ‹mtrng› ‹rand› ‹randbits› ‹randbelow› ‹randint› ‹random53› ‹choice› ‹shuffle› ‹sample› ‹sha256› ‹sha256hex›"
+rm -rf "$TMP/w14j"; mkdir -p "$TMP/w14j"
+python3 - "$TMP/w14j" <<'PY'
+import random, sys, hashlib
+T = sys.argv[1]; R = random.Random(14); M = 2**64 - 1
+def lit(v):   # any 64-bit int as golf source (a literal stays below 2^31)
+    if 0 <= v < 2**31: return str(v)
+    u = v & M
+    return "%d 48≪%d 32≪|%d 16≪|%d|" % (u >> 48, (u >> 32) & 65535, (u >> 16) & 65535, u & 65535)
+def s(v): return v - 2**64 if v >> 63 else v
+def sh(l): return " ".join(map(str, l))
+prog, want = [], []
+# Fixed cases first: random.Random(42), the task's checks.
+py = random.Random(42); prog.append("42‹mtrng›→r")
+prog.append("←r1 6‹randint›Ṅ␤←r10⍳‹choice›Ṅ␤←r10⍳‹shuffle›⍕␤←r100⍳10‹sample›⍕␤←r1000⍳10‹sample›⍕␤")
+want += [str(py.randint(1, 6)), str(py.choice(range(10)))]
+l = list(range(10)); py.shuffle(l); want += [sh(l), sh(py.sample(range(100), 10)), sh(py.sample(range(1000), 10))]
+prog.append("20⍳⟦_←r‹random53›1 52≪<1﹢⟧€⍕␤")      # random() < 0.5, twenty times
+want.append(sh(0 if py.random() < 0.5 else 1 for _ in range(20)))
+prog.append("←r1 62≪‹randbelow›Ṅ␤←r1 62≪1﹢‹randbelow›Ṅ␤←r1 62≪1 62≪3﹢‹randint›Ṅ␤←r0 1 62≪-1 62≪‹randint›Ṅ␤")
+want += [str(py._randbelow(2**62)), str(py._randbelow(2**62 + 1)), str(py.randint(2**62, 2**62 + 3)), str(py.randint(-2**62, 2**62))]
+prog.append("←r1 63≪1 63≪1﹣‹randint›Ṅ␤←r0‹randbits›Ṅ␤←r63‹randbits›Ṅ␤←r33‹randbits›Ṅ␤←r‹rand›Ṅ␤")
+want += [str(py.randint(-2**63, 2**63 - 1)), "0", str(py.getrandbits(63)), str(py.getrandbits(33)), str(s(py.getrandbits(64)))]
+# Random sessions: seeds of one and two 32-bit chunks (and negative ones, as
+# |seed|), long runs that regenerate the 624 words many times, every word.
+for t in range(24):
+    seed = R.choice([0, 1, 2**32 - 1, 2**32, 2**63 - 1, -5, R.getrandbits(31), R.getrandbits(62)])
+    py = random.Random(seed); prog.append("%s‹mtrng›→r" % lit(seed))
+    for _ in range(R.randrange(5, 30)):
+        op = R.randrange(7)
+        if op == 0:
+            k = R.randrange(0, 65); prog.append("←r%d‹randbits›Ṅ␤" % k); want.append(str(s(py.getrandbits(k))))
+        elif op == 1:
+            n = R.choice([1, 2, 7, 2**31 + 3, 2**63 - 1, R.getrandbits(R.randrange(1, 63)) + 1])
+            prog.append("←r%s‹randbelow›Ṅ␤" % lit(n)); want.append(str(py._randbelow(n)))
+        elif op == 2:
+            lo = R.choice([0, -5, -2**62, -2**63]); hi = min(lo + R.choice([0, 1, 9, 2**62, 2**64 - 1]), 2**63 - 1)
+            prog.append("←r%s %s‹randint›Ṅ␤" % (lit(lo), lit(hi))); want.append(str(py.randint(lo, hi)))
+        elif op == 3:
+            n = R.randrange(1, 50); prog.append("←r%d⍳‹choice›Ṅ␤" % n); want.append(str(py.choice(range(n))))
+        elif op == 4:
+            n = R.randrange(0, 40); l = list(range(n)); py.shuffle(l); prog.append("←r%d⍳‹shuffle›⍕␤" % n); want.append(sh(l))
+        elif op == 5:   # n <= setsize: the pool branch; n > setsize: the set branch
+            n = R.choice([R.randrange(0, 30), R.randrange(22, 3000)]); k = R.randrange(0, min(n, 60) + 1)
+            prog.append("←r%d⍳%d‹sample›⍕␤" % (n, k)); want.append(sh(py.sample(range(n), k)))
+        else:
+            prog.append("←r‹random53›Ṅ␤"); a = py.getrandbits(32) >> 5; b = py.getrandbits(32) >> 6; want.append(str(a * 67108864 + b))
+    prog.append("1500⍳0⟦_←r32‹randbits›﹢⟧⇤Ṅ␤"); want.append(str(sum(py.getrandbits(32) for _ in range(1500))))
+# ‹rng›: xoshiro256** seeded by splitmix64.
+def xo(seed, n):
+    x = seed & M; st = []
+    for _ in range(4):
+        x = (x + 0x9e3779b97f4a7c15) & M; z = x
+        z = ((z ^ (z >> 30)) * 0xbf58476d1ce4e5b9) & M; z = ((z ^ (z >> 27)) * 0x94d049bb133111eb) & M
+        st.append(z ^ (z >> 31))
+    rl = lambda v, k: ((v << k) | (v >> (64 - k))) & M; out = []
+    for _ in range(n):
+        out.append(rl(st[1] * 5 & M, 7) * 9 & M); t = st[1] << 17 & M
+        st[2] ^= st[0]; st[3] ^= st[1]; st[1] ^= st[2]; st[0] ^= st[3]; st[2] ^= t; st[3] = rl(st[3], 45)
+    return out
+for seed in [0, 1, 12345, 2**63 - 1, -1]:
+    v = xo(seed, 4); prog.append("%s‹rng›→x←x‹rand›Ṅ␤←x‹rand›Ṅ␤←x13‹randbits›Ṅ␤←x‹random53›Ṅ␤" % lit(seed))
+    want += [str(s(v[0])), str(s(v[1])), str(v[2] >> 51), str(v[3] >> 11)]
+# SHA-256: the empty list, 'abc', every length 0..130 (the 55/56 and 64-byte
+# padding boundaries twice over), elements above 255 hashed by their low byte.
+d = bytes(R.randrange(256) for _ in range(130)); open(f"{T}/d130", "wb").write(d)
+prog.append("““⊃‹sha256hex›⊐␤“abc“⊃‹sha256hex›⊐␤“abc“⊃‹sha256›⍕␤")
+want += [hashlib.sha256(b"").hexdigest(), hashlib.sha256(b"abc").hexdigest(), sh(hashlib.sha256(b"abc").digest())]
+prog.append(r"‹args›0⊇‹readfile›→d 131⍳⟦←d\\↑‹sha256hex›⊐␤⟧€_ 300⍳256+‹sha256hex›⊐␤")
+want += [hashlib.sha256(d[:i]).hexdigest() for i in range(131)] + [hashlib.sha256(bytes(i & 255 for i in range(300))).hexdigest()]
+open(f"{T}/p.golfj", "w", encoding="utf-8").write("\n".join(prog) + "\n")
+open(f"{T}/want", "w").write("\n".join(want) + "\n")
+open(f"{T}/1m", "wb").write(bytes(R.randrange(256) for _ in range(1 << 20)))
+open(f"{T}/1m.hex", "w").write(hashlib.sha256(open(f"{T}/1m", "rb").read()).hexdigest() + "\n")
+PY
+w14jgc=$(python3 tools/codepage.py encode < "$TMP/w14j/p.golfj" | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14j/p" 2>/dev/null \
+  && chmod +x "$TMP/w14j/p" && "$TMP/w14j/p" "$TMP/w14j/d130" | sed 's/ *$//')
+[ "$w14jgc" = "$(cat "$TMP/w14j/want")" ] \
+  && ok "MT words equal random.Random (Random(42): randint choice shuffle sample, random() < 0.5; 2^62 ranges; 24 random sessions incl. 2-chunk and negative seeds, both sample branches); ‹rng› equals xoshiro256**; ‹sha256› equals hashlib at every length 0..130 ($(grep -c '' "$TMP/w14j/want") results)" \
+  || no "W14-J against Python: $(diff <(printf '%s\n' "$w14jgc") "$TMP/w14j/want" | head -4 | tr '\n' '|')"
+gin '‹readall›‹sha256hex›⊐' < /dev/null > /dev/null; w14jt0=$(date +%s%N)
+[ "$("$TMP/pin" < "$TMP/w14j/1m")" = "$(cat "$TMP/w14j/1m.hex")" ] \
+  && w14jms=$((($(date +%s%N) - w14jt0) / 1000000)) && [ "$w14jms" -lt 1000 ] \
+  && ok "‹sha256hex› of 1 MB of stdin equals hashlib, in ${w14jms} ms (under 1 s)" || no "W14-J sha256 1 MB (${w14jms:-?} ms)"
+# Failures: each throws a catchable message; uncaught it is GOLF: …, exit 1.
+w14je='1‹rng›→r ⟦←r0‹randbelow›⟧‹catch›⊐␤⟦←r0 1-‹randbits›⟧‹catch›⊐␤⟦←r65‹randbits›⟧‹catch›⊐␤⟦←r5 4‹randint›⟧‹catch›⊐␤⟦←r0⍳‹choice›⟧‹catch›⊐␤⟦←r3⍳4‹sample›⟧‹catch›⊐␤⟦←r3⍳0 1-‹sample›⟧‹catch›⊐␤⟦7‹rand›⟧‹catch›⊐␤⟦4⍳‹rand›⟧‹catch›⊐␤⟦“abc“‹sha256›⟧‹catch›⊐␤⟦←r⌫←r‹rand›⟧‹catch›⊐'
+[ "$(printf '%s' "$w14je" | gc)" = "$(printf 'randbelow: empty range\nrandbits: k out of range\nrandbits: k out of range\nrandint: empty range\nchoice: empty list\nsample: k out of range\nsample: k out of range\nnot a random generator\nnot a random generator\nsha256: not a list\nuse after free')" ] \
+  && [ "$(printf '%s' '5‹mtrng›9 8‹randint›Ṅ' | gc 2>&1; echo " rc=$?")" = "$(printf 'GOLF: randint: empty range\n rc=1')" ] \
+  && ok "failures: empty ranges, k out of range, empty choice, sample k > n or < 0, not a generator (an int, a list of the wrong shape, a freed one), sha256 of a byte block; uncaught: GOLF: …, exit 1" \
+  || no "W14-J failures: $(printf '%s' "$w14je" | gc 2>&1 | tr '\n' '|')"
+# Edges: k = 0 bits draws nothing; a one-value range; sample 0 / all; shuffle
+# of 0 and 1 elements; the words leave no blocks behind but their results;
+# a generator used inside € (re-entrant ⊡ words, no fixed cells).
+w14jx='7‹mtrng›→r←r0‹randbits›Ṅ←r5 5‹randint›Ṅ←r1‹randbelow›Ṅ←r9⍳0‹sample›≢Ṅ←r5⍳5‹sample›⍋⍕←r0⍳‹shuffle›≢Ṅ←r1⍳‹shuffle›⍕␤‹heapstats›_→n 100⍳"←r\\40‹sample›⌫"←r\\‹shuffle›⌫"‹sha256›⌫"‹sha256hex›⌫⌫ 3‹rng›⌫‹heapstats›_←n-Ṅ␤5⍳⟦←r\\1+‹randbelow›⟧€⍕'
+[ "$(printf '%s' "$w14jx" | gc | sed 's/ *$//')" = "$(printf '05000 1 2 3 4 00\n0\n%s' "$(python3 -c 'import random; r=random.Random(7); [r.getrandbits(0), r.randint(5,5), r._randbelow(1), r.sample(range(9),0), r.sample(range(5),5), r.shuffle([]), r.shuffle([0]), r.sample(range(100),40), r.shuffle(list(range(100)))]; print(*[r._randbelow(i+1) for i in range(5)])')")" ] \
+  && ok "edges: 0 bits, one-value ranges, sample of 0 and of all, shuffle of 0 and 1; no blocks leaked; inside € it keeps drawing as Python does" \
+  || no "W14-J edges: $(printf '%s' "$w14jx" | gc 2>&1 | tr '\n' '|')"
+# REFERENCE.md's "Random numbers and SHA-256" examples print what they say.
+w14jbad=""; w14jn=0
+while IFS= read -r w14jl; do
+  w14jxx=${w14jl%%  ->*}; w14jxx=${w14jxx%"${w14jxx##*[! ]}"}; w14jw=${w14jl##*->  }; w14jn=$((w14jn+1))
+  [ "$(printf '%s' "$w14jxx" | gc 2>&1 | sed 's/ *$//')" = "$w14jw" ] || w14jbad="$w14jbad [$w14jxx]"
+done < <(sed -n '/^### Random numbers and SHA-256 (W14-J)$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w14jbad" ] && [ "$w14jn" -ge 8 ] && grep -q '^# ===== W14-J =====$' lib/prelude.golfj \
+  && ok "REFERENCE.md's Random numbers and SHA-256 examples ($w14jn) print what they say" || no "W14-J examples ($w14jn):$w14jbad"
 
 # === W13-C ===
 echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"

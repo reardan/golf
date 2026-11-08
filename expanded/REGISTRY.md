@@ -445,6 +445,7 @@ Prelude long names in use (all **shipped**):
 | `‹spawn›` `‹wait›` `‹waitr›` `‹run›` `‹capture›` `‹capturet›` `‹exec›` `‹pipe›` `‹kill›` `‹signame›` (processes, REFERENCE "Processes (W14-B)"), and the helpers `‹_14b_ename›` `‹_14b_fail›` `‹_14b_pid›` `‹_14b_close›` `‹_14b_envp›` `‹_14b_path›` `‹_14b_cand›` `‹_14b_cands›` `‹_14b_frees›` `‹_14b_argvc›` `‹_14b_argvf›` `‹_14b_try›` `‹_14b_die›` `‹_14b_child›` `‹_14b_w4›` `‹_14b_st›` `‹_14b_now›` `‹_14b_reap›` `‹_14b_nb›` `‹_14b_ign›` `‹_14b_rst›` `‹_14b_rec›` `‹_14b_rd›` `‹_14b_out›` `‹_14b_drain›` `‹_14b_pf›` `‹_14b_cap0›`; names starting `‹_14b` are W14-B's | W14-B (**shipped**) | `# ===== W14-B =====` |
 | `‹getenv›` `‹environ›` `‹isatty›` `‹getpid›` `‹exit›` `‹eputs›` `‹now›` `‹walltime›` `‹sleep›` `‹rusage›`, and the helpers `‹_14d_envp›` `‹_14d_cstr›` `‹_14d_match›` `‹_14d_fail›`; names starting `‹_14d` are W14-D's | W14-D (**shipped**) | `# ===== W14-D =====` |
 | `‹stat›` `‹lstat›` `‹exists›` `‹isfile›` `‹isdir›` `‹samefile›` `‹mkdir›` `‹makedirs›` `‹unlink›` `‹rmdir›` `‹rename›` `‹listdir›` `‹rmtree›` `‹mkdtemp›` `‹getcwd›` `‹chdir›` `‹pathjoin›` `‹dirname›` `‹basename›` (19), and 11 helpers `‹_14e_en›` `‹_14e_fail›` `‹_14e_try›` `‹_14e_sc›` `‹_14e_st›` `‹_14e_mode›` `‹_14e_ms›` `‹_14e_rs›` `‹_14e_strip›` `‹_14e_cl›` `‹_14e_tmp›` (names starting `‹_14e` are reserved for them): 30 names | W14-E | `# ===== W14-E =====` |
+| `‹rng›` `‹mtrng›` `‹rand›` `‹randbits›` `‹randbelow›` `‹randint›` `‹random53›` `‹choice›` `‹shuffle›` `‹sample›` (seeded generators; `‹mtrng›` is CPython-exact MT19937) `‹sha256›` `‹sha256hex›`, and the helpers `‹_14j_rec›` `‹_14j_mtgen›` `‹_14j_mt32›` `‹_14j_xo›` `‹_14j_mix›` `‹_14j_b›` `‹_14j_below›` `‹_14j_ins›` `‹_14j_tab›` `‹_14j_h0›` `‹_14j_k›` `‹_14j_blk›`; names starting `‹_14j` are W14-J's | W14-J (**shipped**) | `# ===== W14-J =====` |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -780,6 +781,11 @@ Each W14 task has a private 64-byte block in the free headroom at `0x432000` (B 
 | Task | Cells | Use |
 |---|---|---|
 | W14-E filesystem | none (its block 4399232 … 4399295 stays spare) | every word is a `⊡` word or calls only leaves; the C-string and list conversions are W11-1B's `‹_1b_tobytes›` / `‹_1b_tolist›`, and a failure stores the errno in W11-1B's errno cell 5179712, as the file words do |
+Private 64-byte blocks in the free headroom at `0x432000` (§3): W14-B 4399104–4399167, W14-D 4399168–4399231, W14-E 4399232–4399295, W14-G 4399296–4399359, W14-J 4399360–4399423 (W14-L none).
+
+| Task | Cells | Use |
+|---|---|---|
+| W14-J generators and SHA-256 | none (its block 4399360–4399423 is unused) | every W14-J word is a `⊡` word; a generator's state is its own record (a list), SHA-256's state, schedule and constant tables are `A` blocks freed before it returns |
 
 ---
 
