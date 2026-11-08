@@ -219,6 +219,19 @@ structure that makes most Python programs short, and GOLF has no hashing
 primitive to build one on. Strings are not values (§1.2); there is nothing to
 key on but integers.
 
+**Dict and set — CLOSED (W11-2B).** The prelude now has a hash dict:
+`‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›`, with `‹set›` and
+`‹add›` on top and `‹hash›` (FNV-1a 64) underneath. Keys are ints or lists,
+nested to any depth, compared with `≣`, so a code list read at run time is a
+usable string key. It is a compact, insertion-ordered dict with
+open-addressing, and 100,000 int inserts plus lookups take about 0.05 s
+(REFERENCE.md, "Dicts and sets"). Tuples, objects and classes are still
+missing.
+
+```
+‹dict›"“ab“⊃7‹put›"“ab“⊃‹get›Ṅ    ->  7
+```
+
 ### 2.2 Names and scope
 
 - **Single-byte identifiers.** 256 word slots in a flat byte-indexed table, and

@@ -550,6 +550,64 @@ then reused reads (or frees) the new owner's list without an error. A value
 pointing into the middle of a block is not checked either. Names that start
 with `‹_2d` are helpers.
 
+### Dicts and sets
+
+A **dict** (W11-2B) maps keys to values. A key is an int or a list, nested
+to any depth. Keys are compared with `≣` (structural equality), so a code
+list made at run time finds the entry that another, equal code list made.
+Values can be anything. A **set** is a dict whose values are all `0`. It
+uses the same words.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹hash›` | `v -> h` | FNV-1a, 64-bit. An int hashes its 8 bytes, low byte first. A list starts from the FNV basis and hashes each element's 8 bytes in turn. An inner list is replaced by its own `‹hash›`, so values that are `≣`-equal always hash equal |
+| `‹dict›` | `-> d` | a new, empty dict |
+| `‹put›` | `d k v -> d` | set key `k` to `v`. This inserts a new key or overwrites an existing one |
+| `‹get›` | `d k -> v` | the value of `k`. A missing key throws `GOLF: key not found` (exit 1). Test with `‹has›` first if a key may be missing |
+| `‹has›` | `d k -> f` | `0` if `k` is a key, else `1`. This is zero-is-true, like `∊`, so `‹has›[…]` runs on a hit |
+| `‹del›` | `d k -> d` | remove `k`. Nothing happens if `k` is not a key |
+| `‹keys›` | `d -> list` | the keys, in **insertion order**. A key that is deleted and then put again moves to the end. On a set, this lists the members. `‹keys›≢` is the count |
+| `‹vals›` | `d -> list` | the values, in the same order as `‹keys›` |
+| `‹set›` | `-> s` | a new, empty set (a dict) |
+| `‹add›` | `s k -> s` | add `k` to the set. This is the same as `k 0‹put›`. `‹has›`, `‹del›` and `‹keys›` work on sets |
+
+```
+‹dict›"1 10‹put›"2 20‹put›"1‹get›Ṅ                ->  10
+‹dict›"“ab“⊃7‹put›"“ab“⊃‹get›Ṅ                    ->  7
+‹dict›"3⍳3‹put›"3⍳‹has›Ṅ"4⍳‹has›Ṅ                 ->  01
+‹dict›"5 1‹put›"6 2‹put›"5‹del›"5 3‹put›‹keys›⍕   ->  6 5
+‹dict›"5 1‹put›"6 2‹put›‹vals›⍕                   ->  1 2
+‹set›"4‹add›"2‹add›"4‹add›‹keys›⍕                 ->  4 2
+3⍳′⍳€‹hash›3⍳′⍳€‹hash›≡Ṅ                          ->  -1
+‹dict›9‹get›Ṅ                                     ->  GOLF: key not found
+```
+
+The last example prints its message on stderr, not stdout, and exits with
+status 1.
+
+**A dict is changed in place.** `‹put›`, `‹del›` and `‹add›` hand back the
+same `d`, so you can drop the result (`‹put›_`) or chain from it. A dict is
+a tagged list of 6 cells, so `≢d` is 6, not the number of keys. Its contents
+are internal. Keys that are lists are stored **by reference**, not copied:
+do not change or `⌫` a list while it is a key. The table is a compact dict, as
+in CPython: an insertion-ordered entry array plus an open-addressing index
+(power-of-two size, linear probing, load at most 1/2, tombstones for deleted
+keys). It grows by doubling and gives the old blocks back with `⌫`. Inserts,
+lookups and deletes take O(1) expected time. 100,000 int inserts plus 100,000
+lookups take about 0.05 s.
+
+A word count over stdin:
+
+```
+:‹bump›→‹k›←‹d›←‹k›1←‹d›←‹k›‹has›[_←‹d›←‹k›‹get›⊕]‹put›;
+:‹show›→‹k›←‹d›←‹k›‹get›Ṅ“ “🗲←‹k›⊐␤0;
+‹dict›→‹d›‹readall›‹words›′‹bump›€_←‹d›‹keys›′‹show›€_
+```
+
+It prints `count word` once for each distinct word, in order of first
+appearance. Names that start with `‹_2b` are these words' helpers. With them,
+the prelude has 55 long names, which leaves 969 for a program.
+
 ### Errors
 
 A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
