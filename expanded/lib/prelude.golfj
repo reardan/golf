@@ -1704,3 +1704,36 @@
 :‹_12p3_llmax›‹_12p3_ll›&&\eq[{"\fetch&5177496\fetch\radd\fetch&48>32767=&48>32767=\rmul[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
 :‹_12p3_limax›‹_12p3_li›&&\eq[{"\fetch5177496\fetch&48>32767=[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
 :‹_12p3_ilmax›‹_12p3_il›&&\eq[{5177496\fetch&\fetch"48>32767=[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
+# === W12-A2 scan and reduce ===
+# ⍀ (0xD1)  l ′f ⍀ -> l'   inclusive scan: l'[0] = l[0] and l'[i] = f(l'[i-1],
+# l[i]), so l' is as long as l (empty -> a new empty list).  ⍁ (0xD2)
+# l ′f ⍁ -> x   the fold with no seed: l[0] is the seed, then x = f(x, l[i]);
+# an empty list throws `empty reduce` through ‹throw› (before any frame is
+# pushed; inline, so the section adds no long name).  Both are M / F's loop (W12-P3): ONE X/Y frame per call, s0 the
+# element pointer, s1 its end, s3 the function, and for ⍀ s2 the result and
+# s4 the delta to its cell.  The running value is NOT in a cell: it stays on
+# the data stack between passes, exactly where f's first argument goes, so a
+# pass is `x = [s0]; f; (⍀: dup, store at s0 + s4)`.  f therefore sees the
+# caller's stack, then the accumulator, then the element — the same `acc x`
+# view ⇤ gives it (the A1 contract) — and whatever it leaves below its
+# result stays below.  The entry ‹_2d_chk› catches a freed list (`use after
+# free`); a throw from f mid-loop unwinds the frame through ‹catch› as in €.
+# No A2 cells are needed (slot 5180992 … 5181048 stays free).
+:\scan X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
+ 5177456\fetch5177440\fetch\rsub5177472\store5177440\fetch"\fetch8\rmul\radd8\radd5177448\store
+ 5177440\fetch\fetch0\eq[5177440\fetch8\radd"5177440\store\fetch"5177456\fetch8\radd\store
+ 5177440\fetch8\radd"5177440\store5177448\fetch\eq[{5177440\fetch\fetch5177464\fetch\exec"5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]_]
+ 5177456\fetch32767 48\shl| Y;
+:\reduce&‹_2d_chk›\fetch"[_“empty reduce“U‹throw›]_X5177464\store‹_2d_chk›"\fetch8\rmul&\radd8\radd5177448\store8\radd"5177440\store\fetch
+ 5177440\fetch8\radd"5177440\store5177448\fetch\eq[{5177440\fetch\fetch5177464\fetch\exec5177440\fetch8\radd"5177440\store5177448\fetch\eq}] Y;
+# === W12-A3 each-indexed ===
+# ⍸ (0xD3)  l ′f ⍸ -> l'   map with the index: l'[i] = f(l[i], i), i from 0.
+# M's loop (W12-P3) with one more cell: s6 holds &l[0], and i is
+# (s0 - s6) >> 3, pushed after the element, so f sees the caller's stack,
+# then `x i` (the A1 contract).  One X/Y frame per call; ‹_2d_chk› on entry;
+# the result is a new tagged list.  No A3 cells are needed (slot 5181056 …
+# 5181112 stays free).
+:\eachi X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
+ 5177456\fetch5177440\fetch\rsub5177472\store5177440\fetch"\fetch8\rmul\radd8\radd5177448\store
+ 5177440\fetch8\radd"5177440\store"5177488\store5177448\fetch\eq[{5177440\fetch\fetch5177440\fetch5177488\fetch\rsub3>5177464\fetch\exec5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
+ 5177456\fetch32767 48\shl| Y;

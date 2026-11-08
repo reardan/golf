@@ -285,6 +285,9 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xCE` | `⍋` | `\sort` | — | sort: list -> new list, ascending signed (stable merge sort) |
 | `0xCF` | `∊` | `\memb` | — | member: list x -> 0 if x is an element, else 1 |
 | `0xD0` | `⊸` | `\bind` | — | bind: x ′f -> ′g; g pushes the captured x, then calls f |
+| `0xD1` | `⍀` | `\scan` | — | scan: l ′f -> l'; inclusive, l'[0] = l[0], l'[i] = f(l'[i-1], l[i]) |
+| `0xD2` | `⍁` | `\reduce` | — | reduce: l ′f -> x; fold seeded by l[0] (empty: empty reduce) |
+| `0xD3` | `⍸` | `\eachi` | — | each-indexed: l ′f -> l'; l'[i] = f(l[i], i) |
 | `0xD5` | `⍈` | `\putat` | — | store-at: list i v -> list; list[i] = v in place (bounds-checked) |
 | `0xD6` | `⍆` | `\push` | — | push: v x -> v'; append x (vector or deque back); use the returned v' |
 | `0xD7` | `⍅` | `\pop` | — | pop: v -> v x; remove the last element (empty: pop from empty) |
@@ -888,6 +891,45 @@ The function must consume exactly its own arguments (the element, or `⇤`'s
 leaves or takes below that is the caller's business. Nesting works: a
 function that runs `€` itself sees its own caller's stack under its own
 element.
+
+### Scan, reduce and each-indexed
+
+Three more higher-order list words (W12-A2, W12-A3). They keep the
+threading contract above: the function sees the caller's stack under its
+arguments, and the words keep their loop state in the scratch cells under
+one spill frame, so they nest in each other and in `€ ⇤ ⌿ ⊞`. `⍀` and `⍸`
+return a new tagged list and never write their input. A freed list is
+`GOLF: use after free`.
+
+| glyph | mnemonic | stack effect | meaning |
+|---|---|---|---|
+| `⍀` | `\scan` | `l ′f -> l'` | inclusive scan. `l'[0]` is `l[0]` and `l'[i]` is `f(l'[i-1], l[i])`, so `l'` is as long as `l`, and an empty `l` gives an empty list. `f` gets `acc x`, as `⇤`'s function does, and is called `≢l - 1` times. Scan from the right is `⌽…⍀⌽` |
+| `⍁` | `\reduce` | `l ′f -> x` | fold with no seed: `l[0]` is the seed, then `x = f(x, l[i])`. It is the last element of `l ′f⍀`. An empty `l` is `GOLF: empty reduce` through `‹throw›` |
+| `⍸` | `\eachi` | `l ′f -> l'` | map with the index: `l'[i]` is `f(l[i], i)`, counting from `0` |
+
+```
+5⍳1+′+⍀⍕                    ->  1 3 6 10 15
+“31415“⊃48-′⌈⍀⍕             ->  3 3 4 4 5
+3⍳′⍳€′⧺⍀⍕                   ->  [] [0] [0 0 1]
+0⍳′+⍀≢Ṅ                     ->  0
+5⍳1+′*⍁Ṅ                    ->  120
+“31415“⊃48-′⌊⍁Ṅ             ->  1
+1⍳7+′-⍁Ṅ                    ->  7
+:f+;4⍳10*′f⍸⍕               ->  0 11 22 33
+“abc“⊃′+⍸⊐                  ->  ace
+:c+\\⊕\\;0 5⍳′c⍀⍕Ṅ           ->  0 1 3 6 10 4
+:c+\\⊕\\;0 5⍳′c⍁ṄṄ           ->  104
+:c+\\⊕\\;0 4⍳′c⍸⍕Ṅ           ->  0 2 4 6 4
+:g⍳′+⍀∑+;5⍳′g⍀⍕             ->  0 0 1 5 15
+:h′+⍸;3⍳′⍳€′h€⍕             ->  [] [0] [0 2]
+0⍳′+⍁Ṅ                      ->  GOLF: empty reduce
+```
+
+The last one prints on stderr and exits 1; under `‹catch›` it gives back
+`empty reduce`. In the counter lines `c` is `+\\⊕\\`: it bumps the `0` the
+caller left under `acc x` (or under `x i`), so the count `4` is the number of
+calls: `⍀` and `⍁` do not call `f` on the seed. `g` runs a scan inside the
+scan's function, and `h` runs `⍸` inside `€`'s.
 
 ### Closures
 

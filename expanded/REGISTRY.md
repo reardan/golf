@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **44** are now spent, leaving **67** free. It is partitioned as follows
+space; **47** are now spent, leaving **64** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -224,9 +224,9 @@ no glyph is in use.
 | `0xB8` | `\else` | `⋄` | compiler op: the separator in `c[a⋄b]` (if-else) and `{?c⋄body}` (top-tested while). This is W11's unused spare | A7 | reserved |
 | `0xB9` | `\vinc` | `⇡` | compiler op, prefix: `⇡x` increments variable `x` (`←x⊕→x`); inside a `⊡` word a declared local wins | Z2 | reserved |
 | `0xBA` | `\vdec` | `⇣` | compiler op, prefix: `⇣x` decrements variable `x` | Z2 | reserved |
-| `0xD1` | `\scan` | `⍀` | prelude: `l ′f ⍀ -> l'` inclusive scan, the first element is the seed | A2 | reserved |
-| `0xD2` | `\reduce` | `⍁` | prelude: `l ′f ⍁ -> x` fold with no seed; empty list throws `empty reduce` | A2 | reserved |
-| `0xD3` | `\eachi` | `⍸` | prelude: `l ′f ⍸ -> l'` map, `f` gets `x i` | A3 | reserved |
+| `0xD1` | `\scan` | `⍀` | prelude: `l ′f ⍀ -> l'` inclusive scan, the first element is the seed | A2 | shipped |
+| `0xD2` | `\reduce` | `⍁` | prelude: `l ′f ⍁ -> x` fold with no seed; empty list throws `empty reduce` | A2 | shipped |
+| `0xD3` | `\eachi` | `⍸` | prelude: `l ′f ⍸ -> l'` map, `f` gets `x i` | A3 | shipped |
 | `0xD4` | `\ksort` | `⍒` | prelude: `l ′k ⍒ -> l'` stable sort by key `k x`, ascending | A4 | reserved |
 | `0xD5` | `\putat` | `⍈` | prelude: `l i v ⍈ -> l` store into a list in place (bounds- and free-checked). Planned as `\put1`; renamed because `codepage.encode` reads a mnemonic as letters only, so `\put1` could not be typed (W12-Z4) | Z4 | shipped |
 | `0xD6` | `\push` | `⍆` | prelude: `v x ⍆ -> v` vector push (capacity doubles; returns the possibly-new v); on a `‹deque›`, its back | Z4 | shipped |
