@@ -2964,6 +2964,8 @@
 # re-entrant; no scratch cells, no runtime cells (REGISTRY §3.4).  Raw atoms
 # only in the loops (﹢ ﹣ ﹡ ≪ ≫ ⊙ ⊛).  Variable-length results grow a ‹vec›
 # with ⍆ (a vector is a list).  Errors throw through ‹throw›.
+# No swap (`\\`) in the code: `decode -m` prints it as a bare backslash, so
+# one before a digit or a mnemonic would not encode back (gtools round trip).
 #   ‹format›      tpl args -> list   printf: %d %u %x %X %o %b %c %s %%, flags
 #                                    - 0 + space, a width, a .N precision (%s:
 #                                    at most N bytes; a number: at least N
@@ -3041,9 +3043,9 @@
 ⊡‹_14g_ff›⇒i⇒n⇒h⇐h⊙⇐n⊙﹣⇒e{⇐i⇐e≻⋄⇐h⇐n⇐i‹_14g_at›[⇐i^]⇐i1﹢⇒i}0 1﹣;
 ⊡‹_14g_app›⇒b⇒a⇒p{⇐a⇐b≺1﹢⋄⇐p⇐a3≪﹢8﹢⊙⍆⇐a1﹢⇒a};
 ⊡‹_14g_rep›⇒k⇒c{⇐k0≻1﹢⋄⇐c⍆⇐k1﹣⇒k};
-:‹_14g_sp›32\\‹_14g_rep›;
+⊡‹_14g_sp›⇒k32⇐k‹_14g_rep›;
 ⊡‹_14g_lr›⇒r⇒a‹_2d_chk›⇒p⇐p⊙⇐a﹢⇐r﹢‹vecn›⇐a‹_14g_sp›⇐p0⇐p⊙‹_14g_app›⇐r‹_14g_sp›;
-⊡‹ljust›⇒w"‹_2d_chk›⊙⇐w\\﹣0\\‹_14g_lr›;
+⊡‹ljust›⇒w"‹_2d_chk›⊙⇒n0⇐w⇐n﹣‹_14g_lr›;
 ⊡‹center›⇒w‹_2d_chk›⇒p⇐w⇐p⊙﹣"0≺[⋄_0]⇒m⇐m1≫⇐m⇐w$1$﹢⇒a⇐p⇐a⇐m⇐a﹣‹_14g_lr›;
 #
 # --- searching ---
@@ -3073,7 +3075,7 @@
 #
 # --- hex ---
 :‹_14g_hd›"9»39$﹢48﹢;
-:‹_14g_hv›"48﹣"10<~99$|\\32|87﹣"10﹣6<~99$|⊓;
+⊡‹_14g_hv›⇒c⇐c48﹣"10<~99$|⇐c32|87﹣"10﹣6<~99$|⊓;
 :‹_14g_hx›‹_14g_hv›"16<[“unhexbytes: bad hex digit“U‹throw›];
 ⊡‹hexbytes›‹_2d_chk›⇒p⇐p⊙"⇒n1≪‹_14g_new›⇒q0⇒i
  {⇐i⇐n≡⋄⇐p⇐i3≪﹢8﹢⊙255$"4>‹_14g_hd›⇐q⇐i4≪﹢8﹢⊛15$‹_14g_hd›⇐q⇐i4≪﹢16﹢⊛⇐i1﹢⇒i}⇐q32767 48≪|;
@@ -3110,7 +3112,7 @@
 ⊡‹unutf8›‹_2d_chk›⇒p⇐p⊙⇒n⇐n‹vecn›0⇒i{⇐i⇐n≡⋄⇐p⇐i3≪﹢8﹢⊙‹_14g_enc›⇐i1﹢⇒i};
 #
 # --- numbers as text ---
-:‹_14g_abs›"0≺[⋄0\\﹣];
+:‹_14g_abs›"0≺[⋄~1﹢];
 # ‹fixed›: long division of |n| by |d| (unsigned, so 2^63 works): the integer
 # part q, then k digits into the block g; round up when 2r >= |d|, carrying
 # through the digits into q; `-` when the signs differ and the result is not 0.
@@ -3144,13 +3146,13 @@
  ⇐x T[“format: %“U0⍳⇐c⍆⧺“ needs a number“U⧺‹throw›]
  0⇒s⇐c100≡[⋄⇐x0≺[⇐f4$[⋄43⇒s]⇐f8$[⋄⇐s[32⇒s]]⋄45⇒s0⇐x﹣⇒x]]
  ⇐x⇐b0‹_1d_utoa›‹_2d_chk›⇒t
- ⇐c88≡[⋄0⇒k{⇐k⇐t⊙≡⋄⇐t⇐k3≪﹢8﹢"⊙"96»32$﹣\\⊛⇐k1﹢⇒k}]
+ ⇐c88≡[⋄0⇒k{⇐k⇐t⊙≡⋄⇐t⇐k3≪﹢8﹢⇒q⇐q⊙"96»32$﹣⇐q⊛⇐k1﹢⇒k}]
  0⇒z⇐e0≺[⇐e⇐t⊙﹣"0≺[⋄_0]⇒z]
  ⇐s⇐z⇐t⇐w⇐f‹_14g_emit›⇐t⌫⇐j;
 ⊡‹format›"T[⋄“format: args must be a list“U‹throw›]‹_2d_chk›⇒a"T[⋄“format: template must be a list“U‹throw›]‹_2d_chk›⇒p
  ⇐p⊙⇒n⇐a⊙⇒m0⇒j0⇒i⇐n8﹢‹vecn›
  {⇐i⇐n≡⋄⇐p⇐i3≪﹢8﹢⊙⇐i1﹢⇒i"37≡[⍆⋄_
-   0⇒f{⇐p⇐n⇐i‹_14g_ch›"45≡1$&48≡2$|&43≡4$|\\32≡8$|"⇒b0≡⋄⇐f⇐b|⇒f⇐i1﹢⇒i}
+   0⇒f{⇐p⇐n⇐i‹_14g_ch›"⇒c45≡1$⇐c48≡2$|⇐c43≡4$|⇐c32≡8$|"⇒b0≡⋄⇐f⇐b|⇒f⇐i1﹢⇒i}
    0⇒w{⇐p⇐n⇐i‹_14g_ch›‹_14g_dg›"⇒d0≺⋄⇐w10﹡⇐d﹢⇒w⇐i1﹢⇒i}
    0 1﹣⇒e⇐p⇐n⇐i‹_14g_ch›46≡[⋄⇐i1﹢⇒i0⇒e{⇐p⇐n⇐i‹_14g_ch›‹_14g_dg›"⇒d0≺⋄⇐e10﹡⇐d﹢⇒e⇐i1﹢⇒i}]
    ⇐a⇐m⇐j⇐p⇐n⇐i‹_14g_ch›⇐f⇐w⇐e‹_14g_cv›⇒j⇐i1﹢⇒i]}
