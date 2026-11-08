@@ -54,7 +54,7 @@ so waves never contend:
 | `0xB0`–`0xBF` | Future compiler-logic ops (prefixes/tokens handled in golf2's `t`, like `ref`/`str`/`→`/`←`) — since M-SELF written in `self/golf2.golfj`, and mirrored into `mkblob2.py`'s v1-GOLF seed |
 | `0xC0`–`0xCF` | High-byte prelude words (wave 2) — words that need a byte of their own instead of a scarce ASCII letter |
 | `0xD0`–`0xD7` | High-byte prelude words, continued (W11-0 opened it: `0xC0`–`0xCF` is full) — still only for a word that earns a byte of its own; the default for a new prelude word is a long name |
-| `0xD8`–`0xEF` | Reserved: chain syntax / M4c (chain syntax itself shipped at `0xB0`) |
+| `0xD8`–`0xEF` | High-byte prelude words, continued again (W12-0 released the old "chain syntax / M4c" reservation: chain syntax shipped at `0xB0`). Same rule as `0xD0`–`0xD7`: only for a word that earns a byte |
 | `0xF0`–`0xFF` | User extension space — never allocated by the language      |
 
 Gaps between the ranges (`0x98`–`0x9F`, `0xA8`–`0xAF`) are deliberate headroom
@@ -208,6 +208,33 @@ LIB row, the generated REFERENCE row and the `⊸` definition (prelude section
 arena, on `∘`'s bump pointer and bound.
 
 ---
+
+### 1.4 W12 assignments — reserved in W12-0, do not re-pick
+
+Allocated up front for the W12 waves ([`PLAN_W12.md`](PLAN_W12.md)). As in
+W11, none of these is in `mkblob2.ATOMS` / `codepage.COMPILER` /
+`codepage.LIB` yet: the task named adds its row there, and flips it to
+`shipped` here, in the same commit as its implementation. W12-0 checked the
+thirteen mnemonics below against the 75 shipped ones and each other: no prefix
+pair (`\sortby` was renamed `\ksort`, because `\sort` is a prefix of it), and
+no glyph is in use.
+
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0xB8` | `\else` | `⋄` | compiler op: the separator in `c[a⋄b]` (if-else) and `{?c⋄body}` (top-tested while). This is W11's unused spare | A7 | reserved |
+| `0xB9` | `\vinc` | `⇡` | compiler op, prefix: `⇡x` increments variable `x` (`←x⊕→x`); inside a `⊡` word a declared local wins | Z2 | reserved |
+| `0xBA` | `\vdec` | `⇣` | compiler op, prefix: `⇣x` decrements variable `x` | Z2 | reserved |
+| `0xD1` | `\scan` | `⍀` | prelude: `l ′f ⍀ -> l'` inclusive scan, the first element is the seed | A2 | reserved |
+| `0xD2` | `\reduce` | `⍁` | prelude: `l ′f ⍁ -> x` fold with no seed; empty list throws `empty reduce` | A2 | reserved |
+| `0xD3` | `\eachi` | `⍸` | prelude: `l ′f ⍸ -> l'` map, `f` gets `x i` | A3 | reserved |
+| `0xD4` | `\ksort` | `⍒` | prelude: `l ′k ⍒ -> l'` stable sort by key `k x`, ascending | A4 | reserved |
+| `0xD5` | `\put1` | `⍈` | prelude: `l i v ⍈ -> l` store into a list in place (bounds- and free-checked) | Z4 | reserved |
+| `0xD6` | `\push` | `⍆` | prelude: `v x ⍆ -> v` vector push (capacity doubles) | Z4 | reserved |
+| `0xD7` | `\pop` | `⍅` | prelude: `v ⍅ -> v x` vector pop (empty throws `pop from empty`) | Z4 | reserved |
+| `0xD8` | `\win` | `⊟` | prelude: `l n ′f ⊟ -> l'` reduce of every length-`n` window (monotonic deque for `⌈`/`⌊`) | A5 | reserved |
+| `0xD9` | `\fix` | `⍣` | prelude: `x ′f ⍣ -> y` apply `f` until the result `≣` the previous one | A6 | reserved |
+| `0xDA` | `\next` | `⍞` | prelude: `s ⍞ -> s x 0 \| s 1` pull the next value of a stream | A8 | reserved |
+| `0xDB`–`0xE3` | — | — | one-byte aliases of the hottest long names, picked from measured usage | Z1 (W12-6) | reserved |
 
 ## 2. Prelude word letters
 
@@ -431,7 +458,7 @@ both forms are given here and the decimal is the one you type.
 | `0x4F00C0`–`0x4F00F8` | 5177536 · 5177544 · … · 5177592 | **free-list heads** for `A`/`⌫` (W9-3C, M-MEM2), **stride 8**, one per size class: class `k` = 0…6 at `5177536+8k` holds blocks of exactly `4<<k` cells (4, 8, … 256); class 7 at 5177592 holds every larger block (`max(c, 512)` cells, popped only when the head fits). Each head is a raw payload address or 0 (BSS) = empty; a free block's payload cell 0 links to the next. See the note below on the block header | shipped |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
 | `0x4F0900`–`0x4F0CFF` | 5179648–5180671 | **W11 runtime cells** (W11-0): the old spill stack's first 1 KB, re-allocated as sixteen 64-byte slots, one per W11 task, eight 8-byte cells each (stride 8, read with `⊙`, written with `⊛`). Slot of task `t` = `0x4F0900 + 64*t`, t = 0…15 for 1A 1B 1C 1D 2A 2B 2C 2D 3A 3B 3C 4A 4B 4C 4D 4E. Named cells are listed in the W11 table below; every other cell of a task's slot is that task's **spare** and nobody else's | reserved (W11) |
-| `0x4F0D00`–`0x4F0FFF` | 5180672–5181439 | **RETIRED** — the rest of the old scratch spill stack (28 frames of 64 bytes); W10-C moved it to `0x440000`. Nothing reads it any more | free |
+| `0x4F0D00`–`0x4F0FFF` | 5180672–5181439 | **W12 runtime cells** (W12-0): the rest of the old scratch spill stack (W10-C moved it to `0x440000`), re-allocated as twelve 64-byte slots, one per W12 task, eight 8-byte cells each. Slot of task `t` = `0x4F0D00 + 64*t`, t = 0…11 for P1 P2 P3 O1 Z4 A2 A3 A4 A5 A6 A8 O2. See §3.2 | reserved (W12) |
 | `0x4F1000`–`0x4F1FFF` | 5181440–5185535 | **return-stack guard page** — `PROT_NONE`, set by `STARTUP2`'s `mprotect` (`mkblob2.GUARD_LO`); the return stack bottoms out at `0x4F2000` (`mkblob2.RSTACK_FLOOR`), so overflow faults here instead of corrupting the bank below. Not in `seed` (built by v1c with v1's startup) (W9-2C) | shipped |
 | `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
 | the `brk` | — | **the list heap**, above the whole load segment, grown by `⌸`. Not a fixed address: the kernel ASLR-shifts the initial break, which is why it lives in the two cells above | shipped |
@@ -537,6 +564,28 @@ under `2^31`, so the seed can compile it). `⌫` writes it into a freed list's
 free-list link moved to payload cell 1 (every block has at least 4 cells), `A`'s
 pop reads it there and writes `0` over the poison, and the list words check
 cell 0 on entry through `‹_2d_chk›` (`I` clamps a negative length instead).
+
+---
+
+### 3.2 W12 runtime cells (reserved in W12-0)
+
+Same rules as §3.1: a task may use the cells of **its own** slot freely;
+anything beyond it goes back to the integrator. Decimals are what you type.
+
+| Task | Slot (hex) | Slot base (dec) | Cells (dec) |
+|------|------------|-----------------|-------------|
+| P1 input | `0x4F0D00`–`0x4F0D3F` | 5180672 | 5180672 … 5180728 |
+| P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | 5180736 … 5180792 |
+| P3 list loops | `0x4F0D80`–`0x4F0DBF` | 5180800 | 5180800 … 5180856 |
+| O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 |
+| Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180984 |
+| A2 scan / reduce | `0x4F0E40`–`0x4F0E7F` | 5180992 | 5180992 … 5181048 |
+| A3 each-indexed | `0x4F0E80`–`0x4F0EBF` | 5181056 | 5181056 … 5181112 |
+| A4 sort-by / grade | `0x4F0EC0`–`0x4F0EFF` | 5181120 | 5181120 … 5181176 |
+| A5 window | `0x4F0F00`–`0x4F0F3F` | 5181184 | 5181184 … 5181240 |
+| A6 fixpoint | `0x4F0F40`–`0x4F0F7F` | 5181248 | 5181248 … 5181304 |
+| A8 streams | `0x4F0F80`–`0x4F0FBF` | 5181312 | 5181312 … 5181368 |
+| O2 freeable thunks | `0x4F0FC0`–`0x4F0FFF` | 5181376 | 5181376 … 5181432 |
 
 ---
 

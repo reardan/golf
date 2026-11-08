@@ -1,0 +1,9 @@
+# name | elements | program  (the program runs over `elements` items; ns/element = wall / elements)
+loop     | 100000000 | 100000000{⊖"0≡}_
+iota     | 10000000  | 10000000⍳_
+sum      | 10000000  | 10000000⍳∑_
+map      | 10000000  | :f;10000000⍳′f€_
+fold     | 10000000  | 10000000⍳0′+⇤_
+filter   | 10000000  | :f2∣;10000000⍳′f⌿_
+vadd     | 10000000  | 10000000⍳"+_
+dictput  | 1000000   | :f→x←d←x←x‹put›_0;‹dict›→d 1000000⍳′f€_

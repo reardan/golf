@@ -732,6 +732,41 @@ appearance. Names that start with `‹_2b` are these words' helpers. With them
 (and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`), the prelude has 73 long
 names, which leaves 951 for a program.
 
+### Threading state through `€ ⇤ ⌿ ⊞`
+
+A higher-order list word calls its function with **the caller's stack
+underneath** the element (W12-0 made this a contract). The list words keep
+their own loop state in the scratch cells and the spill stack, never on the
+data stack. So the function may read the values below its element and leave
+new ones there, and whatever it leaves is still there when the word returns.
+That turns `€` into a map with an accumulator: a running sum, a running max,
+an index counter.
+
+```
+:s+";0 5⍳1+′s€⍕Ṅ                 ->  1 3 6 10 15 15
+:a⌈";0“31415“⊃48-′a€⍕_           ->  3 3 4 4 5
+:f&+\\⊕\\;0 4⍳10*′f€⍕_            ->  0 11 22 33
+:p\\⊕\\3∣;0 9⍳′p⌿⍕Ṅ               ->  0 3 6 9
+:g+;0 3⍳10′g⇤ṄṄ                  ->  130
+:z+\\⊕\\;0 3⍳3⍳10*′z⊞⍕Ṅ           ->  0 11 22 3
+```
+
+- **The running sum.** `s` is `+"`. With the accumulator `a` under the
+  element `x`, `+` leaves `a+x`, and `"` keeps one copy as the result and the
+  other below as the next accumulator. The `Ṅ` prints the final total, left
+  under the list.
+- **The counter.** `f` gets `c x` and leaves `c+1` below and `x+c` as the
+  result.
+- **The other words.** `⌿`'s predicate counts every element it sees (9).
+  `⇤`'s step finds the `0` the caller left, under the accumulator: `13` is the
+  fold and `0` is still there. `⊞` threads the same way, with `c a b`.
+
+The function must consume exactly its own arguments (the element, or `⇤`'s
+`acc x`, or `⊞`'s `a b`) and push exactly one result on top. Anything it
+leaves or takes below that is the caller's business. Nesting works: a
+function that runs `€` itself sees its own caller's stack under its own
+element.
+
 ### Closures
 
 `⊸` (bind, W11-2C) makes a closure **by value**. `x ′f⊸` returns a new

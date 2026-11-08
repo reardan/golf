@@ -320,7 +320,7 @@ M7 (P5) follows as its own round.
 | `0xD1` | `⍀` | `\scan` | prelude: inclusive scan | A2 |
 | `0xD2` | `⍁` | `\reduce` | prelude: seedless fold | A2 |
 | `0xD3` | `⍸` | `\eachi` | prelude: map with index | A3 |
-| `0xD4` | `⍒` | `\sortby` | prelude: stable sort by key | A4 |
+| `0xD4` | `⍒` | `\ksort` | prelude: stable sort by key | A4 |
 | `0xD5` | `⍈` | `\put1` | prelude: store into a list | Z4 |
 | `0xD6` | `⍆` | `\push` | prelude: vector push | Z4 |
 | `0xD7` | `⍅` | `\pop` | prelude: vector pop | Z4 |

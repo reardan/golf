@@ -3042,6 +3042,21 @@ sed 's/←l∑ 33/←l∑ 34/' "$w114x/main_test.golfj" > "$w114x/bad_test.golfj
 [ "$(printf '%s\n' '⊜‹point›‹x›‹y›;' '3 4‹point›' '"‹point-y›' | (cd "$w114x" && "$EXP/tools/golfi" 2>&1) | tail -3)" = "$(printf '<0>\n<1> [3 4]\n<2> [3 4] 4')" ] \
   && ok "golfi keeps a ⊜ record across lines (constructor and accessor in later entries)" || no "golfi records"
 
+# === W12-0 ===
+echo "W12-0: € ⇤ ⌿ ⊞ call their function with the caller's stack underneath (the A1 contract)"
+w120bad=""; w120n=0
+while IFS= read -r w120l; do
+  w120p=${w120l%%  ->*}; w120p=${w120p%"${w120p##*[! ]}"}; w120w=${w120l##*->  }
+  w120n=$((w120n+1))
+  [ "$(printf '%s' "$w120p" | gc | sed 's/ *$//')" = "$w120w" ] || w120bad="$w120bad [$w120p]"
+  [ "$(printf '%s' "$w120p" | gref | sed 's/ *$//')" = "$w120w" ] || w120bad="$w120bad oracle[$w120p]"
+done < <(sed -n '/^### Threading state through/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w120bad" ] && [ "$w120n" -ge 6 ] \
+  && ok "REFERENCE.md's threading examples (running sum/max, counter, ⌿ ⇤ ⊞) print what they say, golf2 and oracle" \
+  || no "REFERENCE threading examples:$w120bad"
+w120reg=$(sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -cE '\| (reserved|shipped) \|$')
+[ "$w120reg" -ge 13 ] && ok "REGISTRY.md §1.4 reserves the W12 bytes ($w120reg rows)" || no "W12 byte reservations: $w120reg"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
