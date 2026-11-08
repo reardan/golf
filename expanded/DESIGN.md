@@ -621,8 +621,23 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 - **`(` and the input words are two readers.** `‹readall›`, `‹readline›`,
   `‹getc›` and `‹ints›` read through the prelude's 8 KB buffer; `(` is a raw
   one-byte `read` that bypasses it, so mixing the two loses or reorders bytes.
-  A user program also still writes one byte per `write` (`)`); only the tools'
-  `lib/tio.golfj` buffers output.
+- **Output is buffered, and three writers stay outside the buffer (W11-1C).**
+  `Ṅ ⍕ ␤ 🗲 ⊐` append to an 8 KB buffer at `0x430000` (REGISTRY §3), drained
+  by `‹flush›`. Every exit path that runs code drains it first: the end of the
+  program, `.`, `‹throw›`, X's spill-stack error, the `/ % ÷ ∣` divide-by-zero
+  exit; so do `‹getc›`'s refills (prompts appear before a read). The templates
+  do it through one BSS hook cell, `0x4F0990`, which only the prelude fills
+  (`tools/mkblob2._FLUSH_CALL`), so a bare program and the compiler itself call
+  nothing. The raw `)` stays one `write` per byte, but **flushes the buffer
+  first**, so `)` mixed with the printers keeps program order (decided in
+  W11-1C instead of documenting a reordering: it costs 15 bytes per `)` site
+  and a load+test per byte, against a whole class of surprises); `(` likewise
+  flushes before it reads. What still reorders: a raw `⎈` write (call
+  `‹flush›` first), `lib/tio.golfj`'s own separate buffer (`f`/`g`) against the
+  printers (call `‹flush›` before `f`), and output pending when the process
+  dies of a signal (the return-stack guard page's SIGSEGV, a kill) is lost.
+  The buffer is 8 KB because that is what REGISTRY allocated: `1000000⍳⍕`
+  (6,888,890 bytes) takes ceil(6888890/8192) = 841 writes, not 6.9 million.
 
 For the limits that only show up when GOLF is held against another language —
 what Python and Jelly have that this does not, which of it is refused rather than

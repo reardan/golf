@@ -55,8 +55,29 @@ import v1       # the frozen v1 substrate: templates, ELF header, blob helpers
 # per use, and most programs use ÷/∣ once or never.  The data stack is rsp, so
 # push/pop imm8 are the short way to load the syscall registers; nothing on it
 # matters any more once we are on the way out.
+#
+# W11-1C: the flush hook.  The prelude's printers (Ṅ ⍕ ␤ 🗲 ⊐) append to an 8 KB
+# buffer (0x430000, REGISTRY.md §3) instead of writing one byte per write(2).
+# What is still pending must reach its fd before the process exits and before
+# anything touches the fds raw, so every template that exits or does raw I/O —
+# `.` `)` `(`, the end-of-program exit (AUTOEXIT2) and the divide-by-zero exit
+# below — first calls through ONE hook cell: the 1C runtime cell 0x4F0990
+# (5179792), which the prelude's init fills with the address of `‹flush›`.
+# Like the M-VEC hooks it is BSS, so a program without the prelude (the
+# compiler itself among them) sees 0 and runs what it ran before plus a load, a
+# test and a not-taken jump.  Absolute addressing, no rip: the sequence is
+# copied inline into templates, ′-thunks and chain links.  rax is the only
+# register it touches (the callee is a GOLF word: data stack rsp and return
+# stack rbp are preserved), and every user reloads rax afterwards.
+FLUSH_HOOK = 0x4F0990
+_FLUSH_CALL = ([0x48, 0x8B, 0x04, 0x25] + list(FLUSH_HOOK.to_bytes(4, "little"))
+               + [0x48, 0x85, 0xC0]              # mov rax,[hook]; test rax,rax
+               + [0x74, 0x02, 0xFF, 0xD0])       # jz .no; call rax; .no:
+assert len(_FLUSH_CALL) == 15
+
 DIV0_MSG = b"GOLF: divide by zero\n"
-_DIV0 = ([0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+19]
+_DIV0 = (_FLUSH_CALL                              # W11-1C: prior output first
+         + [0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+19]
          + [0x6A, 0x02, 0x5F]                     # push 2;  pop rdi   fd 2
          + [0x6A, len(DIV0_MSG), 0x5A]            # push n;  pop rdx   length
          + [0x6A, 0x01, 0x58]                     # push 1;  pop rax   write
@@ -65,7 +86,7 @@ _DIV0 = ([0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+1
          + [0x6A, 0x3C, 0x58]                     # push 60; pop rax   exit
          + [0x0F, 0x05]                           # syscall
          + list(DIV0_MSG))                        # (19 bytes of code above)
-assert len(_DIV0) == 7 + 19 + len(DIV0_MSG)
+assert len(_DIV0) == 15 + 7 + 19 + len(DIV0_MSG) < 128   # jnz rel8 skips it
 
 # pop rcx (b); pop rax (a); b == 0 -> _DIV0.  The common head of all four
 # checked division templates (÷ ∣ and, since W10-B, v1's / %).
@@ -324,6 +345,14 @@ def _udivchk(scalar):
     assert scalar[:2] == [0x59, 0x58] and scalar[2:7] == [0x31, 0xD2, 0x48, 0xF7, 0xF1]
     return _DIV0_GUARD + scalar[2:]              # .ok: xor edx,edx; div rcx; push
 OVERRIDES.update({b: _udivchk(v1.TEMPLATES[chr(b)]) for b in map(ord, "/%")})
+# W11-1C: v1's `.` (exit), `)` (write one byte) and `(` (read one byte) call the
+# flush hook first (_FLUSH_CALL, above), so buffered printer output is never
+# lost at an explicit exit and never reordered against a raw `)` byte or behind
+# a `(` read.  `)` and `(` themselves stay raw and unbuffered — one write(2) or
+# read(2) per byte, as in v1.  The end-of-program exit (blob record 5) gets the
+# same prefix as AUTOEXIT2.
+OVERRIDES.update({b: _FLUSH_CALL + list(v1.TEMPLATES[chr(b)]) for b in map(ord, ".)(")})
+AUTOEXIT2 = bytes(_FLUSH_CALL) + v1.AUTOEXIT
 
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
@@ -512,7 +541,7 @@ def build_blob2():
     b += v1.rec(2, v1.COND)
     b += v1.rec(3, STARTUP2)                     # M-TOOL stash + W9-2C guard + M-MEM rbp
     b += v1.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
-    b += v1.rec(5, v1.AUTOEXIT)
+    b += v1.rec(5, AUTOEXIT2)                    # W11-1C: flush hook, then exit(0)
     used = set()
     def emit(key, tpl):
         """One record per op byte — the M-VEC override REPLACES the scalar one."""

@@ -384,19 +384,20 @@ echo "Big literals (M4): a constant wider than 32 bits"
   && ok "no prelude: the high dword of 2^32 is 1" || no "bare big literal"
 # The ENCODING itself, not just the value — a literal that fitted before must
 # still compile to exactly the five bytes it always did, or every compiled
-# program on the ladder would shift.  `)` follows each literal (6a 01 58 ...).
+# program on the ladder would shift.  `)` follows each literal (since W11-1C its
+# template opens with the flush-hook load, 48 8b 04 25 ...; it was 6a 01 58).
 w6alit(){ printf '%s' "$1" | "$TMP/golf2" 2>/dev/null | od -An -tx1 -v | tr -d ' \n'; }
 case "$(w6alit '5)')" in
-  *68050000006a01*) ok "5 is still push imm32 (68 05 00 00 00)";;
+  *6805000000488b0425*) ok "5 is still push imm32 (68 05 00 00 00)";;
   *)                no "small literal encoding changed";; esac
 case "$(w6alit '2147483647)')" in
-  *68ffffff7f6a01*) ok "2^31-1 is still push imm32 (68 ff ff ff 7f)";;
+  *68ffffff7f488b0425*) ok "2^31-1 is still push imm32 (68 ff ff ff 7f)";;
   *)                no "2^31-1 encoding";; esac
 case "$(w6alit '2147483648)')" in
-  *48b80000008000000000506a01*) ok "2^31 switches to mov rax,imm64; push rax";;
+  *48b8000000800000000050488b0425*) ok "2^31 switches to mov rax,imm64; push rax";;
   *)                            no "2^31 encoding";; esac
 case "$(w6alit '4294967296)')" in
-  *48b80000000001000000506a01*) ok "2^32 as mov rax,imm64; push rax";;
+  *48b8000000000100000050488b0425*) ok "2^32 as mov rax,imm64; push rax";;
   *)                            no "2^32 encoding";; esac
 # Differential: the encodings are the whole point here, so boot/golfref.py has to
 # agree byte for byte, not merely behave the same.
@@ -789,8 +790,10 @@ tiomsg=$("$TMP/tpd" "$TMP/no-such-file-here" 2>&1 >/dev/null); tiost=$?
 [ "$tiost" = 1 ] && [ "$tiomsg" = "tio: cannot open file for reading" ] \
   && ok "a die: open of a missing file -> fd 2 + exit 1" || no "die on open failure"
 # X/Y discipline: d and e take a spill frame, so they nest inside a prelude
-# looping word the way every scratch-using word must.
-[ "$(printf '%s' ':x 65\radd"g;5R′xM S N E f' | tio)" = "$(printf '335\nABCDE')" ] \
+# looping word the way every scratch-using word must.  (W11-1C: N E buffer in
+# the prelude's output buffer, apart from tio's, so ‹flush› puts the sum out
+# ahead of what f writes.)
+[ "$(printf '%s' ':x 65\radd"g;5R′xM S N E‹flush› f' | tio)" = "$(printf '335\nABCDE')" ] \
   && ok "g inside a map (scratch survives the nesting)" || no "emit in map"
 [ "$(printf '%s' ':y“ab“→s 1 ←s4\radd ←s@ d 7;3R′yM S N E' | tio)" = "$(printf 'ababab21')" ] \
   && ok "d inside a map (X/Y frame nests)" || no "write-all in map"
@@ -1513,6 +1516,9 @@ fi
 # errors through ‹throw›): such a call outside a definition is cut as well,
 # which leaves those failure paths without their exit — harmless, as both
 # compilers get the same cut prelude and nothing here takes a failure path.
+# Since W11-1C the printers N E O J Q emit through ‹_1c_put› (the output
+# buffer): that call is cut to a raw `)` instead, so the cut prelude still
+# prints, unbuffered, exactly what it used to.
 python3 - lib/prelude.golfj > "$TMP/pre-m1.gb" <<'PY'
 import sys; sys.path.insert(0, "tools"); import mkblob2, codepage
 b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
@@ -1521,7 +1527,9 @@ while i < len(b):
     c = b[i]
     if c == 0x3A and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True
     if c == mkblob2.LNAME_BYTE and not skip:
-        i = b.index(mkblob2.RNAME_BYTE, i) + 1; continue
+        j = b.index(mkblob2.RNAME_BYTE, i) + 1
+        if b[i+1:j-1] == b"_1c_put": out += b")"   # W11-1C: the raw byte write
+        i = j; continue
     if c == 0x27: n = 2
     elif c == mkblob2.STR_BYTE: n = b.index(mkblob2.STR_BYTE, i + 1) + 1 - i
     else: n = 1
@@ -1955,6 +1963,54 @@ w110(){ printf '%s' "$1" | gc > "$TMP/w110.out" 2> "$TMP/w110.err"; echo "rc=$? 
 # === W11-1B ===
 
 # === W11-1C ===
+echo "W11-1C: buffered output — Ṅ ⍕ ␤ 🗲 ⊐ through an 8 KB buffer, ‹flush›, flush at every exit"
+# Byte-identical output for the big case, then the write count (strace when it
+# is installed; the counts are exact: ceil(bytes / 8192) writes, and none for a
+# program that prints nothing).
+printf '%s' '1000000⍳⍕' | gc > "$TMP/w111c.out"; cp "$TMP/p" "$TMP/w111c.big"
+python3 -c "import sys; sys.stdout.write(' '.join(map(str, range(10**6))) + ' ')" > "$TMP/w111c.exp"
+cmp -s "$TMP/w111c.out" "$TMP/w111c.exp" \
+  && ok "1000000⍳⍕ prints the same 6,888,890 bytes" || no "1000000⍳⍕ output"
+printf '%s' ':a_65; 20000⍳′a€⊐' | gc > "$TMP/w111c.20k"
+[ "$(wc -c < "$TMP/w111c.20k")" = 20000 ] && [ "$(tr -d A < "$TMP/w111c.20k" | wc -c)" = 0 ] \
+  && ok "⊐ of 20000 bytes crosses the 8192-byte buffer twice, nothing lost" || no "buffer wrap"
+cp "$TMP/p" "$TMP/w111c.wrap"
+if command -v strace >/dev/null 2>&1; then
+  w111cw(){ strace -f -e trace=write -o "$TMP/w111c.st" "$@" > /dev/null 2>&1; grep -c '^[0-9]* *write(' "$TMP/w111c.st"; }
+  printf '%s' '1 2+_' | gc > /dev/null; cp "$TMP/p" "$TMP/w111c.none"
+  [ "$(w111cw "$TMP/w111c.big")" = 841 ] && [ "$(w111cw "$TMP/w111c.wrap")" = 3 ] \
+    && [ "$(w111cw "$TMP/w111c.none")" = 0 ] \
+    && ok "write(2) calls (strace): 1000000⍳⍕ 841 (was 6,888,890), 20000 bytes 3, no output 0" \
+    || no "write counts: $(w111cw "$TMP/w111c.big") $(w111cw "$TMP/w111c.wrap") $(w111cw "$TMP/w111c.none")"
+  # ‹readline› flushes before it reads, so a prompt is out before the program blocks.
+  printf '%s' '“> “🗲‹readline›_⊐' | gc > /dev/null; cp "$TMP/p" "$TMP/w111c.rl"
+  echo hi | strace -e trace=read,write -o "$TMP/w111c.st" "$TMP/w111c.rl" > /dev/null 2>&1
+  grep -E '^(read\(0|write\(1)' "$TMP/w111c.st" | head -1 | grep -q '^write(1, "> "' \
+    && ok "‹readline› flushes a pending prompt before its first read(2)" || no "prompt before read"
+else ok "write counts: strace not installed, skipped"; ok "prompt before read: strace not installed, skipped"; fi
+# Every exit flushes: falling off the end, `.` with a status, the ÷ / % divide
+# guards, ‹throw› (index error) — and the message lands AFTER the output.
+w111c(){ printf '%s' "$1" | gc > "$TMP/w111c.o" 2>&1; echo "rc=$? $(cat "$TMP/w111c.o")"; }
+[ "$(w111c '42Ṅ␤')" = "rc=0 42" ] && [ "$(w111c '42Ṅ3.99Ṅ')" = "rc=3 42" ] \
+  && [ "$(w111c '7Ṅ␤3⍳9⊇')" = "$(printf 'rc=1 7\nGOLF: index out of range')" ] \
+  && [ "$(w111c '7Ṅ␤“boom“⊃‹throw›')" = "$(printf 'rc=1 7\nGOLF: boom')" ] \
+  && [ "$(w111c '7Ṅ␤5 0÷')" = "$(printf 'rc=1 7\nGOLF: divide by zero')" ] \
+  && [ "$(w111c '7Ṅ␤5 0%')" = "$(printf 'rc=1 7\nGOLF: divide by zero')" ] \
+  && ok "flush on exit, on ‘.’, and before ‹throw›/divide-by-zero messages (output first)" || no "exit flush: $(w111c '7Ṅ␤3⍳9⊇')"
+[ "$( { printf '%s7Ṅ␤' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | gc 2>&1)" = "$(printf '7\nGOLF: spill stack exhausted')" ] \
+  && ok "X's spill-stack error flushes too: the 7 printed before it comes first" || no "spill error flush order"
+# `)` and `(` stay raw (one write/read per byte) but flush the buffer first, so
+# mixing them with the printers keeps program order; ⎈ does not, hence ‹flush›.
+[ "$(printf '%s' '65)66Ṅ67)“d“🗲69)' | gc)" = "A66CdE" ] \
+  && ok "raw ‘)’ between buffered printers keeps program order (it flushes first)" || no "mixed ) order"
+[ "$(printf '%s' '5Ṅ1“b“4+1 1⎈_' | gc)" = "b5" ] && [ "$(printf '%s' '5Ṅ‹flush›1“b“4+1 1⎈_' | gc)" = "5b" ] \
+  && ok "raw ⎈ write overtakes the buffer unless the program calls ‹flush›" || no "‹flush› + ⎈"
+[ "$(printf '%s' '2 5179784⊛5Ṅ' | gc 2>&1 >/dev/null)" = "5" ] \
+  && ok "the buffer's fd cell (0x4F0988) redirects the printers (fd 2)" || no "buffer fd cell"
+# The flush hook is BSS, filled only by the prelude: a bare program (the compiler
+# itself) never calls it — and the oracle compiles the same exit/flush path.
+[ "$(printf '%s' '72)73)10)' | atom)" = "HI" ] && [ "$(printf '%s' '5⍳⍕␤7Ṅ' | gref)" = "$(printf '0 1 2 3 4 \n7')" ] \
+  && ok "no prelude: ‘)’ is still a raw write; golfref.py flushes at exit too" || no "bare ) / oracle flush"
 
 # === W11-1D ===
 

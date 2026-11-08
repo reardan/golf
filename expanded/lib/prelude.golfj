@@ -116,7 +116,9 @@
 # calls no X-framed word (and not I, whose failure path calls it).  It parks
 # the message in s0 and the index / staged byte in s1 / s2 — harmless only
 # because it never returns.  The message goes out one byte per write(2).
-:‹throw›16\shl16>5177440\store
+# W11-1C: it first calls ‹flush› (a leaf too), so output the program buffered
+# before the error reaches fd 1 before `GOLF:` reaches fd 2.
+:‹throw›‹flush›16\shl16>5177440\store
  “GOLF: “5177448\store 2 5177448\fetch4\radd 5177448\fetch@ 1\sys_
  0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\store 2 5177456 1 1\sys_5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
  10 5177456\store 2 5177456 1 1\sys_
@@ -128,11 +130,12 @@
 # writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like ∘'s arena check)
 # — one compare-and-branch on the hot path, and Y needs none.  This is the one
 # prelude error NOT routed through ‹throw› (W11-0): building its message with U
-# would call X again and recurse on the full stack, so it stays inline.  Data
+# would call X again and recurse on the full stack, so it stays inline (W11-1C:
+# behind a ‹flush›, a leaf, so buffered output still comes out first).  Data
 # stack only: `&` (over) re-supplies the frame base for each store, `"` (dup) for
 # each load, so neither word needs a temporary.  Every slot is a full 64-bit
 # \fetch/\store, which is the whole point: a scratch cell may now hold -1.
-:X5177392@"262144\rlt[
+:X5177392@"262144\rlt[‹flush›
  “GOLF: spill stack exhausted“5177440\store
  2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
  10 5177448\store 2 5177448 1 1\sys_
@@ -189,8 +192,10 @@
 # so `-5 N` must print -5 and not 2^64-5.  `"0\slt1\radd[…]` runs the block only
 # when n <s 0: emit '-' (45) and \neg, then fall into the unsigned recursion.
 # The recursive call sees n/10 >= 0, so the check costs one compare per digit.
-:N"0\slt1\radd[45)\neg]"10\rlt1\radd[48\radd)^]"10/N10%48\radd);
-:E10);                                              # E: newline
+# W11-1C: N E O J and Q emit through ‹_1c_put› (the 8 KB output buffer, see the
+# W11-1C section below) instead of a raw `)` write per byte.
+:N"0\slt1\radd[45‹_1c_put›\neg]"10\rlt1\radd[48\radd‹_1c_put›^]"10/N10%48\radd‹_1c_put›;
+:E10‹_1c_put›;                                      # E: newline
 :M X5177464\store16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177464\fetch\exec5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
 :F X5177464\store5177472\store16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177472\fetch5177440\fetch5177448\fetch I5177464\fetch\exec5177472\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch Y;
 # Q show(list) is defined under the W9-3B-NESTED anchor below: it is recursive
@@ -206,8 +211,8 @@
 # followed by raw bytes, and W4A left that alone — so O and U read the length
 # with the 32-bit `@` and the bytes with `?` at str+4+i.  Only U's OUTPUT is a
 # list, and it is an ordinary 8-byte-cell one.  J's input is a real list.
-:O X5177440\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]Y;
-:J X16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
+:O X5177440\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?‹_1c_put›5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]Y;
+:J X16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I‹_1c_put›5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
 # Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
 # shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved in s7, the common length
 # min(≢l1, ≢l2) in s2.
@@ -396,7 +401,7 @@
 # level of nesting.  An element prints through two guards: a list (T == 0)
 # recurses and leaves 2^48 behind, which the int guard (T == 1) then skips; an
 # int fails the first guard and is printed by the second.
-:Q X"48>3\eq1\radd5177456\store16\shl16>5177440\store0 5177448\store5177456\fetch[91)]5177440\fetch\fetch0\eq[{5177448\fetch0\eq5177456\fetch|[32)]5177440\fetch5177448\fetch I"T[1 49\shl|Q 1 48\shl]"T1\rsub[N 0]_5177456\fetch1\rsub[32)]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch[93)]Y;
+:Q X"48>3\eq1\radd5177456\store16\shl16>5177440\store0 5177448\store5177456\fetch[91‹_1c_put›]5177440\fetch\fetch0\eq[{5177448\fetch0\eq5177456\fetch|[32‹_1c_put›]5177440\fetch5177448\fetch I"T[1 49\shl|Q 1 48\shl]"T1\rsub[N 0]_5177456\fetch1\rsub[32‹_1c_put›]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch[93‹_1c_put›]Y;
 # ≣ match  a b -> -1/0 (≡'s convention): structural equality.  Shape code as in D
 # (2*T(a)+T(b)): 3 int,int is \eq; 1/2 int vs list is 0; 0 list,list compares
 # lengths, then elements pairwise by recursion, stopping at the first mismatch.
@@ -621,9 +626,10 @@
 # input.  Names starting ‹_in› are reserved for these words' helpers.
 # ‹getc›: a leaf (no scratch, no frame).  Refill when pos >= len; on a read of
 # <= 0 bytes return -1 and leave pos/len as they are, so the next call reads
-# again.  Otherwise bump pos and return the byte at S+16+pos-1.
+# again.  Otherwise bump pos and return the byte at S+16+pos-1.  W11-1C: each
+# refill calls ‹flush› first, so a prompt printed before a read is visible.
 :‹getc›5177424\fetch0\eq1\radd[1026 A"5177424\store0&\store0&8\radd\store_]
- 5177424\fetch"\fetch&8\radd\fetch\rlt[0&16\radd8192 0\sys"1\slt1\radd[__0 1\rsub^]&8\radd\store0&\store]
+ 5177424\fetch"\fetch&8\radd\fetch\rlt[‹flush›0&16\radd8192 0\sys"1\slt1\radd[__0 1\rsub^]&8\radd\store0&\store]
  "\fetch1\radd&\store"\fetch\radd15\radd?;
 # ‹_inread›  stop -> list f   bytes up to (not including) `stop` or end of
 # input.  f is 1 iff input ended with nothing read.  A growable block: s0
@@ -695,6 +701,31 @@
 # === W11-1B Files ===
 
 # === W11-1C buffered output ===
+# Ṅ ⍕ ␤ 🗲 ⊐ (N Q E O J) append their bytes to an 8 KB buffer instead of making
+# one write(2) per byte (1000000⍳⍕ went from 6.9 million writes to ~840).
+# REGISTRY §3: the buffer is 0x430000..0x431FFF (4390912), the pending-byte
+# count the cell 0x4F0980 (5179776), the fd it drains to 0x4F0988 (5179784;
+# 0 = fd 1), and 0x4F0990 (5179792) the FLUSH HOOK: the address of ‹flush›,
+# stored by ‹_1c_init› below.  Every template that exits or does raw I/O — `.`,
+# the end of the program, `)`, `(`, the divide-by-zero exit — calls through
+# that cell first when it is non-zero (tools/mkblob2._FLUSH_CALL), so nothing
+# buffered is lost at exit and a raw `)` byte or `(` read never overtakes it.
+# ‹throw›, X's spill-stack error and ‹getc›'s refill call ‹flush› themselves.
+# Not flushed: a death by signal (the return-stack guard page's SIGSEGV, a
+# kill) loses whatever is still pending, at most 8 KB.
+#   ‹flush›      ->     write out the pending bytes now
+#   ‹_1c_put›    c ->   append byte c; drain when the buffer is full
+# Both are LEAVES: no X frame, no s0..s7, only the 1C cells (5179800 holds the
+# drain offset), so ‹throw›, X and ‹getc› may call ‹flush› and N may recurse
+# through ‹_1c_put›.  ‹flush› loops on short writes; a write that fails (<= 0)
+# drops the rest of the buffer rather than spin.
+:‹flush›5179776\fetch0\eq[0 5179800\store
+ {5179784\fetch"0\eq\rsub 5179800\fetch4390912\radd 5179776\fetch5179800\fetch\rsub 1\sys
+  "0\sgt[_5179776\fetch]5179800\fetch\radd"5179800\store5179776\fetch\rlt1\radd}
+ 0 5179776\store];
+:‹_1c_put›5179776\fetch4390912\radd,5179776\fetch1\radd"5179776\store8192\rlt[‹flush›];
+:‹_1c_init›\ref‹flush›5179792\store;
+‹_1c_init›
 
 # === W11-1D Text ===
 

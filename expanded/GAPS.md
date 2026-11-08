@@ -178,6 +178,13 @@ names, so no letter was spent: `‹readall›`, `‹readline›`, `‹getc›`,
 the program's *shape*: no implicit `main`, no auto-print, and the command line
 arrives as code lists the program must parse itself (`‹args›′‹num›€`).
 
+**Closed (W11-1C): output was one `write(2)` per byte.** Python buffers
+stdout; GOLF's printers made a system call for every byte, so `1000000⍳⍕` cost
+6,888,890 writes (0.75 s). They now share an 8 KB buffer with `‹flush›`,
+drained at every exit, before every `GOLF:` message, before the input words
+read, and before a raw `)` or `(`: 841 writes (0.07 s), the same bytes
+(REFERENCE.md, "Output"; DESIGN.md, known limits).
+
 ---
 
 ## 2. Gaps to Python
