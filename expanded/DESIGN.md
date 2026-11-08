@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1278** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **4633** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **15212** bytes |
-| assertions in the run2 suite | **863** |
+| assertions in the run2 suite | **871** |
 | assertions in the selfcheck suite | **66** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -756,11 +756,16 @@ unbuilt, and three defects this list does not yet cover — see
   catches nest as deep as the 4096-frame spill stack allows (sharing it with
   the list words). A return-stack overflow is a SIGSEGV on the guard page and
   is not catchable.
-- **Only the unary arithmetic atoms check for a list (W12-O1).** `± ⊕ ⊖ ² ⊗
-  ⊘` on a list raise `GOLF: not a number` through `‹throw›`. Their templates
+- **Only the unary arithmetic atoms check for a list (W12-O1, W13-C).** `± ⊕
+  ⊖ ² ⊗ ⊘` on a list map over it, to any depth (W13-C; W12-O1 made them
+  raise `GOLF: not a number`). Their templates
   test TOS's top byte for `0x7F` and only then call the hook cell `0x4F0DC0`
   (REGISTRY §3.2, slot O1). The prelude fills that cell with `‹_12o1_nan›`,
-  which throws only for a tagged value whose address lies in the list heap.
+  which acts only on a tagged value whose address lies in the list heap: it
+  reads its own return address to see which atom called it, maps the list
+  with that atom inline, and returns past the atom's scalar body. That ties
+  the hook to `mkblob2._numchk`'s layout (the scalar body right after the
+  hook call), which run2's W13-C block checks.
   So `INT64_MAX` and the rest of `[0x7F<<56, 2^63)` stay numbers, and the
   only integers lost are those whose bits are exactly a live heap list's
   tagged address. The hot path is one `cmp byte [rsp+7]` and a not-taken

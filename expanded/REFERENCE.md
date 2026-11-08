@@ -136,27 +136,29 @@ broadcasts: `4⍳3+` is `3 4 5 6`, and `4⍳4⍳*` is `0 1 4 9`. The raw forms
 that falls inside the heap's address range is taken for a list. See
 `DESIGN.md`, Known limits.
 
-The unary arithmetic atoms `± ⊕ ⊖ ² ⊗ ⊘` do not vectorize. Given a list, they
-raise `GOLF: not a number` through `‹throw›`, so the program exits 1, or a
-`‹catch›` gets the message (W12-O1). Before W12 they quietly computed on the
-list's tagged address.
+The unary arithmetic atoms `± ⊕ ⊖ ² ⊗ ⊘` work elementwise on a list
+(W13-C). Given a list, they return a new list with the atom applied to every
+element. An element that is itself a list is mapped the same way, to any
+depth. The original list is not changed. W12-O1 made them raise
+`GOLF: not a number` on a list; before W12 they computed on the list's tagged
+address. A freed list is `GOLF: use after free`, as for the list words.
 
 ```
-5⍳⊕⍕  ->  GOLF: not a number
-:‹f›3⍳²;′‹f›‹catch›⊐  ->  not a number
-3⍳′⊕€⍕  ->  1 2 3
+5⍳⊕⍕  ->  1 2 3 4 5
+5⍳²⍕  ->  0 1 4 9 16
+3⍳′⍳€±⍕  ->  [] [0] [0 -1]
+5⍳"⊗⍕⍕  ->  0 2 4 6 8 0 1 2 3 4
 9223372036854775807⊖Ṅ  ->  9223372036854775806
 ```
 
-(The first prints on stderr and exits 1.)
-
 On integers they are unchanged. The cost is one compare and branch on the
 value's top byte, about 0.1 to 0.2 ns per op. Only a value whose top byte
-is `0x7F` reaches the prelude's check, which raises the error only for a
-tagged value whose address is in the list heap. So `INT64_MAX` and the other
-large integers still work as numbers. Without the prelude (`golfc -n`, and the
-compiler itself) the hook cell is zero, so nothing is ever called and the
-atoms compute on the bits. To map one of them over a list, write `′⊕€`.
+is `0x7F` reaches the prelude's check, which maps only a tagged value whose
+address is in the list heap. So `INT64_MAX` and the other large integers
+still work as numbers. Without the prelude (`golfc -n`, and the compiler
+itself) the hook cell is zero, so nothing is ever called and the atoms
+compute on the bits. On a list, `⊕` costs about 2.5 ns per element in one
+pass, against about 4.5 for `′⊕€` (see `bench/RESULTS.md`, W13-C).
 
 The bitwise atoms `~ $ | = > ≪ ≫` stay **raw** on purpose. They work on a
 list's bits with no check, because building and stripping the tag
@@ -261,12 +263,12 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0x7C` | `\|` | `\or` | bitwise OR |
 | `0x3D` | `=` | `\xor` | bitwise XOR |
 | `0x3E` | `>` | `\shr` | shift right (by TOS) |
-| `0x80` | `±` | `\neg` | negate TOS (a list: not a number) |
-| `0x81` | `⊕` | `\inc` | TOS + 1 (a list: not a number) |
-| `0x82` | `⊖` | `\dec` | TOS - 1 (a list: not a number) |
-| `0x83` | `²` | `\sqr` | TOS * TOS (a list: not a number) |
-| `0x84` | `⊗` | `\dbl` | TOS * 2 (a list: not a number) |
-| `0x85` | `⊘` | `\hlv` | TOS >> 1 (a list: not a number) |
+| `0x80` | `±` | `\neg` | negate TOS (a list: elementwise, any depth) |
+| `0x81` | `⊕` | `\inc` | TOS + 1 (a list: elementwise, any depth) |
+| `0x82` | `⊖` | `\dec` | TOS - 1 (a list: elementwise, any depth) |
+| `0x83` | `²` | `\sqr` | TOS * TOS (a list: elementwise, any depth) |
+| `0x84` | `⊗` | `\dbl` | TOS * 2 (a list: elementwise, any depth) |
+| `0x85` | `⊘` | `\hlv` | TOS >> 1 (a list: elementwise, any depth) |
 | `0x86` | `»` | `\gt` | a b -> (a>b unsigned ? -1 : 0) |
 | `0x87` | `≡` | `\eq` | a b -> (a==b ? -1 : 0) |
 | `0x88` | `⌈` | `\max` | a b -> max(a,b) signed |
@@ -372,6 +374,18 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xE1` | `Ḳ` | `\keys` | — | alias of ‹keys›: d -> list, the keys in insertion order |
 | `0xE2` | `Ḃ` | `\bump` | — | alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1) |
 | `0xE3` | `Ṿ` | `\vec` | — | alias of ‹vec›: -> v, a new empty vector |
+| `0xE4` | `Ṁ` | `\lmax` | — | max of list: l -> x, signed (empty: empty reduce) |
+| `0xE5` | `Ṃ` | `\lmin` | — | min of list: l -> x, signed (empty: empty reduce) |
+| `0xE6` | `⍘` | `\uncons` | — | uncons: l -> tail head (empty: empty list) |
+| `0xE7` | `⍂` | `\rscan` | — | right scan: l ′f -> l'; exactly ⌽ ′f⍀ ⌽ (f gets acc x) |
+| `0xE8` | `⍃` | `\xscan` | — | exclusive scan: l s ′f -> l'; l'[0] = s, l'[i] = f(l'[i-1], l[i-1]), ≢l' = ≢l |
+| `0xE9` | `Ċ` | `\counter` | — | counter: l -> d; element -> count, keys in first-seen order |
+| `0xEA` | `⍖` | `\dsort` | — | sort by key, descending: l ′k -> l'; stable (ties keep input order) |
+| `0xEB` | `Ṕ` | `\prevocc` | — | previous occurrence: l -> l'; l'[i] = last j < i with l[j] = l[i], else -1 |
+| `0xEC` | `⍷` | `\findfirst` | — | find first: l ′p -> i; first i where p l[i] is 0 (stops there), else -1 |
+| `0xED` | `ℑ` | `\indices` | — | indices: l -> l [0..n-1] (keeps l) |
+| `0xEE` | `Ǧ` | `\lookup` | — | alias of ‹getor›: d k x -> v, k's value or x when absent |
+| `0xEF` | `ṭ` | `\tfword` | — | alias of ‹tf›: f -> list, “true“ when f is 0, else “false“ |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -508,6 +522,92 @@ that matches, so no mnemonic may be a prefix of another.
 ```
 
 The last `->` example prints on stderr and exits 1, as `‹get›` does.
+
+### More one-byte words
+
+W13-C adds twelve one-byte prelude words, `0xE4`–`0xEF`, for the shapes that
+LeetCode-style programs keep spelling out. Stack effects have the top of
+stack on the right. The higher-order ones (`⍂ ⍃ ⍖ ⍷`) follow the threading
+contract (see "Threading state through `€ ⇤ ⌿ ⊞`"): their function sees the
+caller's stack directly under its arguments.
+
+| glyph | mnemonic | stack effect | meaning |
+|---|---|---|---|
+| `Ṁ` | `\lmax` | `l -> x` | the largest element, signed. An empty list is `GOLF: empty reduce` |
+| `Ṃ` | `\lmin` | `l -> x` | the smallest element, signed. An empty list is `GOLF: empty reduce` |
+| `⍘` | `\uncons` | `l -> tail head` | `1↓` and `0⊇` in one word. An empty list is `GOLF: empty list` |
+| `⍂` | `\rscan` | `l ′f -> l'` | right inclusive scan: exactly `⌽`, then `′f⍀`, then `⌽`. `f` gets `acc x` |
+| `⍃` | `\xscan` | `l s ′f -> l'` | exclusive scan: `l'[0] = s`, `l'[i] = f(l'[i-1], l[i-1])`, and `≢l' = ≢l` |
+| `Ċ` | `\counter` | `l -> d` | a dict from each element to its count, keys in first-seen order |
+| `⍖` | `\dsort` | `l ′k -> l'` | stable sort by key, descending: equal keys keep their input order |
+| `Ṕ` | `\prevocc` | `l -> l'` | `l'[i]` is the largest `j < i` with `l[j] = l[i]`, or `-1` |
+| `⍷` | `\findfirst` | `l ′p -> i` | the first `i` where `p l[i]` is `0` (zero is true, as for `⌿`), or `-1`. Stops at the first hit |
+| `ℑ` | `\indices` | `l -> l [0..n-1]` | the indices of `l`, keeping `l` under them |
+| `Ǧ` | `\lookup` | `d k x -> v` | alias of `‹getor›`: `k`'s value, or `x` when `k` is absent |
+| `ṭ` | `\tfword` | `f -> list` | alias of `‹tf›`: “true“ when `f` is `0`, else “false“ |
+
+Notes:
+
+- `Ṁ Ṃ` are one tight loop, about 30% faster than `′⌈⍁` / `′⌊⍁`, and exact on
+  every integer, `INT64_MAX` and `INT64_MIN` included. They compare raw
+  cells, so on a list of lists they compare addresses.
+- `⍃` calls `f` `n-1` times: never on the last element, and not at all on a
+  list of one. An empty list gives an empty list (the seed is dropped).
+- `⍖` is `⍒` with each key bitwise-negated before the sort, so it never
+  overflows and stays stable. `⍒` with a negating key `′(k ±)` also sorts
+  descending, but `±` overflows on `INT64_MIN`.
+- `Ṕ` makes one dict probe per element (O(n) expected). Keys match as in a
+  dict: an int by value, a list by `≣`.
+- `⍷` is not `⌿`'s index: it calls `p` only until the first hit.
+- `Ċ` is `‹dict›′‹bump›⇤`, so `Ḳ` and `‹vals›` read it back.
+
+```
+5⍳3-²"ṀṄ" "ṂṄ                            ->  90
+5⍳⍘Ṅ" "⍕                                 ->  01 2 3 4
+5⍳′+⍂⍕                                   ->  10 10 9 7 4
+5⍳⊕ 1′*⍃⍕                                ->  1 1 2 6 24
+5⍳"Ċ‹vals›⍕⍕                             ->  1 1 1 1 1 0 1 2 3 4
+6⍳′⊘⍖⍕                                   ->  4 5 2 3 0 1
+6⍳′⊘€Ṕ⍕                                  ->  -1 0 -1 2 -1 4
+:‹p›3-;6⍳′‹p›⍷Ṅ                          ->  3
+:‹p›9-;6⍳′‹p›⍷Ṅ                          ->  -1
+3⍳ℑ⍕⍕                                    ->  0 1 2 0 1 2
+Ḋ"1 10Ṗ"1 99ǦṄ"2 99ǦṄ                    ->  1099
+0ṭ⊐1ṭ⊐                                   ->  truefalse
+0⍳Ṁ                                      ->  GOLF: empty reduce
+```
+
+The last one prints on stderr and exits 1.
+
+### Digraph page
+
+`ʘ` (`0xBD`, a compiler op) followed by any byte `B` compiles as a call of
+the long name `‹_dgHH›`, where `HH` is `B` in two uppercase hex digits. A
+library gives a word a two-byte spelling by defining `:‹_dgHH›‹name›;`. The
+second byte's glyph is its ordinary glyph, so `ʘC` is `ʘ` then the letter
+`C`. The ASCII second bytes are split between libraries: `A`–`Z` (W13-C) are
+the most used prelude long names that have no byte of their own, counted
+over `examples/`, `lib/`, `gtools/`, `bench/` and this reference (ties
+alphabetical). Each is a one-call word, so it means exactly its long name.
+The long name `‹_dgHH›` works too, which is how the table below is tested.
+
+| digraph | long name | | digraph | long name |
+|---|---|---|---|---|
+| `ʘA` | `‹assert›` | | `ʘN` | `‹num›` |
+| `ʘB` | `‹startswith›` | | `ʘO` | `‹sfold›` |
+| `ʘC` | `‹catch›` | | `ʘP` | `‹pqpop›` |
+| `ʘD` | `‹del›` | | `ʘQ` | `‹pqpush›` |
+| `ʘE` | `‹expect›` | | `ʘR` | `‹readbytes›` |
+| `ʘF` | `‹flush›` | | `ʘS` | `‹sshow›` |
+| `ʘG` | `‹getc›` | | `ʘT` | `‹throw›` |
+| `ʘH` | `‹heapstats›` | | `ʘU` | `‹upto›` |
+| `ʘI` | `‹sints›` | | `ʘV` | `‹grade›` |
+| `ʘJ` | `‹args›` | | `ʘW` | `‹words›` |
+| `ʘK` | `‹stack›` | | `ʘX` | `‹sfree›` |
+| `ʘL` | `‹swin›` | | `ʘY` | `‹has›` |
+| `ʘM` | `‹smap›` | | `ʘZ` | `‹hash›` |
+
+`ʘC` saves 5 bytes over `‹catch›`, and `ʘH` 9 over `‹heapstats›`.
 
 ### Output
 

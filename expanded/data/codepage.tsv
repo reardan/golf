@@ -138,3 +138,15 @@ E0	ED	L	dput	E1B996
 E1	ED	L	keys	E1B8B2
 E2	ED	L	bump	E1B882
 E3	ED	L	vec	E1B9BE
+E4	ED	L	lmax	E1B980
+E5	ED	L	lmin	E1B982
+E6	ED	L	uncons	E28D98
+E7	ED	L	rscan	E28D82
+E8	ED	L	xscan	E28D83
+E9	ED	L	counter	C48A
+EA	ED	L	dsort	E28D96
+EB	ED	L	prevocc	E1B994
+EC	ED	L	findfirst	E28DB7
+ED	ED	L	indices	E28491
+EE	ED	L	lookup	C7A6
+EF	ED	L	tfword	E1B9AD
