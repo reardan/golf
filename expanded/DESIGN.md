@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1278** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **4455** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **14622** bytes |
-| assertions in the run2 suite | **791** |
+| assertions in the run2 suite | **808** |
 | assertions in the selfcheck suite | **63** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -278,6 +278,9 @@ the golf2 fixpoint included. In order:
   the bump pointer and dies at offset 65498. `brk`-growing the arena instead is
   not available — `brk` memory is not executable and a thunk is code — and
   nothing can be freed, since a thunk's address may have escaped anywhere.
+  (W12-O2 later took the other road: the prelude makes the brk heap
+  executable with `mprotect`, thunks become `A` blocks, and freeing one is
+  the program's explicit `⌫`. See Known limits.)
   **An undefined word is reported.** `e` emitted `call rel32` with
   `rel32 = dict[name] - (p+4)` without ever reading `dict[name]`; for a
   never-defined name that cell is BSS-zero, so the *compile* succeeded and the
@@ -800,6 +803,25 @@ unbuilt, and three defects this list does not yet cover — see
   five ops per user `⊇`. Blocks are never split or coalesced; small
   blocks round up to a power of two (≤ 2x), and the >256-cell class checks only
   its head, so a large freed block can be passed over by a bigger request.
+- **Thunks are heap blocks, and the heap is executable (W12-O2).** `∘` and
+  `⊸` take their 39/38-byte thunk from `A` (a 5-cell request, one 72-byte
+  class-1 block), so `⌫` frees one, `‹heapstats›` counts it, and the old
+  lifetime cap (1680 thunks in the fixed 64 KB arena at `0x4D0000`, then
+  `compose arena exhausted`) is gone. For that the prelude `mprotect`s the
+  whole brk heap `PROT_READ|PROT_WRITE|PROT_EXEC` at startup and again each
+  time `A` moves the break: two prelude lines, no compiler or ELF change
+  (x86-64 Linux never makes brk memory executable by itself; a separate
+  `mmap(PROT_EXEC)` arena would have needed a second free list, a second `⌫`
+  path and its own counters). **Costs:** list memory is executable too, so
+  W^X is not kept (the load segment never kept it), and a kernel or policy
+  that refuses an executable heap (SELinux `execheap`, PaX) breaks `∘`/`⊸`.
+  **Checked:** freeing a thunk twice (`double free`) and freeing a non-heap
+  address. **Not checked:** calling a freed thunk (`⍎` is a bare `call`; the
+  poison `⌫` writes over its first bytes is a privileged instruction, so it
+  dies with SIGSEGV, or, once the block is reused, runs whatever is there),
+  and freeing a thunk another thunk still calls. The old arena is unused.
+  Thunk code addresses must stay below 2^32 (each is written as a 4-byte
+  imm64 low half), which the allocator's 32-bit cells already require.
 - **The integers in `[0x7FFF<<48, 2^63)` are lists.** A list value is
   `addr | 0x7FFF<<48` (W11-1A; it was `addr | 2^48`, which sacrificed the
   everyday `[2^48, 2^49)`), so an integer whose top 16 bits are exactly `0x7FFF`
@@ -820,8 +842,8 @@ unbuilt, and three defects this list does not yet cover — see
   free BSS at `0x440000`–`0x47FFFF` (REGISTRY §3), 4096 frames = 256 KB, so
   about 4,000 levels of nested arithmetic, `⍕`, `≣` or `⍤` (2,000 of arithmetic before W12-P3). Untouched
   BSS pages cost no RAM. `X` checks the bound with one compare-and-branch and,
-  past it, writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like the
-  compose arena); `Y` needs no check.
+  past it, writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (as the
+  compose arena did before W12-O2); `Y` needs no check.
 - **`seed` and `golf2` genuinely diverge above `2^31`.** The frozen v1-GOLF seed
   emits `push imm32` for every literal; golf2's `W` word switched to
   `mov rax,imm64; push rax` at `v >> 31`. So the two compilers produce different

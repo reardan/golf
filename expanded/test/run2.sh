@@ -239,13 +239,13 @@ echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotati
 # compiled word.  d = ⊗ double, i = ⊕ increment; (d ∘ i)(5) = i(d 5) = 11.
 [ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\exec N E' | gc)" = "11" ] \
   && ok "compose (′d ∘ ′i applied to 5)" || no "compose"
-# The thunk must NOT come from the list heap (>= 0x500000, where it would be
-# indistinguishable from a list): the arena is 0x4D0000 = 5046272, an int.
-[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp N E' | gc)" = "5046272" ] \
-  && ok "a composed quotation is an int in the code arena at 0x4D0000" || no "compose arena address"
-# Two composes, second minus first (±negated because Ṅ prints unsigned).
-[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp\refi\refd\comp\rsub\neg N E' | gc)" = "39" ] \
-  && ok "composing twice bumps the arena by exactly one 39-byte thunk" || no "compose twice"
+# W12-O2: the thunk is an A block on the (RWX) list heap.  Its address is
+# UNTAGGED, so a composed quotation still classifies as an int (T = 1), never
+# as a list, and it lies inside [heap base, base+span).
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp T N E' | gc)" = "1" ] \
+  && ok "a composed quotation is an int (an untagged address)" || no "compose is an int"
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp 5177396@\rsub 5177400@\rlt1\radd N E' | gc)" = "0" ] \
+  && ok "a composed quotation lies on the list heap (W12-O2)" || no "compose on the heap"
 [ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\refd\comp\exec N E' | gc)" = "22" ] \
   && ok "compose of a composed quotation: d(i(d 5))" || no "compose of compose"
 [ "$(printf '%s' ':d\dbl;:i\inc;:c\refd\refi\comp\exec;5R\refcMQE' | gc)" = "1 3 5 7 9 " ] \
@@ -266,33 +266,29 @@ echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotati
   && ok "pipeline: 5 threaded through [′d, ′i]" || no "pipeline"
 [ "$(printf '%s' '5 1A 0&\store\pipe N E' | gc)" = "5" ] \
   && ok "pipeline over an empty quotation list is the identity" || no "empty pipeline"
-# The arena is BOUNDED, and the bound is enforced.  0x4D0000..0x4DFFFF is 65536
-# bytes = EXACTLY 1680 thunks at 39 bytes each; the 1681st would start at
-# 0x4E0017, which is inside the user variable bank at 0x4E0000 (REGISTRY.md §3).
-# Until this check existed, a program that composed in a loop overwrote its own
-# →x/←x cells with machine code and ran on to exit 0 — silent corruption of user
-# data.  Nothing can be freed (a thunk's address may have escaped anywhere), so
-# ∘ stops instead.  The canary below is a variable whose cell the overrun reaches.
+# Until W12-O2 the thunks lived in a fixed 64 KB arena at 0x4D0000 that held
+# exactly 1680 of them (the 1681st was "compose arena exhausted", exit 1, rather
+# than an overrun into the →x bank).  Now each thunk is an A block, so there is
+# no cap: 100000 live composes fit, and the canary variable is intact.
 arena(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" \
            > "$TMP/ar" 2>/dev/null; chmod +x "$TMP/ar"
          "$TMP/ar" >"$TMP/ar.out" 2>"$TMP/ar.err"; echo "$?"; }
 compose_n(){ printf ':d\\dbl;:i\\inc;1234\\setv 0{\\refd\\refi\\comp_ 1\\radd"%s\\rlt1\\radd}_ \\getv N E' "$1"; }
-[ "$(compose_n 1680 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
-  && ok "1680 composes fit the arena exactly, and the canary is intact" || no "arena 1680"
-[ "$(compose_n 1681 | arena)" = "1" ] \
-  && ok "the 1681st compose exits 1 instead of writing into the variable bank" || no "arena 1681 status"
-[ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] \
-  && ok "... and says so on fd 2, leaving fd 1 (the program's output) clean" || no "arena 1681 message"
-[ ! -s "$TMP/ar.out" ] && ok "... with nothing written to fd 1" || no "arena 1681 stdout"
-# Why the arena is not simply brk-grown, the way the list heap was at M-MEM:
-# brk memory is R+W but NOT executable, and a thunk is code.  (A bare 0xC3 is a
-# valid GOLF callee — ⍎ does `call rax` and `ret` pops that address right back —
-# so this distinguishes "cannot execute" from "bad address".)
+[ "$(compose_n 1681 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
+  && ok "1681 composes, the old cap plus one, run (W12-O2)" || no "compose 1681"
+[ "$(compose_n 100000 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
+  && ok "100000 live composes fit, and the canary is intact" || no "compose 100000"
+[ ! -s "$TMP/ar.err" ] && ok "... with nothing written to fd 2" || no "compose 100000 stderr"
+# brk memory is R+W but not executable by default.  W12-O2 mprotects the heap
+# RWX at startup and after every growth, which is what lets a thunk live there.
+# (A bare 0xC3 is a valid GOLF callee — ⍎ does `call rax` and `ret` pops that
+# address right back.)
 [ "$(printf '%s' '1\alloc\seth 195\geth, \geth?N E' | gc)" = "195" ] \
   && ok "a heap byte written through the allocator reads back" || no "heap rw"
-[ "$(printf '%s' '1\alloc\seth 195\geth, \geth\exec' | arena)" != "0" ] \
-  && ok "... but calling it dies: brk memory is not executable, so the arena cannot grow" \
-  || no "heap nx"
+[ "$(printf '%s' '1\alloc\seth 195\geth, \geth\exec 7N' | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "7" ] \
+  && ok "... and calling it returns: the heap is executable (W12-O2)" || no "heap x"
+[ "$(printf '%s' '3000000\range_ 1\alloc\seth 195\geth, \geth\exec 7N' | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "7" ] \
+  && ok "... and so is memory the heap grew into after startup" || no "heap x grown"
 tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
 [ "$("$TMP/chain" 2>/dev/null)" = "$(printf '11\n2\n11')" ] && ok "golfc examples/chain.golfj" || no "chain.golfj"
 [ "$(oracle chain)" = "$(printf '11\n2\n11')" ] \
@@ -1961,15 +1957,15 @@ grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REG
 # directly under its own marker, never below the next one.
 # === W11-0 ===
 echo "W11-0: ‹throw›, the runtime's one error exit (msg code list -> 'GOLF: msg' on fd 2, exit 1)"
-# The stub every prelude error but X's goes through (index, compose arena, the
+# The stub every prelude error but X's goes through (index, the
 # two ⌫ guards); W11-3A makes it catchable.  stdout stays empty, stderr is
 # exactly the line, and the routed errors read as they always did.
 w110(){ printf '%s' "$1" | gc > "$TMP/w110.out" 2> "$TMP/w110.err"; echo "rc=$? $(wc -c < "$TMP/w110.out") $(cat "$TMP/w110.err")"; }
 [ "$(w110 '7Ṅ“boom“U‹throw›8Ṅ')" = "rc=1 1 GOLF: boom" ] && [ "$(w110 '0⍳‹throw›')" = "rc=1 0 GOLF: " ] \
   && [ "$(w110 '3⍳9⊇')" = "rc=1 0 GOLF: index out of range" ] && [ "$(w110 '3⍳"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
   && [ "$(w110 '5⌫')" = "rc=1 0 GOLF: free of a non-heap value" ] \
-  && [ "$(w110 '0→i{′⊕′⊖∘_←i1+"→i1700\rlt1+}')" = "rc=1 0 GOLF: compose arena exhausted" ] \
-  && ok "‹throw›: user message, empty message, and the four routed errors unchanged" || no "‹throw› stub / routed errors"
+  && [ "$(w110 '0→i{′⊕′⊖∘_←i1+"→i1700\rlt1+}')" = "rc=0 0 " ] \
+  && ok "‹throw›: user message, empty message, and the three routed errors unchanged (no arena error since W12-O2)" || no "‹throw› stub / routed errors"
 
 # === W11-1A ===
 echo "W11-1A: the list tag is 0x7FFF<<48; [2^48, 2^49) are ordinary integers again"
@@ -2358,24 +2354,17 @@ w112cc=':d⊗;3⍳10′+⊸′d∘€⍕ 3⍳′d10′+⊸∘€⍕ 5′⊗′�
 # ⊸ inside a map: a fresh thunk per element (X/Y frames nest), each its own x.
 [ "$(printf '%s' ':b′⍳⊸;3⍳′b€′⍎€⍕' | gc)" = "[] [0] [0 1] " ] \
   && ok "⊸ inside €: one thunk per element, each with its own x" || no "w11-2c in map"
-# A thunk is 38 bytes in ∘'s arena (∘'s is 39), on the same bump pointer.
-[ "$(printf '%s' '1′⊕⊸1′⊕⊸\rsub\negṄ ′⊕′⊕∘1′⊕⊸\rsub\negṄ' | gc)" = "3839" ] \
-  && ok "a bind thunk is 38 bytes, on the compose arena's bump pointer" || no "w11-2c thunk size"
-# The arena bound holds for ⊸ alone and for any mix of ⊸ and ∘.  1724 binds
-# (65512 bytes) fit, the 1725th would start past 65498; 851 ∘+⊸ pairs (77 bytes
-# each) end at 65527 and the 852nd ∘ would cross.  The canary v is a variable
-# the overrun would reach (the bank starts right after the arena).
+# W12-O2: a bind thunk is an A block — 38 bytes of code in a 5-cell request,
+# one 8-cell block, 72 bytes with its header in ‹heapstats›.
+[ "$(printf '%s' '‹heapstats›1′⊕⊸_‹heapstats›→d→c→b→a ←c←a-Ṅ ←d←b-Ṅ' | gc)" = "172" ] \
+  && ok "a bind thunk is one 72-byte A block in ‹heapstats›" || no "w11-2c thunk size"
+# No arena bound since W12-O2, for ⊸ alone or mixed with ∘.  The canary v is a
+# variable the old arena's overrun would have reached.
 w112c(){ printf '1234→v 0→i{%s←i1+"→i%s\\rlt1+}%s←vṄ' "$1" "$2" "${3-}" | arena; }
-w112cb='0→i{1′⊕⊸_←i1+"→i698\rlt1+}'
-[ "$(w112c '1′⊕⊸_' 1724)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
-  && [ "$(w112c '1′⊕⊸_' 1725)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
-  && ok "1724 binds fit the arena, the 1725th says compose arena exhausted (exit 1, stdout clean)" || no "w11-2c bind arena"
-[ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 851)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
-  && [ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 852)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
-  && ok "mixing ∘ and ⊸: 851 pairs fit with the canary intact, the next ∘ is diagnosed" || no "w11-2c mixed arena"
-[ "$(w112c '′⊕′⊖∘_' 1000 "$w112cb")" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
-  && [ "$(w112c '′⊕′⊖∘_' 1000 "${w112cb/698/699}")" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] \
-  && ok "1000 composes then 698 binds fit; the 699th bind is diagnosed" || no "w11-2c compose-then-bind arena"
+[ "$(w112c '1′⊕⊸_' 100000)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && ok "100000 live binds fit (the old cap was 1724), canary intact" || no "w11-2c bind arena"
+[ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 50000)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && ok "mixing ∘ and ⊸: 50000 pairs fit with the canary intact" || no "w11-2c mixed arena"
 # REFERENCE.md's Closures examples print what the doc says.
 w112cbad=""
 while IFS= read -r w112cl; do
@@ -3711,6 +3700,105 @@ for w12a7n in 1 2 3 4 5 6 7 8; do
   [ "$(echo $w12a7n | "$TMP/a7q")" = "$(echo $w12a7n | python3 bench/leetcode/py/queens.py)" ] || w12a7q="$w12a7q [n=$w12a7n]"
 done
 [ -z "$w12a7q" ] && ok "the queens solution on {⇐v0≡⋄…} agrees with Python for n = 1…8" || no "queens with ⋄:$w12a7q"
+# === W12-O2 ===
+echo "W12-O2: freeable thunks — ∘ and ⊸ allocate from the (RWX) heap; ⌫ releases them; no cap"
+# Each thunk is a `5A` block (class 1, 72 bytes with its header), so ⌫ takes it
+# like any raw block and ‹heapstats› counts it.  1M composes and 1M binds, each
+# freed at once, leave ‹heapstats› exactly where it was (golf2 and the oracle).
+w12o2p='‹heapstats›→b→n 0→j{′⊗′⊕∘⌫ 5′+⊸⌫ ←j1+"→j1000000<1+}‹heapstats›←b-Ṅ32)←n-Ṅ'
+printf '%s' "$w12o2p" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/o2loop" 2>/dev/null; chmod +x "$TMP/o2loop"
+w12o2t0=$(date +%s%N); w12o2o=$("$TMP/o2loop"); w12o2t1=$(date +%s%N)
+[ "$w12o2o" = "0 0" ] && [ "$(printf '%s' "$w12o2p" | gref)" = "0 0" ] \
+  && ok "1M ∘ and 1M ⊸ thunks made and freed in a loop: ‹heapstats› flat (oracle too); $(( (w12o2t1-w12o2t0)/2000000 )) ns per make+free" \
+  || no "W12-O2 1M loop: $w12o2o"
+[ "$(printf '%s' '‹heapstats›→b→n ′⊗′⊕∘‹heapstats›←b-Ṅ32)←n-Ṅ32)"TṄ32)⌫‹heapstats›←b-Ṅ32)←n-Ṅ' | gc)" = "72 1 1 0 0" ] \
+  && ok "one ∘ thunk is one live 72-byte block, an int to T; ⌫ gives it back" || no "W12-O2 one thunk"
+# A freed thunk's block is the next one A hands out, and the new thunk works.
+[ "$(printf '%s' ':d⊗;:i⊕;′d′i∘"→f⌫ ′i′d∘→g ←g←f-Ṅ32)5←g⍎Ṅ' | gc)" = "0 12" ] \
+  && ok "the freed block is reused by the next ∘, which runs correctly" || no "W12-O2 reuse"
+# Nested: compose of a composed, bind of a bound, binds made inside € and
+# freed through ⇤, a compose over one of them; all freed, ‹heapstats› flat.
+w12o2n=':d⊗;:i⊕;:m′+⊸;‹heapstats›→b→n ′d′i∘→a ←a′d∘→c 5←c⍎Ṅ32) 4′+⊸→p 3←p⊸→e ←e⍎Ṅ32) 10⍳"′m€→l⌫ 7←l3⊇⍎Ṅ32) ←l3⊇′d∘→k 5←k⍎Ṅ32) ←k⌫ ←l0′⌫⇤_ ←l⌫ ←c⌫←a⌫ ←e⌫←p⌫ ‹heapstats›←b-Ṅ32)←n-Ṅ'
+[ "$(printf '%s' "$w12o2n" | gc)" = "22 7 10 16 0 0" ] && [ "$(printf '%s' "$w12o2n" | gref)" = "22 7 10 16 0 0" ] \
+  && ok "nested ∘/⊸ (compose of compose, bind of bind, binds from €, freed via ⇤): right answers, ‹heapstats› flat (oracle too)" \
+  || no "W12-O2 nested: $(printf '%s' "$w12o2n" | gc)"
+[ "$(w110 '′⊕′⊖∘"⌫⌫')" = "rc=1 0 GOLF: double free" ] && [ "$(w110 '5′+⊸"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
+  && [ "$(printf '%s' ':f′⊕′⊖∘"⌫⌫;′f‹catch›⊐ 5′⊕′⊗∘⍎Ṅ' | gc)" = "double free12" ] \
+  && ok "freeing a ∘ or ⊸ thunk twice: GOLF: double free (catchable, and ∘ works after)" || no "W12-O2 double free"
+# Calling a freed thunk is not a GOLF: error (⍎ is a bare call): ⌫'s poison
+# over its first bytes is a privileged instruction, so it dies loudly.
+[ "$(printf '%s' ':d⊗;:i⊕;′d′i∘"⌫5\\⍎Ṅ' | arena)" -gt 128 ] && [ ! -s "$TMP/ar.out" ] \
+  && ok "calling a freed thunk dies with a signal (not silently)" || no "W12-O2 call after free"
+# Old behaviour: ∘ ⊸ ⇉ ⑂ results unchanged; a thunk in a ‹catch› that throws.
+[ "$(printf '%s' ':d⊗;:i⊕;5′d′i∘⍎Ṅ32)5⍳′d′i∘€⍕10→n ←n′+⊸→k 99→n 3⍳←k€⍕:t′d′i∘_“x“⊃‹throw›;′t‹catch›⊐' | gc)" = "11 1 3 5 7 9 10 11 12 x" ] \
+  && ok "∘ and ⊸ results unchanged (map, closures, a thunk made inside a caught throw)" || no "W12-O2 old behaviour"
+# The mprotect cost is paid on growth only: a 3M-cell list then a thunk in the
+# grown heap, and 100000 binds live at once.
+[ "$(printf '%s' ':d⊗;:i⊕;3000000⍳_ 5′d′i∘⍎Ṅ32)0→j 0→s{←j′+⊸→f ←s←f⍎→s ←j1+"→j100000<1+}←sṄ' | gc)" = "11 4999950000" ] \
+  && ok "thunks in memory the heap grew into; 100000 live binds" || no "W12-O2 growth"
+grep -q 'Since W12-O2 there is no' REFERENCE.md && grep -q 'W12-O2' DESIGN.md && ! grep -q 'compose arena exhausted' REFERENCE.md \
+  && ok "REFERENCE.md and DESIGN.md describe freeable thunks" || no "W12-O2 docs"
+# === W12-O3 ===
+echo "W12-O3: priority queue — ‹pq› ‹pqpush› ‹pqpop› ‹pqtop›, a binary min-heap over a ‹vec›"
+# Random op sequences (pushes of small duplicates, ±2^62 values and packed
+# priority<<32|payload values; pops ~45% of the time; then drain) against
+# Python's heapq, on golf2 and the oracle.
+w12o3bad=""
+for w12o3s in 1 2 3; do
+  python3 -c '
+import heapq, random, sys
+r = random.Random(int(sys.argv[1])); h, prog, out = [], ["‹pq›"], []
+lit = lambda v: str(v) if v >= 0 else str(-v) + "±"
+for _ in range(2000):
+    if h and r.random() < 0.45:
+        out.append(heapq.heappop(h)); prog.append("‹pqpop›Ṅ32)")
+    else:
+        k = r.random()
+        v = (r.randint(-20, 20) if k < 0.5 else r.randint(-2**62, 2**62) if k < 0.7
+             else (r.randint(-1000, 1000) << 32) | r.randint(0, 2**32 - 1))
+        heapq.heappush(h, v); prog.append(lit(v) + "‹pqpush›")
+while h:
+    out.append(heapq.heappop(h)); prog.append("‹pqpop›Ṅ32)")
+print("".join(prog) + "≢Ṅ"); print(" ".join(map(str, out)) + " 0")' "$w12o3s" > "$TMP/o3r.txt"
+  w12o3e=$(sed -n 2p "$TMP/o3r.txt")
+  [ "$(sed -n 1p "$TMP/o3r.txt" | gc)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s golf2]"
+  [ "$(sed -n 1p "$TMP/o3r.txt" | gref)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s oracle]"
+done
+[ -z "$w12o3bad" ] && ok "3 random sequences of 2000 ops match Python heapq (golf2 and the oracle)" || no "W12-O3 random:$w12o3bad"
+[ "$(printf '%s' '‹pq›5‹pqpush›1‹pqpush›4‹pqpush›"‹pqtop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ≢Ṅ32)‹pq›3±‹pqpush›2‹pqpush›7±‹pqpush›"TṄ32)⍕' | gc)" = "11450 0 -7 2 -3 " ] \
+  && ok "push/top/pop/size; a queue is a tagged list (T 0) shown in heap order" || no "W12-O3 basics"
+[ "$(printf '%s' '‹pq›2 32≪9|‹pqpush›1±32≪5|‹pqpush›0 32≪7|‹pqpush›{‹pqpop›"32≫Ṅ32)4294967295$Ṅ32)"≢0≡}_' | gc)" = "-1 5 0 7 2 9 " ] \
+  && ok "the priority<<32|payload idiom orders by signed priority and unpacks" || no "W12-O3 packing"
+[ "$(w110 '‹pq›‹pqpop›')" = "rc=1 0 GOLF: pop from empty" ] && [ "$(w110 '‹pq›3‹pqpush›‹pqpop›_‹pqpop›')" = "rc=1 0 GOLF: pop from empty" ] \
+  && [ "$(w110 '‹pq›‹pqtop›')" = "rc=1 0 GOLF: index out of range" ] \
+  && [ "$(printf '%s' ':‹f›‹pq›‹pqpop›;′‹f›‹catch›⊐7Ṅ' | gc)" = "pop from empty7" ] \
+  && ok "pop from empty (fresh and drained) through ‹throw›, catchable; ‹pqtop› on empty: index out of range" || no "W12-O3 empty"
+[ "$(w110 '‹pq›"⌫‹pqpop›')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 '‹pq›5‹pqpush›"⌫3‹pqpush›')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(w110 '‹pq›5‹pqpush›"⌫‹pqtop›')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "a freed queue: ‹pqpop› ‹pqpush› ‹pqtop› say use after free" || no "W12-O3 use after free"
+[ "$(printf '%s' '‹heapstats›→b→n‹pq›0→i{←i37*101%‹pqpush›←i1+"→i1000<1+}{‹pqpop›_"≢0≡}⌫‹heapstats›←b-Ṅ32)←n-Ṅ' | gc)" = "0 0" ] \
+  && ok "1000 pushes (eight growths), drained and freed: ‹heapstats› flat" || no "W12-O3 heapstats"
+# The A1 contract: a queue word inside € / ⇤ sees the caller's stack (no user
+# data-stack state), and runs inside a word another queue word's caller uses.
+[ "$(printf '%s' ':p←q\\‹pqpush›→q0;‹pq›→q 9 8⍳⌽′p€_ Ṅ ←q≢Ṅ32)←q0′+⇤Ṅ32)←q‹pqpop›Ṅ' | gc)" = "98 28 0" ] \
+  && ok "‹pqpush› inside €, with the caller's 9 under it untouched; the queue sums and pops" || no "W12-O3 threading"
+# 1M pushes then 1M pops: sorted output (checked by a running signed compare),
+# timed; Python's C heapq on the same data for reference (reported only).
+printf '%s' '‹pq›0→i{←i7919*1000003%‹pqpush›←i1+"→i1000000<1+}1 63≪→p0→v{‹pqpop›"←p≺←v+→v→p"≢0≡}←vṄ32)←pṄ' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/o3big" 2>/dev/null; chmod +x "$TMP/o3big"
+printf '%s' '‹pq›0→i{←i7919*1000003%‹pqpush›←i1+"→i1000000<1+}' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/o3push" 2>/dev/null; chmod +x "$TMP/o3push"
+w12o3t0=$(date +%s%N); w12o3o=$("$TMP/o3big"); w12o3t1=$(date +%s%N); "$TMP/o3push"; w12o3t2=$(date +%s%N)
+w12o3pu=$(( (w12o3t2-w12o3t1)/1000000 )); w12o3po=$(( (w12o3t1-w12o3t0-(w12o3t2-w12o3t1))/1000000 ))
+[ "$w12o3o" = "0 $(python3 -c 'print(max(i*7919%1000003 for i in range(1000000)))')" ] \
+  && ok "1M pushes then 1M pops come out in order; push ≈ $w12o3pu ns, pop ≈ $w12o3po ns" || no "W12-O3 1M: $w12o3o"
+w12o3bad=""
+while IFS= read -r w12o3l; do
+  w12o3p=${w12o3l%%  ->*}; w12o3p=${w12o3p%"${w12o3p##*[! ]}"}; w12o3w=${w12o3l##*->  }
+  [ "$(printf '%s' "$w12o3p" | gc 2>&1 | sed 's/ *$//')" = "$w12o3w" ] || w12o3bad="$w12o3bad [$w12o3p]"
+done < <(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12o3bad" ] && [ "$(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 6 ] \
+  && ok "REFERENCE.md's Priority queues examples print what they say" || no "REFERENCE Priority queues examples:$w12o3bad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

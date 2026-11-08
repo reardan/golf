@@ -848,6 +848,45 @@ one live block. The two `GOLF:` lines go to stderr with exit status 1, and
 to `0xD7` and seven long names; names that start with `‹_12z4` are their
 helpers.
 
+### Priority queues
+
+W12-O3 adds a min-priority queue: a binary heap kept in a vector, for
+Dijkstra, merging k sorted lists and streaming top-k.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹pq›` | `-> q` | a new, empty queue |
+| `‹pqpush›` | `q x -> q` | insert `x`, in O(log n). **Use the returned `q`**, as with `⍆`: a growth moves the queue to a new block and frees the old one |
+| `‹pqpop›` | `q -> q x` | remove and return the smallest element, in O(log n). `q` itself is unchanged. An empty queue is `GOLF: pop from empty` |
+| `‹pqtop›` | `q -> x` | the smallest element, without removing it. Empty is `GOLF: index out of range` |
+
+Elements are ints compared **signed**, like the keys of `⍋` and `⍒`. There is
+no key function. To order other things, pack the priority into the high bits:
+`p 32≪ v|` sorts by `p` (any signed value that fits in 32 bits) and then by `v`
+(0 to 2^32-1). `32≫` gets `p` back and `4294967295$` gets `v`. Equal elements
+come out in no particular order.
+
+A queue is a vector, so a list. `≢` is its size, `⌫` frees it, and
+`‹heapstats›` counts it. `⍕` shows the heap's array order (smallest first,
+each element no larger than its children at `2k+1` and `2k+2`), which is not
+sorted order. Do not `⍆` or `⍈` into a queue: that breaks the heap order.
+
+```
+‹pq›5‹pqpush›1‹pqpush›4‹pqpush›"‹pqtop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ≢Ṅ  ->  11450
+‹pq›3±‹pqpush›2‹pqpush›7±‹pqpush›⍕                    ->  -7 2 -3
+‹pq›0→i{←i7*10%‹pqpush›←i1+"→i10<1+}{‹pqpop›Ṅ32)"≢0≡}_  ->  0 1 2 3 4 5 6 7 8 9
+‹pq›2 32≪9|‹pqpush›1±32≪5|‹pqpush›‹pqpop›4294967295$Ṅ‹pqpop›32≫Ṅ  ->  52
+‹pq›‹pqpop›                                          ->  GOLF: pop from empty
+:‹f›‹pq›‹pqpop›;′‹f›‹catch›⊐                          ->  pop from empty
+```
+
+In the first example `‹pqtop›` sees `1` and leaves it in place. The fourth
+packs priority `-1` with payload `5` and priority `2` with payload `9`, so the
+payload `5` comes out first. On a million pushes followed by a million pops,
+a push takes about 60 ns and a pop about 500 ns, against Python's C `heapq`
+at 180 ns and 1.6 µs. Names that start with `‹_12o3` are reserved for the
+queue's helpers.
+
 ### Dicts and sets
 
 A **dict** (W11-2B) maps keys to values. A key is an int or a list, nested
@@ -1029,11 +1068,26 @@ afterwards. A word that reads a variable reads it at call time instead:
 3 4′+⊸⊸⍎Ṅ                         ->  7
 ```
 
-`⊸` builds its quotation like `∘` does: a 38-byte machine-code thunk in the
-same code arena (`0x4D0000`–`0x4DFFFF`, `∘`'s thunks are 39 bytes). Nothing
-in the arena is ever freed, so a program can make about 1700 composed or
-bound quotations in all. One more prints `GOLF: compose arena exhausted` and
-exits 1, whichever of the two words asks.
+`⊸` builds its quotation like `∘` does: a 38-byte machine-code thunk
+(`∘`'s are 39 bytes) in an ordinary heap block. Since W12-O2 there is no
+limit on how many a program makes, and `⌫` gives one back: a thunk costs one
+72-byte block in `‹heapstats›`, and freeing a thunk twice is `GOLF: double
+free`. A composed or bound quotation is an int, not a list, to `T` and the
+list words. Calling a thunk after it has been freed is not checked: it
+usually dies with SIGSEGV, and if the block has been reused it runs whatever
+is there. A quotation built from another one (`′f′g∘′h∘`, `x′f⊸⊸`) only
+points at the inner one, so free the outer before the inner, and only when
+neither is used again.
+
+```
+:f′⊕′⊗∘"⌫⌫;′f‹catch›⊐                          ->  double free
+‹heapstats›→b_ 3′+⊸"4\\⍎Ṅ⌫ ‹heapstats›←b-Ṅ        ->  70
+‹heapstats›_→n 0→i{′⊕′⊗∘⌫←i1+"→i100000<1+}‹heapstats›_←n-Ṅ  ->  0
+```
+
+The second example prints `7` and then `0`: the thunk was freed, so the
+bytes in use are back where they were. The third makes and frees 100,000
+compositions.
 
 ### Checked arithmetic
 
@@ -1118,8 +1172,8 @@ set the two stack pointers.
 (The last line goes to stderr, with exit status 1.)
 
 Everything the runtime checks raises through `‹throw›`, so all of it is
-catchable: `⊇` (`index out of range`), `∘` and `⊸` (`compose arena
-exhausted`), `⌫` (`free of a non-heap value`, `double free`), `‹get›` (`key
+catchable: `⊇` (`index out of range`), `⌫` (`free of a non-heap value`,
+`double free`), `⍅` and `‹pqpop›` (`pop from empty`), `‹get›` (`key
 not found`), `‹cadd›` `‹csub›` `‹cmul›` (`integer overflow`, see Checked
 arithmetic above), every list word (`use after free`, see Memory above), the file
 words (`cannot open x.txt (ENOENT)` …), the spill stack (`spill stack
@@ -1284,7 +1338,7 @@ The script adds five commands, and prints `golf-where` at every stop:
 | `golf-words [TEXT]` | the map's words (names containing TEXT) with their address ranges |
 
 A word's range comes from the `jmp` that skips its body (`E9 rel32` just
-before ADDR); code in no word is `(top level)`, code in the `∘` thunk arena
+before ADDR); code in no word is `(top level)`, code on the heap (a `∘` or `⊸` thunk)
 `(thunk)`. A return-stack cell counts as a return address only when the bytes
 before it are a `call`, so `⊡` locals (which share the return stack) are
 skipped. Plain gdb still works alongside: `stepi`, `x/8gx $rsp`,

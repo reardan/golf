@@ -20,7 +20,7 @@
 #   0x4F0010..0x4F002C   RETIRED — the old 4-byte scratch bank, now free
 #   0x4F0030             spill-stack pointer (a byte OFFSET; BSS-zero at start)
 #   0x4F0034 / 0x4F0038  heap base / span cells (A's state; T no longer reads them)
-#   0x4F003C             code-arena bump pointer (M-CHAIN's ∘)
+#   0x4F003C             retired code-arena bump pointer (unused since W12-O2)
 #   0x4F0040             the entry rsp (argc/argv; ‹args› reads it)
 #   0x4F0050             the stdin buffer block's raw address (W9-4C input)
 #   0x4F0048, 0x4F0058   free scratch
@@ -205,7 +205,8 @@
  "0\eq[&&8\rsub\fetch\neg\gt["8\rsub"\fetch\neg"1\radd8\rmul5180104\fetch\radd5180104\store&\store_"8\radd\fetch5177480\fetch\store0&\store5177480\store_5180096\fetch1\radd5180096\store5177480\fetch^]]_
  1 5177480\fetch5177536\rsub3>2\radd\shl\rmax
  "1\radd8\rmul5177480\store 5177396@H@\radd H@5177480\fetch\radd"5177400@\rlt[
-  "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!
+  "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!
+  5177396@4095~$5177396@4095$5177400@\radd7 10\sys_]H!
  5180104\fetch5177480\fetch\radd5180104\store5180096\fetch1\radd5180096\store
  "5177480\store\store5177480\fetch8\radd;
 # U chars(str) -> list is defined here, ahead of I, rather than with O and J
@@ -398,39 +399,30 @@
 # other word: the PROLOGUE parks ⍎'s return address (`call` pushes it on the
 # DATA stack) on the return stack at rbp, f and g then run as plain words over
 # the data stack, and the EPILOGUE hands the address back and rets.  The two
-# imm64 operands are written with `!` (4 bytes: the address, all < 2^31) then a
+# imm64 operands are written with `!` (4 bytes: the address, all < 2^32, heap
+# thunks included since W12-O2) then a
 # second `!` for the four zero high bytes; every opcode byte goes out with `,`.
 # Those are MACHINE-CODE writes at their own natural widths and have nothing to
 # do with list cells, so W4A left every `,` and `!` in the body alone — only ∘'s
 # three scratch slots moved to the new bank.
 #
-# Thunks come from a dedicated CODE ARENA at 0x4D0000 (bump pointer 0x4F003C),
-# never from the list heap; 0x4D0000 sits below the variable bank and above the
-# compiler's ceiling.  A composed quotation is an untagged address, so it
-# classifies as an int like every other ′ address (that once depended on the
-# arena lying outside the heap window; since M-TAG2 it is simply untagged).  ∘ is X/Y-wrapped (it parks f,
-# g and the thunk's start address in s1/s2/s3) so it may be called from inside a
-# map or a fold; each call bumps the arena by 39 bytes.
-#
-# The arena is BOUNDED and the bound is enforced here.  0x4D0000..0x4DFFFF is
-# 65536 bytes = 1680 thunks at 39 bytes each; the 1681st would start at
-# 0x4E0017, which is inside the USER VARIABLE BANK at 0x4E0000 (../REGISTRY.md
-# §3).  Without this check a program that composes in a loop silently overwrites
-# its own →x/←x cells with machine code and keeps running — the thunks stay
-# callable and the exit status stays 0, so the corruption is invisible.  Nothing
-# can be freed (a thunk's address may have escaped anywhere), so the only honest
-# answer is to stop: 65536-39 = 65497 is the last legal offset, so an offset of
-# 65498 or more dies here rather than wrapping into user data.
-# The message goes to fd 2 via ⎈ and the status is 1 — a compiled program writes
-# its real output to fd 1, so a diagnostic must never land there.
-:∘5177404@65498\rlt[
- “compose arena exhausted“U‹throw›]
- X5177456\store5177448\store5046272 5177404@\radd"5177464\store
+# W12-O2: a thunk is an A block, `5A` (39 bytes in five cells, so class 1: an
+# 8-cell block, 72 bytes with its header), on the list heap, which the prelude
+# mprotects RWX at startup and whenever A grows the break (see the W12-O2
+# section at the end of this file).  So `⌫` gives a thunk back like any block,
+# ‹heapstats› counts it, and there is no lifetime cap.  (Through W12 thunks were
+# bump-allocated from a 64 KB code arena at 0x4D0000, pointer 0x4F003C, which
+# held exactly 1680 and freed nothing; the arena is now unused.)  A composed
+# quotation is an UNTAGGED address, so it classifies as an int like every other
+# ′ address, and the list words never take it for a list.  ∘ is X/Y-wrapped (it
+# parks f, g and the thunk's start address in s1/s2/s3) so it may be called
+# from inside a map or a fold; A itself touches only s5.
+:∘X5177456\store5177448\store5A"5177464\store
  72&,1\radd131&,1\radd237&,1\radd8&,1\radd143&,1\radd69&,1\radd0&,1\radd
  72&,1\radd184&,1\radd5177448\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
  72&,1\radd184&,1\radd5177456\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
  255&,1\radd117&,1\radd0&,1\radd72&,1\radd131&,1\radd197&,1\radd8&,1\radd195&,1\radd
- _5177404@39\radd5177404!5177464\fetch Y;        # ∘: ′f ′g -> ′(x -> g(f x))
+ _5177464\fetch Y;        # ∘: ′f ′g -> ′(x -> g(f x))
 # ⇉ pipeline(x, qlist) -> y : thread x through every quotation, left to right.
 # That is exactly a fold whose fn is ⍎ itself — F pushes (acc, elem) and elem IS
 # the quotation, so ′⍎ applies it to acc.  F wants (list init fn) and we are
@@ -486,6 +478,7 @@
 # increment: A extends to (needed + 1 MB), so one oversized allocation still
 # takes exactly one syscall.
 0\brk"5177396!1048576\radd\brk 5177396@\rsub5177400!
+5177396@4095~$5177396@4095$5177400@\radd7 10\sys_     # W12-O2: the heap is RWX (thunks)
 # --- Gap-fix waves (W9): one anchor per task; a task adds its words directly
 # under its own anchor.  Words must be defined before use, so a task that needs
 # another task's word waits for that wave to merge. ---
@@ -1161,26 +1154,22 @@
 # ⊸ bind (closures by value): x ′f ⊸ -> ′g, where g pushes the CAPTURED x and
 # then calls f.  `10→n ←n′+⊸` is a quotation that adds 10 whatever n holds
 # later — the value is copied into the code, not the variable's address.  Built
-# exactly like ∘ (see the M-CHAIN comment above): a 38-byte thunk in the same
-# code arena at 0x4D0000, the same bump pointer 0x4F003C and the same bound,
+# exactly like ∘ (see the M-CHAIN comment above): a 38-byte thunk in a `5A`
+# heap block (W12-O2; freeable with ⌫, no cap),
 #   [PROLOGUE][48 B8 x:u64][50][48 B8 f:u64][FF D0][EPILOGUE]
 #     sub rbp,8; pop [rbp]  |  mov rax,x; push rax  |  mov rax,f; call rax
 #     |  push [rbp]; add rbp,8; ret
 # x is any 64-bit value (a tagged list included), so its imm64 is written as
 # two 4-byte `!`s, low half then x>>32 (logical shift: `>` never dispatches);
-# f is a code address < 2^31, so its high half is 0 as in ∘.  65536-38 = 65498
-# is the last legal start offset, so an offset of 65499 or more dies with ∘'s
-# message — ∘ and ⊸ share the arena and each checks its own size, so any mix
-# of the two is diagnosed before a thunk can reach the variable bank.
+# f is a code address < 2^32 (the image, or another thunk on the heap, which
+# stays below 2^32 — see the W6 allocator note), so its high half is 0 as in ∘.
 # X/Y-wrapped like ∘ (s1 x · s2 f · s3 start), so it may run inside a map.
-:⊸5177404@65499\rlt[
- “compose arena exhausted“U‹throw›]
- X5177456\store5177448\store5046272 5177404@\radd"5177464\store
+:⊸X5177456\store5177448\store5A"5177464\store
  72&,1\radd131&,1\radd237&,1\radd8&,1\radd143&,1\radd69&,1\radd0&,1\radd
  72&,1\radd184&,1\radd5177448\fetch&!4\radd5177448\fetch32>&!4\radd80&,1\radd
  72&,1\radd184&,1\radd5177456\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
  255&,1\radd117&,1\radd0&,1\radd72&,1\radd131&,1\radd197&,1\radd8&,1\radd195&,1\radd
- _5177404@38\radd5177404!5177464\fetch Y;        # ⊸: x ′f -> ′(push x; f)
+ _5177464\fetch Y;        # ⊸: x ′f -> ′(push x; f)
 
 # === W11-2D use after free ===
 # ⌫ writes the poison -559038737 (0xFFFFFFFFDEADBEEF) into a freed block's
@@ -1223,7 +1212,7 @@
 #      ‹catch›'s caller's (any ⊡ frames in between are dropped with it).  The
 #      message is a tagged code list, never 0.
 # Not restored: global variables (→x), the heap (nothing f allocated is
-# freed), the ∘/⊸ code arena, buffered output (what f printed stays printed,
+# freed), ∘/⊸ thunks (heap blocks, leaked like the rest), buffered output (what f printed stays printed,
 # in order).  Nesting needs nothing more: each record links the one before,
 # and a handler that calls ‹throw› again reaches the next one out.
 :‹catch›X5177464\store\spr5177448\store5177440\store5180160\fetch5177456\store X
@@ -1785,3 +1774,83 @@
  "\fetch8\rmul&\radd8\radd&8\radd
  &&\eq[{"\fetch8\rmul5177440\fetch\radd\fetch&\store8\radd&&\eq}]__
  5177448\fetch\free32767 48\shl| Y;
+
+# === W12-O2 freeable thunks ===
+# ∘ and ⊸ (above, in M-CHAIN and W11-2C) now take their thunk from A, `5A`:
+# five cells for 39 / 38 bytes of code, which A rounds to its 8-cell class, so
+# a thunk costs 72 bytes with its header and ‹heapstats› counts it.  The
+# thunk's address is the block's payload, UNTAGGED, so it is still an int to T
+# and to every list word, and `⌫` takes it as a raw A block: it goes back on
+# class 1's free list, and the double-free test (a negative header) and the
+# non-heap test work on it as on any block.  The 1680-thunk lifetime cap is
+# gone; so is `compose arena exhausted`.
+#
+# The heap holds code, so it must be executable.  brk memory is R+W only
+# (x86-64 Linux sets READ_IMPLIES_EXEC only for 32-bit programs), so the
+# prelude asks for it: mprotect(base & ~4095, span + (base & 4095),
+# PROT_READ|PROT_WRITE|PROT_EXEC) through ⎈ (syscall 10), once at startup
+# right after the first brk (the W6 allocator block) and again in A's growth
+# path after each brk, over the whole [base, base+span).  That is two
+# prelude lines and no compiler or template change: the alternative, a
+# separate mmap(PROT_EXEC) arena with its own free list, would have needed a
+# second allocator, a second ⌫ path and its own ‹heapstats›.  The price is
+# that list memory is executable too (W^X is not kept; the load segment never
+# kept it either).
+#
+# What a freed thunk does: ⌫ writes its poison -559038737 over the first 8
+# bytes, so calling a freed thunk executes 0xEF (`out dx, eax`, privileged)
+# and dies with SIGSEGV — loud, but not a `GOLF:` message, because ⍎ is a bare
+# `call` with no check.  As with a list, a stale copy of a thunk whose block
+# A has since handed out again is NOT caught.  The old arena 0x4D0000…0x4DFFFF
+# and its bump pointer 0x4F003C are no longer used.  This task's runtime slot
+# (5181376 … 5181432) is unused by O2; O3 below borrows two of its cells.
+
+# === W12-O3 priority queue ===
+# ‹pq›  -> q              an empty min-priority queue (an empty ‹vec›).
+# ‹pqpush›  q x -> q'     insert x.  Like ⍆, keep the returned q': a growth
+#                         moves the vector (the old value is then freed).
+# ‹pqpop›  q -> q x       remove and return the smallest element; q itself
+#                         never moves.  Empty: `pop from empty` via ‹throw›.
+# ‹pqtop›  q -> x         peek at the smallest (‹first›; empty: `index out of
+#                         range`).  The size is ≢, and ⌫ frees a queue.
+# A queue IS a list: a binary min-heap in array order (q[0] the smallest,
+# children of k at 2k+1, 2k+2), so ⍕ shows heap order, not sorted order.
+# Elements are ints compared SIGNED, as ⍋ and ⍒ compare keys; no key
+# function — pack one in: priority<<32|payload sorts by priority, then by
+# payload, for any signed priority and a payload in [0, 2^32).  Ties come out
+# in no particular order (a heap is not stable).
+# ‹pqpush›: x into c7, ⍆ (it appends, growing the block as needed), then sift
+# up from i = n-1: while i > 0 and q[p] > x (p = (i-1)>>1) move q[p] down to
+# i; then q[i] = x.  The loop is branch-light: p is computed with an
+# arithmetic shift, so i = 0 reads q[-1] (the length cell) harmlessly and the
+# i > 0 flag masks it.
+# ‹pqpop›: n = ≢q; n <= 0 (signed: a freed queue's poison is negative) goes to
+# Z4's ‹_12z4_empty›, which says `use after free` or `pop from empty`.  The
+# length cell becomes n' = n-1, the top is q[0], last = q[n'], and last sifts
+# down from i = 0: c = the smaller child of i (2i+1, or 2i+2 when it exists
+# and is smaller); while c < n' and q[c] < last move q[c] up to i; then
+# q[i] = last.  The sift-down walks CELL ADDRESSES, not indices (a = &q[i],
+# so &q[2i+1] = 2a - P), which halves its arithmetic; child reads are clamped
+# to E = &q[n'] (\rmin), a cell inside the block (it held the old last), so a
+# leaf never reads past the block.
+# No user code is called, so no X/Y frame: the state lives in Z4's spare cells
+# and the O2 slot (REGISTRY §3.2):
+#   5180968 c5  P, the queue's payload address (tag masked)
+#   5180976 c6  i (‹pqpush›) · a = &q[i] (‹pqpop›)
+#   5180984 c7  x being pushed · last being sifted down
+#   5181376 o0  E = &q[n'] (‹pqpop›)
+#   5181384 o1  &q[c], the chosen child (‹pqpop›)
+:‹pq›‹vec›;
+:‹pqtop›‹first›;
+:‹pqpush›"5180984\store\push"16\shl16>"5180968\store\fetch1\rsub5180976\store
+ {5180976\fetch1\rsub1\sar"8\rmul5180968\fetch\radd8\radd\fetch"5180984\fetch\sgt5180976\fetch0\sgt$1\radd"[
+  _5180976\fetch8\rmul5180968\fetch\radd8\radd\store5180976\store0]}__
+ 5180984\fetch5180976\fetch8\rmul5180968\fetch\radd8\radd\store;
+:‹pqpop›"16\shl16>"5180968\store\fetch"0\sgt[‹_12z4_empty›]
+ 1\rsub"5180968\fetch\store8\rmul5180968\fetch\radd8\radd"5181376\store\fetch5180984\store
+ 5180968\fetch8\radd"5180976\store\fetch
+ {5180976\fetch2\rmul5180968\fetch\rsub5181376\fetch\rmin"5181384\store
+  "8\radd5181376\fetch\rmin\fetch&\fetch\slt&8\radd5181376\fetch\rlt$8$\radd"5181384\store
+  \fetch"5180984\fetch\slt5181384\fetch5181376\fetch\rlt$1\radd"[
+   _5180976\fetch\store5181384\fetch5180976\store0]}_
+ 5180984\fetch5180976\fetch\store;

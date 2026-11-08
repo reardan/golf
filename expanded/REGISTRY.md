@@ -441,7 +441,7 @@ both forms are given here and the decimal is the one you type.
 | `0x490400`–`0x4917FF` | 4785152 + 4*N | forward-reference heads, **compiler-only**: the last unpatched `call`/`jmp rel32` site for ANY name `N` (0–1279, one-byte names included since W10-A), each placeholder holding the next (M2, W9-3A); the last one holds the first use's source position in `self/golf2.golfj` (W11-3B; `0` before, and still `0` in the seed) — a value below `0x494000`, so it ends the list either way | shipped |
 | `0x492000`–`0x4933FF` | 4792320 + 4*N | the compiler's **dictionary**, **compiler-only**: the body address of name `N` (0–1279). Moved here from `m+2048` by W10-A — that table had room for 512 names before it met the output buffer | shipped |
 | `0x494000`–`0x4C3FFF` | 4800512–4997119 | the compilers' **output buffer** `B`, **compiler-only** (W11-1E; it was `m+4096`): the byte at file offset `f` is at `B+f`, so a target address is `bufaddr - 606208`. 196608 bytes, the cap; `a` (the one word that moves the cursor, in both compilers) refuses a cursor past `B+196608` (it tests `< 4997121`), and `0x4C4000`–`0x4CFFFF` is slack for the at most 255-byte template written before that test | shipped (W11-1E) |
-| `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
+| `0x4D0000`–`0x4DFFFF` | 5046272– | **RETIRED (W12-O2)** — the M-CHAIN runtime-thunk code arena, where `∘` bump-allocated 39 bytes (and `⊸` 38) per call, 1680 thunks, never freed. Thunks are `A` blocks on the RWX heap now; nothing writes here | free |
 | `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
 | `0x4E0800`–`0x4E27FF` | 5113856–5121023 | long-named variables (`→‹name›`/`←‹name›`): the bank above, continued by its own formula `0x4E0000 + 8*name` for name numbers 256–1279 — **user space** (W9-3A; W10-A extended it from `0x4E0FFF`, so no long-named variable moved) | shipped |
 | `0x4F0000` | 5177344 | heap pointer (word `H`) | shipped |
@@ -449,7 +449,7 @@ both forms are given here and the decimal is the one you type.
 | `0x4F0030` | 5177392 | spill-stack pointer (a byte offset; BSS-zero at start) | shipped |
 | `0x4F0034` | 5177396 | **heap base cell** — the `brk` the prelude's init was handed; `A` adds the bump offset `H` to it. ASLR-shifted every run, so it is never spelled out anywhere. Since M-TAG2 (W9-2A) it is **allocator state only**: `T` and the M-VEC templates test the list tag and no longer read it | shipped |
 | `0x4F0038` | 5177400 | **heap span cell** — how far the break has been pushed since; `A` grows the break when a block would pass it. Allocator state only since M-TAG2 (it was `T`'s `v - base <u span` bound) | shipped |
-| `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
+| `0x4F003C` | 5177404 | **RETIRED (W12-O2)** — the code-arena pointer (a byte offset into `0x4D0000`); nothing reads or writes it | free |
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
 | `0x4F0048`–`0x4F004F` | 5177416 | reserved for future scratch (run2.sh's W1 atom test round-trips a value through it) | free |
 | `0x4F0050` | 5177424 | **prelude input buffer** (W9-4C): the RAW address of the stdin buffer block `[pos][len][8192 bytes][8 spare]` (1027 cells since W12-P1: the spare cell takes `‹ints›`'s sentinel byte) that `‹getc›`/`‹readline›`/`‹readall›`/`‹ints›`/`‹readbytes›` share; 0 (BSS) until the first read allocates it with `A` | shipped |
@@ -583,14 +583,14 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | shipped, all eight: 5180736 d (masked) · 5180744 k · 5180752 D (the key's stored hash) · 5180760 the probe's slot (shift+2 for a moment) · 5180768 the value / default · 5180776 index table · 5180784 cap-1 (5180776 / 5180784 are also `‹_12p2_huge›`'s temps) · 5180792 the multiplier 0x9E3779B97F4A7C15, stored by `‹dict›` |
 | P3 list loops | `0x4F0D80`–`0x4F0DBF` | 5180800 | 5180800 … 5180856 (W12-P3 uses three, shipped: 5180800 `⌽`'s result base · 5180808 `⍳`'s end pointer, `⌽`'s source base · 5180816 the `∑`/`∏` accumulator, `⌽`'s mirror constant; 5180824 … 5180856 spare) |
 | O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 (W12-O1 uses one: 5180864, the not-a-number hook cell `mkblob2.NAN_HOOK` that the prelude fills with `‹_12o1_nan›`; 5180872 … 5180920 spare) |
-| Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180960 used (shipped, W12-Z4): block · value · index/new block · count · deque head for `⍈ ⍆ ⍅ ‹first› ‹last› ‹pushf› ‹popf›`, see the prelude's W12-Z4 section; 5180968 … 5180984 free (O3's heap may take them) |
+| Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180960 used (shipped, W12-Z4): block · value · index/new block · count · deque head for `⍈ ⍆ ⍅ ‹first› ‹last› ‹pushf› ‹popf›`, see the prelude's W12-Z4 section; 5180968 … 5180984 used by W12-O3 (shipped): the queue's payload P · i (push) / &q[i] (pop) · the value being pushed or sifted down, for `‹pqpush› ‹pqpop›`, see the prelude's W12-O3 section |
 | A2 scan / reduce | `0x4F0E40`–`0x4F0E7F` | 5180992 | 5180992 … 5181048 |
 | A3 each-indexed | `0x4F0E80`–`0x4F0EBF` | 5181056 | 5181056 … 5181112 |
 | A4 sort-by / grade | `0x4F0EC0`–`0x4F0EFF` | 5181120 | 5181120 … 5181128 used (shipped, W12-A4): the key list's element 0 · the merge step's take-right flag F, live only inside `‹grade›`'s sort loop (no user code runs there); 5181136 … 5181176 free |
 | A5 window | `0x4F0F00`–`0x4F0F3F` | 5181184 | 5181184 … 5181240 |
 | A6 fixpoint | `0x4F0F40`–`0x4F0F7F` | 5181248 | 5181248 … 5181304 |
 | A8 streams | `0x4F0F80`–`0x4F0FBF` | 5181312 | 5181312 … 5181368 |
-| O2 freeable thunks | `0x4F0FC0`–`0x4F0FFF` | 5181376 | 5181376 … 5181432 |
+| O2 freeable thunks | `0x4F0FC0`–`0x4F0FFF` | 5181376 | W12-O2 needs none (thunks are `A` blocks). W12-O3, the same task's pair, uses two (shipped): 5181376 E = &q[n'] · 5181384 &q[c], the chosen child, live only inside `‹pqpop›`'s sift-down (no user code runs there); 5181392 … 5181432 free |
 
 ---
 
