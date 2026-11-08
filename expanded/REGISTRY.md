@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **36** are now spent, leaving **75** free. It is partitioned as follows
+space; **37** are now spent, leaving **74** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -173,7 +173,7 @@ prefix-free against the 75 mnemonics of the three tables and each other), no gly
 | `0xB6` | `\import` | `⎘` | compiler op, include prefix: `⎘“path“` compiles that file's source in place (fd-0 swap, include-once, search `.` then `lib/`, later `vendor/`) — see the decision below | W11-2A | reserved |
 | `0xB7` | `\rec` | `⊜` | compiler op, record definition header: `⊜‹point›‹x›‹y›;` defines a constructor and per-field accessors/setters over a plain list | W11-4A | reserved |
 | `0xB8` | — | — | spare compiler op, for the W11 front-end owners (2A / 3B / 4A) | W11-2A/3B/4A | reserved |
-| `0xD0` | `\bind` | `⊸` | prelude word at a high byte: `x ′f ⊸ -> ′g`, `g` = push x, call f (a thunk in the `∘` arena, bound-checked like `∘`) | W11-2C | reserved |
+| `0xD0` | `\bind` | `⊸` | prelude word at a high byte: `x ′f ⊸ -> ′g`, `g` = push x, call f (a thunk in the `∘` arena, bound-checked like `∘`) | W11-2C | shipped |
 
 The atom semantics in the table are W11-0's intent, not a spec: W11-3A owns the
 two templates (and their `boot/golfref.py` mirror) and may refine the order of
@@ -198,7 +198,10 @@ table (run2.sh requires it to match `codepage.py reference`) and make the
 encoder accept `⊸` while the byte compiles to an undefined word — documented
 but not real. W11-2C adds the row, the REFERENCE regeneration and the prelude
 definition together; likewise W11-3A for `0xA8`/`0xA9` (ATOMS) and
-W11-2A / W11-4A for `0xB6` / `0xB7` (COMPILER).
+W11-2A / W11-4A for `0xB6` / `0xB7` (COMPILER). **W11-2C shipped `0xD0`:** the
+LIB row, the generated REFERENCE row and the `⊸` definition (prelude section
+`# === W11-2C bind ===`) landed together; its thunk is 38 bytes in the `∘`
+arena, on `∘`'s bump pointer and bound.
 
 ---
 

@@ -225,7 +225,10 @@ key on but integers.
   the readable letters are gone (§1.3). **Fixed by M2 (W9-3A):** `‹name›` adds
   long names, usable as words, quotations, chain links, variables and (since
   W9-4D) locals — 256 per program at first, 1024 since W10-A.
-- **No lexical scope, and no closures.** The variable bank is one global cell per
+- **No lexical scope, and no closures.** **Closures by value — CLOSED (W11-2C):**
+  `x ′f⊸` captures the value of `x` in a new quotation, so
+  `10→n ←n′+⊸→k 99→n 3⍳←k€⍕` prints `10 11 12` (REFERENCE.md, Closures).
+  Lexical scope is still absent. The variable bank is one global cell per
   name. The "closure" idiom in `examples/legacy_capstone.golfj`
   (`10→k:f←k+;… ′f€`) is a global read at call time, not a capture:
 

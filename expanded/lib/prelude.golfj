@@ -931,6 +931,29 @@
 # === W11-2B dict and set ===
 
 # === W11-2C bind ===
+# ⊸ bind (closures by value): x ′f ⊸ -> ′g, where g pushes the CAPTURED x and
+# then calls f.  `10→n ←n′+⊸` is a quotation that adds 10 whatever n holds
+# later — the value is copied into the code, not the variable's address.  Built
+# exactly like ∘ (see the M-CHAIN comment above): a 38-byte thunk in the same
+# code arena at 0x4D0000, the same bump pointer 0x4F003C and the same bound,
+#   [PROLOGUE][48 B8 x:u64][50][48 B8 f:u64][FF D0][EPILOGUE]
+#     sub rbp,8; pop [rbp]  |  mov rax,x; push rax  |  mov rax,f; call rax
+#     |  push [rbp]; add rbp,8; ret
+# x is any 64-bit value (a tagged list included), so its imm64 is written as
+# two 4-byte `!`s, low half then x>>32 (logical shift: `>` never dispatches);
+# f is a code address < 2^31, so its high half is 0 as in ∘.  65536-38 = 65498
+# is the last legal start offset, so an offset of 65499 or more dies with ∘'s
+# message — ∘ and ⊸ share the arena and each checks its own size, so any mix
+# of the two is diagnosed before a thunk can reach the variable bank.
+# X/Y-wrapped like ∘ (s1 x · s2 f · s3 start), so it may run inside a map.
+:⊸5177404@65499\rlt[
+ “compose arena exhausted“U‹throw›]
+ X5177456\store5177448\store5046272 5177404@\radd"5177464\store
+ 72&,1\radd131&,1\radd237&,1\radd8&,1\radd143&,1\radd69&,1\radd0&,1\radd
+ 72&,1\radd184&,1\radd5177448\fetch&!4\radd5177448\fetch32>&!4\radd80&,1\radd
+ 72&,1\radd184&,1\radd5177456\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
+ 255&,1\radd117&,1\radd0&,1\radd72&,1\radd131&,1\radd197&,1\radd8&,1\radd195&,1\radd
+ _5177404@38\radd5177404!5177464\fetch Y;        # ⊸: x ′f -> ′(push x; f)
 
 # === W11-2D use after free ===
 
