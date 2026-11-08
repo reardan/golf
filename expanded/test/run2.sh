@@ -3473,6 +3473,67 @@ done < <(sed -n '/^### Vectors and deques$/,/^### /p' REFERENCE.md | sed -n '/^`
 [ -z "$w12z4bad" ] && [ "$w12z4n" -ge 8 ] && ok "REFERENCE.md's Vectors and deques examples print what they say (golf2; the oracle too, but for the stderr ones)" \
   || no "REFERENCE W12-Z4 examples:$w12z4bad"
 
+# === W12-P3 ===
+echo "W12-P3: tight loops in ⍳ ∑ ∏ ⌽ € ⇤ ⌿ ⊞ and the elementwise + - * ⌈ ⌊"
+# ⍳ ∑ ∏ run a one-at-a-time head loop until the rest is a multiple of four,
+# then a four-wide body, so every length 0..9 takes a different split; the
+# other words walk one pointer against an end.  Checked against Python.
+w12p3a=""
+for n in 0 1 2 3 4 5 6 7 8 9; do
+  w12p3p=":f2∣;$n⍳⍕␤$n⍳∑Ṅ␤$n⍳1+∏Ṅ␤$n⍳⌽⍕␤$n⍳′²€⍕␤$n⍳7′+⇤Ṅ␤$n⍳′f⌿⍕␤$n⍳$n 2+⍳′*⊞⍕␤$n⍳\"+⍕␤$n⍳3-⍕␤10 $n⍳-⍕␤$n⍳4⍳+⍕␤$n⍳2⌈⍕␤$n⍳0 2-⌊⍕"
+  w12p3w=$(python3 - "$n" <<'PY'
+import sys, math
+n = int(sys.argv[1]); l = list(range(n)); j = lambda v: " ".join(map(str, v))
+print("\n".join([j(l), str(sum(l)), str(math.factorial(n)), j(l[::-1]), j(x*x for x in l),
+                 str(7 + sum(l)), j(x for x in l if x % 2 == 0), j(x*x for x in l), j(2*x for x in l),
+                 j(x-3 for x in l), j(10-x for x in l), j(2*x for x in l[:4]), j(max(x, 2) for x in l),
+                 j(min(x, -2) for x in l)]))
+PY
+)
+  [ "$(printf '%s' "$w12p3p" | gc | sed 's/ *$//')" = "$w12p3w" ] || w12p3a="$w12p3a $n"
+done
+[ -z "$w12p3a" ] && ok "lengths 0..9: ⍳ ∑ ∏ ⌽ € ⇤ ⌿ ⊞ and list+list, list-scalar, scalar-list, ⌈ ⌊ match Python" \
+  || no "W12-P3 lengths:$w12p3a"
+# Nesting: a map inside a map inside a map, ∑ of each inner list, and the
+# elementwise ops on a list that mixes ints and lists (each int element takes
+# the inline op, each list element recurses).
+w12p3n=':m′²€;:s⍳′⍳€;:n′m€;:u′∑€;4⍳′⍳€′m€⍕␤4⍳′s€′n€⍕␤4⍳′s€′u€⍕␤4⍳′s€′u€′∑€⍕'
+[ "$(printf '%s' "$w12p3n" | gc | sed 's/ *$//')" = "$(printf '[] [0] [0 1] [0 1 4]\n[] [[]] [[] [0]] [[] [0] [0 1]]\n[] [0] [0 0] [0 0 1]\n0 0 0 1')" ] \
+  && [ "$(printf '%s' "$w12p3n" | gref)" = "$(printf '%s' "$w12p3n" | gc)" ] \
+  && ok "map inside map inside map, ∑ inside two maps (golf2 and the oracle)" || no "W12-P3 nesting: $(printf '%s' "$w12p3n" | gc)"
+w12p3m='3⍳2⍳′⍳€⧺"10+⍕␤"10\\-⍕␤""+⍕␤"∑⍕␤""*⍕␤"3⌈⍕␤"1⌊⍕␤∏⍕'
+[ "$(printf '%s' "$w12p3m" | gc | sed 's/ *$//')" = "$(printf '10 11 12 [] [10]\n10 9 8 [] [10]\n0 2 4 [] [0]\n\n0 1 4 [] [0]\n3 3 3 [] [3]\n0 1 1 [] [0]\n')" ] \
+  && ok "0 1 2 [] [0] with + - * ⌈ ⌊ ∑ ∏: ints inline, lists recurse, ∑ through a list accumulator" || no "W12-P3 mixed: $(printf '%s' "$w12p3m" | gc)"
+# A throw from inside the user's function mid-loop is caught; the spill
+# stack is back to 0 and the same word works again (its loop cells are
+# re-initialised on entry).  Then a use-after-free met mid-loop inside the
+# elementwise recursion and inside ∑'s accumulator +.
+[ "$(w113 ':t"2≡1+[“two“⊃‹throw›];:g5⍳′t€;′g‹catch›⊐␤7⍳′²€⍕␤:h9⍳′g€;′h‹catch›⊐␤3⍳′⍳€′∑€⍕␤5177392@Ṅ')" \
+    = "$(printf 'two\n0 1 4 9 16 25 36 \ntwo\n0 0 1 \n0 rc=0')" ] \
+  && [ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:g5⍳0′t⇤;′g‹catch›⊐␤7⍳0′+⇤Ṅ␤5177392@Ṅ')" = "$(printf 'two\n21\n0 rc=0')" ] \
+  && [ "$(w113 ':t"2≡1+[“two“⊃‹throw›]2∣;:g5⍳′t⌿;′g‹catch›⊐␤:f2∣;7⍳′f⌿⍕␤5177392@Ṅ')" = "$(printf 'two\n0 2 4 6 \n0 rc=0')" ] \
+  && [ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:g5⍳5⍳′t⊞;′g‹catch›⊐␤7⍳5⍳′+⊞⍕␤5177392@Ṅ')" = "$(printf 'two\n0 2 4 6 8 \n0 rc=0')" ] \
+  && ok "a throw from € (also nested in €), ⇤, ⌿, ⊞ mid-loop is caught, then the word runs again; spill stack back to 0" \
+  || no "W12-P3 throw mid-loop"
+[ "$(w113 ':g9⍳′⍳€"4⊇⌫"+;′g‹catch›⊐␤9⍳′⍳€"+⍕␤:h9⍳′⍳€"4⊇⌫∑;′h‹catch›⊐␤5⍳∑Ṅ␤5177392@Ṅ')" \
+    = "$(printf 'use after free\n[] [0] [0 2] [0 2 4] [0 2 4 6] [0 2 4 6 8] [0 2 4 6 8 10] [0 2 4 6 8 10 12] [0 2 4 6 8 10 12 14] \nuse after free\n10\n0 rc=0')" ] \
+  && ok "use after free met mid-loop inside + and inside ∑'s accumulator: caught, then + and ∑ work again" || no "W12-P3 uaf mid-loop"
+# ⍳ ∑ ∏ ⌽ take no spill frame and never touch s0..s7: their state is the
+# data stack plus slot P3's cells (REGISTRY §3.2), which nothing they call
+# re-enters.  The elementwise path takes one frame per nesting level (it was
+# two, D and Z/K/G), so + now goes 3000 deep, and past the 4096 frames it
+# still stops with the W10-C message, catchable as W11-3A made it.
+[ "$(printf '%s' '12345 5177440⊛ 9⍳∑_ 9⍳1+∏_ 9⍳⌽_ 9⍳"+_ 5177440⊙Ṅ' | gc)" = "12345" ] \
+  && [ "$(sed -n '/^:[RSPV]/,/;$/p' lib/prelude.golfj | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5180800 5180808 5180816 " ] \
+  && ok "⍳ ∑ ∏ ⌽ leave s0..s7 alone and name only P3's cells 5180800 5180808 5180816" || no "W12-P3 cells"
+[ "$( { printf '%s' "$W10CW"; w10cn 3000 3; printf '"+⍤N E'; } | gc)" = "3001" ] \
+  && ok "+ of a list nested 3000 deep with itself (one spill frame per level)" || no "W12-P3 + 3000 deep"
+w12p3x=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '"+⍤N E'; } | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+           && chmod +x "$TMP/p" && { "$TMP/p" > "$TMP/w12p3.out" 2>&1; echo "rc=$?"; } 2>/dev/null)
+[ "$w12p3x" = "rc=1" ] && [ "$(cat "$TMP/w12p3.out")" = "GOLF: spill stack exhausted" ] \
+  && [ "$( { printf '%s:‹d›"+⍤;' "$W10CW"; w10cn 100000 3; printf '′‹d›‹catch›⊐␤5⍳"+⍕'; } | gc)" = "$(printf 'spill stack exhausted\n0 2 4 6 8 ')" ] \
+  && ok "+ 100,000 deep: GOLF: spill stack exhausted, exit 1; under ‹catch› the message, then + works" || no "W12-P3 + spill exhaustion: $w12p3x"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

@@ -20,6 +20,8 @@ instead of raw `⍶`/`⊛` stacks: 131 → 113, 158 → 131 and 127 → 125 byte
 each push, pop, peek and `⊇` is now a checked prelude call where the old
 code had four or five inline ops. Old and new on the same inputs, best of 5,
 same session: parens 96 → 137 ms, islands 67 → 130 ms, slidemax 208 → 294 ms.
+| W12-P3 before (base 7a867ca), 2026-11-08 | 0.139 | 0.120 | 0.096 | 0.086 | 0.171 | 0.448 | 0.073 | 0.189 | 0.199 | 0.024 | 898 |
+| W12-P3, 2026-11-08 | 0.129 | 0.097 | 0.082 | 0.080 | 0.126 | 0.440 | 0.061 | 0.107 | 0.202 | 0.020 | 898 |
 
 ## Micro, ns per element
 
@@ -27,6 +29,8 @@ same session: parens 96 → 137 ms, islands 67 → 130 ms, slidemax 208 → 294 
 |---|---|---|---|---|---|---|---|---|
 | W12-0, 2026-11-08 | 1.12 | 8.33 | 20.43 | 24.33 | 21.61 | 25.74 | 39.69 | 555.32 |
 | W12-O1, 2026-11-08 | 1.12 | 9.24 | 19.77 | 24.08 | 21.54 | 25.18 | 41.15 | 552.18 |
+| W12-P3 before (base 7a867ca), 2026-11-08 | 1.05 | 8.70 | 19.77 | 25.12 | 21.31 | 26.64 | 40.53 | — |
+| W12-P3, 2026-11-08 | 1.01 | 6.96 | 10.52 | 15.59 | 11.61 | 15.00 | 17.97 | — |
 
 W12-O1 put a not-a-number check in front of `± ⊕ ⊖ ² ⊗ ⊘`, and `loop` uses
 `⊖`, so its row above is noise-level against W12-0. The A/B below is the
@@ -42,3 +46,30 @@ without the check, and the two were run interleaved, best of 11, on
 
 `inc2` was 1.12 ns per element before the check and 1.78–1.89 ns after it
 in `micro.sh`.
+
+W12-P3 rewrote the list-word loops (median of three interleaved micro.sh runs
+per side above; the leetcode rows are best of two `bench.sh in` runs). The
+micro rows are dominated by memory: a fresh 10^7-cell list costs about
+3.3 ns/element in page faults alone on this machine (a loop that only stores
+one cell per 4 KB page), so `iota` cannot reach the plan's 4 ns. The words'
+own cost, on a cache-resident 10^5-element list (best of 11, 200 passes),
+and their instructions per element (cachegrind, 10^4 elements):
+
+| word | cached ns/el before → after | instr/el before → after |
+|---|---|---|
+| `⍳` | — → 2.6–3.1 | 55 → 17.6 |
+| `∑` | 11.6 → 1.7–2.1 | 101 → 19.8 |
+| `∏` | — → 1.8 | 103 → 21.8 |
+| `€` (empty fn) | 12.6 → 3.9–4.3 | 117 → 56 |
+| `⇤` | — → 3.9–5.0 | 112 → 59 |
+| `⌿` | — → 4.9–5.9 | 131 → 71 |
+| `⊞` | — → 6.7–7.1 | 174 → 77 |
+| `⌽` | — → 2.5–3.0 | 112 → 31 |
+| list `+` list | 27.6 → 5.6–7.1 | 221 → 61 |
+| list `+` int | — → 4.7–5.0 | 176 → 44 |
+
+Not shipped, measured: an `madvise(MADV_HUGEPAGE)` on the heap after each
+brk growth in `A` (one line) cuts that page-fault floor to about 1.5 ns and
+the `iota` row to 5.1–5.6 ns, for 1–2 MB more peak RSS on the leetcode
+inputs (`stock` 31.6 → 32.6 MB). It changes the allocator, not a list word,
+so W12-P3 leaves it to the integrator.
