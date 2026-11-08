@@ -157,6 +157,9 @@
 #
 #   ‹else›    a jmp site held while the one below it is patched
 #
+# W12-Z2 (`⇡x` / `⇣x`) adds no state: ‹step› keeps the name in b, as ⇒/⇐ do,
+# and ‹named› walks M-FRAME2's slot table with M2's ‹idx›, idle between tokens.
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -169,7 +172,7 @@
 # ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹forward› ‹resolve›
 # ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
 # g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
-# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› t H.  The M2 words have long names for the same reason their state
+# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹step› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -1737,6 +1740,116 @@ _
 2.
 ;
 
+# W12-Z2: `⇡x` and `⇣x` (0xB9 / 0xBA) are `←x⊕→x` and `←x⊖→x` in one
+# instruction that never touches the data stack:
+#
+#   48 FF 04 25 imm32   inc qword [0x4E0000+8*x]     (⇣: 48 FF 0C 25, dec)
+#   48 FF 45 disp8      inc qword [rbp+disp]          (⇣: 48 FF 4D, dec)
+#
+# The second form is for a ⊡ word that has already named x as a local (with ⇒x
+# or ⇐x earlier in its body): there the local wins.  ⇡ never claims a slot, so
+# a name the word has not named yet is the variable.  x is a letter or a ‹long
+# name›; anything else, end of input included, is `GOLF: ⇡ needs a variable`.
+
+:‹badstep›  # ‹badstep› : `GOLF: ⇡ needs a variable at line N`, exit 2  [ glyph -> !!! ]
+“GOLF: “
+‹say›
+4259892!    # the glyph's three UTF-8 bytes, staged in m+52 as ‹badelse› does
+2
+4259892
+3
+1⎈
+_
+“ needs a variable“
+‹say›
+‹where›
+2.
+;
+
+:‹named›    # ‹named› : slot+1 if this ⊡ word has named local b, else 0  [ -> s ]
+←J
+[           # outside a ⊡ word nothing is a local
+0
+^
+]
+0
+→‹idx›
+{
+←‹idx›
+←‹locals›
+-
+[           # past the last one named: b is not a local (yet)
+0
+^
+]
+←‹idx›
+4*
+4259936+
+@
+←b
+-
+[
+←‹idx›
+1+
+^
+]
+←‹idx›
+1+
+→‹idx›
+0
+}
+;
+
+:‹step›     # ‹step› : compile ⇡x (k = 0) or ⇣x (k = 8)            [ k -> ]
+‹getname›
+→b
+←b
+256<
+1+
+[           # a one-byte name must be a letter
+←b
+65-
+26<
+←b
+97-
+26<
++
+[
+"
+[
+10586082    # 0xA187E2: ⇡
+‹badstep›
+]
+10717154    # 0xA387E2: ⇣
+‹badstep›
+]
+]
+‹named›
+"
+[           # not a local: the variable bank
+_
+72o         #   0x48 0xFF 0x04|0x0C 0x25 imm32  inc|dec qword [cell]
+255o
+4+
+o
+37o
+←b
+8*
+5111808+
+w
+^
+]
+1-          # a local: its slot's displacement
+8*
+→b
+72o         #   0x48 0xFF 0x45|0x4D disp8  inc|dec qword [rbp+disp]
+255o
+69+
+o
+←b
+o
+;
+
 :t
 "
 12-
@@ -2088,6 +2201,24 @@ _
 69o
 o
 80o         #   0x50                 push rax
+^
+]
+
+"
+185-
+[           # 0xB9 ⇡ : increment a variable in place (W12-Z2)
+_
+0
+‹step›
+^
+]
+
+"
+186-
+[           # 0xBA ⇣ : decrement it
+_
+8
+‹step›
 ^
 ]
 

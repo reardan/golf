@@ -111,6 +111,10 @@ COMPILER = [
      "prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec)"),
     (mkblob2.ELSE_BYTE, "else", "⋄",
      "separator: c[a⋄b] runs a when c is 0, else b; {c⋄body} tests c before each pass, runs body while it is 0"),
+    (mkblob2.VINC_BYTE, "vinc", "⇡",
+     "prefix: ⇡x adds 1 to variable x in place (←x⊕→x; in a ⊡ word, a local already named there)"),
+    (mkblob2.VDEC_BYTE, "vdec", "⇣",
+     "prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there)"),
 ]
 
 def lib_byte(key) -> int:

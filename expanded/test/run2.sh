@@ -2504,7 +2504,7 @@ w113b(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && $1 < s
 [ "$(printf '“a\nb“ # c\n`3 x\ny\n\n\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 7" ] \
   && ok "newlines inside a string, a comment's end and a raw blob all count" || no "newline counting: $(cat "$TMP/inc/err")"
 w113bp=$(python3 tools/codepage.py encode < lib/prelude.golfj | tr -cd '\n' | wc -c | tr -d ' ')
-[ "$(python3 tools/codepage.py encode < lib/prelude.golfj | cat - <(printf '5qṄ') | "$TMP/golf2" 2>&1 >/dev/null)" \
+[ "$(python3 tools/codepage.py encode < lib/prelude.golfj | cat - <(printf '5qN') | "$TMP/golf2" 2>&1 >/dev/null)" \
     = "GOLF: undefined word q at line $((w113bp + 1))" ] \
   && [ "$(printf '1\n2\n\f3\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 2" ] \
   && ok "without the form feed the prelude's $w113bp lines count; a form feed between tokens restarts at line 1" || no "form feed reset"
@@ -3711,6 +3711,64 @@ for w12a7n in 1 2 3 4 5 6 7 8; do
   [ "$(echo $w12a7n | "$TMP/a7q")" = "$(echo $w12a7n | python3 bench/leetcode/py/queens.py)" ] || w12a7q="$w12a7q [n=$w12a7n]"
 done
 [ -z "$w12a7q" ] && ok "the queens solution on {⇐v0≡⋄…} agrees with Python for n = 1…8" || no "queens with ⋄:$w12a7q"
+
+# === W12-Z2 ===
+echo "W12-Z2: ⇡x / ⇣x — increment / decrement a variable in place (compiler ops)"
+# ⇡x is ←x⊕→x and ⇣x is ←x⊖→x, as one inc/dec qword on the variable's cell:
+# 2 bytes of source instead of 5, 8 bytes of code instead of 20, and the data
+# stack is never touched.  Inside a ⊡ word, a local the word has already named
+# is the one bumped.  No not-a-number check: a variable holding a list is
+# bumped as a raw cell, like ⇒/⇐ copy one.
+w12z2b(){ [ "$(printf '%s' "$1" | gc)" = "$2" ] && [ "$(printf '%s' "$1" | gref)" = "$2" ]; }
+w12z2b '5→x⇡x⇡x←xṄ⇣x⇣x⇣x←xṄ' "74" \
+  && ok "5→x⇡x⇡x is 7, then ⇣x⇣x⇣x is 4 (golf2 and the oracle)" || no "⇡⇣ basic: $(printf '%s' '5→x⇡x⇡x←xṄ⇣x⇣x⇣x←xṄ' | gc)"
+w12z2b '⇡q←qṄ 0→z⇣z←zṄ 0 1-→m⇡m←mṄ 1 63≪1-→w⇡w←w1 63≪≡Ṅ' "1-10-1" \
+  && ok "an unset variable starts at 0; 0 decrements to -1; -1 to 0; 2^63-1 wraps to -2^63" || no "⇡⇣ edges"
+w12z2b '0→‹count›⇡‹count›⇡‹count›⇡‹count›⇣‹count›←‹count›Ṅ' "2" \
+  && ok "⇡‹count› / ⇣‹count› on a long-name variable" || no "⇡ long name"
+w12z2b '0→i{←i5<1+⋄←iṄ⇡i}␤3→n{⇣n←n1<}←nṄ' "$(printf '01234\n0')" \
+  && ok "⇡i counts a while loop up, ⇣n counts a } loop down" || no "⇡⇣ loops"
+w12z2b '⊡f⇒a⇡a⇡a⇐a;10fṄ 50→a⇡a←aṄ' "1251" \
+  && ok "in a ⊡ word, ⇡a after ⇒a bumps the local; the variable a is untouched" || no "⇡ local"
+w12z2b '⊡g⇡a←aṄ⇒a⇡a⇐aṄ;100→a 7g←aṄ' "1018101" \
+  && ok "in a ⊡ word, ⇡a before any ⇒a/⇐a is the variable; after ⇒a, the local" || no "⇡ local vs variable"
+w12z2b '⊡h⇒‹acc›⇒b⇣b⇡‹acc›⇡‹acc›⇐‹acc›⇐b;1 9hṄṄ' "011" \
+  && ok "long-name and second-slot locals: ⇣b ⇡‹acc›" || no "⇡ long local"
+w12z2b ':k⇡x⇡x;0→x kk←xṄ' "4" \
+  && ok "⇡x in a plain : word is the variable (no frame)" || no "⇡ in : word"
+w12z2b '3→x⇡x“x⇡x“🗲 # ⇡x in a comment
+←xṄ' "x⇡x4" && ok "⇡ inside “…“ and in a comment is left alone" || no "⇡ in string/comment"
+w94dbin '⇡x⇣x'
+[ "$(w94dhas 48ff0425c0034e0048ff0c25c0034e00)" = 1 ] \
+  && ok "⇡x⇣x is inc qword [0x4E03C0]; dec qword [0x4E03C0] (48 FF 04/0C 25 imm32)" || no "⇡⇣ variable bytes"
+w94dbin '⇡‹n›'
+[ "$(w94dhas 48ff042500084e00)" = 1 ] \
+  && ok "⇡‹n› is inc qword [0x4E0800], the first long name's cell" || no "⇡ long-name bytes"
+w94dbin '⊡f⇒a⇒b⇡a⇣b⇡c;'
+[ "$(w94dhas 48ff450048ff4d0848ff042518034e00)" = 1 ] \
+  && ok "⊡f⇒a⇒b⇡a⇣b⇡c: inc [rbp+0]; dec [rbp+8]; inc qword [c] (48 FF 45/4D disp8)" || no "⇡⇣ local bytes"
+w12z2bad=""
+for w12z2c in '⇡1|GOLF: ⇡ needs a variable at line 1' \
+              '1Ṅ\n⇣ x|GOLF: ⇣ needs a variable at line 2' \
+              '1⇡|GOLF: ⇡ needs a variable at line 1' \
+              ':f⇡“a“;|GOLF: ⇡ needs a variable at line 1' \
+              '\n⇡⇣x|GOLF: ⇡ needs a variable at line 2' \
+              '⇣‹a b›|GOLF: bad long name ‹a› at line 1'; do
+  w12z2o=$(printf "${w12z2c%%|*}" | w12a7e)
+  [ "$w12z2o" = "2 2 2 ${w12z2c#*|} | ${w12z2c#*|}" ] || w12z2bad="$w12z2bad [$w12z2o]"
+done
+[ -z "$w12z2bad" ] \
+  && ok "⇡ / ⇣ not followed by a letter or ‹long name› (a digit, a space, end of input, a string, another ⇡): GOLF: … at line N, exit 2, no binary (golf2, golfref; the seed exits 2)" \
+  || no "⇡⇣ errors:$w12z2bad"
+w12z2p='5→x⇡x⇡x⇣x←xṄ0→‹n›⇡‹n›←‹n›Ṅ⊡f⇒a⇡a⇣‹n›⇐a⇡a;3fṄ←‹n›Ṅ⊡g⇡a←aṄ;9→a g'
+printf '%s' "$w12z2p" | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/z2.src"
+"$TMP/seed" < "$TMP/z2.src" > "$TMP/z2.sbin" 2>/dev/null; "$TMP/golf2" < "$TMP/z2.src" > "$TMP/z2.bin" 2>/dev/null
+python3 boot/golfref.py < "$TMP/z2.src" > "$TMP/z2.rbin" 2>/dev/null
+cmp -s "$TMP/z2.sbin" "$TMP/z2.bin" && cmp -s "$TMP/z2.rbin" "$TMP/z2.bin" && [ "$(printf '%s' "$w12z2p" | gc)" = "614010" ] \
+  && ok "seed, golf2 and golfref emit the same bytes for a ⇡ / ⇣ program" || no "⇡⇣ three-way byte parity"
+[ "$(python3 tools/codepage.py decode < <(printf '%s' '\vinc\vdec' | python3 tools/codepage.py encode))" = "⇡⇣" ] \
+  && [ "$(printf '%s' '⇡⇣' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "b9ba" ] \
+  && ok "\\vinc / \\vdec encode to 0xB9 / 0xBA and decode as ⇡ / ⇣" || no "⇡⇣ code page"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

@@ -212,6 +212,36 @@ goes for the raw forms `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`, and for the comparisons `< » 
 0→i{←i4<1+⋄←i2%[“e“⋄“o“]🗲←i1+→i}        ->  eoeo
 ```
 
+**Counters: `⇡x` and `⇣x` (`\vinc` / `\vdec`, W12-Z2).** Prefix ops, like
+`→`/`←`: `⇡x` adds 1 to variable `x` and `⇣x` subtracts 1, in place.
+`( -- )`: the data stack is not touched.
+
+- `⇡x` means `←x⊕→x` and `⇣x` means `←x⊖→x`: 2 bytes of source instead of 5.
+  Each compiles to one instruction, `inc qword [cell]` / `dec qword [cell]`
+  (`48 FF 04 25 imm32` / `48 FF 0C 25 imm32`, 8 bytes instead of 20).
+- `x` is a letter (`a`–`z`, `A`–`Z`) or a long name: `⇡‹count›` bumps the
+  variable `‹count›`. In the examples, `⊡f` bumps its local `a` and leaves the
+  variable alone; `⊡g` bumps the variable `a` until `⇒a` names the local.
+- Inside a `⊡` word, a local the word has **already named** (with `⇒x` or
+  `⇐x` earlier in its body) wins: `⇡a` then bumps that local,
+  `inc qword [rbp+8k]` (`48 FF 45 disp8`; `⇣`: `48 FF 4D disp8`). `⇡` never
+  claims a slot itself, so before the first `⇒a`/`⇐a`, and in a plain `:`
+  word, `⇡a` is the variable `a`.
+- There is no not-a-number check: `⇡` bumps the raw cell, whatever it holds
+  (a variable holding a list gets a bad address, as `←x1﹢→x` would). Use it on
+  counters.
+- `⇡` followed by anything else (a digit, a space, a string, end of input) is
+  `GOLF: ⇡ needs a variable` (`⇡1` gives `GOLF: ⇡ needs a variable at line 1`) (`⇣ needs a variable` for `⇣`). A `⇡` inside
+  `“…“` or a comment is not an operator.
+
+```golfj
+5→x⇡x⇡x←xṄ⇣x⇣x⇣x←xṄ                  ->  74
+0→i{←i5<1+⋄←iṄ⇡i}                    ->  01234
+0→‹count›⇡‹count›⇡‹count›←‹count›Ṅ    ->  2
+⊡f⇒a⇡a⇡a⇐a;10fṄ 50→a⇡a←aṄ             ->  1251
+⊡g⇡a←aṄ⇒a⇡a⇐aṄ;100→a 7g               ->  1018
+```
+
 ## 3. The v2 code page
 
 The v2 language uses one byte for each operation, from the full 0–255 range.
@@ -280,6 +310,8 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xB6` | `⎘` | `\import` | prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/) |
 | `0xB7` | `⊜` | `\rec` | prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec) |
 | `0xB8` | `⋄` | `\else` | separator: c[a⋄b] runs a when c is 0, else b; {c⋄body} tests c before each pass, runs body while it is 0 |
+| `0xB9` | `⇡` | `\vinc` | prefix: ⇡x adds 1 to variable x in place (←x⊕→x; in a ⊡ word, a local already named there) |
+| `0xBA` | `⇣` | `\vdec` | prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there) |
 
 ### Library words
 
@@ -350,6 +382,7 @@ A few notes on what the tables leave out:
 - **Variables.** `→x` / `←x` store and load one global 64-bit cell per name
   byte. They are global, so a recursive word should use `⊡` locals instead:
   `⇒x` / `⇐x` reach local `x` in the current call's frame (see Locals below).
+  `⇡x` / `⇣x` add / subtract 1 in place (W12-Z2; see "Counters" in section 2).
 - **Chains.** `⊚name f g h;` defines a tacit train. One link is a call, two
   links are a composition, and three are a fork `h(f x, g x)`. A fourth or later
   link is an ordinary call made on the result.
@@ -1158,6 +1191,7 @@ wrote it, not by the encoded copy `golfc` hands the compiler.
 | `cannot include <path> at …` | a missing file, a path over 250 bytes, `⎘` without `“…“`, an unclosed path (the place is the `⎘`'s, in the includer) |
 | `includes nested too deeply <path> at …` · `too many includes <path> at …` | a 9th level of nesting · a 61st file |
 | `⋄ outside [ ] or { } at …` · `⋄ twice in one block at …` | a `⋄` with no `[` or `{` open (top level, the body of a word, after a `]`) · a second `⋄` in one `[ ]` or `{ }` (W12-A7) |
+| `⇡ needs a variable at …` · `⇣ needs a variable at …` | a `⇡`/`⇣` not followed by a letter or a `‹long name›` (W12-Z2) |
 | `program too large` | the binary would pass 192 KB. No place: it is the size of the whole image |
 
 ```

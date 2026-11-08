@@ -157,7 +157,7 @@ result:
 GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
-`bash test/run2.sh` is **791 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **806 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

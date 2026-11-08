@@ -175,6 +175,13 @@
 # displacement is a disp8.  m80 is the walking index (M2's, idle by now).  golf2
 # names the offending local on fd 2; the seed can only exit(2).
 :l"256<1+["97-26<[2.]]m56+@["256<[2.]"97-8<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
+# W12-Z2 — ⇡x (0xB9) / ⇣x (0xBA): inc / dec qword [0x4E0000+8x] in place, or
+# [rbp+disp] when this ⊡ word has already named x as a local (M walks l's table
+# without claiming a slot: name -> name slot+1, or name 0).  T: k -> ; k is 0
+# for inc, 8 for dec (the modrm's /0 or /1).  x must be a letter or a long
+# name; golf2 says `GOLF: ⇡ needs a variable`, the seed exits 2.
+:Mm56+@1-[0m80+!{m80+@m88+@-[0^]"m80+@4*m96++@-[m80+@1+^]m80+@1+m80+!0}]0; # M: name -> name s
+:TG"256<1+["65-26<&97-26<+[2.]]M"[_72o255o\4+o37o8*5111808+w^]1-8*\_72o255o\69+oo; # T: k -> ; ⇡/⇣'s bytes
 # ---------------------------------------------------------------------------
 # W11-4A — records, ⊜‹point›‹x›‹y›; (0xB7).  At compile time the header becomes
 # the words golf2's ‹defrecord› emits (see self/golf2.golfj, Records):
@@ -276,6 +283,8 @@
 "177-[_G"233oP4+\Y!RP0w1E72o129o237oPm92+!0w0m88+!1m56+!^] # 0xB1  ⊡  define a word owning a frame of locals
 "178-[_Gl88o72o137o69oo^]                               # 0xB2  ⇒x pop TOS into local x (a..z or ‹name›)
 "179-[_Gl72o139o69oo80o^]                               # 0xB3  ⇐x push local x
+"185-[_0T^]                                             # 0xB9  ⇡x increment variable x in place (W12-Z2)
+"186-[_8T^]                                             # 0xBA  ⇣x decrement it
 
 # `^` was a plain template until M-FRAME; it becomes a case purely so it can test
 # that flag (and, since M-FRAME2, link its frame-size immediate into m92's

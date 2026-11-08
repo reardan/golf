@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **49** are now spent, leaving **62** free. It is partitioned as follows
+space; **51** are now spent, leaving **60** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -222,8 +222,8 @@ no glyph is in use.
 | Byte | Mnemonic | Glyph | Meaning | Task | Status |
 |------|----------|-------|---------|------|--------|
 | `0xB8` | `\else` | `⋄` | compiler op: the separator in `c[a⋄b]` (if-else: `a` when c is 0, else `b`) and `{c⋄body}` (top-tested while: `body` while c is 0). The plan's `{?c⋄body}` is spelled without the `?`, which stays byte fetch. This is W11's unused spare | A7 | shipped |
-| `0xB9` | `\vinc` | `⇡` | compiler op, prefix: `⇡x` increments variable `x` (`←x⊕→x`); inside a `⊡` word a declared local wins | Z2 | reserved |
-| `0xBA` | `\vdec` | `⇣` | compiler op, prefix: `⇣x` decrements variable `x` | Z2 | reserved |
+| `0xB9` | `\vinc` | `⇡` | compiler op, prefix: `⇡x` increments variable `x` (`←x⊕→x`) as one `inc qword [cell]`; `x` a letter or `‹long name›`; inside a `⊡` word a local already named there wins (`inc qword [rbp+d]`). No not-a-number check | Z2 | shipped |
+| `0xBA` | `\vdec` | `⇣` | compiler op, prefix: `⇣x` decrements variable `x` (`←x⊖→x`), `dec qword`; same operand and local rules as `⇡` | Z2 | shipped |
 | `0xD1` | `\scan` | `⍀` | prelude: `l ′f ⍀ -> l'` inclusive scan, the first element is the seed | A2 | shipped |
 | `0xD2` | `\reduce` | `⍁` | prelude: `l ′f ⍁ -> x` fold with no seed; empty list throws `empty reduce` | A2 | shipped |
 | `0xD3` | `\eachi` | `⍸` | prelude: `l ′f ⍸ -> l'` map, `f` gets `x i` | A3 | shipped |

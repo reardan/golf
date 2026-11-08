@@ -83,6 +83,8 @@ B5	ED	C	rname	E280BA
 B6	ED	C	import	E28E98
 B7	ED	C	rec	E28A9C
 B8	ED	C	else	E28B84
+B9	ED	C	vinc	E287A1
+BA	ED	C	vdec	E287A3
 52	E-	L	range	E28DB3
 53	E-	L	sum	E28891
 4C	E-	L	len	E289A2
