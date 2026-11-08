@@ -27,6 +27,13 @@ program, prelude included (an empty program is about 43 KB), must fit in
 192 KB, below the 1C buffer at `0x430000`. The next
 candidates are still M7 (codegen) and M9 (C backend / arm64) under "As needed".
 
+**Proposed next: W12** — [`PLAN_W12.md`](PLAN_W12.md). It comes from a
+LeetCode benchmark against Python, C++ and Jelly
+([`bench/leetcode/`](bench/leetcode/README.md)). It covers buffer-direct
+input, faster dicts and list loops, scan and other adverbs, a constant-memory
+stream protocol, store-at and vectors, and one-byte aliases. M7 is planned to
+follow it.
+
 Before W11:
 
 **W9 — the gap-fix waves — closed the queue below.** Every numbered item
