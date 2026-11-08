@@ -2661,6 +2661,88 @@ printf '%s' ':‹boom›3⍳9⊇;:‹safe›′‹boom›‹catch›;' | w112enc
 # === W11-4B ===
 
 # === W11-4C ===
+echo "W11-4C: ‹stack› prints the data stack non-destructively; tools/golfi is a replay REPL"
+[ "$(printf '%s' '‹stack›1 2 3⍳‹stack›⍕‹stack›Ṅ‹stack›' | gc)" = "$(printf '<0>\n<3> 1 2 [0 1 2]\n0 1 2 <2> 1 2\n2<1> 1')" ] \
+  && ok "‹stack›: <depth> then bottom to top, a list via ⍕'s bracketed form, and the stack is left as it was" || no "w11-4c stack basic"
+[ "$(printf '%s' '0 1 63\shl 5\neg 3⍳′⍳€0⍳‹stack›' | gc)" = "<5> 0 -9223372036854775808 -5 [[] [0] [0 1]] []" ] \
+  && ok "‹stack›: zero, INT64_MIN, negatives, nested and empty lists" || no "w11-4c stack values"
+# Inside a word the data stack is the same (return addresses live on the rbp
+# stack); inside € the mapped element sits on top of the caller's values; a ⊡
+# word's locals frame is not on it either.
+[ "$(printf '%s' ':‹s›9‹stack›_;1 2‹s›‹stack›1 2⍳′‹stack›€_⊡‹g›⇒‹a›7‹stack›_;‹g›‹stack›' | gc)" \
+    = "$(printf '<3> 1 2 9\n<2> 1 2\n<4> 1 2 1 0\n<4> 1 2 1 1\n<3> 1 2 7\n<2> 1 2')" ] \
+  && ok "‹stack› inside a : word, inside €, inside a ⊡ word: the one data stack" || no "w11-4c stack in words"
+[ "$(printf '%s' '5 6′‹stack›‹catch›‹stack›' | gc)" = "$(printf '<2> 5 6\n<3> 5 6 0')" ] \
+  && ok "‹stack› under ‹catch›" || no "w11-4c stack catch"
+w114c='1 2 3⍳3⍳′⍳€‹stack›:‹s›‹stack›;4 ‹s›'
+[ "$(printf '%s' "$w114c" | gref)" = "$(printf '%s' "$w114c" | gc)" ] && [ "$(printf '%s' "$w114c" | gc | head -1)" = "<4> 1 2 [0 1 2] [[] [0] [0 1]]" ] \
+  && ok "oracle: golfref runs ‹stack› identically" || no "w11-4c stack oracle"
+# tools/golfi: a scripted session.  A word defined on line 1 is used two lines
+# later; the stack shows after each entry; an undefined word (compile error)
+# and an index error (runtime) are reported and dropped, and the session goes
+# on as if they never happened; a definition spans two lines; stdin is
+# /dev/null (‹readall› gets nothing, no hang); :show :reset :quit.
+w114cin=':‹sq›"*;
+3 4
+‹sq›+
+oops
+3⍳9⊇
+2 3⍳
+‹sq›
+“sq: “🗲∑Ṅ
+:f
+1+;
+f
+‹readall›≢_
+:show
+:reset
+‹stack›
+:quit
+7'
+w114cwant='<0>
+<2> 3 4
+<1> 19
+GOLF: undefined word o
+(not kept)
+GOLF: index out of range
+(not kept)
+<3> 19 2 [0 1 2]
+<3> 19 2 [0 1 4]
+sq: 5
+<2> 19 2
+<2> 19 2
+<2> 19 3
+<2> 19 3
+:‹sq›"*;
+3 4
+‹sq›+
+2 3⍳
+‹sq›
+“sq: “🗲∑Ṅ
+:f
+1+;
+f
+‹readall›≢_
+session cleared
+<0>
+<0>'
+w114cgot=$(printf '%s\n' "$w114cin" | timeout 60 tools/golfi 2>&1)
+[ "$w114cgot" = "$w114cwant" ] && ok "golfi: scripted session (define, use 2 lines later, stack each entry, errors dropped, multi-line def, :show :reset :quit)" \
+  || no "w11-4c golfi session: $(diff <(printf '%s\n' "$w114cwant") <(printf '%s\n' "$w114cgot") | head -8 | tr '\n' '|')"
+# An entry left open at end of input is not run; an error inside a two-line
+# entry names its line; -t times every entry.
+[ "$(printf ':g\nzz;\n1[2\n' | tools/golfi 2>&1)" = "$(printf 'GOLF: undefined word z at line 2 of this entry\n(not kept)\nincomplete entry at end of input\n(not kept)')" ] \
+  && ok "golfi: an error's line within a multi-line entry; an unfinished entry at EOF is dropped" || no "w11-4c golfi open/line"
+w114ct=$(printf '1\n2\n' | tools/golfi -t | grep -c '^([0-9.]* s)$')
+[ "$w114ct" = 2 ] && ok "golfi -t: one timing line per entry" || no "w11-4c golfi -t ($w114ct)"
+# REFERENCE.md's REPL examples print what the doc says.
+w114cbad=""
+while IFS= read -r w114cl; do
+  w114cp=${w114cl%%  ->*}; w114cp=${w114cp%"${w114cp##*[! ]}"}; w114cw=${w114cl##*->  }
+  [ "$(printf '%s' "$w114cp" | gc 2>&1)" = "$w114cw" ] || w114cbad="$w114cbad [$w114cp]"
+done < <(sed -n '/^### REPL$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w114cbad" ] && [ "$(sed -n '/^### REPL$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 3 ] \
+  && ok "REFERENCE.md's REPL examples print what they say" || no "REFERENCE REPL examples:$w114cbad"
 
 # === W11-4D ===
 
