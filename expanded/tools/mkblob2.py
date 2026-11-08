@@ -70,13 +70,27 @@ import v1       # the frozen v1 substrate: templates, ELF header, blob helpers
 # register it touches (the callee is a GOLF word: data stack rsp and return
 # stack rbp are preserved), and every user reloads rax afterwards.
 FLUSH_HOOK = 0x4F0990
-_FLUSH_CALL = ([0x48, 0x8B, 0x04, 0x25] + list(FLUSH_HOOK.to_bytes(4, "little"))
-               + [0x48, 0x85, 0xC0]              # mov rax,[hook]; test rax,rax
-               + [0x74, 0x02, 0xFF, 0xD0])       # jz .no; call rax; .no:
+def _hook_call(cell):
+    """`call [cell]` when the cell is non-zero: 15 bytes, absolute, rax only."""
+    return ([0x48, 0x8B, 0x04, 0x25] + list(cell.to_bytes(4, "little"))
+            + [0x48, 0x85, 0xC0]                 # mov rax,[hook]; test rax,rax
+            + [0x74, 0x02, 0xFF, 0xD0])          # jz .no; call rax; .no:
+_FLUSH_CALL = _hook_call(FLUSH_HOOK)
 assert len(_FLUSH_CALL) == 15
+# W11-3A: the divide-by-zero hook.  A second cell of the same shape, the 3A
+# runtime cell 0x4F0B10 (5180176), which the prelude's init fills with the
+# address of ‹_3a_div0›.  It is called FIRST, before the flush: with a ‹catch›
+# armed, ‹_3a_div0› raises `divide by zero` through ‹throw›'s unwinding and
+# never comes back; with none it returns at once and the template goes on to
+# flush, print and exit exactly as before.  So ÷ ∣ / % are catchable at 15
+# bytes per use, and a program without the prelude (every compiler binary)
+# sees 0 and falls through.
+DIV0_HOOK = 0x4F0B10
+_DIV0_CALL = _hook_call(DIV0_HOOK)
 
 DIV0_MSG = b"GOLF: divide by zero\n"
-_DIV0 = (_FLUSH_CALL                              # W11-1C: prior output first
+_DIV0 = (_DIV0_CALL                               # W11-3A: a ‹catch› takes it
+         + _FLUSH_CALL                            # W11-1C: prior output first
          + [0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+19]
          + [0x6A, 0x02, 0x5F]                     # push 2;  pop rdi   fd 2
          + [0x6A, len(DIV0_MSG), 0x5A]            # push n;  pop rdx   length
@@ -86,7 +100,7 @@ _DIV0 = (_FLUSH_CALL                              # W11-1C: prior output first
          + [0x6A, 0x3C, 0x58]                     # push 60; pop rax   exit
          + [0x0F, 0x05]                           # syscall
          + list(DIV0_MSG))                        # (19 bytes of code above)
-assert len(_DIV0) == 15 + 7 + 19 + len(DIV0_MSG) < 128   # jnz rel8 skips it
+assert len(_DIV0) == 15 + 15 + 7 + 19 + len(DIV0_MSG) < 128   # jnz rel8 skips it
 
 # pop rcx (b); pop rax (a); b == 0 -> _DIV0.  The common head of all four
 # checked division templates (÷ ∣ and, since W10-B, v1's / %).
@@ -201,6 +215,20 @@ ATOMS = [
     # on it), and rbp — the return-stack pointer — is untouched by the kernel.
     (0xA7, "sys", "⎈", [0x58, 0x5A, 0x5E, 0x5F, 0x0F, 0x05, 0x50],
                                                           "a1 a2 a3 num -> result: raw syscall"),
+    # W11-3A: the two stack-pointer atoms behind ‹catch› / ‹throw› — the
+    # runtime's setjmp/longjmp.  The data stack IS rsp and the return stack is
+    # rbp (a word's prologue parks the `call`'s return address at [rbp], so
+    # inside a word body rsp holds only data).  `push rsp` stores the value rsp
+    # had BEFORE that push, so ⊷'s `sp` is exactly "the stack as it was before
+    # the atom": `⊷ … sp bp ⊶` puts both stacks back where they were at ⊷,
+    # dropping everything pushed since.  ⊶ pops bp first, then `pop rsp` loads
+    # rsp from [rsp] (the pop's own increment is overwritten), so both values
+    # are consumed before rsp moves.  After ⊶ the CURRENT word's epilogue
+    # returns through [rbp] — the return address of whichever word ran ⊷ —
+    # which is what makes ‹throw› come back out of ‹catch›'s helper
+    # (lib/prelude.golfj, W11-3A section).
+    (0xA8, "spr", "⊷", [0x54, 0x55],                      "-> sp bp: push rsp (as before the atom), then rbp"),
+    (0xA9, "spw", "⊶", [0x5D, 0x5C],                      "sp bp ->: set rbp, then rsp (both stacks jump)"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------

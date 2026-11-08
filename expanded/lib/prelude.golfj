@@ -107,19 +107,40 @@
 #   J  list ->             join: print a code list as text (cell -> byte)
 #   Z  l1 l2 fn -> list    zip elementwise over min(len l1, len l2)
 :H5177344;                                          # H: heap-pointer address
-# ‹throw›  msg ->   W11-0 stub of the runtime's ONE error exit; W11-3A owns it
-# and makes it catchable.  msg is a CODE LIST (tagged or a raw A block), the
-# shape “text“U builds — the same value ‹catch› will hand back.  Writes
-# `GOLF: <msg>` and a newline to fd 2 and exits 1; it never returns.  Every
-# runtime error the prelude raises comes here (I's index, ∘'s arena, ⌫'s two
-# guards) EXCEPT X's spill-stack overflow: its message would need U, which
-# frames with X, so it stays inline in X.  Hence ‹throw› must stay a leaf that
-# calls no X-framed word (and not I, whose failure path calls it).  It parks
-# the message in s0 and the index / staged byte in s1 / s2 — harmless only
-# because it never returns.  The message goes out one byte per write(2).
-# W11-1C: it first calls ‹flush› (a leaf too), so output the program buffered
-# before the error reaches fd 1 before `GOLF:` reaches fd 2.
-:‹throw›‹flush›16\shl16>5177440\store
+# ‹throw›  msg ->   the runtime's ONE error exit (W11-0), catchable since
+# W11-3A.  msg is a CODE LIST (tagged or a raw A block), the shape “text“U
+# builds.  Every runtime error the prelude raises comes here (I's index, ∘'s
+# arena, ⌫'s two guards, ‹get›, use after free, the file words) and, since
+# W11-3A, X's spill-stack overflow too (through ‹_3a_spill›, which builds the
+# message after unwinding).
+#   * A handler is armed (the chain head 0x4F0B00 = 5180160 is non-zero, see
+#     ‹catch› in the W11-3A section): the message, tagged, goes in 5180168,
+#     ‹_3a_pop› unlinks the newest handler record and resets the spill-stack
+#     offset to it, Y restores the scratch ‹catch›'s caller had, and ⊶ puts
+#     rsp and rbp back where ‹catch› captured them with ⊷.  Then
+#     `5180168\fetch^` pushes the message onto that restored data stack and
+#     the epilogue returns through the restored [rbp] — ‹catch›'s own return
+#     address — so ‹catch› returns to its caller with the message instead of
+#     0.  No flush: output already buffered stays buffered and comes out
+#     later, in order.
+#   * No handler: exactly the W11-0 stub — ‹flush› (output the program
+#     buffered reaches fd 1 before `GOLF:` reaches fd 2), `GOLF: <msg>` and a
+#     newline to fd 2 (one write for the prefix, one per message byte), exit 1.
+#     It parks the message in s0 and the index / staged byte in s1 / s2 —
+#     harmless only because that path never returns.
+# A leaf on both paths: it calls no X-framed word (and not I, whose failure
+# path calls it); ‹_3a_pop›, Y (a forward call, data stack only) and ‹flush›
+# are leaves.
+# ‹_3a_pop›  h -> sp bp   W11-3A: unlink handler record h (an address in the
+# spill stack: [h] sp · [h+8] bp · [h+16] previous head), make the record's
+# own offset the spill-stack offset (so the record frame and every frame
+# pushed after it are dropped, and ‹catch›'s scratch frame is on top), and
+# push the saved stack pointers.  Leaf; defined ahead of ‹throw›.  h is held in
+# the 3A cell 5180184 rather than juggled with the swap byte 0x5C, which
+# `decode -m` cannot round-trip (see gtools/decode.golfj).
+:‹_3a_pop›"5180184\store16\radd\fetch5180160\store5180184\fetch4456448\rsub5177392!5180184\fetch\fetch5180184\fetch8\radd\fetch;
+:‹throw›16\shl16>5180160\fetch0\eq[32767 48\shl|5180168\store5180160\fetch‹_3a_pop›Y\spw5180168\fetch^]
+ ‹flush›5177440\store
  “GOLF: “5177448\store 2 5177448\fetch4\radd 5177448\fetch@ 1\sys_
  0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\store 2 5177456 1 1\sys_5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
  10 5177456\store 2 5177456 1 1\sys_
@@ -130,13 +151,17 @@
 # 0x4F0900), and X checks it: an offset of 262144 has no room for a frame, so it
 # writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like ∘'s arena check)
 # — one compare-and-branch on the hot path, and Y needs none.  This is the one
-# prelude error NOT routed through ‹throw› (W11-0): building its message with U
-# would call X again and recurse on the full stack, so it stays inline (W11-1C:
-# behind a ‹flush›, a leaf, so buffered output still comes out first).  Data
+# prelude error NOT routed through ‹throw› when no handler is armed (W11-0):
+# building its message with U would call X again and recurse on the full
+# stack, so it stays inline (W11-1C: behind a ‹flush›, a leaf, so buffered
+# output still comes out first).  W11-3A: with a ‹catch› armed (5180160
+# non-zero) X first calls ‹_3a_spill› (W11-3A section), which unwinds the
+# spill stack to that handler BEFORE it builds the message, so U's own X has
+# room, and never returns here.  Data
 # stack only: `&` (over) re-supplies the frame base for each store, `"` (dup) for
 # each load, so neither word needs a temporary.  Every slot is a full 64-bit
 # \fetch/\store, which is the whole point: a scratch cell may now hold -1.
-:X5177392@"262144\rlt[‹flush›
+:X5177392@"262144\rlt[5180160\fetch0\eq[‹_3a_spill›]‹flush›
  “GOLF: spill stack exhausted“5177440\store
  2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
  10 5177448\store 2 5177448 1 1\sys_
@@ -1132,6 +1157,55 @@
 :‹heapstats›5180096\fetch5180104\fetch;
 
 # === W11-3A catch ===
+# ‹catch›  … ′f -> … results 0   |   … msg      W11-3A: run f; catch a throw.
+# A handler RECORD is one 64-byte spill-stack frame (pushed by X, so it costs
+# no new memory): [h] sp · [h+8] bp · [h+16] the previous chain head; the chain
+# head 0x4F0B00 (5180160) holds the newest record's address, 0 when none is
+# armed.  The record's own offset IS the spill-stack depth to restore, so it is
+# not stored.  Steps:
+#   1. X — save the caller's scratch s0..s7 (a throw out of f leaves them as
+#      whatever word was running clobbered them; the throw puts them back).
+#   2. Park f in s3 (saved already), then ⊷: sp is the data stack as ‹catch›
+#      was called MINUS f, bp is ‹catch›'s OWN frame, whose [rbp] — the
+#      return address into ‹catch›'s caller — stays live for as long as f
+#      runs.  (Capturing bp in a helper word that has already returned would
+#      not do: its return-stack slot is reused by the very next call, f's.)
+#   3. Stage sp bp and the old head in s0..s2, push them as the record frame
+#      with X, link it as the new head, ⍎ f (back from s3).
+#   4. f returns: unlink the record (head := [h+16], offset -= 64), Y, push 0
+#      above f's results.
+#   5. A ‹throw› anywhere below (in f, a € / ⇤ / ⊡ word, a nested ‹catch›
+#      that re-throws) parks the message, ‹_3a_pop›s the record (spill offset
+#      back to it, so ‹catch›'s scratch frame is on top), Y (the caller's
+#      scratch back), ⊶, and pushes the message: the throwing word's epilogue
+#      then returns through ‹catch›'s [rbp], so ‹catch› returns to its caller
+#      with … msg.  The data f pushed or consumed is discarded — the stack is
+#      back at the depth of the ‹catch› call, f dropped; the return stack is
+#      ‹catch›'s caller's (any ⊡ frames in between are dropped with it).  The
+#      message is a tagged code list, never 0.
+# Not restored: global variables (→x), the heap (nothing f allocated is
+# freed), the ∘/⊸ code arena, buffered output (what f printed stays printed,
+# in order).  Nesting needs nothing more: each record links the one before,
+# and a handler that calls ‹throw› again reaches the next one out.
+:‹catch›X5177464\store\spr5177448\store5177440\store5180160\fetch5177456\store X
+ 5177392@4456384\radd5180160\store 5177464\fetch\exec
+ 5180160\fetch16\radd\fetch5180160\store5177392@64\rsub5177392!Y0;
+# ‹_3a_raise›  str ->   raise a “…“ literal's text with a handler armed, the
+# message built AFTER unwinding: ‹_3a_pop› the newest record first (its
+# fields go to the data stack; the spill offset drops back to the record, so
+# U's own X has room even when the error is a full spill stack), then U the
+# text, park it in 5180168, Y, ⊶, push it — ‹throw›'s handler path with the
+# U moved inside.  Its epilogue then returns through ‹catch›'s [rbp].
+# ‹_3a_spill›  ->   X's overflow (X calls it only with a handler armed).
+# ‹_3a_div0›   ->   the ÷ ∣ / % templates' divide-by-zero hook (cell 0x4F0B10 =
+# 5180176, tools/mkblob2.DIV0_HOOK): with a handler armed it raises `divide
+# by zero`; with none it returns, and the template prints and exits 1 as it
+# always did.
+:‹_3a_raise›5180168\store5180160\fetch‹_3a_pop›5180168\fetch U32767 48\shl|5180168\store Y\spw5180168\fetch;
+:‹_3a_spill›“spill stack exhausted“‹_3a_raise›;
+:‹_3a_div0›5180160\fetch0\eq[“divide by zero“‹_3a_raise›];
+:‹_3a_init›\ref‹_3a_div0›5180176\store;
+‹_3a_init›
 
 # === W11-3C checked arithmetic ===
 

@@ -195,6 +195,8 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0xA5` | `⊛` | `\store` | v addr -> ; full 64-bit cell |
 | `0xA6` | `⌸` | `\brk` | addr -> break; brk(2) |
 | `0xA7` | `⎈` | `\sys` | a1 a2 a3 num -> result: raw syscall |
+| `0xA8` | `⊷` | `\spr` | -> sp bp: push rsp (as before the atom), then rbp |
+| `0xA9` | `⊶` | `\spw` | sp bp ->: set rbp, then rsp (both stacks jump) |
 
 ### Compiler ops
 
@@ -449,7 +451,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 58 in all after W11 wave 2, helpers included), so a program has 966 for itself.
+has 64 in all after W11-3A, helpers included), so a program has 960 for itself.
 
 ### Text
 
@@ -608,8 +610,8 @@ A word count over stdin:
 
 It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers), the prelude has 58 long
-names, which leaves 966 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five), the prelude has 64 long
+names, which leaves 960 for a program.
 
 ### Closures
 
@@ -642,25 +644,56 @@ exits 1, whichever of the two words asks.
 ### Errors
 
 A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
-with status 1; stdout gets nothing more. The prelude raises its errors through
-one word, which a program may call too:
+with status 1; stdout gets nothing more — unless a `‹catch›` is armed, in which
+case the error comes back to it as a value. The prelude raises its errors
+through one word, which a program may call too:
 
 | word | stack effect | meaning |
 |---|---|---|
-| `‹throw›` | `msg ->` | print `GOLF: `, the code list `msg` as text, and a newline on fd 2, then exit 1. Never returns |
+| `‹throw›` | `msg ->` | raise an error whose message is the code list `msg`. With no `‹catch›` armed: print `GOLF: `, `msg` as text and a newline on fd 2, exit 1. Never returns |
+| `‹catch›` | `… ′f -> … results 0` or `… msg` | run `f`. If it returns, push `0` above its results. If anything it runs throws, `‹catch›` returns at once with the message (a code list, never `0`) |
+
+On the error path the data stack is put back to its depth at the `‹catch›`
+call (`′f` dropped) and the message pushed on top: whatever `f` pushed is
+discarded. Values below that depth that `f` did not touch are intact; a cell
+`f` consumed holds whatever `f` last stored there (as with Forth's `CATCH`,
+the depth is restored, not the contents), so keep anything you need after an
+error out of `f`'s arguments, in a variable or below them. The return stack
+is unwound too (the `⊡` frames of every word in between are dropped), and so
+is the spill stack the list words nest on, so `€ ⇤ ⌿ ⍕ …` interrupted
+mid-loop leave nothing behind and the caller's own loop state is restored.
+Not undone: stores to variables and memory, allocations, and output — what
+`f` printed before the error stays printed. Catches nest: an error goes to
+the newest armed `‹catch›`; a handler that calls `‹throw›` again (a rethrow)
+reaches the next one out, and one with none left prints and exits as usual.
+`‹throw›` uses the atoms `⊷` (`-> sp bp`) and `⊶` (`sp bp ->`), which read and
+set the two stack pointers.
 
 ```
-“no input“⊃‹throw›       # stderr: GOLF: no input     exit status 1
+:‹bad›3⍳9⊇;′‹bad›‹catch›⊐  ->  index out of range
+:‹ok›5 6;1′‹ok›‹catch›ṄṄṄṄ  ->  0651
+“oops“⊃′‹throw›‹catch›⊐  ->  oops
+:‹f›1 2 3“no“⊃‹throw›;7′‹f›‹catch›⊐Ṅ  ->  no7
+:‹in›“inner“⊃‹throw›;:‹out›′‹in›‹catch›⊐“outer“⊃‹throw›;′‹out›‹catch›⊐  ->  innerouter
+:‹g›‹throw›;:‹h›“again“⊃′‹g›‹catch›‹throw›;′‹h›‹catch›⊐  ->  again
+:‹d›7 0÷;′‹d›‹catch›⊐  ->  divide by zero
+:‹r›1⍳′‹r›€;′‹r›‹catch›⊐ 3⍳′⍳€⍕  ->  spill stack exhausted[] [0] [0 1]
+“no input“⊃‹throw›  ->  GOLF: no input
 ```
 
-`⊇` (`index out of range`), `∘` and `⊸` (`compose arena exhausted`), `⌫`
-(`free of a non-heap value`, `double free`), `‹get›` (`key not found`)
-and every list word (`use after free`, see Memory above) go through
-`‹throw›`. The spill
-stack's `spill stack exhausted` and the divide-by-zero check of `/ % ÷ ∣` print
-the same way without it. Compile errors (`GOLF: undefined word x` …) exit 2.
-So does a program whose binary would pass 192 KB (196608 bytes, the prelude's
-~40 KB included): `GOLF: program too large`, and no binary.
+(The last line goes to stderr, with exit status 1.)
+
+Everything the runtime checks raises through `‹throw›`, so all of it is
+catchable: `⊇` (`index out of range`), `∘` and `⊸` (`compose arena
+exhausted`), `⌫` (`free of a non-heap value`, `double free`), `‹get›` (`key
+not found`), every list word (`use after free`, see Memory above), the file
+words (`cannot open x.txt (ENOENT)` …), the spill stack (`spill stack
+exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
+÷ ∣` (`divide by zero`). Not catchable: a return-stack overflow (a recursion
+past ~138k plain calls dies of SIGSEGV on the guard page), any other signal,
+`.` (exit is exit), and compile errors (`GOLF: undefined word x` …), which exit
+2. So does a program whose binary would pass 192 KB (196608 bytes, the
+prelude's ~40 KB included): `GOLF: program too large`, and no binary.
 
 ## 4. Tutorial
 
