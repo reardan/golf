@@ -773,18 +773,8 @@ W14-G 4399296–4399359, W14-J 4399360–4399423; W14-L none).
 | Task | Cells | Use |
 |---|---|---|
 | W14-B processes | none (its block 4399104–4399167 is unused) | every W14-B word is a `⊡` word or stateless; the syscall buffers (pipe2's fds, wait4's status and rusage, pollfds, clock_gettime, rt_sigaction) are `A` blocks freed after use, and the entry rsp cell 0x4F0040 is only read (envp) |
-| Task | Cells | Use |
-|---|---|---|
 | W14-D environment and time | none (its private block 4399168–4399231 is unused) | the leaves (`‹now› ‹walltime› ‹sleep› ‹isatty›`) keep the syscall's buffer on the data stack (zeros pushed, `⊷_` gives their address), `‹getenv› ‹environ› ‹rusage›` keep their state in `⊡` frames. On a failure `‹rusage›` stores the positive errno in W11-1B's errno cell 5179712 (§3.1) before it throws, as the file words do |
-Each W14 task has a private 64-byte block in the free headroom at `0x432000` (B 4399104, D 4399168, E 4399232, G 4399296, J 4399360); a row says what it uses.
-
-| Task | Cells | Use |
-|---|---|---|
 | W14-E filesystem | none (its block 4399232 … 4399295 stays spare) | every word is a `⊡` word or calls only leaves; the C-string and list conversions are W11-1B's `‹_1b_tobytes›` / `‹_1b_tolist›`, and a failure stores the errno in W11-1B's errno cell 5179712, as the file words do |
-Private 64-byte blocks in the free headroom at `0x432000` (§3): W14-B 4399104–4399167, W14-D 4399168–4399231, W14-E 4399232–4399295, W14-G 4399296–4399359, W14-J 4399360–4399423 (W14-L none).
-
-| Task | Cells | Use |
-|---|---|---|
 | W14-J generators and SHA-256 | none (its block 4399360–4399423 is unused) | every W14-J word is a `⊡` word; a generator's state is its own record (a list), SHA-256's state, schedule and constant tables are `A` blocks freed before it returns |
 
 ---
