@@ -652,8 +652,8 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   `0x430000`, the W11-1C output buffer (the lowest address a running program
   uses; REGISTRY §3). Both compilers check it as they emit: `golf2` writes
   `GOLF: program too large` to fd 2 and exits 2 with nothing on fd 1, the seed
-  exits 2 silently. The prelude alone is about 33 KB (an empty program is 33184
-  bytes), which leaves about 159 KB; an empty word costs 20 bytes. `p_filesz`
+  exits 2 silently. The prelude alone is about 40 KB (an empty program is 40082
+  bytes, after W11 wave 2), which leaves about 153 KB; an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).
   Raising the cap further means moving the 1C buffer and the spill stack up

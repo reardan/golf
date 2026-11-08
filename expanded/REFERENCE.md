@@ -449,7 +449,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 40 in all after W11 wave 1, helpers included), so a program has 984 for itself.
+has 58 in all after W11 wave 2, helpers included), so a program has 966 for itself.
 
 ### Text
 
@@ -607,8 +607,9 @@ A word count over stdin:
 ```
 
 It prints `count word` once for each distinct word, in order of first
-appearance. Names that start with `‹_2b` are these words' helpers. With them,
-the prelude has 55 long names, which leaves 969 for a program.
+appearance. Names that start with `‹_2b` are these words' helpers. With them
+(and W11-2D's `‹heapstats›` and two helpers), the prelude has 58 long
+names, which leaves 966 for a program.
 
 ### Closures
 
@@ -659,7 +660,7 @@ and every list word (`use after free`, see Memory above) go through
 stack's `spill stack exhausted` and the divide-by-zero check of `/ % ÷ ∣` print
 the same way without it. Compile errors (`GOLF: undefined word x` …) exit 2.
 So does a program whose binary would pass 192 KB (196608 bytes, the prelude's
-~33 KB included): `GOLF: program too large`, and no binary.
+~40 KB included): `GOLF: program too large`, and no binary.
 
 ## 4. Tutorial
 
