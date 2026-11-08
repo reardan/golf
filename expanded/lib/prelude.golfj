@@ -2164,7 +2164,10 @@
 # the same).  ‹_13g_kind› puts a direct-mapped 8-entry cache in front, entry
 # (f & 7): only an f in the program image (below 0x430000) is cached, because
 # image code never changes while a heap thunk (∘ ⊸) can be freed and its block
-# reused.  A hot `+⇤` site so costs one masked compare per call.
+# reused.  A hot `+⇤` site so costs one masked compare per call.  And
+# cell NA holds the last image word found NOT to be an atom: a driver handed
+# that f again returns at once (a user word's € pays ~3 ns per call for all
+# this).
 #
 # Exactness.  The loop runs the very atom f's thunk would — the polymorphic
 # template (+ - * ⌈ ⌊, with its M-VEC hook) or the checked unary one (± ⊕ ⊖
@@ -2213,7 +2216,7 @@
 #   ⌿'s write pointer · 4423328 the kind · 4423336 the cache entry · 4423344 R the result block ·
 #   4423352 P the list (raw) · 4423360 f, for handing back · 4423400 ⊞'s l2 ·
 #   4423408 the pre-filter qword · 4423520 the end of P's elements ·
-#   4423528 G (see Re-entrancy) · 4423424 … 4423448 R-P, +8, +16, +24
+#   4423528 G (see Re-entrancy) · 4423376 NA · 4423424 … 4423448 R-P, +8, +16, +24
 #   (where an element's result goes) · 4423456 … 4423480 ⊞'s l2-l1, +8 … ·
 #   4423488 … 4423512 ⍸'s &l[0], -8 … (index base); the rest is spare.
 # The loops are generated from one table (one per word and atom; ⇤ and ⍁
@@ -2235,8 +2238,9 @@
  "7\radd\fetch4423408\store\ref+‹_13g_try›[1^]\ref-‹_13g_try›[2^]\ref*‹_13g_try›[3^]\ref\max‹_13g_try›[4^]\ref\min‹_13g_try›[5^]
  4423408\fetch\ref\inc7\radd\fetch\eq[0^]"29\radd\fetch4423408\store
  \ref\inc‹_13g_try2›[6^]\ref\dec‹_13g_try2›[7^]\ref\neg‹_13g_try2›[8^]\ref\sqr‹_13g_try2›[9^]\ref\dbl‹_13g_try2›[10^]\ref\hlv‹_13g_try2›[11^]0;
-:‹_13g_kind›"7$4\shl4423168\radd"4423336\store\fetch&\eq[‹_13g_class›&4390912\rlt1\radd["4423336\fetch8\radd\store&4423336\fetch\store]⋄4423336\fetch8\radd\fetch];
-:‹_13g_map›_‹_13g_kind›"6\rlt1\radd[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423352\fetch8\radd
+:‹_13g_kind›"7$4\shl4423168\radd"4423336\store\fetch&\eq[‹_13g_class›&4390912\rlt1\radd["4423336\fetch8\radd\store&4423336\fetch\store]⋄4423336\fetch8\radd\fetch]
+ "[&4390912\rlt1\radd[&4423376\store]];
+:‹_13g_map›&4423376\fetch\eq[⋄^]_‹_13g_kind›"6\rlt1\radd[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423352\fetch8\radd
  "4423520\fetch\rsub8$[⋄"\fetch4423360\fetch\exec&4423424\fetch\radd\store8\radd]
  4423328\fetch6\rsub["4423520\fetch\eq[{"\fetch\inc&4423424\fetch\radd\store"8\radd\fetch\inc&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
  4423328\fetch7\rsub["4423520\fetch\eq[{"\fetch\dec&4423424\fetch\radd\store"8\radd\fetch\dec&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
@@ -2245,7 +2249,7 @@
  4423328\fetch10\rsub["4423520\fetch\eq[{"\fetch\dbl&4423424\fetch\radd\store"8\radd\fetch\dbl&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
  4423328\fetch11\rsub["4423520\fetch\eq[{"\fetch\hlv&4423424\fetch\radd\store"8\radd\fetch\hlv&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
  __5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;
-:‹_13g_filt›_‹_13g_kind›"6\rlt1\radd[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch1\radd A"4423344\store8\radd4423368\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423352\fetch8\radd
+:‹_13g_filt›&4423376\fetch\eq[⋄^]_‹_13g_kind›"6\rlt1\radd[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch1\radd A"4423344\store8\radd4423368\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423352\fetch8\radd
  4423328\fetch6\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\inc[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
  4423328\fetch7\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\dec[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
  4423328\fetch8\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\neg[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
@@ -2260,9 +2264,9 @@
  4423328\fetch4\rsub["4423520\fetch\eq[{4423368\fetch&\fetch\max&8\radd\fetch\max4423368\store16\radd"4423520\fetch\eq}]]
  4423328\fetch5\rsub["4423520\fetch\eq[{4423368\fetch&\fetch\min&8\radd\fetch\min4423368\store16\radd"4423520\fetch\eq}]]
  _;
-:‹_13g_fold›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store&‹_2d_chk›"\fetch8\rmul&\radd8\radd4423520\store8\radd&4423368\store‹_13g_floop›__5177392@64\rsub5177392!0 4423528\store4423368\fetch0;
-:‹_13g_red›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store"‹_2d_chk›"\fetch[_4423360\fetch1^]5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"8\radd\fetch4423368\store"\fetch8\rmul&\radd8\radd4423520\store16\radd‹_13g_floop›_5177392@64\rsub5177392!0 4423528\store4423368\fetch0;
-:‹_13g_scan›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch\fetch[_5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0^]4423344\fetch"\fetch8\rmul\radd8\radd4423520\store
+:‹_13g_fold›&4423376\fetch\eq[⋄^]_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store&‹_2d_chk›"\fetch8\rmul&\radd8\radd4423520\store8\radd&4423368\store‹_13g_floop›__5177392@64\rsub5177392!0 4423528\store4423368\fetch0;
+:‹_13g_red›&4423376\fetch\eq[⋄^]_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store"‹_2d_chk›"\fetch[_4423360\fetch1^]5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"8\radd\fetch4423368\store"\fetch8\rmul&\radd8\radd4423520\store16\radd‹_13g_floop›_5177392@64\rsub5177392!0 4423528\store4423368\fetch0;
+:‹_13g_scan›&4423376\fetch\eq[⋄^]_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch\fetch[_5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0^]4423344\fetch"\fetch8\rmul\radd8\radd4423520\store
  4423352\fetch4423344\fetch\rsub"4423456\store8\radd4423464\store4423352\fetch8\radd\fetch4423344\fetch8\radd\store4423344\fetch16\radd
  "4423520\fetch\rsub8$[⋄"8\rsub\fetch&4423456\fetch\radd\fetch4423360\fetch\exec&\store8\radd]
  4423328\fetch1\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch+&\store"\fetch&4423464\fetch\radd\fetch+&8\radd\store16\radd"4423520\fetch\eq}]]
@@ -2271,14 +2275,14 @@
  4423328\fetch4\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch\max&\store"\fetch&4423464\fetch\radd\fetch\max&8\radd\store16\radd"4423520\fetch\eq}]]
  4423328\fetch5\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch\min&\store"\fetch&4423464\fetch\radd\fetch\min&8\radd\store16\radd"4423520\fetch\eq}]]
  __5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;
-:‹_13g_eachi›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423352\fetch8\radd"4423488\store8\rsub4423496\store4423352\fetch8\radd
+:‹_13g_eachi›&4423376\fetch\eq[⋄^]_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423352\fetch8\radd"4423488\store8\rsub4423496\store4423352\fetch8\radd
  4423328\fetch1\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>+&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
  4423328\fetch2\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>-&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
  4423328\fetch3\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>*&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
  4423328\fetch4\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>\max&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
  4423328\fetch5\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>\min&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
  __5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;
-:‹_13g_zip›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›4423400\store&‹_2d_chk›4423352\store4423352\fetch\fetch4423400\fetch\fetch\rmin"1\radd A"4423344\store\store
+:‹_13g_zip›&4423376\fetch\eq[⋄^]_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›4423400\store&‹_2d_chk›4423352\store4423352\fetch\fetch4423400\fetch\fetch\rmin"1\radd A"4423344\store\store
  4423344\fetch\fetch8\rmul4423352\fetch\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423400\fetch4423352\fetch\rsub"4423456\store8\radd4423464\store4423352\fetch8\radd
  "4423520\fetch\rsub8$[⋄"\fetch&4423456\fetch\radd\fetch4423360\fetch\exec&4423424\fetch\radd\store8\radd]
  4423328\fetch1\rsub["4423520\fetch\eq[{"\fetch&4423456\fetch\radd\fetch+&4423424\fetch\radd\store"8\radd\fetch&4423464\fetch\radd\fetch+&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]

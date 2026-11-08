@@ -637,7 +637,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 198 in all after W13-G's twelve helpers, helpers included), so a program has 826 for itself.
+has 199 in all after W13-G's thirteen helpers, helpers included), so a program has 825 for itself.
 
 ### Sorting by key
 
@@ -1077,8 +1077,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-G's twelve helpers), the prelude has 198 long
-names, which leaves 826 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-G's thirteen helpers), the prelude has 199 long
+names, which leaves 825 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1175,8 +1175,8 @@ under its operands, so threading is not affected either. The function is
 recognised by its code: `′+`, S1's `+⇤`, and a word `:f+;`, whose body is
 `′+`'s bytes, all count. Anything else, such as `:f1+;` or a `∘` or `⊸`
 thunk, gets the ordinary call per element. Per element, on a list that stays
-in cache: `0′+⇤` about 1.8 ns (4.1 before), `′⊕€` 2.1 (4.5), `′⌈⍀` 2.8
-(4.9), `"′+⊞` 3.1 (5.6), `′±⌿` 1.5 (4.0). bench/RESULTS.md has the details
+in cache: `0′+⇤` about 1.9 ns (4.0 before), `′⊕€` 2.2 (4.6), `′⌈⍀` 3.0
+(4.9), `"′+⊞` 3.1 (5.9), `′±⌿` 2.3 (4.0). bench/RESULTS.md has the details
 (W13-G).
 
 ```
