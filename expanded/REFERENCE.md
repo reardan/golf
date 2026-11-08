@@ -35,6 +35,9 @@ There is no libc and no runtime beyond what the program and the prelude contain.
 an equality test: it is `0` exactly when `a == b`. The comparison atoms
 (`<`, `≡`, `»`, `≺`, …) push `-1` (true) or `0` (false). That is the opposite
 convention, so add `1` before `[`: `a b<1+[ … ]` runs the block when `a < b`.
+`⋄` (W12-A7) splits either block in two, with the same convention:
+`c[a⋄b]` runs `a` when `c` is `0` and `b` otherwise, and `{c⋄body}` computes
+`c` before every pass and runs `body` while `c` is `0` (see "Special forms").
 
 **Words.** `:x … ;` defines a word named `x`. The name is any single byte (a
 letter, usually), or a **long name** written `‹name›` (see "Long names" at the
@@ -172,10 +175,42 @@ goes for the raw forms `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`, and for the comparisons `< » 
 | `0x5D` | `]` | end of an `if` block |
 | `0x7B` | `{ … }` | loop: `{` emits nothing and marks the loop top |
 | `0x7D` | `}` | pop a value, and jump back to `{` while it is `0`. The body therefore runs at least once |
+| `0xB8` | `c[a⋄b]` | if-else (W12-A7): pop `c`, run `a` when it is `0`, `b` otherwise. `⋄` ends `a` with a jump past `]` |
+| `0xB8` | `{c⋄body}` | top-tested while (W12-A7): run `c`, pop it, and leave the loop unless it is `0`; else run `body` and jump back to `{`. `body` may run zero times. `}` pops nothing here |
 | `0x60` | `` `N bbb `` | raw blob: a decimal count `N`, one space, then `N` bytes that are copied into the program and jumped over. Pushes their address. In `.golfj` source the encoder still rewrites glyphs, `\` and `#` inside the blob, so keep those bytes plain ASCII there |
 | `0x23` | `#` | comment to the end of the line |
 | `0x00`–`0x20` | whitespace | ignored, except that it separates two numbers |
 | any other | `x` | call the word named `x`, or compile its template if `x` is an atom |
+
+**If-else and while: `⋄` (`\else`, W12-A7).** `⋄` belongs to the innermost
+`[` or `{` that is still open, and may appear once in it.
+
+- In `[ … ]` it is the else. `c[a⋄b]` compiles to `pop; test; jnz B`, then
+  `a`, then `jmp END`, then `B: b`, then `END:`.
+- In `{ … }` it ends the condition. `{c⋄body}` compiles to `TOP: c`, then
+  `pop; test; jnz END`, then `body`, then `jmp TOP`, then `END:`. Unlike a plain
+  `{ … }`, the body can run zero times, and the closing `}` pops nothing.
+- Both use only the jumps `[ ] { }` already emit, plus one `jmp`, so there is
+  no run-time cost. A `[a⋄b]` may sit inside the condition or the body of a
+  while, and a while inside either branch of an if-else. A `⋄` inside `“…“`, in
+  a `'⋄` literal or in a comment is not an operator.
+- Truth is zero-is-true, as for `[` and `}`. Run the body while `i < n` with
+  `{←i←n<1+⋄ … }`. Run it while `x` is non-zero with `{"[1⋄0]⋄ … }`, or test
+  it the other way round with `≡`.
+- `?` keeps its meaning (fetch a byte). PLAN_W12 wrote the loop `{?c⋄body}`,
+  but the `?` there is only a marker: `{` followed by `?` already means "fetch
+  a byte at the top of the loop", so the form is spelled `{c⋄body}`.
+- A `⋄` with no open `[`/`{` (at top level, in the body of a word, after the
+  `]`) is `GOLF: ⋄ outside [ ] or { }`, and a second one in the same block is
+  `GOLF: ⋄ twice in one block` (see "Compile errors").
+
+```golfj
+0[1Ṅ⋄2Ṅ]  5[1Ṅ⋄2Ṅ]                      ->  12
+:s"[_“zero“⋄0≺1+[“neg“⋄“pos“]]🗲;0s 7s 0 3-s ->  zeroposneg
+0→i{←i5<1+⋄←iṄ←i1+→i}                   ->  01234
+{1⋄99Ṅ}7Ṅ                               ->  7     (the body never runs)
+0→i{←i4<1+⋄←i2%[“e“⋄“o“]🗲←i1+→i}        ->  eoeo
+```
 
 ## 3. The v2 code page
 
@@ -244,6 +279,7 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xB5` | `›` | `\rname` | closes a long name |
 | `0xB6` | `⎘` | `\import` | prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/) |
 | `0xB7` | `⊜` | `\rec` | prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec) |
+| `0xB8` | `⋄` | `\else` | separator: c[a⋄b] runs a when c is 0, else b; {c⋄body} tests c before each pass, runs body while it is 0 |
 
 ### Library words
 
@@ -1121,6 +1157,7 @@ wrote it, not by the encoded copy `golfc` hands the compiler.
 | `too many locals ‹…› at …` | a 17th local in one `⊡` word |
 | `cannot include <path> at …` | a missing file, a path over 250 bytes, `⎘` without `“…“`, an unclosed path (the place is the `⎘`'s, in the includer) |
 | `includes nested too deeply <path> at …` · `too many includes <path> at …` | a 9th level of nesting · a 61st file |
+| `⋄ outside [ ] or { } at …` · `⋄ twice in one block at …` | a `⋄` with no `[` or `{` open (top level, the body of a word, after a `]`) · a second `⋄` in one `[ ]` or `{ }` (W12-A7) |
 | `program too large` | the binary would pass 192 KB. No place: it is the size of the whole image |
 
 ```

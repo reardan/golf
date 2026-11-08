@@ -193,7 +193,15 @@ printf '%s' ':‹fy›‹q-b›;⎘“rpt.g2“⊜q a ‹b›;3 4‹pt›‹n2�
 [ "$("$TMP/new.records" 2>/dev/null)" = "25177" ] \
   && ok "prelude + records and a vendor/ include run (W11-4A)" || no "records program output: $("$TMP/new.records" 2>&1)"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include records; do
+# W12-A7: ⋄ — if-else and the top-tested while, nested in each other and in a
+# word, through both source forms (both push the same block tags).
+printf '%s' ':s"[_0⋄0≺1+[1⋄2]]Ṅ;0→i{←i4<1+⋄←i2%[“e“⋄“o“]🗲←i1+→i}0s3s0 3-s0→i{←i2<1+⋄0→k{←k2<1+⋄←i←k+Ṅ←k1+→k}←i1+→i}{1⋄9Ṅ}' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.else"
+both else "$TMP/src.else"
+[ "$("$TMP/new.else" 2>/dev/null)" = "eoeo0210112" ] \
+  && ok "prelude + an if-else / while program runs (W12-A7)" || no "⋄ program output: $("$TMP/new.else" 2>/dev/null)"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include records else; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -202,7 +210,7 @@ done
 # W11-3B: `golf2 -g` only adds the symbol map on fd 2, so it still emits the
 # seed's bytes (the seed ignores argv) — over the same corpus.
 w113b=""
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include; do
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include else; do
   case $t in hello) s=examples/v1/hello.golf;; fizz) s=examples/v1/fizzbuzz.golf;; *) s="$TMP/src.$t";; esac
   "$TMP/golf2" -g < "$s" > "$TMP/g.$t" 2> "$TMP/g.$t.map" && cmp -s "$TMP/g.$t" "$TMP/old.$t" || w113b="$w113b $t"
 done
@@ -307,6 +315,17 @@ for w114s in '⊜‹p›;|record without fields ‹p›' '⊜‹p›‹x›|reco
     && [ "$(cat "$TMP/badrec.newerr")" = "GOLF: ${w114s#*|} at line 1" ] || w114a="$w114a [${w114s%%|*}: seed $sst, golf2 $gst]"
 done
 [ -z "$w114a" ] && ok "both refuse a malformed ⊜ header, exit 2 (W11-4A)" || no "malformed-record rejection differs:$w114a"
+
+# W12-A7: a ⋄ outside [ ] / { }, or twice in one block, is refused by both.
+w12a7=""
+for w12a7s in '1⋄|⋄ outside [ ] or { }' ':f⋄;|⋄ outside [ ] or { }' '0[1⋄2⋄3]|⋄ twice in one block' '{0⋄1⋄}|⋄ twice in one block'; do
+  cat "$TMP/pre.gb" <(printf '%s' "${w12a7s%%|*}" | python3 tools/codepage.py encode) > "$TMP/badelse.src"
+  "$TMP/seed"  < "$TMP/badelse.src" > "$TMP/badelse.old" 2>"$TMP/badelse.olderr"; sst=$?
+  "$TMP/golf2" < "$TMP/badelse.src" > "$TMP/badelse.new" 2>"$TMP/badelse.newerr"; gst=$?
+  [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badelse.old" ] && [ ! -s "$TMP/badelse.new" ] && [ ! -s "$TMP/badelse.olderr" ] \
+    && [ "$(cat "$TMP/badelse.newerr")" = "GOLF: ${w12a7s#*|} at line 1" ] || w12a7="$w12a7 [${w12a7s%%|*}: seed $sst, golf2 $gst]"
+done
+[ -z "$w12a7" ] && ok "both refuse a stray or second ⋄, exit 2 (W12-A7)" || no "stray-⋄ rejection differs:$w12a7"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

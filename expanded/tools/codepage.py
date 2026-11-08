@@ -109,6 +109,8 @@ COMPILER = [
      "prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/)"),
     (mkblob2.REC_BYTE, "rec", "⊜",
      "prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec)"),
+    (mkblob2.ELSE_BYTE, "else", "⋄",
+     "separator: c[a⋄b] runs a when c is 0, else b; {c⋄body} tests c before each pass, runs body while it is 0"),
 ]
 
 def lib_byte(key) -> int:

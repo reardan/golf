@@ -139,10 +139,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **34** |
 | the template blob itself | **1278** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **4344** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **14030** bytes |
-| assertions in the run2 suite | **777** |
-| assertions in the selfcheck suite | **60** |
+| the generated bootstrap seed (`self/seed.golf`) | **4455** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **14622** bytes |
+| assertions in the run2 suite | **791** |
+| assertions in the selfcheck suite | **63** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |

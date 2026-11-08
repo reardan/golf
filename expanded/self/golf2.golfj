@@ -152,6 +152,11 @@
 # It borrows ‹entry› ‹len› ‹ch› ‹idx› ‹other› ‹left› from M2 to build and
 # intern the names it invents, and ‹left› from W11-2A for ‹vendor›'s copy.
 #
+# W12-A7 (`⋄`, if-else and the top-tested while) adds one, live only inside
+# the `⋄` and `}` cases:
+#
+#   ‹else›    a jmp site held while the one below it is patched
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -164,7 +169,7 @@
 # ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹forward› ‹resolve›
 # ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
 # g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
-# ‹recstore› ‹recfields› ‹defrecord› t H.  The M2 words have long names for the same reason their state
+# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -1703,6 +1708,34 @@ k
 # which each consume one.  The main loop is stack-neutral, so those pending
 # addresses stack up harmlessly below and are consumed in LIFO order: the data
 # stack *is* the compile-time backpatch stack.
+#
+# W12-A7: `[` and `{` also push a TAG above their address, so `⋄` and `}` can
+# tell what the innermost open block is.  The tags are numbers no address and
+# no argc can be (every address here is past 0x494000):
+#
+#   1000001  `[`           above the jnz site
+#   1000002  `{`           above the loop target
+#   1000003  `[ … ⋄`       above the else-jmp site      (`]` treats it as 1000001)
+#   1000004  `{ c ⋄`       above the exit site, which sits above the target
+#
+# `]` drops the tag and patches; `}` jumps back conditionally after a 1000002
+# and unconditionally after a 1000004 (then lands the exit).  `⋄` is legal only
+# on a 1000001 or a 1000002.  The seed pushes the same tags.
+
+:‹badelse›  # ‹badelse› : `GOLF: ⋄<tail> at line N`, exit 2 (W12-A7)  [ tail -> !!! ]
+“GOLF: “
+‹say›
+8686562     # 0x848BE2: the three UTF-8 bytes of ⋄, staged in m+52 (as in
+4259892!    # ‹showname›: a glyph in a string here would be a high byte the
+2           # seed-compilability check refuses)
+4259892
+3
+1⎈
+_
+‹say›       # the tail
+‹where›
+2.
+;
 
 :t
 "
@@ -1841,6 +1874,7 @@ _
 ←p
 0
 w           #   the placeholder site stays on the stack for ']'
+1000001     #   under the `[` tag (W12-A7)
 ^
 ]
 
@@ -1848,6 +1882,7 @@ w           #   the placeholder site stays on the stack for ']'
 93-
 [           # ']' : close a conditional
 _
+_           #   the tag: `[`'s or `⋄`'s, patched alike (W12-A7)
 k
 ^
 ]
@@ -1857,6 +1892,7 @@ k
 [           # '{' : loop start — emits nothing, just marks the target
 _
 ←p
+1000002     #   under the `{` tag (W12-A7)
 ^
 ]
 
@@ -1864,6 +1900,21 @@ _
 125-
 [           # '}' : loop back to the target while TOS == 0
 _
+"
+1000004-
+[           #   a top-tested `{c⋄body}` (W12-A7): back to the test always,
+_           #   then land `⋄`'s exit here
+→‹else›
+233o        #   0xE9 jmp rel32
+←p
+4+
+-
+w
+←‹else›
+k
+^
+]
+_           #   the `{` tag
 2E
 132o        #   0x84 -> JZ rel32
 ←p
@@ -2079,6 +2130,52 @@ w           #   ... emitted as a placeholder, and left on the stack for ';'
 1→u         #   in a chain from here to the matching ';'
 0→K         #   with no links yet
 ^
+]
+
+"
+184-
+[           # 0xB8 ⋄ : the else of `c[a⋄b]`, or the test of `{c⋄body}` (W12-A7)
+_
+"
+1000001-
+[           #   in a `[`: end the then-branch with a jmp to `]`, and send the
+_           #   `[`'s jnz here, to the else-branch
+233o        #   0xE9 jmp rel32, its site patched by `]`
+←p
+→‹else›
+0
+w
+k           #   the `[`'s site, under its tag
+←‹else›
+1000003
+^
+]
+"
+1000002-
+[           #   in a `{`: c is computed — leave the loop unless it is 0
+_
+2E          #   blob record 2: pop rax; test rax,rax; 0F
+133o        #   0x85 -> JNZ rel32 to past `}`
+←p
+0
+w           #   the exit site, above the loop target
+1000004
+^
+]
+"
+1000003-
+[
+“ twice in one block“
+‹badelse›
+]
+"
+1000004-
+[
+“ twice in one block“
+‹badelse›
+]
+“ outside [ ] or { }“
+‹badelse›
 ]
 
 "

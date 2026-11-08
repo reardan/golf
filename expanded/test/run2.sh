@@ -3650,6 +3650,67 @@ l=[i*7919%1000003 for i in range(1000000)]
 print(" ".join(map(str,sorted(l,key=lambda x:-(x%1000)))),end=" ")' | md5sum)" ] \
   && ok "1M elements by a key with 1000 values match Python's sorted; ⍋ $(( (w12a4t1-w12a4t0)/1000000 )) ns/element, ⍒ $(( (w12a4t2-w12a4t1)/1000000 )) ns/element" \
   || no "W12-A4 1M"
+# === W12-A7 ===
+echo "W12-A7: ⋄ — if-else c[a⋄b] and the top-tested while {c⋄body} (compiler syntax)"
+# Zero is true, as for [ and }: c[a⋄b] runs a when c is 0, b otherwise;
+# {c⋄body} computes c before every pass and runs body while c is 0.  Both are
+# the jumps [ ] { } already emit (one more jmp each), so no run-time machinery.
+w12a7b(){ [ "$(printf '%s' "$1" | gc)" = "$2" ] && [ "$(printf '%s' "$1" | gref)" = "$2" ]; }
+w12a7b '0[1Ṅ⋄2Ṅ]5[1Ṅ⋄2Ṅ]' "12" \
+  && ok "0[1Ṅ⋄2Ṅ] prints 1, 5[1Ṅ⋄2Ṅ] prints 2 (golf2 and the oracle)" || no "if-else basic: $(printf '%s' '0[1Ṅ⋄2Ṅ]5[1Ṅ⋄2Ṅ]' | gc)"
+w12a7b ':s"[_“zero“⋄0≺1+[“neg“⋄“pos“]]🗲;0s 7s 0 3-s' "zeroposneg" \
+  && ok "nested if-else in a word: zero / pos / neg" || no "nested if-else"
+w12a7b '0→i{←i5<1+⋄←iṄ←i1+→i}␤0→j{1⋄99Ṅ}←jṄ␤{1}7Ṅ' "$(printf '01234\n0\n7')" \
+  && ok "{←i5<1+⋄…} runs 5 passes; {1⋄99Ṅ} runs none; a plain { } is unchanged" || no "while basic"
+w12a7b '0→i{←i6<1+⋄←i[0Ṅ⋄←i2%[“e“🗲⋄“o“🗲]]←i1+→i}␤0→i{←i2<1+⋄0→k{←k3<1+⋄←i←k+Ṅ←k1+→k}←i1+→i}' "$(printf '0oeoeo\n012123')" \
+  && ok "if-else nested in a while, and a while nested in a while" || no "while nesting"
+w12a7b '0→i{←i3<1+"[_0⋄_1]⋄←iṄ←i1+→i}␤0[{1⋄}7Ṅ⋄8Ṅ]␤1[{1}9Ṅ⋄{1⋄}8Ṅ]' "$(printf '012\n7\n8')" \
+  && ok "a whole [a⋄b] inside a while's condition; a while inside each branch of an if-else" || no "mixed nesting"
+w12a7b ':g0{"10<1+⋄"7-[^⋄1+]}99;gṄ' "7" \
+  && ok "^ from inside a while's body returns from the word" || no "^ in while"
+w12a7d=$(python3 -c 'print("0[" * 40 + "7Ṅ" + "⋄9Ṅ]" * 40 + "␤" + "1[" + "0[" * 39 + "7Ṅ" + "⋄9Ṅ]" * 40)')
+w12a7b "$w12a7d" "$(printf '7\n9')" && ok "if-else nested 40 deep" || no "40-deep if-else"
+w12a7b '“a⋄b“🗲 # ⋄ in a comment
+' "a⋄b" && ok "⋄ inside “…“ and in a comment is left alone" || no "⋄ in string/comment"
+w94dbin '0[1⋄2]'
+[ "$(w94dhas 6800000000584885c00f850a0000006801000000e9050000006802000000)" = 1 ] \
+  && ok "0[1⋄2] is push 0; pop/test/jnz +10; push 1; jmp +5; push 2" || no "if-else bytes"
+w94dbin '{0⋄}'
+[ "$(w94dhas 6800000000584885c00f8505000000e9ecffffff)" = 1 ] \
+  && ok "{0⋄} is push 0; pop/test/jnz +5 (out); jmp -20 (to the test)" || no "while bytes"
+w12a7e(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/a7.src"
+          "$TMP/golf2" < "$TMP/a7.src" > "$TMP/a7.bin" 2>"$TMP/a7.err"; w12a7g=$?
+          python3 boot/golfref.py < "$TMP/a7.src" > /dev/null 2>"$TMP/a7.rerr"; w12a7r=$?
+          "$TMP/seed" < "$TMP/a7.src" > "$TMP/a7.sbin" 2>/dev/null; w12a7s=$?
+          [ -s "$TMP/a7.bin" ] || [ -s "$TMP/a7.sbin" ] && w12a7s="$w12a7s+binary"
+          echo "$w12a7g $w12a7r $w12a7s $(cat "$TMP/a7.err") | $(cat "$TMP/a7.rerr")"; }
+w12a7bad=""
+for w12a7c in '1⋄|GOLF: ⋄ outside [ ] or { } at line 1' \
+              '1Ṅ\n:f⋄;|GOLF: ⋄ outside [ ] or { } at line 2' \
+              '0[1⋄]⋄|GOLF: ⋄ outside [ ] or { } at line 1' \
+              '0[1⋄2⋄3]|GOLF: ⋄ twice in one block at line 1' \
+              '\n\n{0⋄1⋄}|GOLF: ⋄ twice in one block at line 3'; do
+  w12a7o=$(printf "${w12a7c%%|*}" | w12a7e)
+  [ "$w12a7o" = "2 2 2 ${w12a7c#*|} | ${w12a7c#*|}" ] || w12a7bad="$w12a7bad [$w12a7o]"
+done
+[ -z "$w12a7bad" ] \
+  && ok "⋄ outside [ ] / { } (top level, in a bare word, after the ]) or twice in one block: GOLF: … at line N, exit 2, no binary (golf2, golfref; the seed exits 2)" \
+  || no "⋄ errors:$w12a7bad"
+w12a7p='0→i{←i4<1+⋄←i2%[“e“⋄“o“]🗲←i1+→i}:s"[_0⋄0≺1+[1⋄2]]Ṅ;0s3s0 3-s'
+printf '%s' "$w12a7p" | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/a7.src"
+"$TMP/seed" < "$TMP/a7.src" > "$TMP/a7.sbin" 2>/dev/null; "$TMP/golf2" < "$TMP/a7.src" > "$TMP/a7.bin" 2>/dev/null
+python3 boot/golfref.py < "$TMP/a7.src" > "$TMP/a7.rbin" 2>/dev/null
+cmp -s "$TMP/a7.sbin" "$TMP/a7.bin" && cmp -s "$TMP/a7.rbin" "$TMP/a7.bin" && [ "$(printf '%s' "$w12a7p" | gc)" = "eoeo021" ] \
+  && ok "seed, golf2 and golfref emit the same bytes for an if-else / while program" || no "⋄ three-way byte parity"
+[ "$(python3 tools/codepage.py decode < <(printf '%s' '\else' | python3 tools/codepage.py encode))" = "⋄" ] \
+  && ok "\\else encodes to 0xB8 and decodes as ⋄" || no "⋄ code page"
+# bench/leetcode/golf/queens.golfj's column loop is a {c⋄body} since W12-A7.
+w12a7q=""; grep -q '⋄' bench/leetcode/golf/queens.golfj || w12a7q=" [no ⋄]"
+"$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/queens.golfj" "$TMP/a7q" > /dev/null 2>&1 || w12a7q="$w12a7q [compile]"
+for w12a7n in 1 2 3 4 5 6 7 8; do
+  [ "$(echo $w12a7n | "$TMP/a7q")" = "$(echo $w12a7n | python3 bench/leetcode/py/queens.py)" ] || w12a7q="$w12a7q [n=$w12a7n]"
+done
+[ -z "$w12a7q" ] && ok "the queens solution on {⇐v0≡⋄…} agrees with Python for n = 1…8" || no "queens with ⋄:$w12a7q"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

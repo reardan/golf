@@ -70,6 +70,7 @@ LNAME_BYTE = mkblob2.LNAME_BYTE  # ‹  opens a long name (M2)
 RNAME_BYTE = mkblob2.RNAME_BYTE  # ›  closes it
 IMPORT_BYTE = mkblob2.IMPORT_BYTE  # ⎘  ⎘“path“ includes a file (W11-2A)
 REC_BYTE = mkblob2.REC_BYTE  # ⊜  ⊜‹point›‹x›‹y›; a record header (W11-4A)
+ELSE_BYTE = mkblob2.ELSE_BYTE  # ⋄  c[a⋄b] if-else, {c⋄body} top-tested while (W12-A7)
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -415,16 +416,23 @@ def compile_bytes(src: bytes) -> bytes:
             emit([0x58, 0x48, 0x85, 0xC0, 0x0F, 0x85]); patch = len(out); emit(b"\0\0\0\0")
             stack.append(('if', patch))
             continue
-        if ch == ']':                                # end if
+        if ch == ']':                                # end if (or its else)
             kind, patch = stack.pop()
-            assert kind == 'if', "] without ["
+            assert kind in ('if', 'else'), "] without ["
             patch32(patch, len(out))
             continue
         if ch == '{':                                # loop start (emits nothing)
             stack.append(('loop', len(out)))
             continue
         if ch == '}':                                # loop back while TOS==0
-            kind, target = stack.pop()
+            top_ = stack.pop()
+            if top_[0] == 'while':                   # W12-A7: {c⋄body} — back
+                _, target, exit_ = top_              # to the test always, then
+                emit([0xE9]); site = len(out); emit(b"\0\0\0\0")  # land the exit
+                patch32(site, target)
+                patch32(exit_, len(out))
+                continue
+            kind, target = top_
             assert kind == 'loop', "} without {"
             emit([0x58, 0x48, 0x85, 0xC0, 0x0F, 0x84]); site = len(out); emit(b"\0\0\0\0")
             patch32(site, target)                    # negative rel32
@@ -511,6 +519,22 @@ def compile_bytes(src: bytes) -> bytes:
                     seg["end"] += len(data)
                 segs.append({"start": i, "end": i + len(data), "reset": i,
                              "file": len(included), "holes": []})
+            continue
+        if c == ELSE_BYTE:                           # W12-A7: ⋄
+            kind = stack[-1][0] if stack else None
+            if kind == 'if':                         # c[a⋄b]: a ends with a jmp
+                _, patch = stack.pop()               # to ']', and '['s jnz
+                emit([0xE9]); site = len(out); emit(b"\0\0\0\0")  # lands on b
+                patch32(patch, len(out))
+                stack.append(('else', site))
+            elif kind == 'loop':                     # {c⋄body}: leave unless c==0
+                _, target = stack.pop()
+                emit([0x58, 0x48, 0x85, 0xC0, 0x0F, 0x85]); site = len(out); emit(b"\0\0\0\0")
+                stack.append(('while', target, site))
+            elif kind in ('else', 'while'):
+                die("⋄ twice in one block".encode())
+            else:
+                die("⋄ outside [ ] or { }".encode())
             continue
         if c == REC_BYTE:                            # W11-4A: ⊜‹point›‹x›‹y›;
             record()

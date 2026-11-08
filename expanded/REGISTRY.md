@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **48** are now spent, leaving **63** free. It is partitioned as follows
+space; **49** are now spent, leaving **62** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -172,7 +172,7 @@ prefix-free against the 75 mnemonics of the three tables and each other), no gly
 | `0xAA`, `0xAB` | — | — | spare, **W11-3A only** (e.g. if the read/set split wants four atoms); anyone else asks. W11-3A did not need them (two atoms were enough) | W11-3A | reserved |
 | `0xB6` | `\import` | `⎘` | compiler op, include prefix: `⎘“path“` compiles that file's source in place (fd-0 swap, include-once, search `.` then `lib/` then `vendor/` — the last added by W11-4A) — see the decision below; `codepage.COMPILER` row, cases in `self/golf2.golfj`, the seed and `boot/golfref.py` | W11-2A | shipped |
 | `0xB7` | `\rec` | `⊜` | compiler op, record definition header: `⊜‹point›‹x›‹y›;` defines a constructor `‹point›` and per-field accessors `‹point-x›` / setters `‹set-point-x›` over a plain list, synthesized at compile time from `⍳ ⊇ & \ _ ≪ > ﹢ ⊛`; `codepage.COMPILER` row, cases in `self/golf2.golfj`, the seed and `boot/golfref.py` | W11-4A | shipped |
-| `0xB8` | — | — | spare compiler op, for the W11 front-end owners (2A / 3B / 4A) | W11-2A/3B/4A | reserved |
+| `0xB8` | — | — | spare compiler op, for the W11 front-end owners (2A / 3B / 4A); unused in W11, now W12-A7's `\else` `⋄` (§1.4 below) | W11-2A/3B/4A | released |
 | `0xD0` | `\bind` | `⊸` | prelude word at a high byte: `x ′f ⊸ -> ′g`, `g` = push x, call f (a thunk in the `∘` arena, bound-checked like `∘`) | W11-2C | shipped |
 
 The atom semantics in the table are W11-0's intent, not a spec: W11-3A owns the
@@ -221,7 +221,7 @@ no glyph is in use.
 
 | Byte | Mnemonic | Glyph | Meaning | Task | Status |
 |------|----------|-------|---------|------|--------|
-| `0xB8` | `\else` | `⋄` | compiler op: the separator in `c[a⋄b]` (if-else) and `{?c⋄body}` (top-tested while). This is W11's unused spare | A7 | reserved |
+| `0xB8` | `\else` | `⋄` | compiler op: the separator in `c[a⋄b]` (if-else: `a` when c is 0, else `b`) and `{c⋄body}` (top-tested while: `body` while c is 0). The plan's `{?c⋄body}` is spelled without the `?`, which stays byte fetch. This is W11's unused spare | A7 | shipped |
 | `0xB9` | `\vinc` | `⇡` | compiler op, prefix: `⇡x` increments variable `x` (`←x⊕→x`); inside a `⊡` word a declared local wins | Z2 | reserved |
 | `0xBA` | `\vdec` | `⇣` | compiler op, prefix: `⇣x` decrements variable `x` | Z2 | reserved |
 | `0xD1` | `\scan` | `⍀` | prelude: `l ′f ⍀ -> l'` inclusive scan, the first element is the seed | A2 | shipped |
