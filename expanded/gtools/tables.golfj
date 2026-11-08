@@ -1,0 +1,504 @@
+# gtools/tables.golfj — the code page and the template blob, built from the
+# source data in GOLF.
+#
+# The GOLF twin of tools/mkblob2.py, tools/mktables.py and tools/codepage.py's
+# table/reference/check: everything those build from data/ops.tsv and
+# data/templates.txt, this builds too, and test/gtools.sh requires every output
+# to be byte-identical to the Python's, on the real repo files.
+#
+#     build/gtables COMMAND          (run from expanded/; output on stdout)
+#
+#   blob        the template blob, raw (mkblob2.build_blob2())
+#   escape      the blob as the ` escape both compilers embed (blob_escape())
+#   blobhex     data/blob.hex                       (mktables.py)
+#   codepage    data/codepage.tsv                   (mktables.py)
+#   seed        self/seed.golf                      (mkblob2.build_seed())
+#   golf2       self/golf2.golf                     (mkblob2.build_golf2())
+#   table       `codepage.py table`
+#   reference   `codepage.py reference`, the REFERENCE.md generated block
+#   check       `codepage.py check`: silent, exit 0; or the report on fd 2, exit 1
+#
+# It reads data/ops.tsv, data/templates.txt and data/v1.hex (and
+# self/seed.golfv1, self/golf2.golfj, lib/prelude.golfj for the commands that
+# need them), from the working directory.  Every command loads and expands all
+# three tables first, as importing mkblob2 does, so a broken table stops every
+# command with the same message the Python gives: `data/ops.tsv:12: …` or
+# `data/templates.txt:40: …` on fd 2, exit 1, nothing on stdout.  The output is
+# built in one vector and written once at the end, so a failure part-way leaves
+# stdout empty.
+#
+# The template notation is documented at the top of data/templates.txt; the
+# expander below follows tools/mkblob2.Templates step for step (same checks,
+# same order, same messages), so the two can be diffed on bad input as well as
+# good.
+#
+# Written in the prelude's own vocabulary (code lists, ‹dict›, ‹vec›, ⊡
+# locals) rather than the raw style of the older gtools: it uses no fixed
+# cell, no one-byte word and nothing from lib/t*.golfj.  Every word is a
+# ‹tl_…› long name; the globals are long-name variables.
+
+# ============================================================ small words
+:‹tl_eq›≣1+;                                   # a b -> 0 when structurally equal
+:‹tl_hd›"10<1+[48+⋄55+];                       # 0..15 -> its uppercase hex digit
+⊡‹tl_hx2›⇒n‹vec›⇐n 4>15$‹tl_hd›⍆⇐n 15$‹tl_hd›⍆;   # n -> “HH“
+⊡‹tl_cat›⇒l⇒v 0⇒i{⇐i⇐l≢<1+⋄⇐v⇐l⇐i⊇⍆⇒v⇡i}⇐v;      # v l -> v' (l appended)
+⊡‹tl_le4›⇒x‹vec›⇒o 0⇒k{⇐k 4<1+⋄⇐o⇐x⇐k 8*≫255$⍆⇒o⇡k}⇐o;   # x -> 4 bytes LE
+⊡‹tl_each›⇒f⇒l 0⇒i{⇐i⇐l≢<1+⋄⇐l⇐i⊇⇐f⍎⇡i};       # l ′f -> (f on each)
+:‹tl_q›“'“⊃\\⧺“'“⊃⧺;                           # s -> 's'
+
+# The output: one vector, written at the very end.
+:‹tl_b›←‹o›\\⍆→‹o›;                            # b ->
+:‹tl_s›←‹o›\\‹tl_cat›→‹o›;                     # list ->
+:‹tl_z›⊃‹tl_s›;                                # “…“ ->
+
+# Failure: the message and a newline on fd 2, exit 1.  Nothing has been
+# printed yet (the output vector is written last), so stdout stays empty.
+:‹tl_die›10⍆2‹fwrite›1.;                       # msg ->
+⊡‹tl_ldie›⇒m⇒n⇒f⇐f“:“⊃⧺⇐n‹fmt›⧺“: “⊃⧺⇐m⧺‹tl_die›;   # file line msg ->
+⊡‹tl_opsdie›⇒m⇒n“data/ops.tsv“⊃⇐n⇐m‹tl_ldie›;           # line msg ->
+⊡‹tl_tdie›⇒m⇒n“data/templates.txt“⊃⇐n⇐m‹tl_ldie›;      # line msg ->
+
+# Character classes.  Each answers 0 for yes (zero-is-true, like [ and ∊).
+⊡‹tl_rng›⇒h⇒l⇒c⇐c⇐l≺⇐h⇐c≺|;                    # c lo hi -> 0 if lo <= c <= hi
+⊡‹tl_isuhex›⇒c⇐c 48 57‹tl_rng›⇐c 65 70‹tl_rng›$;
+⊡‹tl_ishex›⇒c⇐c‹tl_isuhex›⇐c 97 102‹tl_rng›$;
+⊡‹tl_isdig›⇒c⇐c 48 57‹tl_rng›;
+⊡‹tl_isalpha›⇒c⇐c 65 90‹tl_rng›⇐c 97 122‹tl_rng›$;
+⊡‹tl_isidc›⇒c⇐c‹tl_isalpha›⇐c‹tl_isdig›$⇐c 95-$;
+⊡‹tl_isws›⇒c⇐c 9 13‹tl_rng›⇐c 28 32‹tl_rng›$;   # Python's ASCII \s
+⊡‹tl_all›⇒f⇒l 0⇒r 0⇒i{⇐i⇐l≢<1+⋄⇐l⇐i⊇⇐f⍎[⋄1⇒r]⇡i}⇐r;   # l ′f -> 0 if f says 0 for all
+⊡‹tl_isid›⇒s⇐s≢[1^]⇐s 0⊇‹tl_isalpha›⇐s 0⊇95-$[⋄1^]⇐s′‹tl_isidc›‹tl_all›;
+:‹tl_notid›‹tl_isid›[1⋄0];
+⊡‹tl_ishexs›⇒s⇐s≢[1^]⇐s′‹tl_ishex›‹tl_all›;   # nonempty, all hex
+⊡‹tl_isdigs›⇒s⇐s≢[1^]⇐s′‹tl_isdig›‹tl_all›;   # nonempty, all decimal
+:‹tl_isbyte›"≢2-[‹tl_ishexs›⋄_1];              # exactly two hex digits
+⊡‹tl_get›⇒i⇒s⇐i⇐s≢<1+[⇐s⇐i⊇⋄0 1-];        # s i -> s[i], or -1 past the end
+⊡‹tl_skipto›⇒c⇒i⇒s{⇐s⇐i‹tl_get›"⇐c-\\1+*0≡⋄⇡i}⇐i;   # s i c -> index of the next c, or the end
+⊡‹tl_ncp›⇒s 0⇒n 0⇒i{⇐i⇐s≢<1+⋄⇐s⇐i⊇128 191‹tl_rng›[⋄⇡n]⇡i}⇐n;   # UTF-8 code points
+
+# Substrings.  ‹tl_at›: 0 if p occurs in h at i.  ‹tl_find›: the first
+# occurrence at or after i, or -1.
+⊡‹tl_at›⇒i⇒p⇒h⇐i⇐p≢+⇐h≢»1+[1^]0⇒k{⇐k⇐p≢<1+⋄⇐h⇐i⇐k+⊇⇐p⇐k⊇-[⋄1^]⇡k}0;
+⊡‹tl_find›⇒i⇒p⇒h{⇐i⇐p≢+⇐h≢»⋄⇐h⇐p⇐i‹tl_at›[⇐i^]⇡i}0 1-;
+⊡‹tl_count›⇒p⇒h 0⇒n 0⇒i{⇐h⇐p⇐i‹tl_find›"⇒i 0≺⋄⇡n⇐i⇐p≢+⇒i}⇐n;    # non-overlapping
+⊡‹tl_repl›⇒r⇒p⇒h‹vec›⇒o 0⇒i 0⇒j
+{⇐h⇐p⇐i‹tl_find›"⇒j 0≺⋄⇐o⇐h⇐i⇐j⇐i-‹slice›‹tl_cat›⇐r‹tl_cat›⇒o⇐j⇐p≢+⇒i}
+⇐o⇐h⇐i↓‹tl_cat›;                                # h p r -> h with every p made r
+
+# ============================================================ data/ops.tsv
+# ‹ops› is a vector of rows [table byte mnemonic glyph doc], table being the
+# letter's code (65 A, 67 C, 76 L), in file order.  Only the SHAPE is
+# checked here, as mkblob2.read_ops does; the namespace rules are `check`'s.
+⊡‹tl_row›⇒n⇒s⇐s 9‹split›⇒f
+⇐f≢5-[⋄⇐n“expected 5 TAB-separated fields, found “⊃⇐f≢‹fmt›⧺‹tl_opsdie›]
+⇐f 0⊇⇒t⇐f 1⊇⇒b⇐f 2⊇⇒m⇐f 3⊇⇒g
+⇐t≢1-[⇐t 0⊇⋄0]⇒c
+⇐c 65-⇐c 67-*⇐c 76-*[⋄⇐n“table must be A, C or L, not “⊃⇐t‹tl_q›⧺‹tl_opsdie›]
+⇐b≢2-[⇐b′‹tl_isuhex›‹tl_all›⋄1][⋄⇐n“byte must be two uppercase hex digits, not “⊃⇐b‹tl_q›⧺‹tl_opsdie›]
+⇐m≢[1⋄⇐m′‹tl_isalpha›‹tl_all›][⋄⇐n“mnemonic must be ASCII letters, not “⊃⇐m‹tl_q›⧺‹tl_opsdie›]
+⇐g‹tl_ncp›1-[⋄⇐n“glyph must be one character, not “⊃⇐g‹tl_q›⧺‹tl_opsdie›]
+‹vec›⇐c⍆⇐b‹parsehex›⍆⇐m⍆⇐g⍆⇐f 4⊇⍆;
+⊡‹tl_ops›“data/ops.tsv“⊃‹readfile›10‹split›⇒l‹vec›⇒v 0⇒i
+{⇐i⇐l≢<1+⋄⇐l⇐i⊇⇒s⇡i⇐s≢[⋄⇐s 0⊇35-[⋄⇐v⇐s⇐i‹tl_row›⍆⇒v]]}⇐v→‹ops›;
+⊡‹tl_rows›⇒c‹vec›⇒v 0⇒i{⇐i←‹ops›≢<1+⋄←‹ops›⇐i⊇⇒r⇐r 0⊇⇐c-[⇐v⇐r⍆⇒v]⇡i}⇐v;   # one table
+
+# ============================================================ data/v1.hex
+# ‹v1r›: key -> template bytes, every record; ‹v1o›: the keys > 5 in file
+# order, which is the order `v1ops` emits them in (v1.TEMPLATES).
+⊡‹tl_v1›“data/v1.hex“⊃‹readfile›10‹split›⇒l‹dict›→‹v1r›‹vec›⇒o 0⇒i
+{⇐i⇐l≢<1+⋄⇐l⇐i⊇‹trim›⇒s⇡i⇐s≢[⋄⇐s 0⊇35-[⋄
+⇐s‹words›′‹parsehex›€⇒b⇐b 0⊇⇒k⇐b 2↓⇒d
+⇐b 1⊇⇐d≢-[⋄“v1.hex: record “⊃⇐k‹fmt›⧺“ claims “⊃⧺⇐b 1⊇‹fmt›⧺“, has “⊃⧺⇐d≢‹fmt›⧺‹tl_die›]
+←‹v1r›⇐k⇐d‹put›_⇐k 5»1+[⇐o⇐k⍆⇒o]]]}⇐o→‹v1o›;
+
+# ============================================================ data/templates.txt
+# Parsed into ‹defs› (name -> [params tokens line]), ‹tpls› and ‹ovs› (byte
+# -> [tokens line]; ‹ovo› keeps the override bytes in file order) and ‹sts›,
+# the emission statements [kind key tokens line] in order, kind being 114 rec,
+# 118 v1ops, 97 atoms.  A statement's tokens are collected over its indented
+# lines and stored when the next statement (or the end of the file) closes
+# it: ‹ck› is the open statement's kind (0 none, 100 def, 114 rec, 116 tpl,
+# 111 override), ‹cn› its name or byte, ‹cp› a def's parameters, ‹ct› the
+# tokens, ‹cl› its line.
+:‹tl_fin›
+←‹ck›100-[←‹defs›←‹cn›‹vec›←‹cp›⍆←‹ct›⍆←‹cl›⍆‹put›_]
+←‹ck›114-[←‹sts›‹vec›114⍆←‹cn›⍆←‹ct›⍆←‹cl›⍆⍆→‹sts›]
+←‹ck›116-[←‹tpls›←‹cn›‹vec›←‹ct›⍆←‹cl›⍆‹put›_]
+←‹ck›111-[←‹ovs›←‹cn›‹vec›←‹ct›⍆←‹cl›⍆‹put›_←‹ovo›←‹cn›⍆→‹ovo›]
+0→‹ck›;
+⊡‹tl_iskw›⇒k⇐k“def“⊃‹tl_eq›⇐k“rec“⊃‹tl_eq›$⇐k“tpl“⊃‹tl_eq›$⇐k“override“⊃‹tl_eq›$
+⇐k“v1ops“⊃‹tl_eq›$⇐k“atoms“⊃‹tl_eq›$;
+⊡‹tl_stmt›⇒n⇒t⇐t 0⊇⇒k⇐t 1↓⇒a
+⇐k‹tl_iskw›[⋄⇐n“unknown statement “⊃⇐k‹tl_q›⧺‹tl_tdie›]
+⇐k“v1ops“⊃‹tl_eq›⇐k“atoms“⊃‹tl_eq›$[
+ ⇐a≢[⋄⇐n⇐k“ takes nothing“⊃⧺‹tl_tdie›]
+ ←‹sts›‹vec›⇐k 0⊇⍆0⍆‹vec›⍆⇐n⍆⍆→‹sts›^]
+⇐a≢[⇐n⇐k“ needs a “⊃⧺⇐k“def“⊃‹tl_eq›[“name“⋄“byte“]⊃⧺‹tl_tdie›]
+⇐k“def“⊃‹tl_eq›[
+ ⇐a′‹tl_notid›⍷⇒i⇐i 0≺[⇐n“bad fragment or parameter name “⊃⇐a⇐i⊇‹tl_q›⧺‹tl_tdie›]
+ ←‹defs›⇐a 0⊇‹has›[⇐n“fragment “⊃⇐a 0⊇⧺“ defined twice“⊃⧺‹tl_tdie›]
+ 100→‹ck›⇐a 0⊇→‹cn›⇐a 1↓→‹cp›‹vec›→‹ct›⇐n→‹cl›^]
+⇐a 0⊇‹tl_isbyte›[⋄⇐n“expected a two-digit hex byte, not “⊃⇐a 0⊇‹tl_q›⧺‹tl_tdie›]
+⇐a 0⊇‹parsehex›⇒b
+⇐k“rec“⊃‹tl_eq›[114⋄
+ ⇐k“tpl“⊃‹tl_eq›[←‹tpls›⋄←‹ovs›]⇐b‹has›[⇐n⇐k“ “⊃⧺⇐b‹tl_hx2›⧺“ given twice“⊃⧺‹tl_tdie›]
+ ⇐k“tpl“⊃‹tl_eq›[116⋄111]]→‹ck›
+⇐b→‹cn›‹vec›⇐a 1↓‹tl_cat›→‹ct›⇐n→‹cl›;
+⊡‹tl_tparse›“data/templates.txt“⊃‹readfile›10‹split›⇒l 0⇒i
+‹dict›→‹defs›‹dict›→‹tpls›‹dict›→‹ovs›‹vec›→‹ovo›‹vec›→‹sts›0→‹ck›‹dict›→‹nod›
+{⇐i⇐l≢<1+⋄⇐l⇐i⊇⇒r⇡i
+ ⇐r 35‹indexof›⇒j⇐j 0≺1+[⇐r⋄⇐r 0⇐j‹slice›]‹words›⇒t
+ ⇐t≢[⋄⇐r 0⊇32-⇐r 0⊇9-*[
+  ←‹ck›[⇐i“an indented line with no statement above it“⊃‹tl_tdie›]←‹ct›⇐t‹tl_cat›→‹ct›⋄
+  ‹tl_fin›⇐t⇐i‹tl_stmt›]]}
+‹tl_fin›;
+
+# ------------------------------------------------------------ expansion
+# ‹tl_body›: tokens env line depth -> bytes.  Labels are this body's own; a
+# jump is a placeholder of 1 or 4 zero bytes, filled once every label of the
+# body is known.  ‹tl_tok› expands one token, ‹tl_call› one fragment.
+⊡‹tl_body›⇒d⇒n⇒e⇒t
+⇐d 32»1+[⇐n“fragments nest more than 32 deep (a cycle?)“⊃‹tl_tdie›]
+‹vec›⇒o‹dict›⇒b‹vec›⇒j 0⇒i
+{⇐i⇐t≢<1+⋄⇐t⇐i⊇⇒s⇡i
+ ⇐s‹last›58-[⇐s"≢1-↑‹tl_isid›⋄1]
+ [⇐s"≢1-↑⇒q⇐b⇐q‹has›[⇐n“label “⊃⇐q⧺“ defined twice in one body“⊃⧺‹tl_tdie›]⇐b⇐q⇐o≢‹put›_⋄
+ ⇐s 0⊇62-[
+  ⇐s“>>“⊃‹startswith›[4⋄1]⇒w⇐s⇐w 1-[1⋄2]↓⇒q
+  ⇐q‹tl_isid›[⋄⇐n“bad jump “⊃⇐s‹tl_q›⧺‹tl_tdie›]
+  ⇐j‹vec›⇐o≢⍆⇐w⍆⇐q⍆⍆⇒j 0⇒k{⇐k⇐w<1+⋄⇐o 0⍆⇒o⇡k}⋄
+  ⇐o⇐s⇐e⇐n⇐d‹tl_tok›‹tl_cat›⇒o]]}
+0⇒i{⇐i⇐j≢<1+⋄⇐j⇐i⊇⇒s⇡i⇐s 0⊇⇒p⇐s 1⊇⇒w⇐s 2⊇⇒q
+ ⇐b⇐q‹has›[⋄⇐n“jump to undefined label “⊃⇐q⧺‹tl_tdie›]
+ ⇐b⇐q‹get›⇐p⇐w+-⇒x
+ ⇐w 1-[⇐x 0 128-≺⇐x 127≻|[⋄⇐n“jump to “⊃⇐q⧺“ is “⊃⧺⇐x‹fmt›⧺“ bytes, out of rel8 range“⊃⧺‹tl_tdie›]]
+ 0⇒k{⇐k⇐w<1+⋄⇐o⇐p⇐k+⇐x⇐k 8*≫255$⍈⇒o⇡k}}
+⇐o;
+
+⊡‹tl_call›⇒d⇒n⇒a⇒m
+←‹defs›⇐m‹has›[⋄⇐n“no fragment named “⊃⇐m⧺‹tl_tdie›]
+←‹defs›⇐m‹get›⇒x⇐x 0⊇⇒p
+⇐a≢⇐p≢-[⋄⇐n⇐m“ takes “⊃⧺⇐p≢‹fmt›⧺“ argument(s), given “⊃⧺⇐a≢‹fmt›⧺‹tl_tdie›]
+‹dict›⇒e 0⇒i{⇐i⇐p≢<1+⋄⇐e⇐p⇐i⊇⇐a⇐i⊇‹put›_⇡i}
+⇐x 1⊇⇐e⇐x 2⊇⇐d‹tl_body›;
+
+# One token -> its bytes, trying the forms in mkblob2.Templates.token's order.
+⊡‹tl_tok›⇒d⇒n⇒e⇒s
+⇐s≢[⇐n“cannot read token ''“⊃‹tl_tdie›]
+⇐s‹tl_isbyte›[‹vec›⇐s‹parsehex›⍆^]
+⇐s“w:“⊃‹startswith›[⇐s 2↓⇒q⇐q‹tl_ishexs›⇐q≢8»|[⇐q‹parsehex›‹tl_le4›^]]
+⇐s 0⊇36-[⇐s 1↓⇒q⇐e⇐q‹has›[⇐e⇐q‹get›^]⇐n⇐s“ is not a parameter here“⊃⧺‹tl_tdie›]
+⇐s“v1:“⊃‹startswith›[⇐s 3↓⇒q⇐q 2↑⇒h⇐q 2↓⇒r
+ ⇐h‹tl_isbyte›⇐r≢[0⋄⇐r 0⊇43-⇐r 1↓‹tl_isdigs›|]|[
+  ⇐h‹parsehex›⇒k←‹v1r›⇐k‹has›[⋄⇐n“data/v1.hex has no record “⊃⇐k‹tl_hx2›⧺‹tl_tdie›]
+  ←‹v1r›⇐k‹get›⇐r≢[0⋄⇐r 1↓‹num›]↓^]]
+⇐s“atom:“⊃‹startswith›[⇐s 5↓⇒q⇐q‹tl_isbyte›[
+ ⇐q‹parsehex›⇒k←‹tpls›⇐k‹has›[⋄⇐n“no `tpl “⊃⇐k‹tl_hx2›⧺“`“⊃⧺‹tl_tdie›]
+ ←‹tpls›⇐k‹get›⇒x⇐x 0⊇←‹nod›⇐x 1⊇⇐d 1+‹tl_body›^]]
+⇐s“len:“⊃‹startswith›[⇐s 4↓⇒q⇐q‹tl_isid›[
+ ⇐q‹vec›⇐n⇐d 1+‹tl_call›≢⇒k
+ ⇐k 255»1+[⇐n“len:“⊃⇐q⧺“ is “⊃⧺⇐k‹fmt›⧺“, more than a byte“⊃⧺‹tl_tdie›]
+ ‹vec›⇐k⍆^]]
+⇐s 40‹indexof›⇒p
+⇐p 0≺1+[⇐s‹tl_isid›[⇐s‹vec›⇐n⇐d 1+‹tl_call›^]⋄
+ ⇐s 0⇐p‹slice›⇒q⇐s⇐p 1+⇐s≢⇐p-2-‹slice›⇒r
+ ⇐q‹tl_isid›⇐s‹last›41-|⇐r 40‹indexof›0≺1+|⇐r 41‹indexof›0≺1+|[
+  ⇐r 44‹split›⇒a‹vec›⇒v 0⇒i{⇐i⇐a≢<1+⋄⇐v⇐a⇐i⊇⇐e⇐n⇐d 1+‹tl_tok›⍆⇒v⇡i}
+  ⇐q⇐v⇐n⇐d 1+‹tl_call›^]]
+⇐n“cannot read token “⊃⇐s‹tl_q›⧺‹tl_tdie›;
+
+# ------------------------------------------------------------ the tables
+# As importing mkblob2 builds them, in its order: the rec records, the atoms
+# (every A row needs a tpl, every tpl an A row), the overrides.
+⊡‹tl_load›‹tl_ops›‹tl_v1›‹tl_tparse›
+‹dict›→‹recs›0⇒i{⇐i←‹sts›≢<1+⋄←‹sts›⇐i⊇⇒s⇡i⇐s 0⊇114-[
+ ←‹recs›⇐s 1⊇⇐s 2⊇←‹nod›⇐s 3⊇0‹tl_body›‹put›_]}
+65‹tl_rows›→‹atoms›67‹tl_rows›→‹comps›76‹tl_rows›→‹libs›
+‹dict›→‹atpl›0⇒i{⇐i←‹atoms›≢<1+⋄←‹atoms›⇐i⊇⇒r⇡i⇐r 1⊇⇒b
+ ←‹tpls›⇐b‹has›[⋄“data/ops.tsv: atom “⊃⇐b‹tl_hx2›⧺“ \\str⊃⧺⇐r 2⊇⧺“ has no `tpl “⊃⧺⇐b‹tl_hx2›⧺“` in data/templates.txt“⊃⧺‹tl_die›]
+ ←‹tpls›⇐b‹get›⇒x←‹atpl›⇐b⇐x 0⊇←‹nod›⇐x 1⊇0‹tl_body›‹put›_}
+←‹tpls›‹keys›⇒k 0⇒i{⇐i⇐k≢<1+⋄⇐k⇐i⊇⇒b⇡i←‹atpl›⇐b‹has›[⋄
+ ←‹tpls›⇐b‹get›1⊇“tpl “⊃⇐b‹tl_hx2›⧺“ is not an atom (no A row in data/ops.tsv)“⊃⧺‹tl_tdie›]}
+‹dict›→‹over›0⇒i{⇐i←‹ovo›≢<1+⋄←‹ovo›⇐i⊇⇒b⇡i←‹ovs›⇐b‹get›⇒x
+ ←‹over›⇐b⇐x 0⊇←‹nod›⇐x 1⊇0‹tl_body›‹put›_};
+
+# The blob, as ‹brec›: a vector of [key bytes] in emission order (mkblob2's
+# build_blob2: an override REPLACES its record, and must replace one).
+⊡‹tl_emit›⇒t⇒k←‹over›⇐k‹has›[←‹over›⇐k‹get›⇒t←‹used›⇐k 0‹put›_]
+⇐t≢255»1+[“template “⊃⇐k‹tl_hx2›⧺“ is “⊃⧺⇐t≢‹fmt›⧺“ bytes, more than 255“⊃⧺‹tl_die›]
+←‹brec›‹vec›⇐k⍆⇐t⍆⍆→‹brec›;
+⊡‹tl_blob›‹vec›→‹brec›‹dict›→‹used›0⇒i
+{⇐i←‹sts›≢<1+⋄←‹sts›⇐i⊇⇒s⇡i⇐s 0⊇⇒c
+ ⇐c 114-[←‹brec›‹vec›⇐s 1⊇⍆←‹recs›⇐s 1⊇‹get›⍆⍆→‹brec›]
+ ⇐c 118-[0⇒j{⇐j←‹v1o›≢<1+⋄←‹v1o›⇐j⊇"←‹v1r›\\‹get›‹tl_emit›⇡j}]
+ ⇐c 97-[0⇒j{⇐j←‹atoms›≢<1+⋄←‹atoms›⇐j⊇1⊇"←‹atpl›\\‹get›‹tl_emit›⇡j}]}
+‹vec›⇒m 0⇒i{⇐i←‹ovo›≢<1+⋄←‹ovo›⇐i⊇⇒b⇡i←‹used›⇐b‹has›[⋄⇐m⇐b⍆⇒m]}
+⇐m≢[⋄“override with no record to replace: “⊃⇐m⍋′‹tl_hx2›€“, “⊃‹joinwith›⧺‹tl_die›];
+⊡‹tl_bytes›‹vec›⇒v 0⇒i{⇐i←‹brec›≢<1+⋄←‹brec›⇐i⊇⇒r⇡i
+ ⇐v⇐r 0⊇⍆⇐r 1⊇≢⍆⇐r 1⊇‹tl_cat›⇒v}⇐v 0⍆;          # -> the blob, sentinel and all
+⊡‹tl_escape›‹tl_bytes›⇒b‹vec›96⍆⇐b≢‹fmt›‹tl_cat›32⍆⇐b‹tl_cat›;   # -> “`N “ + blob
+
+# ============================================================ commands
+# blob, escape
+:‹tl_c_blob›‹tl_bytes›‹tl_s›;
+:‹tl_c_escape›‹tl_escape›‹tl_s›;
+
+# blobhex: data/blob.hex, as tools/mktables.py writes it.
+⊡‹tl_hexline›⇒r⇐r 0⊇‹tl_hx2›‹tl_s›32‹tl_b›⇐r 1⊇≢‹tl_hx2›‹tl_s›
+0⇒i{⇐i⇐r 1⊇≢<1+⋄32‹tl_b›⇐r 1⊇⇐i⊇‹tl_hx2›‹tl_s›⇡i}10‹tl_b›;
+⊡‹tl_c_blobhex›0⇒t 0⇒m 0⇒i{⇐i←‹brec›≢<1+⋄←‹brec›⇐i⊇1⊇≢⇒n⇡i⇐t⇐n+2+⇒t⇐m⇐n⌈⇒m}
+“# expanded/data/blob.hex -- the machine-code template blob, as data.
+#
+# GENERATED by tools/mktables.py from tools/mkblob2.py's build_blob2().  Do not
+# hand-edit: run `python3 tools/mktables.py` from expanded/ and commit.
+# test/selfcheck.sh fails if this file is not exactly what that command emits.
+#
+# The blob is the template table both generated compilers embed (see
+# tools/mkblob2.py): a sequence of [key][len][len bytes] records terminated by a
+# 0 key byte.  Keys 1-5 are the fixed sections -- 1 prologue, 2 cond, 3 startup,
+# 4 the ELF header's non-zero (offset,value) pairs, 5 autoexit -- and every
+# record after them is one op byte's machine-code template, keyed by that byte.
+#
+# One record per line, in EXACTLY build_blob2()'s emission order, with the M-VEC
+# OVERRIDES already substituted for the scalar records they replace.  Both of
+# those are policy, and both are already decided by the time this file is
+# written: order matters because the compiler's record lookup returns the FIRST
+# match for a key, and an override REPLACES its record rather than following it
+# (emitting both would be a silent no-op).  A reader here is a formatter, not a
+# policy engine -- concatenate the lines and you have the blob.
+#
+# Each line is one whole record: its bytes as two uppercase hex digits each,
+# separated by single spaces.  So the first field is the key, the second is the
+# length, and the rest is the template -- the same [key][len][data] the blob has,
+# just spelled out.
+#
+# The terminating 0 sentinel is NOT in this file, and the reader appends it.  A
+# bare `00` line would be the one line that is not a key+len+data record, so
+# every consumer would need a special case for the last line; appending one byte
+# is cheaper, and leaving it out means a truncated file cannot look complete.
+#
+# Lines beginning with `#` are comments; the last of them is the one-line
+# summary below, and every line after that is a record.
+“‹tl_z›
+“# “‹tl_z›←‹brec›≢‹fmt›‹tl_s›“ records, “‹tl_z›⇐t 1+‹fmt›‹tl_s›
+“ bytes with the sentinel, longest template “‹tl_z›⇐m‹fmt›‹tl_s›“.“‹tl_z›10‹tl_b›
+←‹brec›′‹tl_hexline›‹tl_each›;
+
+# codepage: data/codepage.tsv, as tools/mktables.py writes it.
+⊡‹tl_cprow›⇒r⇐r 1⊇⇒b⇐b‹tl_hx2›‹tl_s›9‹tl_b›⇐b 128<1+[“E-“⋄“ED“]‹tl_z›9‹tl_b›
+⇐r 0⊇‹tl_b›9‹tl_b›⇐r 2⊇‹tl_s›9‹tl_b›⇐r 3⊇′‹tl_hx2›€′‹tl_s›‹tl_each›10‹tl_b›;
+:‹tl_c_codepage›“# expanded/data/codepage.tsv -- the GOLF code page, as data.
+#
+# GENERATED by tools/mktables.py from tools/mkblob2.py's ATOMS and
+# tools/codepage.py's COMPILER and LIB tables.  Do not hand-edit: run
+# `python3 tools/mktables.py` from expanded/ and commit.  test/selfcheck.sh
+# fails if this file is not exactly what that command emits.
+#
+# It carries everything needed to reproduce BOTH codepage.encode and
+# codepage.decode.  One record per line, five TAB-separated ASCII fields:
+#
+#   byte  mode  src  mnemonic  glyph
+#
+#   byte      the op byte, two uppercase hex digits
+#   mode      ED = this byte decodes back to this glyph/mnemonic
+#             E- = encode-only (see below)
+#   src       A = mkblob2.ATOMS, C = codepage.COMPILER, L = codepage.LIB
+#   mnemonic  the \name spelling WITHOUT the backslash, ASCII letters only
+#   glyph     the glyph's UTF-8 bytes, two uppercase hex digits each, no spaces
+#
+# The three fixed-width fields come first, so the head of every record is
+# exactly seven characters and a reader that only wants the byte can stop after
+# two of them; the variable-width fields follow.  Glyphs are hex-encoded rather
+# than written literally because the consumer is a byte machine and because a
+# literal column would make this file's own encoding load-bearing.
+#
+# ENCODING uses every row: mnemonic -> byte and glyph -> byte, both regardless
+# of mode.  (The encoder takes the LONGEST KNOWN MNEMONIC PREFIX of the alpha
+# run after a `\`, so \sqr48 is \sqr then 48 -- see ../REGISTRY.md.)
+#
+# DECODING uses only the ED rows: byte -> glyph, or byte -> \mnemonic in -m
+# form.  The E- rows are the deliberate asymmetry documented in
+# tools/codepage.py: a LIB word named by an ASCII letter is reachable by its
+# glyph and its mnemonic on input, but that byte decodes as the plain letter,
+# because a low byte could equally be a *user* word of the same name.  Bytes
+# with no row at all decode as ASCII, or as \xHH when they are neither.
+#
+# Lines beginning with `#` are comments and there are none after this header;
+# there is no blank line and no trailing whitespace anywhere in the records.
+“‹tl_z›
+←‹atoms›′‹tl_cprow›‹tl_each›←‹comps›′‹tl_cprow›‹tl_each›←‹libs›′‹tl_cprow›‹tl_each›;
+
+# seed: self/seed.golfv1 without its comments and whitespace, the seed's
+# syscall escape at @SYS@ and the blob escape at @BLOB@ (mkblob2.build_seed:
+# split at @BLOB@ first, then @SYS@ in each half).
+⊡‹tl_c_seed›“self/seed.golfv1“⊃‹readfile›⇒s‹vec›⇒o 0⇒i
+{⇐i⇐s≢<1+⋄⇐s⇐i⊇⇒c⇡i⇐c 35-[⇐s⇐i 10‹tl_skipto›⇒i⋄⇐c‹tl_isws›[⋄⇐o⇐c⍆⇒o]]}
+“@BLOB@“⊃⇒m⇐o⇐m‹tl_count›⇒n
+⇐n 1-[⋄“mkblob2: expected exactly one @BLOB@ marker in self/seed.golfv1, found “⊃⇐n‹fmt›⧺‹tl_die›]
+⇐o“@SYS@“⊃‹tl_count›1-[⋄“mkblob2: expected exactly one @SYS@ marker in self/seed.golfv1“⊃‹tl_die›]
+“seedsys“⊃‹vec›0 0‹tl_call›⇒x‹vec›96⍆⇐x≢‹fmt›‹tl_cat›32⍆⇐x‹tl_cat›⇒y
+⇐o⇐m 0‹tl_find›⇒p
+⇐o 0⇐p‹slice›“@SYS@“⊃⇐y‹tl_repl›‹tl_s›‹tl_escape›‹tl_s›
+⇐o⇐p⇐m≢+↓“@SYS@“⊃⇐y‹tl_repl›‹tl_s›;
+
+# golf2: self/golf2.golfj code-page encoded (codepage.encode), the blob escape
+# at its one @BLOB@.  The encoder works on bytes: a glyph is the UTF-8 byte
+# run of one character, looked up whole.
+⊡‹tl_dicts›“\““⊃→‹sgl›‹vec›92⍆115⍆116⍆114⍆→‹smn›“\\““⊃→‹sesc›‹dict›→‹mnem›‹dict›→‹glyph›0⇒i{⇐i←‹ops›≢<1+⋄←‹ops›⇐i⊇⇒r⇡i
+ ←‹mnem›⇐r 2⊇⇐r 1⊇‹put›_←‹glyph›⇐r 3⊇⇐r 1⊇‹put›_}
+‹vec›→‹asc›0⇒i{⇐i 128<1+⋄←‹asc›←‹glyph›‹vec›⇐i⍆⇐i‹getor›⍆→‹asc›⇡i};
+# ‹asc›: what each ASCII byte encodes to when it is not # or \ (its glyph's
+# byte, which for the five ASCII atoms ~ $ | = > is itself, else the byte).
+⊡‹tl_delim›⇒i⇒s⇐s←‹sgl›⇐i‹tl_at›[3^]⇐s←‹smn›⇐i‹tl_at›[4^]0;   # s i -> delimiter length or 0
+⊡‹tl_encode›⇒s‹vec›⇒o 0⇒i‹tl_dicts›
+{⇐i⇐s≢<1+⋄⇐s⇐i⊇⇒c
+ ⇐c 128<⇐c 35-0≡⇐c 92-0≡|~$1+[⇐o←‹asc›⇐c⊇⍆⇒o⇡i⋄
+ ⇐c 35-[⇐s⇐i 10‹tl_skipto›⇒i⋄
+ ⇐s⇐i‹tl_delim›⇒d⇐d[
+ ⇐c 92-[
+  ⇐s⇐i 1+‹tl_get›92-[⇐o 92⍆⇒o⇐i 2+⇒i⋄
+  ⇐i 1+⇒j{⇐s⇐j‹tl_get›"0≺[‹tl_isalpha›⋄_1]⋄⇡j}⇐s⇐i 1+⇐j⇐i-1-‹slice›⇒r⇐r≢⇒k
+  {⇐k 0≻[1⋄⇐r 0⇐k‹slice›←‹mnem›\\‹has›1\\-]⋄⇣k}
+  ⇐k[“codepage: unknown mnemonic \\str⊃⇐r⧺‹tl_die›]
+  ⇐o←‹mnem›⇐r 0⇐k‹slice›‹get›⍆⇒o⇐i 1+⇐k+⇒i]⋄
+  ⇐c 192<1+[1⋄⇐c 224<1+[2⋄⇐c 240<1+[3⋄4]]]⇒k⇐s⇐i⇐k‹slice›⇒r
+  ←‹glyph›⇐r‹has›[⇐o←‹glyph›⇐r‹get›⍆⇒o⇐i⇐k+⇒i⋄
+  ⇐c 128<1+[⇐o⇐c⍆⇒o⇡i⋄
+  “codepage: byte “⊃⇐c‹tl_hx2›⧺“ starts a character that is not in the code page“⊃⧺‹tl_die›]]]⋄
+ ⇐o 142⍆⇒o⇐i⇐d+⇒i
+ {⇐i⇐s≢<1+[
+  ⇐s←‹sesc›⇐i‹tl_at›[⇐o 226⍆128⍆156⍆⇒o⇐i 4+⇒i 0⋄
+  ⇐s⇐i‹tl_delim›⇒d⇐d[⇐s⇐i⊇142-[“codepage: a string literal cannot contain byte 0x8E (the string delimiter)“⊃‹tl_die›]
+  ⇐o⇐s⇐i⊇⍆⇒o⇡i 0⋄⇐o 142⍆⇒o⇐i⇐d+⇒i 1]]⋄1]}]]]}
+⇐o;
+⊡‹tl_c_golf2›“self/golf2.golfj“⊃‹readfile›‹tl_encode›⇒e“@BLOB@“⊃⇒m⇐e⇐m‹tl_count›⇒n
+⇐n 1-[⋄“mkblob2: expected exactly one @BLOB@ marker in self/golf2.golfj, found “⊃⇐n‹fmt›⧺‹tl_die›]
+⇐e⇐m‹tl_escape›‹tl_repl›‹tl_s›;
+
+# table: `codepage.py table`.  The glyph is right-aligned to two characters
+# and the mnemonic left-aligned to seven, as Python's {:>2} {:<7} do.
+⊡‹tl_glyph2›⇒g 2⇐g‹tl_ncp›-⇒k{⇐k 0≻1+⋄32‹tl_b›⇣k}⇐g‹tl_s›;
+⊡‹tl_mn7›⇒m 92‹tl_b›⇐m‹tl_s›7⇐m≢-⇒k{⇐k 0≻1+⋄32‹tl_b›⇣k};
+⊡‹tl_trow›⇒r“0x“‹tl_z›⇐r 1⊇‹tl_hx2›‹tl_s›“   “‹tl_z›⇐r 3⊇‹tl_glyph2›“     “‹tl_z›⇐r 2⊇‹tl_mn7›“  “‹tl_z›;
+:‹tl_trowd›"‹tl_trow›4⊇‹tl_s›10‹tl_b›;
+⊡‹tl_trowl›⇒r⇐r‹tl_trow›⇐r 1⊇128<1+[‹vec›⇐r 1⊇⍆⋄“-“⊃]‹tl_s›“     “‹tl_z›⇐r 4⊇‹tl_s›10‹tl_b›;
+:‹tl_c_table›
+“ATOMS (single-byte machine-code ops)
+byte  glyph  mnemonic  meaning
+“‹tl_z›←‹atoms›′‹tl_trowd›‹tl_each›
+“
+COMPILER OPS (single-byte tokens handled by the compiler)
+byte  glyph  mnemonic  meaning
+“‹tl_z›←‹comps›′‹tl_trowd›‹tl_each›
+“
+LIBRARY (prelude words — a letter word's glyph/mnemonic are input aliases)
+byte  glyph  mnemonic  word  meaning
+“‹tl_z›←‹libs›′‹tl_trowl›‹tl_each›;
+
+# reference: `codepage.py reference`.  ‹tl_md› escapes `|` as in _md().
+⊡‹tl_md›⇒s 0⇒i{⇐i⇐s≢<1+⋄⇐s⇐i⊇"124-[92‹tl_b›]‹tl_b›⇡i};
+⊡‹tl_rrow›⇒r“| `0x“‹tl_z›⇐r 1⊇‹tl_hx2›‹tl_s›“` | `“‹tl_z›⇐r 3⊇‹tl_md›“` | `\\str‹tl_z›⇐r 2⊇‹tl_s›“` | “‹tl_z›;
+:‹tl_rrowd›"‹tl_rrow›4⊇‹tl_md›“ |
+“‹tl_z›;
+⊡‹tl_rrowl›⇒r⇐r‹tl_rrow›⇐r 1⊇128<1+[“`“‹tl_z›⇐r 1⊇‹tl_b›“`“‹tl_z›⋄“—“‹tl_z›]“ | “‹tl_z›⇐r 4⊇‹tl_md›“ |
+“‹tl_z›;
+# The digraph page: every prelude line `:‹_dgHH›rest`, the last one for a
+# byte winning, sorted by byte; the target is ‹name› when the body is just
+# that one call, else (own body); the comment after `#` is the meaning.
+⊡‹tl_skipws›⇒i⇒s{⇐s⇐i‹tl_get›"0≺[‹tl_isws›⋄_1]⋄⇡i}⇐i;   # s i -> first non-space index
+⊡‹tl_dgline›⇒s⇐s 0‹tl_skipws›⇒i
+⇐s“:‹_dg“⊃⇐i‹tl_at›[⋄^]⇐i 7+⇒i
+⇐s⇐i 2‹slice›⇒h⇐h′‹tl_isuhex›‹tl_all›⇐h≢2-|[⋄^]
+⇐s“›“⊃⇐i 2+‹tl_at›[⋄^]⇐s⇐i 5+↓⇒r
+⇐r 35‹indexof›⇒j⇐j 0≺1+[⇐r⇒c‹vec›⇒m⋄⇐r 0⇐j‹slice›⇒c⇐r⇐j 1+↓⇒m]
+⇐c 0‹tl_skipws›⇒k“(own body)“⊃⇒t
+⇐c“‹“⊃⇐k‹tl_at›[⇐k 3+⇒j{⇐c⇐j‹tl_get›"0≺[⇒z⇐z‹tl_isidc›⇐z 45-$⋄_1]⋄⇡j}
+ ⇐j⇐k 3+-[⋄⇐c“›“⊃⇐j‹tl_at›[⇐c⇐j 3+‹tl_skipws›⇒x⇐c⇐x‹tl_get›59-[⇐c⇐x 1+‹tl_skipws›⇐c≢-[⇐c⇐k⇐j 3+⇐k-‹slice›⇒t]]]]]
+←‹dg›⇐h‹parsehex›‹vec›⇐t⍆⇐m‹tl_strip›⍆‹put›_;
+⊡‹tl_strip›⇒s⇐s 0‹tl_skipws›⇒i⇐s≢⇒j{⇐j⇐i»[1⋄⇐s⇐j 1-⊇‹tl_isws›]⋄⇣j}⇐s⇐i⇐j⇐i-‹slice›;
+⊡‹tl_dgglyph›⇒b“ʘ“⊃⇐b 128<1+[⋄←‹b2g›⇐b‹has›[←‹b2g›⇐b‹get›⧺^]]
+⇐b 32»⇐b 127<$1+[‹vec›⇐b⍆⋄“\x“⊃⇐b‹tl_hx2›⧺]⧺;
+⊡‹tl_c_reference›‹tl_b2g›
+“### Atoms
+
+Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies each one's template inline.
+
+| byte | glyph | mnemonic | meaning |
+|---|---|---|---|
+“‹tl_z›←‹atoms›′‹tl_rrowd›‹tl_each›
+“
+### Compiler ops
+
+Single-byte tokens the compiler handles itself (prefixes, delimiters, definition headers) — there is no template behind them.
+
+| byte | glyph | mnemonic | meaning |
+|---|---|---|---|
+“‹tl_z›←‹comps›′‹tl_rrowd›‹tl_each›
+“
+### Library words
+
+Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by its ASCII letter; its glyph and mnemonic are input aliases for that letter. A high-byte word has no letter.
+
+| byte | glyph | mnemonic | word | meaning |
+|---|---|---|---|---|
+“‹tl_z›←‹libs›′‹tl_rrowl›‹tl_each›
+“
+### Digraph page
+
+Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the long name `‹_dgHH›` (HH = B in upper-case hex). The prelude gives a word a digraph with `:‹_dgHH›‹name›;`. Generated from `lib/prelude.golfj`.
+
+| digraph | bytes | long name | word | meaning |
+|---|---|---|---|---|
+“‹tl_z›
+‹dict›→‹dg›“lib/prelude.golfj“⊃‹readfile›10‹split›′‹tl_dgline›‹tl_each›
+←‹dg›‹keys›⍋⇒k 0⇒i{⇐i⇐k≢<1+⋄⇐k⇐i⊇⇒b⇡i←‹dg›⇐b‹get›⇒r
+ “| `“‹tl_z›⇐b‹tl_dgglyph›‹tl_md›“` | `BD “‹tl_z›⇐b‹tl_hx2›‹tl_s›“` | `‹_dg“‹tl_z›⇐b‹tl_hx2›‹tl_s›
+ “›` | `“‹tl_z›⇐r 0⊇‹tl_md›“` | “‹tl_z›⇐r 1⊇‹tl_md›“ |
+“‹tl_z›}
+⇐k≢[“| — | | | | none defined yet |
+“‹tl_z›];
+# BYTE2GLYPH, as codepage.py builds it: every atom and compiler op, and the
+# library words at 0x80 and above; a later row wins.
+⊡‹tl_b2g›‹dict›→‹b2g›0⇒i{⇐i←‹ops›≢<1+⋄←‹ops›⇐i⊇⇒r⇡i
+ ⇐r 0⊇76-⇐r 1⊇128<1+|[⋄←‹b2g›⇐r 1⊇⇐r 3⊇‹put›_]};
+
+# check: `codepage.py check`, every message in its order.
+⊡‹tl_where›⇒c⇐c 65-[“ATOMS“⊃^]⇐c 67-[“COMPILER“⊃^]“LIB“⊃;
+:‹tl_err›←‹errs›\\⍆→‹errs›;
+⊡‹tl_c_check›‹tl_b2g›‹vec›→‹errs›←‹atoms›←‹comps›⧺←‹libs›⧺⇒w
+‹dict›⇒s 0⇒i{⇐i⇐w≢<1+⋄⇐w⇐i⊇⇒r⇡i
+ ⇐s⇐r 1⊇‹has›[⇐s⇐r 1⊇‹get›⇒x“byte 0x“⊃⇐r 1⊇‹tl_hx2›⧺“ allocated twice: “⊃⧺⇐x 1⊇‹tl_where›⧺“ \\str⊃⧺⇐x 0⊇⧺
+  “ and “⊃⧺⇐r 0⊇‹tl_where›⧺“ \\str⊃⧺⇐r 2⊇⧺‹tl_err›]
+ ⇐s⇐r 1⊇‹vec›⇐r 2⊇⍆⇐r 0⊇⍆‹put›_}
+0⇒i{⇐i⇐w≢<1+⋄⇐w⇐i⊇⇒r⇐r 2⊇⇒m⇐r 0⊇‹tl_where›⇒a⇡i⇐i⇒j
+ {⇐j⇐w≢<1+⋄⇐w⇐j⊇⇒x⇐x 2⊇⇒n⇐x 0⊇‹tl_where›⇒b⇡j
+  ⇐m⇐n‹tl_eq›[“mnemonic \\str⊃⇐m⧺“ defined twice (“⊃⧺⇐a⧺“, “⊃⧺⇐b⧺“)“⊃⧺‹tl_err›⋄
+  ⇐n⇐m‹startswith›[“mnemonic \\str⊃⇐m⧺“ (“⊃⧺⇐a⧺“) is a proper prefix of \\str⊃⧺⇐n⧺“ (“⊃⧺⇐b⧺“) — the encoder would mis-split it“⊃⧺‹tl_err›⋄
+  ⇐m⇐n‹startswith›[“mnemonic \\str⊃⇐n⧺“ (“⊃⧺⇐b⧺“) is a proper prefix of \\str⊃⧺⇐m⧺“ (“⊃⧺⇐a⧺“) — the encoder would mis-split it“⊃⧺‹tl_err›]]]}}
+‹dict›⇒s 0⇒i{⇐i⇐w≢<1+⋄⇐w⇐i⊇⇒r⇡i
+ ⇐s⇐r 3⊇‹has›[⇐s⇐r 3⊇‹get›⇒x“glyph “⊃⇐r 3⊇⧺“ used twice: “⊃⧺⇐x 1⊇‹tl_where›⧺“ \\str⊃⧺⇐x 0⊇⧺
+  “ and “⊃⧺⇐r 0⊇‹tl_where›⧺“ \\str⊃⧺⇐r 2⊇⧺‹tl_err›]
+ ⇐s⇐r 3⊇‹vec›⇐r 2⊇⍆⇐r 0⊇⍆‹put›_}
+0⇒i{⇐i⇐w≢<1+⋄⇐w⇐i⊇⇒r⇡i⇐r 1⊇128<[
+ ←‹b2g›⇐r 1⊇‹has›[←‹b2g›⇐r 1⊇‹get›⇐r 3⊇‹tl_eq›⋄1][⋄
+  “byte 0x“⊃⇐r 1⊇‹tl_hx2›⧺“ (“⊃⧺⇐r 0⊇‹tl_where›⧺“ \\str⊃⧺⇐r 2⊇⧺“) has no glyph in BYTE2GLYPH — decode could not round-trip it“⊃⧺‹tl_err›]]}
+←‹errs›≢[⋄“codepage: REGISTRY.md invariants violated
+“⊃⇒v 0⇒i{⇐i←‹errs›≢<1+⋄⇐v“  - “⊃‹tl_cat›←‹errs›⇐i⊇‹tl_cat›10⍆⇒v⇡i}⇐v 2‹fwrite›1.];
+
+# ============================================================ main
+:‹tl_is›←‹cmd›≣1+;                               # name -> 0 if it is the command
+:‹tl_usage›“usage: gtables blob|escape|blobhex|codepage|seed|golf2|table|reference|check“⊃10⍆2‹fwrite›2.;
+‹vec›→‹o›‹args›→‹av›←‹av›≢1-[⋄‹tl_usage›]←‹av›0⊇→‹cmd›
+“blob“⊃‹tl_is›“escape“⊃‹tl_is›$“blobhex“⊃‹tl_is›$“codepage“⊃‹tl_is›$“seed“⊃‹tl_is›$
+“golf2“⊃‹tl_is›$“table“⊃‹tl_is›$“reference“⊃‹tl_is›$“check“⊃‹tl_is›$[⋄‹tl_usage›]
+‹tl_load›
+“blob“⊃‹tl_is›[‹tl_blob›‹tl_c_blob›]
+“escape“⊃‹tl_is›[‹tl_blob›‹tl_c_escape›]
+“blobhex“⊃‹tl_is›[‹tl_blob›‹tl_c_blobhex›]
+“codepage“⊃‹tl_is›[‹tl_c_codepage›]
+“seed“⊃‹tl_is›[‹tl_blob›‹tl_c_seed›]
+“golf2“⊃‹tl_is›[‹tl_blob›‹tl_c_golf2›]
+“table“⊃‹tl_is›[‹tl_c_table›]
+“reference“⊃‹tl_is›[‹tl_c_reference›]
+“check“⊃‹tl_is›[‹tl_c_check›]
+←‹o›⊐0.

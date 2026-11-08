@@ -538,6 +538,138 @@ if [ -x "$TMP/gencode" ] && [ -x "$TMP/gdecode" ]; then
                 || no "gdecode literal strings differ on:$bad"
 fi
 
+# @@ W14-L-TABLES @@
+# gtools/tables: everything tools/mkblob2.py, tools/mktables.py and
+# codepage.py's table/reference/check build from the source data
+# (data/ops.tsv, data/templates.txt, data/v1.hex), built by a GOLF program from
+# the same files.  Each command is diffed against its Python twin AND against
+# the committed artifact where there is one; then the two compiler sources it
+# writes go back on the ladder, from the pinned v1c up, with no Python-built
+# source on it; then both implementations are fed the same broken tables and
+# must fail with the same message.
+if build gtools/tables.golfj gtables; then
+  GT=$TMP/gtables
+  python3 - "$TMP" <<'PY'
+import sys
+sys.path.insert(0, "tools")
+import codepage, mkblob2, mktables
+t = sys.argv[1]
+for name, data in (("blob", mkblob2.build_blob2()), ("escape", mkblob2.blob_escape()),
+                   ("blobhex", mktables.build_blob_hex()),
+                   ("codepage", mktables.build_codepage_tsv()),
+                   ("seed", mkblob2.build_seed()), ("golf2", mkblob2.build_golf2())):
+    open(f"{t}/tl.py.{name}", "wb").write(data)
+r = open("REFERENCE.md", encoding="utf-8").read()
+a, z = r.find(codepage.REF_BEGIN), r.find(codepage.REF_END)
+open(f"{t}/tl.committed.reference", "w", encoding="utf-8").write(
+    r[a + len(codepage.REF_BEGIN) + 1:z] if 0 <= a < z else "NO MARKERS")
+PY
+  python3 tools/codepage.py table     > "$TMP/tl.py.table"
+  python3 tools/codepage.py reference > "$TMP/tl.py.reference"
+  python3 tools/codepage.py check     > "$TMP/tl.py.check" 2>&1
+  cp data/blob.hex     "$TMP/tl.committed.blobhex"
+  cp data/codepage.tsv "$TMP/tl.committed.codepage"
+  cp self/seed.golf    "$TMP/tl.committed.seed"
+  cp self/golf2.golf   "$TMP/tl.committed.golf2"
+  for c in blob escape blobhex codepage seed golf2 table reference check; do
+    "$GT" "$c" > "$TMP/tl.g.$c" 2> "$TMP/tl.g.$c.err"; st=$?
+    if [ "$st" = 0 ] && [ ! -s "$TMP/tl.g.$c.err" ] && cmp -s "$TMP/tl.g.$c" "$TMP/tl.py.$c"; then
+      if [ -e "$TMP/tl.committed.$c" ]; then
+        cmp -s "$TMP/tl.g.$c" "$TMP/tl.committed.$c" \
+          && ok "gtables $c == Python == the committed file ($(wc -c < "$TMP/tl.g.$c" | tr -d ' ') bytes)" \
+          || no "gtables $c matches Python but not the committed file (stale?)"
+      else
+        ok "gtables $c == Python ($(wc -c < "$TMP/tl.g.$c" | tr -d ' ') bytes)"
+      fi
+    else
+      no "gtables $c (status $st) differs from Python: $(head -c 200 "$TMP/tl.g.$c.err")"
+    fi
+  done
+
+  # The ladder, with both rungs' sources written by GOLF: the pinned v1c
+  # compiles gtables' seed, that seed compiles gtables' golf2, and the result
+  # must compile itself to itself and still compile GOLF.
+  ensure_seed v1c || { no "v1c unavailable"; exit 1; }
+  "$SEED"        < "$TMP/tl.g.seed"  > "$TMP/tl.seed" 2>/dev/null; chmod +x "$TMP/tl.seed"
+  "$TMP/tl.seed" < "$TMP/tl.g.golf2" > "$TMP/tl.g2"   2>/dev/null; chmod +x "$TMP/tl.g2"
+  "$TMP/tl.g2"   < "$TMP/tl.g.golf2" > "$TMP/tl.g2p"  2>/dev/null
+  { [ -s "$TMP/tl.g2" ] && cmp -s "$TMP/tl.g2" "$TMP/tl.g2p" && cmp -s "$TMP/tl.g2" build/golf2; } \
+    && ok "v1c -> gtables seed -> gtables golf2 reaches golf2 == golf2' == build/golf2" \
+    || no "the gtables-generated sources do not reach the fixpoint"
+  printf '%s' '5R\ref\sqrMSNE' | python3 tools/codepage.py encode > "$TMP/tl.prog.gb"
+  cat <(python3 tools/codepage.py encode < lib/prelude.golfj) "$TMP/tl.prog.gb" \
+    | "$TMP/tl.g2" > "$TMP/tl.prog" 2>/dev/null && chmod +x "$TMP/tl.prog"
+  [ "$("$TMP/tl.prog" 2>/dev/null)" = "30" ] \
+    && ok "and that compiler compiles GOLF (sum of squares 0..4 -> 30)" \
+    || no "the gtables-generated compiler miscompiles"
+
+  # Bad invocations: no command, an unknown one, a second argument.
+  bad=""
+  for a in "" wobble "blob extra"; do
+    "$GT" $a > "$TMP/tl.u.out" 2> "$TMP/tl.u.err"; st=$?
+    { [ "$st" = 2 ] && [ ! -s "$TMP/tl.u.out" ] && grep -q '^usage: gtables ' "$TMP/tl.u.err"; } \
+      || bad="$bad [${a:-none}]"
+  done
+  [ -z "$bad" ] && ok "gtables: no command, an unknown one or an extra argument -> usage on fd 2, exit 2" \
+                || no "gtables usage errors:$bad"
+
+  # Broken tables.  A copy of the tree (the Python finds data/ next to tools/,
+  # gtables in its working directory), one corruption at a time; both must exit
+  # 1 with the SAME text on fd 2 and gtables must write nothing on stdout.  The
+  # Python side is mkblob2.build_blob2() for the loader's and expander's errors
+  # and `codepage.py check` for the namespace rules.
+  mkdir -p "$TMP/tl.tree"; cp -r tools boot data self lib "$TMP/tl.tree/"
+  bad=""; n=0
+  tlbad(){ lbl=$1; f=$2; cmd=$3; edit=$4
+    ( cd "$TMP/tl.tree" || exit 1
+      cp "$EXP/data/ops.tsv" data/ops.tsv; cp "$EXP/data/templates.txt" data/templates.txt
+      python3 -c "import sys; p=sys.argv[1]; s=open(p,encoding='utf-8').read(); t=$edit
+assert t != s, 'the edit changed nothing'; open(p,'w',encoding='utf-8').write(t)" "data/$f" || exit 1
+      "$GT" "$cmd" > g.out 2> g.err; gs=$?
+      if [ "$cmd" = check ]; then python3 tools/codepage.py check > /dev/null 2> p.err; ps=$?
+      else python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; mkblob2.build_blob2()' 2> p.err; ps=$?; fi
+      [ "$gs" = 1 ] && [ "$ps" = 1 ] && [ ! -s g.out ] && [ -s g.err ] && cmp -s g.err p.err ) \
+      || bad="$bad $lbl"
+    n=$((n+1))
+  }
+  tlbad fields     ops.tsv blob  "s.replace('A\t7E\tnot\t~\tbitwise NOT','A\t7E\tnot\t~')"
+  tlbad table      ops.tsv blob  "s.replace('A\t7E\tnot','X\t7E\tnot')"
+  tlbad byte       ops.tsv blob  "s.replace('L\tE0\tdput','L\te0\tdput')"
+  tlbad mnemonic   ops.tsv blob  "s.replace('L\tE0\tdput','L\tE0\tdput2')"
+  tlbad glyph      ops.tsv blob  "s.replace('\tṖ\t','\tṖṖ\t')"
+  tlbad dupbyte    ops.tsv check "s.replace('L\tE0\tdput','L\tDF\tdput')"
+  tlbad prefix     ops.tsv check "s.replace('L\tE0\tdput','L\tE0\tdg')"
+  tlbad dupmn      ops.tsv check "s.replace('L\tE0\tdput','L\tE0\tdget')"
+  tlbad dupglyph   ops.tsv check "s.replace('\tṖ\t','\tĠ\t')"
+  tlbad twoerrs    ops.tsv check "s.replace('L\tE0\tdput\tṖ','L\tDF\tdge\tĠ')"
+  tlbad notpl      ops.tsv blob  "s.replace('A\tAE\tscall','A\tAF\tscall')"
+  tlbad statement  templates.txt blob "s.replace('def flush\n','deff flush\n')"
+  tlbad indent     templates.txt blob "s.replace('# expanded/data/templates.txt','  41 # expanded/data/templates.txt')"
+  tlbad deftwice   templates.txt blob "s.replace('def endhook\n','def flush\n')"
+  tlbad hexbyte    templates.txt blob "s.replace('tpl 7E 58','tpl 7G 58')"
+  tlbad tpltwice   templates.txt blob "s.replace('tpl 24 58','tpl 7E 58')"
+  tlbad notatom    templates.txt blob "s.replace('tpl AE 58','tpl AF 90\ntpl AE 58')"
+  tlbad nolabel    templates.txt blob "s.replace('74 >no FF D0','74 >nope FF D0')"
+  tlbad labtwice   templates.txt blob "s.replace('    no:\n','    no: no:\n')"
+  tlbad badjump    templates.txt blob "s.replace('74 >no FF D0','74 >9no FF D0')"
+  tlbad rel8       templates.txt blob "s.replace('    div: 48 99','    div: 48 99 ' + '90 '*130)"
+  tlbad nofrag     templates.txt blob "s.replace('    hookcall(w:4F0B10)','    hookcal(w:4F0B10)')"
+  tlbad argcount   templates.txt blob "s.replace('    hookcall(w:4F0B10)','    hookcall(w:4F0B10,01)')"
+  tlbad emptyarg   templates.txt blob "s.replace('    hookcall(w:4F0B10)','    hookcall()')"
+  tlbad token      templates.txt blob "s.replace('tpl 7E 58 48','tpl 7E 58 4%8')"
+  tlbad nested     templates.txt blob "s.replace('numchk(atom:80)','numchk(numchk(atom:80))')"
+  tlbad notparam   templates.txt blob "s.replace('48 8B 04 25 \$cell','48 8B 04 25 \$cel')"
+  tlbad nov1       templates.txt blob "s.replace('rec 01 v1:01','rec 01 v1:0F')"
+  tlbad v1offset   templates.txt blob "s.replace('div0guard v1:2F+2','div0guard v1:2F+x')"
+  tlbad noatomtpl  templates.txt blob "s.replace('numchk(atom:80)','numchk(atom:8F)')"
+  tlbad cycle      templates.txt blob "s.replace('    hookcall(w:4F0990)','    flush')"
+  tlbad paramname  templates.txt blob "s.replace('def divchk minus1 push','def divchk minus1 9push')"
+  tlbad takes      templates.txt blob "s.replace('\nv1ops\n','\nv1ops 01\n')"
+  tlbad needs      templates.txt blob "s.replace('\nrec 07 22','\nrec\n 07 22')"
+  [ -z "$bad" ] && ok "gtables and Python fail alike on $n broken tables (status 1, the same message, nothing on stdout)" \
+                || no "gtables and Python fail differently on:$bad"
+fi
+
 echo
 echo "Result: $pass passed, $fail failed"
 [ "$fail" = 0 ]
