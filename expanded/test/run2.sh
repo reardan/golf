@@ -2422,6 +2422,60 @@ done < <(sed -n '/^### Memory$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/
   && ok "REFERENCE.md's Memory examples print what they say" || no "REFERENCE Memory examples:$w112dbad"
 
 # === W11-3A ===
+echo "W11-3A: ‹catch› / ‹throw› — a caught error is its message (a code list), 0 on success"
+# ‹catch› arms a handler record (a spill-stack frame: sp bp from ⊷, the old
+# chain head) and runs f; ‹throw› with one armed unlinks it and ⊶s back, so
+# ‹catch› returns with the message on the stack as it was at the call.
+w113(){ printf '%s' "$1" | gc 2>&1; echo " rc=$?"; }
+[ "$(printf '%s' '1 2⊷→b→s 3 4 5 ←s←b⊶ ṄṄ ⊷_⊷_\rsubṄ' | gc)" = "218" ] \
+  && ok "⊷ ⊶: a saved sp/bp pair drops what was pushed since; ⊷'s sp is rsp before the atom (8 apart)" || no "⊷ ⊶ atoms"
+[ "$(w113 ':‹bad›3⍳9⊇;1 2′‹bad›‹catch›⊐␤Ṅ␤Ṅ␤5180160⊙Ṅ5177392@Ṅ')" = "$(printf 'index out of range\n2\n1\n00 rc=0')" ] \
+  && ok "′‹bad›‹catch›: the index error comes back as its message, the program goes on (chain and spill stack empty after)" \
+  || no "catch index error: $(w113 ':‹bad›3⍳9⊇;1 2′‹bad›‹catch›⊐␤Ṅ␤Ṅ␤5180160⊙Ṅ5177392@Ṅ')"
+[ "$(w113 ':‹ok›5 6;1′‹ok›‹catch›ṄṄṄṄ5180160⊙Ṅ5177392@Ṅ')" = "065100 rc=0" ] \
+  && ok "success: 0 above f's results, the handler unlinked" || no "catch success"
+[ "$(w113 ':‹f›1 2 3“no“⊃‹throw›;7′‹f›‹catch›⊐Ṅ⊷_ ′‹f›‹catch›_ ⊷_\rsubṄ')" = "no78 rc=0" ] \
+  && ok "error path: what f pushed is discarded, the depth at ‹catch› restored" || no "catch depth"
+[ "$(w113 '7Ṅ“mine“⊃′‹throw›‹catch›⊐8Ṅ')" = "7mine8 rc=0" ] && [ "$(w113 '7Ṅ“mine“⊃‹throw›8Ṅ')" = "$(printf '7GOLF: mine\n rc=1')" ] \
+  && ok "a program's own ‹throw›: caught, or (none armed) GOLF: mine, exit 1, earlier output first" || no "user throw"
+[ "$(w113 ':‹in›“inner“⊃‹throw›;:‹out›′‹in›‹catch›⊐“outer“⊃‹throw›;′‹out›‹catch›⊐5180160⊙Ṅ')" = "innerouter0 rc=0" ] \
+  && ok "nesting: the inner ‹catch› handles, the outer stays armed for the next throw" || no "catch nesting"
+[ "$(w113 ':‹g›‹throw›;:‹h›“again“⊃′‹g›‹catch›‹throw›;′‹h›‹catch›⊐ ′‹h›‹catch›_ ‹h›9Ṅ')" = "$(printf 'againGOLF: again\n rc=1')" ] \
+  && ok "rethrow from a handler reaches the outer ‹catch›; with none left it prints and exits 1" || no "rethrow"
+# Unwinding: € (spill frames), ⇤, ⊡ frames, nested ⍕ — afterwards a deep op
+# works and the spill offset is back to 0.
+W113D='5177392@Ṅ␤3000⍳′⍳€′∑€∑Ṅ'
+[ "$(w113 ":‹f›\"7≡1+[“seven“⊃‹throw›]⊗;:‹g›10⍳′‹f›€;′‹g›‹catch›⊐␤$W113D")" = "$(printf 'seven\n0\n4495501000 rc=0')" ] \
+  && ok "a throw from inside € (map) unwinds its spill frame; a deep map/sum still works" || no "throw in map"
+[ "$(w113 ":‹f›\"5≡1+[“five“⊃‹throw›]+;:‹g›10⍳0′‹f›⇤;′‹g›‹catch›⊐␤$W113D")" = "$(printf 'five\n0\n4495501000 rc=0')" ] \
+  && ok "a throw from inside ⇤ (fold)" || no "throw in fold"
+[ "$(w113 ":‹r›\"0≡[1-1⍳+′‹r›€^]_“deep“⊃‹throw›;3000′‹r›‹catch›⊐␤$W113D")" = "$(printf 'deep\n0\n4495501000 rc=0')" ] \
+  && ok "a throw 3000 nested maps deep" || no "throw deep in maps"
+[ "$(w113 ":‹p›3⍳′⍳€\"2⊇⌫⍕;′‹p›‹catch›␤⊐␤$W113D")" = "$(printf '[] [0] \nuse after free\n0\n4495501000 rc=0')" ] \
+  && ok "a throw from inside a nested ⍕ (output before it kept)" || no "throw in nested print"
+[ "$(w113 '⊡‹d›⇒a⇒b ⇐a⇐b+ 3⍳9⊇;⊡‹e›⇒a 1 2‹d› ⇐a;⊡‹m›⇒a⇒b 5′‹e›‹catch›⊐ ⇐a⇐bṄṄ 4⍳′⍳€⍕;8 9‹m›')" = "index out of range89[] [0] [0 1] [0 1 2]  rc=0" ] \
+  && ok "a throw out of nested ⊡ words drops their frames; the catcher's own locals are intact" || no "throw through ⊡"
+[ "$(w113 ':‹s›“e“⊃‹throw›;:‹t›′‹s›‹catch›_;10⍳′‹t›€⍕')" = "0 1 2 3 4 5 6 7 8 9  rc=0" ] \
+  && ok "‹catch› inside a mapped word: the map's own scratch survives each caught throw" || no "catch inside map"
+[ "$(w113 ":‹r›1⍳′‹r›€;′‹r›‹catch›⊐␤$W113D")" = "$(printf 'spill stack exhausted\n0\n4495501000 rc=0')" ] \
+  && [ "$(w113 ':‹r›1⍳′‹r›€;‹r›')" = "$(printf 'GOLF: spill stack exhausted\n rc=1')" ] \
+  && ok "spill stack exhausted: catchable (unwound before its message is built); uncaught unchanged" || no "catch spill exhaustion"
+[ "$(w113 ':‹z›7 0/;1 2′‹z›‹catch›⊐ṄṄ:‹y›7 0÷;′‹y›‹catch›_:‹x›7 0∣;′‹x›‹catch›_:‹w›7 0%;′‹w›‹catch›⊐')" = "divide by zero21divide by zero rc=0" ] \
+  && [ "$(w113 '5Ṅ7 0÷')" = "$(printf '5GOLF: divide by zero\n rc=1')" ] && [ "$(w113 '5Ṅ7 0%')" = "$(printf '5GOLF: divide by zero\n rc=1')" ] \
+  && ok "/ % ÷ ∣ by zero: catchable through the 0x4F0B10 hook; uncaught unchanged" || no "catch divide by zero"
+[ "$(w113 ':‹r›"0≡[1-1⍳+′‹r›€^]_7 0÷;3000′‹r›‹catch›⊐')" = "divide by zero rc=0" ] \
+  && ok "a divide by zero 3000 maps deep is caught (unwound before its message is built)" || no "deep div0"
+w113o=':‹in›“inner“⊃‹throw›;:‹out›′‹in›‹catch›⊐“outer“⊃‹throw›;′‹out›‹catch›⊐:‹bad›3⍳9⊇;1 2′‹bad›‹catch›⊐ṄṄ:‹r›1⍳′‹r›€;′‹r›‹catch›⊐:‹z›7 0÷;′‹z›‹catch›⊐'
+[ "$(printf '%s' "$w113o" | gref)" = "$(printf '%s' "$w113o" | gc)" ] && [ "$(printf '%s' "$w113o" | gc)" = "innerouterindex out of range21spill stack exhausteddivide by zero" ] \
+  && ok "oracle: golfref compiles ⊷ ⊶ and runs ‹catch› / ‹throw› the same" || no "catch oracle"
+# REFERENCE.md's Errors examples print what the doc says (stderr merged).
+w113bad=""
+while IFS= read -r w113l; do
+  w113p=${w113l%%  ->*}; w113p=${w113p%"${w113p##*[! ]}"}; w113w=${w113l##*->  }
+  [ "$(printf '%s' "$w113p" | gc 2>&1 | sed 's/ *$//')" = "$w113w" ] || w113bad="$w113bad [$w113p]"
+done < <(sed -n '/^### Errors$/,/^## /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w113bad" ] && [ "$(sed -n '/^### Errors$/,/^## /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Errors examples print what they say" || no "REFERENCE Errors examples:$w113bad"
 
 # === W11-3B ===
 

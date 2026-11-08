@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **38** are now spent, leaving **73** free. It is partitioned as follows
+space; **40** are now spent, leaving **71** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -167,9 +167,9 @@ prefix-free against the 75 mnemonics of the three tables and each other), no gly
 
 | Byte | Mnemonic | Glyph | Meaning | Wave | Status |
 |------|----------|-------|---------|------|--------|
-| `0xA8` | `\spr` | `⊷` | atom: push the data-stack pointer and the return-stack pointer, `-> sp bp` (rsp as it was before the atom pushed anything, then rbp) — what `‹catch›` saves | W11-3A | reserved |
-| `0xA9` | `\spw` | `⊶` | atom: `sp bp ->` set rbp, then rsp (pops both first, so the values are consumed before rsp moves) — what `‹throw›` restores | W11-3A | reserved |
-| `0xAA`, `0xAB` | — | — | spare, **W11-3A only** (e.g. if the read/set split wants four atoms); anyone else asks | W11-3A | reserved |
+| `0xA8` | `\spr` | `⊷` | atom: push the data-stack pointer and the return-stack pointer, `-> sp bp` (rsp as it was before the atom pushed anything, then rbp; template `push rsp; push rbp`) — what `‹catch›` saves | W11-3A | shipped |
+| `0xA9` | `\spw` | `⊶` | atom: `sp bp ->` set rbp, then rsp (pops both first, so the values are consumed before rsp moves; template `pop rbp; pop rsp`) — what `‹throw›` restores | W11-3A | shipped |
+| `0xAA`, `0xAB` | — | — | spare, **W11-3A only** (e.g. if the read/set split wants four atoms); anyone else asks. W11-3A did not need them (two atoms were enough) | W11-3A | reserved |
 | `0xB6` | `\import` | `⎘` | compiler op, include prefix: `⎘“path“` compiles that file's source in place (fd-0 swap, include-once, search `.` then `lib/`, later `vendor/`) — see the decision below; `codepage.COMPILER` row, cases in `self/golf2.golfj`, the seed and `boot/golfref.py` | W11-2A | shipped |
 | `0xB7` | `\rec` | `⊜` | compiler op, record definition header: `⊜‹point›‹x›‹y›;` defines a constructor and per-field accessors/setters over a plain list | W11-4A | reserved |
 | `0xB8` | — | — | spare compiler op, for the W11 front-end owners (2A / 3B / 4A) | W11-2A/3B/4A | reserved |
@@ -177,7 +177,11 @@ prefix-free against the 75 mnemonics of the three tables and each other), no gly
 
 The atom semantics in the table are W11-0's intent, not a spec: W11-3A owns the
 two templates (and their `boot/golfref.py` mirror) and may refine the order of
-the two values, provided the row here is updated in the same commit.
+the two values, provided the row here is updated in the same commit. **W11-3A
+shipped `0xA8`/`0xA9`** with the order as allocated: `⊷` is `push rsp; push rbp`
+(x86 `push rsp` stores rsp's value before that push, so `sp` is the stack
+exactly as it was before the atom) and `⊶` is `pop rbp; pop rsp`. The oracle
+inherits both from `mkblob2.ATOMS`.
 
 **`‹include›` decision (W11-0).** Include is a **compiler op byte** (`0xB6`),
 not a long name the compiler recognises. Reasons: every other compiler-level
@@ -247,13 +251,13 @@ Prelude long names in use (all **shipped**):
 | `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›`, and the helpers `‹_1d_utoa›` `‹_1d_sub›` `‹_1d_put›` | W11-1D (**shipped**) | `W11-1D Text` |
 | `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›`, and the helpers `‹_2b_h8›` `‹_2b_zero›` `‹_2b_find›` `‹_2b_grow›` `‹_2b_col›` | W11-2B (**shipped**) | `W11-2B dict and set` |
 | `‹heapstats›`, and the helpers `‹_2d_chk›` `‹_2d_ix›` (defined up by `L`/`I`, ahead of their callers) | W11-2D (**shipped**) | `W11-2D use after free` |
-| `‹catch›` | W11-3A (reserved; `‹throw›` above is 3A's too) | `W11-3A catch` |
+| `‹catch›`, and the helpers `‹_3a_raise›` `‹_3a_spill›` `‹_3a_div0›` `‹_3a_init›` (`‹_3a_pop›` is defined up by `‹throw›`, ahead of it) | W11-3A (**shipped**; `‹throw›` above is 3A's too) | `W11-3A catch` |
 | `‹cadd›` `‹csub›` `‹cmul›` | W11-3C (reserved) | `W11-3C checked arithmetic` |
 | `‹assert›` `‹expect›` | W11-4B (reserved) | `W11-4B test words` |
 | `‹stack›` | W11-4C (reserved) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 
 The table heading says shipped; the W11 rows marked *reserved* are allocated,
-not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D, 2B and 2D rows). **W11 helper names:** a W11 task that
+not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D, 2B, 2D and 3A rows). **W11 helper names:** a W11 task that
 needs a private helper word names it `‹_<id>…›` with its lowercase task id,
 e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
 `‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers
@@ -402,7 +406,7 @@ both forms are given here and the decimal is the one you type.
 | `0x432000`–`0x437FFF` | 4399104–4423679 | free (headroom, e.g. if 1C's buffer grows) | free |
 | `0x438000`–`0x43BFFF` | 4423680–4440063 | **W11-2A include state, compiler-only**, both compilers. `0x438000` (4423680): the path being included as `[len:4][≤250 bytes][0]`; `open` takes the C string at `0x438004`, and for the `lib/` retry the length cell is overwritten with the bytes `lib/`, making `0x438000` the C string `lib/path`. `0x438100` (4423936): the saved `dup(0)` of each open include level, 4 bytes each, 8 levels. `0x438200` (4424192): the include-once table, 60 entries of 256 bytes, path `k` at `0x438200 + 256*k` in the same `[len:4][bytes]` form; ends `0x43BE00`. `mkblob2.IMPORT_*` names them | shipped (W11-2A) |
 | `0x43C000`–`0x43FFFF` | 4440064–4456447 | **W11-4A record state, compiler-only**: field tables for `⊜` definitions; 4A lays it out and documents it here | reserved (W11-4A) |
-| `0x440000`–`0x47FFFF` | 4456448–4718591 | **scratch spill stack** (the region `X`/`Y` push and pop; offset in `0x4F0030`) — 4096 frames of 64 bytes (8 cells × 8 bytes) = 256 KB; it was 28 frames at `0x4F0900` until W10-C, 56 × 32 before W4A. `X` checks the bound (offset 262144 = full): `GOLF: spill stack exhausted` on fd 2, exit 1. BSS that is never touched costs no RAM (W10-C) | shipped |
+| `0x440000`–`0x47FFFF` | 4456448–4718591 | **scratch spill stack** (the region `X`/`Y` push and pop; offset in `0x4F0030`) — 4096 frames of 64 bytes (8 cells × 8 bytes) = 256 KB; it was 28 frames at `0x4F0900` until W10-C, 56 × 32 before W4A. `X` checks the bound (offset 262144 = full): `GOLF: spill stack exhausted` on fd 2, exit 1 — or, with a `‹catch›` armed, that message thrown to it (W11-3A; a handler record is one frame here). BSS that is never touched costs no RAM (W10-C) | shipped |
 | `0x47C000`+ | 4702208 + 64*E | M2 long-name table, **compiler-only**: name `E` (256–1279) has a 64-byte entry at `0x47C000 + 64*E`, `[len:4][≤60 bytes]`, so the entries fill `0x480000`–`0x48FFFF` (E < 256 has no entry: nothing below `0x480000` is touched, which is W10-C's spill-stack range); `0x490000`–`0x49003F` (E = 1280) is scratch — `‹readname›` reads every name into the next free entry before it knows the name is new. 1024 names (W10-A; 256 at `0x430000` before) | shipped |
 | `0x490400`–`0x4917FF` | 4785152 + 4*N | forward-reference heads, **compiler-only**: the last unpatched `call`/`jmp rel32` site for ANY name `N` (0–1279, one-byte names included since W10-A), each placeholder holding the next (M2, W9-3A) | shipped |
 | `0x492000`–`0x4933FF` | 4792320 + 4*N | the compiler's **dictionary**, **compiler-only**: the body address of name `N` (0–1279). Moved here from `m+2048` by W10-A — that table had room for 512 names before it met the output buffer | shipped |
@@ -514,7 +518,7 @@ to the integrator. Decimals are what you type.
 | 2B | `0x4F0A40`–`0x4F0A7F` | 5179968 | dict scratch (shipped, private to the dict words): `0x4F0A40` 5179968 `‹_2b_h8›`'s byte source · `0x4F0A48` 5179976 / `0x4F0A50` 5179984 / `0x4F0A58` 5179992 short-lived temps (entry address, probe slot, new entry) · spares used: 5180000 / 5180008 / 5180016 `‹_2b_zero›`'s address, count, index | 5180024 |
 | 2C | `0x4F0A80`–`0x4F0ABF` | 5180032 | — (`⊸` uses the `∘` arena pointer `0x4F003C`) | 5180032 … 5180088 (all eight) |
 | 2D | `0x4F0AC0`–`0x4F0AFF` | 5180096 | shipped: `0x4F0AC0` 5180096: live blocks · `0x4F0AC8` 5180104: live bytes, each block `(cap+1)*8` (header included); `A` adds, `⌫` subtracts, `‹heapstats›` reads; BSS 0 | 5180112 … 5180152 |
-| 3A | `0x4F0B00`–`0x4F0B3F` | 5180160 | `0x4F0B00` 5180160: **catch handler chain head** (0 = no handler: `‹throw›` prints and exits) · `0x4F0B08` 5180168: the message in flight | 5180176 … 5180216 |
+| 3A | `0x4F0B00`–`0x4F0B3F` | 5180160 | shipped: `0x4F0B00` 5180160: **catch handler chain head** — the address of the newest handler record, a 64-byte spill-stack frame `[sp][bp][previous head]…` (0 = no handler: `‹throw›` prints and exits) · `0x4F0B08` 5180168: the message in flight · `0x4F0B10` 5180176: the **divide-by-zero hook** — the address of `‹_3a_div0›`, stored by the prelude's init; the `/ % ÷ ∣` zero exit calls it first when non-zero (`tools/mkblob2.DIV0_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0B18` 5180184: `‹_3a_pop›`'s record address | 5180192 … 5180216 |
 | 3B | `0x4F0B40`–`0x4F0B7F` | 5180224 | — (compiler work; `m+176`) | 5180224 … 5180280 |
 | 3C | `0x4F0B80`–`0x4F0BBF` | 5180288 | — | 5180288 … 5180344 (all eight) |
 | 4A | `0x4F0BC0`–`0x4F0BFF` | 5180352 | — (compiler work; `m+192`, `0x43C000`) | 5180352 … 5180408 |

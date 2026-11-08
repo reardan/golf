@@ -310,6 +310,19 @@ exactly-`len` index; `INT64_MIN ÷ -1` is defined as `INT64_MIN`, `∣ -1` as 0)
 Still a signal: v1's unsigned `/` and `%` divided by zero — they are frozen v1
 templates. Still no `try`; a runtime error ends the program.
 
+**No `try`: closed by W11-3A.** `′f‹catch›` runs `f` and leaves `0` above
+its results, or — if anything under it calls `‹throw›` — the error's message
+as a code list, with the data stack back at its depth at the call (`f`'s
+pushes discarded) and the return and spill stacks unwound. Every runtime
+check raises through `‹throw›`, so index, use after free, key not found, file
+errors, the compose arena, double free, the spill stack and divide by zero
+(`/ % ÷ ∣`) are all catchable; catches nest
+and a handler can rethrow. Against Python: there are no exception types (the
+message is the whole value, so dispatch is by comparing text with `≣`), no
+`finally`, and nothing is rolled back — variables, memory and output stay as
+`f` left them. Still uncatchable: a return-stack overflow (SIGSEGV), `.`, and
+compile errors.
+
 The compiler is the same: bad source does not produce a diagnostic, it produces
 a bad binary. For a language whose whole test discipline is byte-identical
 differential comparison, "no diagnostics at all" is a defensible cost — but it is

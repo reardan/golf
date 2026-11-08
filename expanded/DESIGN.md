@@ -576,9 +576,26 @@ allocations they need are in [`REGISTRY.md`](REGISTRY.md) §1.3, §2 and §3.1.
    runtime error goes through one word, `‹throw›` (`msg ->`, msg a code list);
    W11-0 shipped it as a stub that prints `GOLF: <msg>` and a newline to fd 2
    and exits 1, and routed the prelude's index, compose-arena and two `⌫`
-   errors through it with unchanged output. `X`'s spill-stack overflow stays
-   inline (building its message would need `X` again), and so do the
-   divide-by-zero templates and the compiler's own messages.
+   errors through it with unchanged output. **W11-3A shipped the catch**:
+   `‹catch›` pushes a handler record — one 64-byte spill-stack frame holding
+   `sp bp` from the new atom `⊷` (`push rsp; push rbp`, taken in `‹catch›`'s
+   OWN frame, whose return address stays live while `f` runs) and the previous
+   chain head (cell `0x4F0B00`) — runs `f`, and on return unlinks it and
+   pushes `0`. `‹throw›` with a handler armed unlinks it, sets the spill-stack
+   offset back to the record (so every `X` frame pushed since is dropped), `Y`s
+   the caller's scratch back, and `⊶` (`pop rbp; pop rsp`) restores both
+   stacks; its epilogue then returns through `‹catch›`'s return address, so
+   `‹catch›` returns with the message. The data-stack DEPTH is restored, not
+   the contents of cells `f` consumed (Forth's `CATCH` rule); globals, memory,
+   the heap and output are not rolled back. The two errors W11-0 left inline
+   became catchable too, by unwinding BEFORE the message is built
+   (`‹_3a_raise›`): `X`'s overflow (with a handler armed, `X` calls
+   `‹_3a_spill›`) and the `/ % ÷ ∣` divide-by-zero exit, whose template now
+   calls a second BSS hook cell, `0x4F0B10`, ahead of the flush hook (15 bytes
+   per divide site; 0 in a bare program and the compiler, which fall through
+   to the old exit). Uncaught errors print exactly what they printed before.
+   Still outside it: signals (the return-stack guard page's SIGSEGV), `.`, and
+   the compiler's own messages.
 
 ## Invariants we do not break
 
@@ -667,7 +684,9 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   `Ṅ ⍕ ␤ 🗲 ⊐` append to an 8 KB buffer at `0x430000` (REGISTRY §3), drained
   by `‹flush›`. Every exit path that runs code drains it first: the end of the
   program, `.`, `‹throw›`, X's spill-stack error, the `/ % ÷ ∣` divide-by-zero
-  exit; so do `‹getc›`'s refills (prompts appear before a read). The templates
+  exit; so do `‹getc›`'s refills (prompts appear before a read). An error
+  a `‹catch›` takes does not exit and does not flush: the pending bytes stay
+  pending, in order (W11-3A). The templates
   do it through one BSS hook cell, `0x4F0990`, which only the prelude fills
   (`tools/mkblob2._FLUSH_CALL`), so a bare program and the compiler itself call
   nothing. The raw `)` stays one `write` per byte, but **flushes the buffer
@@ -686,6 +705,14 @@ what Python and Jelly have that this does not, which of it is refused rather tha
 unbuilt, and three defects this list does not yet cover — see
 [`GAPS.md`](GAPS.md).
 
+- **`‹catch›` restores depth, not contents, and rolls nothing else back
+  (W11-3A).** On a throw the data stack goes back to its depth at the
+  `‹catch›` call, but a cell `f` consumed holds whatever `f` last wrote there;
+  variables, memory, allocations (they leak unless the handler frees them)
+  and output are not undone. A handler record is one spill-stack frame, so
+  catches nest as deep as the 4096-frame spill stack allows (sharing it with
+  the list words). A return-stack overflow is a SIGSEGV on the guard page and
+  is not catchable.
 - **Raw memory access is unchecked.** `⊙`/`⊛`/`@`/`!` are raw memory access
   by design; only `⊇` (prelude `I`) bounds-checks, and only `/ % ÷ ∣` check
   their divisor.

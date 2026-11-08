@@ -9,7 +9,10 @@ This is a full oracle, not a shim:
 
   * **Atoms are auto-inherited** from tools/mkblob2.ATOMS, the single source of
     truth for the code-page atom templates.  Adding an atom there makes it work
-    here with no edit to this file.
+    here with no edit to this file.  (W11-3A's ⊷ ⊶ stack-pointer atoms, and the
+    divide-by-zero hook call in the ÷ ∣ / % templates, arrive that way: the
+    oracle's binaries run ‹catch› / ‹throw› exactly as golf2's do, which
+    test/run2.sh's W11-3A block checks.)
   * **Compiler ops are implemented natively** here: ′ ref (0x8C), “ str (0x8E),
     → set (0x8F), ← get (0x90), ⊚ chain (0xB0), ⊡ ⇒ ⇐ (0xB1-0xB3) and the
     M2 long-name brackets ‹ › (0xB4/0xB5), and W11-2A's include ⎘ (0xB6),
