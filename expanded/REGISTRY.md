@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **70** are now spent, leaving **41** free. It is partitioned as follows
+space; **82** are now spent, leaving **29** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -245,7 +245,8 @@ no glyph is in use.
 | `0xE3` | `\vec` | `Ṿ` | prelude: one-byte alias of `‹vec›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
 
 W12-6 used all nine Z1 bytes, so none goes back to free. `0xE4`–`0xEF`
-(twelve bytes of the W12-0-released range) are still free. The Z1
+(twelve bytes of the W12-0-released range) were left free; W13-C took all
+twelve (§1.5). The Z1
 mnemonics are letters only and prefix-free against the shipped ones:
 `\dget` and `\dput` because `\get` (`←`) is a compiler op and `\puts` and
 `\putat` exist.
@@ -265,7 +266,7 @@ mnemonic and have none as a prefix, and the glyphs are new.
 one of `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ ⍂ ⍃ ⍖ ⍷` (`0x4D 0x46 0x57 0x5A 0xD1 0xD2 0xD3 0xD4
 0xD8 0xD9 0xE7 0xE8 0xEA 0xEC`) is quoted. The set is `mkblob2.ADVERBS`,
 listed once there. The bytes that never quote are `mkblob2.UNQUOTED`
-(`" _ \ & @ ! ? , ( ) .` and `∘ ⊸`). Both sets reach the two GOLF compilers as
+(`" _ \ & @ ! ? , ( ) .`, `⊙ ⊛` and `∘ ⊸`). Both sets reach the two GOLF compilers as
 **template-blob records 6 and 7**, whose keys are control bytes and never an
 op, and `boot/golfref.py` imports them. A new adverb is one byte added to
 `ADVERBS`, then a regenerate.
@@ -283,22 +284,78 @@ shipped one (`\pcnt`, not `\popc`: `\pop` is `⍅`), checked by
 | `0xAD` | `\lsb` | `⊥` | atom: `x -> x & -x`, the lowest set bit (0 for 0), raw | W13-B | shipped |
 | `0xBD` | `\dig` | `ʘ` | compiler op, prefix: `ʘB` (B any byte) compiles exactly as the long name `‹_dgHH›`, HH = B in upper-case hex — a call, `′`, a chain link, a prefix's operand (`→ ← ⇒ ⇐ ⇡ ⇣ : ⊡ ⊚ ⊜`), a forward reference; undefined is `GOLF: undefined word ‹_dgHH›`. Cases in `self/golf2.golfj` (‹digraph›), the seed (spelled out in `G` and `t`) and `boot/golfref.py` | W13-B | shipped |
 
-#### Digraph page
+W13-C's twelve one-byte prelude words (section `# ===== W13-C =====` of
+`lib/prelude.golfj`; REFERENCE "More one-byte words"). The mnemonics were
+checked letters-only and prefix-free against every shipped one
+(`codepage.py check`): `\lookup`, not the planned `\dgetor`, because `\dget`
+is a prefix of it; `\tfword` for `‹tf›`.
 
-`ʘ` + byte B is the long name `‹_dgHH›`; a library gives a word a digraph by
-defining `:‹_dgHH›‹realname›;` (or the word itself under that name), and
-`tools/codepage.py reference` lists every such prelude definition in
-REFERENCE.md's generated "Digraph page" table. The second byte is
-partitioned so the W13 agents never contend (printable ASCII only;
-`+` and `-` are W13-B's test bytes, used only in test programs, never in
-the prelude). One row per digraph the prelude defines:
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0xE4` | `\lmax` | `Ṁ` | prelude: `l -> x` max of a list, signed (empty: `empty reduce`) | W13-C | shipped |
+| `0xE5` | `\lmin` | `Ṃ` | prelude: `l -> x` min of a list, signed (empty: `empty reduce`) | W13-C | shipped |
+| `0xE6` | `\uncons` | `⍘` | prelude: `l -> tail head` (empty: `empty list`) | W13-C | shipped |
+| `0xE7` | `\rscan` | `⍂` | prelude: `l ′f -> l'` right inclusive scan, exactly `⌽ ′f⍀ ⌽` | W13-C | shipped |
+| `0xE8` | `\xscan` | `⍃` | prelude: `l s ′f -> l'` exclusive scan, `l'[0] = s`, `≢l' = ≢l` | W13-C | shipped |
+| `0xE9` | `\counter` | `Ċ` | prelude: `l -> d` element -> count, keys in first-seen order | W13-C | shipped |
+| `0xEA` | `\dsort` | `⍖` | prelude: `l ′k -> l'` stable sort by key, descending | W13-C | shipped |
+| `0xEB` | `\prevocc` | `Ṕ` | prelude: `l -> l'` index of the previous equal element, or -1 (one dict probe each) | W13-C | shipped |
+| `0xEC` | `\findfirst` | `⍷` | prelude: `l ′p -> i` first i with `p l[i]` = 0, or -1; stops at the hit | W13-C | shipped |
+| `0xED` | `\indices` | `ℑ` | prelude: `l -> l [0..n-1]` | W13-C | shipped |
+| `0xEE` | `\lookup` | `Ǧ` | prelude: one-byte alias of `‹getor›` (`d k x -> v`) | W13-C | shipped |
+| `0xEF` | `\tfword` | `ṭ` | prelude: one-byte alias of `‹tf›` | W13-C | shipped |
 
-| Digraph | Bytes | Long name | Word | Task | Status |
-|---------|-------|-----------|------|------|--------|
-| `ʘA`–`ʘZ` | `BD 41`–`BD 5A` | `‹_dg41›`–`‹_dg5A›` | existing popular long names | W13-C | reserved (partition) |
-| `ʘa`–`ʘm`, `ʘ0`–`ʘ4` | `BD 61`–`BD 6D`, `BD 30`–`BD 34` | | | W13-D | reserved (partition) |
-| `ʘn`–`ʘz`, `ʘ5`–`ʘ9` | `BD 6E`–`BD 7A`, `BD 35`–`BD 39` | | | W13-E | reserved (partition) |
-| `ʘ+`, `ʘ-` | `BD 2B`, `BD 2D` | `‹_dg2B›`, `‹_dg2D›` | test programs only (run2 block W13-B) | W13-B | reserved (tests) |
+With them `0xD8`–`0xEF` is full.
+
+### 1.6 Digraph page
+
+`ʘ` + byte `B` calls the long name `‹_dgHH›` (`HH` = `B` in uppercase hex).
+The second byte is partitioned (ASCII printable only): `A`–`Z` W13-C,
+`a`–`m` and `0`–`4` W13-D, `n`–`z` and `5`–`9` W13-E; `+` and `-` are
+W13-B's test bytes, defined only in test programs, never in the prelude. A
+library gives a word a digraph by defining `:‹_dgHH›‹realname›;` (or the word
+itself under that name); `tools/codepage.py reference` scans the prelude for
+those definitions and generates REFERENCE.md's "Digraph page" table. This is
+the one REGISTRY table of the page: a row is shipped when the prelude defines
+its `‹_dgHH›`.
+
+| Digraph | Long name | Calls | Task | Status |
+|---------|-----------|-------|------|--------|
+| `ʘA` | `‹_dg41›` | `‹assert›` | W13-C | shipped |
+| `ʘB` | `‹_dg42›` | `‹startswith›` | W13-C | shipped |
+| `ʘC` | `‹_dg43›` | `‹catch›` | W13-C | shipped |
+| `ʘD` | `‹_dg44›` | `‹del›` | W13-C | shipped |
+| `ʘE` | `‹_dg45›` | `‹expect›` | W13-C | shipped |
+| `ʘF` | `‹_dg46›` | `‹flush›` | W13-C | shipped |
+| `ʘG` | `‹_dg47›` | `‹getc›` | W13-C | shipped |
+| `ʘH` | `‹_dg48›` | `‹heapstats›` | W13-C | shipped |
+| `ʘI` | `‹_dg49›` | `‹sints›` | W13-C | shipped |
+| `ʘJ` | `‹_dg4A›` | `‹args›` | W13-C | shipped |
+| `ʘK` | `‹_dg4B›` | `‹stack›` | W13-C | shipped |
+| `ʘL` | `‹_dg4C›` | `‹swin›` | W13-C | shipped |
+| `ʘM` | `‹_dg4D›` | `‹smap›` | W13-C | shipped |
+| `ʘN` | `‹_dg4E›` | `‹num›` | W13-C | shipped |
+| `ʘO` | `‹_dg4F›` | `‹sfold›` | W13-C | shipped |
+| `ʘP` | `‹_dg50›` | `‹pqpop›` | W13-C | shipped |
+| `ʘQ` | `‹_dg51›` | `‹pqpush›` | W13-C | shipped |
+| `ʘR` | `‹_dg52›` | `‹readbytes›` | W13-C | shipped |
+| `ʘS` | `‹_dg53›` | `‹sshow›` | W13-C | shipped |
+| `ʘT` | `‹_dg54›` | `‹throw›` | W13-C | shipped |
+| `ʘU` | `‹_dg55›` | `‹upto›` | W13-C | shipped |
+| `ʘV` | `‹_dg56›` | `‹grade›` | W13-C | shipped |
+| `ʘW` | `‹_dg57›` | `‹words›` | W13-C | shipped |
+| `ʘX` | `‹_dg58›` | `‹sfree›` | W13-C | shipped |
+| `ʘY` | `‹_dg59›` | `‹has›` | W13-C | shipped |
+| `ʘZ` | `‹_dg5A›` | `‹hash›` | W13-C | shipped |
+| `ʘa`–`ʘm`, `ʘ0`–`ʘ4` | `‹_dg61›`–`‹_dg6D›`, `‹_dg30›`–`‹_dg34›` | | W13-D | reserved (partition) |
+| `ʘn`–`ʘz`, `ʘ5`–`ʘ9` | `‹_dg6E›`–`‹_dg7A›`, `‹_dg35›`–`‹_dg39›` | | W13-E | reserved (partition) |
+| `ʘ+`, `ʘ-` | `‹_dg2B›`, `‹_dg2D›` | test programs only (run2 block W13-B) | W13-B | reserved (tests) |
+
+W13-C picked the 26 most used prelude long names with no byte of their own
+(uses counted over `examples/`, `lib/`, `gtools/`, `bench/` and
+REFERENCE.md, definitions excluded, ties alphabetical; the Z1 aliases and
+`‹getor›` `‹tf›` skipped), and gave each the letter of its name where it
+could.
 
 ## 2. Prelude word letters
 
@@ -646,7 +703,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | P1 input | `0x4F0D00`–`0x4F0D3F` | 5180672 | 5180672 … 5180728 — all eight used (shipped): `‹ints›` `‹words›` `‹num›` `‹readbytes›` `‹readall›` state, see the prelude's W12-P1 section |
 | P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | shipped, all eight: 5180736 d (masked) · 5180744 k · 5180752 D (the key's stored hash) · 5180760 the probe's slot (shift+2 for a moment) · 5180768 the value / default · 5180776 index table · 5180784 cap-1 (5180776 / 5180784 are also `‹_12p2_huge›`'s temps) · 5180792 the multiplier 0x9E3779B97F4A7C15, stored by `‹dict›` |
 | P3 list loops | `0x4F0D80`–`0x4F0DBF` | 5180800 | 5180800 … 5180856 (W12-P3 uses three, shipped: 5180800 `⌽`'s result base · 5180808 `⍳`'s end pointer, `⌽`'s source base · 5180816 the `∑`/`∏` accumulator, `⌽`'s mirror constant; 5180824 … 5180856 spare) |
-| O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 (W12-O1 uses one: 5180864, the not-a-number hook cell `mkblob2.NAN_HOOK` that the prelude fills with `‹_12o1_nan›`; 5180872 … 5180920 spare) |
+| O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 (W12-O1 uses one: 5180864, the not-a-number hook cell `mkblob2.NAN_HOOK` that the prelude fills with `‹_12o1_nan›`; 5180872 … 5180920 taken by W13-C (shipped): the S5 map's end pointer and delta (saved on the spill stack around a nested map) · the hook's atom byte and bp, `Ṁ Ṃ` end and accumulator, `⍘ ⍂ Ṕ` temps · `Ṕ`'s end, delta and base — see the prelude's W13-C section; all eight used) |
 | Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180960 used (shipped, W12-Z4): block · value · index/new block · count · deque head for `⍈ ⍆ ⍅ ‹first› ‹last› ‹pushf› ‹popf›`, see the prelude's W12-Z4 section; 5180968 … 5180984 used by W12-O3 (shipped): the queue's payload P · i (push) / &q[i] (pop) · the value being pushed or sifted down, for `‹pqpush› ‹pqpop›`, see the prelude's W12-O3 section |
 | A2 scan / reduce | `0x4F0E40`–`0x4F0E7F` | 5180992 | 5180992 … 5181048 |
 | A3 each-indexed | `0x4F0E80`–`0x4F0EBF` | 5181056 | 5181056 … 5181112 |
@@ -667,7 +724,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 188 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1 and W13-B 2, helpers included) — 1024 since W10-A, so 836 are left
+prelude now uses 223 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2 and W13-C 35 (26 digraph words and 9 helpers), helpers included) — 1024 since W10-A, so 801 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

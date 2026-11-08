@@ -3129,22 +3129,31 @@ cmp -s "$TMP/w12p1y.in" "$TMP/w12p1y.out" && cmp -s "$TMP/w12p1y.in" "$TMP/w12p1
 [ "$(printf 'abc' | gin '‹heapstats›_→n‹readbytes›⌫‹heapstats›_←n-Ṅ')" = "0" ] \
   && ok "‹readbytes› is an ordinary A block: ⌫ gives it back" || no "readbytes free"
 # === W12-O1 ===
-echo "W12-O1: ± ⊕ ⊖ ² ⊗ ⊘ on a list throw 'not a number' (catchable); on ints, and in bare programs, unchanged"
+echo "W12-O1 (as changed by W13-C S5): ± ⊕ ⊖ ² ⊗ ⊘ map over a list (to any depth); on ints, and in bare programs, unchanged"
 # The six templates test TOS's top byte (0x7F) and, only then, call the hook
 # cell 5180864 the prelude fills with ‹_12o1_nan› (exact: tagged AND in the
-# list heap).  w110 (W11-0, above) prints rc, the stdout byte count and stderr.
+# list heap).  W13-C turned its throw into the map.  w110 (W11-0, above)
+# prints rc, the stdout byte count and stderr.
 w12o1bad=""
-for w12o1a in '±' '⊕' '⊖' '²' '⊗' '⊘'; do
-  [ "$(w110 "7Ṅ5⍳$w12o1a⍕")" = "rc=1 1 GOLF: not a number" ] || w12o1bad="$w12o1bad [$w12o1a: $(w110 "7Ṅ5⍳$w12o1a⍕")]"
-  [ "$(w110 "0⍳$w12o1a")" = "rc=1 0 GOLF: not a number" ] || w12o1bad="$w12o1bad [empty $w12o1a]"
-  [ "$(printf '%s' ":‹f›3⍳$w12o1a;1 2′‹f›‹catch›⊐␤Ṅ␤Ṅ" | gc)" = "$(printf 'not a number\n2\n1')" ] || w12o1bad="$w12o1bad [catch $w12o1a]"
-  [ "$(printf '%s' "7Ṅ5⍳$w12o1a⍕" | gref; echo " rc=$?")" = "7 rc=1" ] || w12o1bad="$w12o1bad [oracle $w12o1a]"
-done
-[ -z "$w12o1bad" ] && ok "each of ± ⊕ ⊖ ² ⊗ ⊘ on a list (empty too): GOLF: not a number on fd 2, exit 1, earlier output flushed; ′f‹catch› gets the message with the stack restored; the oracle agrees" \
+while read -r w12o1a w12o1w; do
+  [ "$(w110 "7Ṅ5⍳$w12o1a⍕")" = "rc=0 $((${#w12o1w} + 2)) " ] && [ "$(printf '%s' "7Ṅ5⍳$w12o1a⍕" | gc)" = "7$w12o1w " ] \
+    || w12o1bad="$w12o1bad [$w12o1a: $(printf '%s' "7Ṅ5⍳$w12o1a⍕" | gc 2>&1)]"
+  [ "$(w110 "0⍳$w12o1a≢Ṅ")" = "rc=0 1 " ] || w12o1bad="$w12o1bad [empty $w12o1a]"
+  [ "$(printf '%s' ":‹f›3⍳$w12o1a;1 2′‹f›‹catch›Ṅ≢Ṅ␤Ṅ␤Ṅ" | gc)" = "$(printf '03\n2\n1')" ] || w12o1bad="$w12o1bad [catch $w12o1a]"
+  [ "$(printf '%s' "7Ṅ5⍳$w12o1a⍕" | gref; echo " rc=$?")" = "7$w12o1w  rc=0" ] || w12o1bad="$w12o1bad [oracle $w12o1a]"
+done <<'W12O1'
+± 0 -1 -2 -3 -4
+⊕ 1 2 3 4 5
+⊖ -1 0 1 2 3
+² 0 1 4 9 16
+⊗ 0 2 4 6 8
+⊘ 0 0 1 1 2
+W12O1
+[ -z "$w12o1bad" ] && ok "each of ± ⊕ ⊖ ² ⊗ ⊘ on a list (empty too) gives the elementwise list, exit 0; inside ′f‹catch› nothing is thrown and the stack under it is kept; the oracle agrees" \
   || no "W12-O1 atoms on lists:$w12o1bad"
-[ "$(printf '%s' '2⍳′⍳€′⊕€⍕' | gc 2>&1)" = "GOLF: not a number" ] && [ "$(printf '%s' '3⍳"⌫⊖' | gc 2>&1)" = "GOLF: not a number" ] \
+[ "$(printf '%s' '2⍳′⍳€⊕⍕' | gc 2>&1)" = "[] [1] " ] && [ "$(printf '%s' '3⍳"⌫⊖' | gc 2>&1)" = "GOLF: use after free" ] \
   && [ "$(printf '%s' '3⍳′⊕€⍕␤3⍳′²€⍕␤3⍳′±€⍕' | gc)" = "$(printf '1 2 3 \n0 1 4 \n0 -1 -2 ')" ] \
-  && ok "an inner list (′⊕€ over a list of lists) and a freed list throw too; ′⊕ ′² ′± over a list of ints map as before" || no "W12-O1 inner/freed/map"
+  && ok "an inner list maps too ([] [0] ⊕ is [] [1]); a freed list is use after free; ′⊕ ′² ′± over a list of ints map as before" || no "W12-O1 inner/freed/map"
 # Ints, edge values included: INT64_MAX and every int in [0x7F<<56, 2^63)
 # reach the hook (top byte 0x7F) and must come back untouched, as must the old
 # M-TAG band [2^48, 2^49), INT64_MIN, -1 and a tag-band int pointing below the
@@ -4326,6 +4335,175 @@ w13bb='12345♯Ṅ12345⊣Ṅ12345⊢Ṅ12345⊥Ṅ'
 [ "$(printf '%s' "$w13bb" | gref)" = "$(printf '%s' "$w13bb" | gc)" ] && [ "$(printf '%s' "$w13bb" | gc)" = "60501" ] \
   && [ "$(printf '%s' '\pcnt\ctz\clz\lsb\dig' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "aaabacadbd" ] \
   && ok "oracle: the bit atoms compile the same; \\pcnt \\ctz \\clz \\lsb \\dig encode to AA AB AC AD BD" || no "W13-B bit atoms oracle"
+
+# === W13-C ===
+echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"
+# The code page: each mnemonic encodes to its byte, each glyph round-trips
+# through decode and decode -m, and REGISTRY §1.5 has the row, shipped.
+w13cbad=""
+while read -r w13cm w13ch w13cg; do
+  [ "$(printf '%s' "\\$w13cm" | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "$w13ch" ] \
+    && [ "$(printf '%s' "$w13cg" | python3 tools/codepage.py encode | python3 tools/codepage.py decode)" = "$w13cg" ] \
+    && [ "$(printf '%s' "$w13cg" | python3 tools/codepage.py encode | python3 tools/codepage.py decode -m)" = "\\$w13cm" ] \
+    || w13cbad="$w13cbad [code page \\$w13cm]"
+  grep -q "^:\\\\$w13cm" lib/prelude.golfj || w13cbad="$w13cbad [prelude \\$w13cm]"
+  sed -n '/^### 1.5 W13 assignments/,/^### 1.6/p' REGISTRY.md | grep -F "| \`0x$(printf '%s' "$w13ch" | tr a-f A-F)\` | \`\\$w13cm\` | \`$w13cg\` |" | grep -q '| W13-C | shipped |$' \
+    || w13cbad="$w13cbad [REGISTRY \\$w13cm]"
+done <<'W13C'
+lmax e4 Ṁ
+lmin e5 Ṃ
+uncons e6 ⍘
+rscan e7 ⍂
+xscan e8 ⍃
+counter e9 Ċ
+dsort ea ⍖
+prevocc eb Ṕ
+findfirst ec ⍷
+indices ed ℑ
+lookup ee Ǧ
+tfword ef ṭ
+W13C
+grep -qxF ':\lookup‹getor›;' lib/prelude.golfj && grep -qxF ':\tfword‹tf›;' lib/prelude.golfj || w13cbad="$w13cbad [aliases]"
+[ -z "$w13cbad" ] && grep -q '^# ===== W13-C =====$' lib/prelude.golfj \
+  && ok "\\lmax … \\tfword: 0xE4-0xEF round-trip through the code page, are defined in the prelude's W13-C section (Ǧ ṭ as one-call aliases), REGISTRY §1.5 shipped" \
+  || no "W13-C code page / prelude / REGISTRY:$w13cbad"
+# S5 depends on mkblob2._numchk's layout: the hook's return address is the
+# first byte of the atom's scalar body, whose third byte and length the hook
+# reads off a fixed table (F7/5 ± · 04/4 ⊕ · 0C/4 ⊖ · 0F/6 ² · 24/4 ⊗ · 2C/4 ⊘).
+w13ct=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2 as m
+want = {0x80: (0xF7, 5), 0x81: (0x04, 4), 0x82: (0x0C, 4), 0x83: (0x0F, 6), 0x84: (0x24, 4), 0x85: (0x2C, 4)}
+print(all(m.OVERRIDES[b][20:22] == [0xFF, 0xD0] and (m.OVERRIDES[b][22 + 2], len(m.OVERRIDES[b]) - 22) == want[b] for b in m.NUMCHK_BYTES),
+      len({v[0] for v in want.values()}) == 6)')
+[ "$w13ct" = "True True" ] && grep -qF '5180888\fetch"247\eq1\radd[_‹_13c_neg›^]"4\eq1\radd[_‹_13c_inc›^]"12\eq1\radd[_‹_13c_dec›^]"15\eq1\radd[_‹_13c_sqr›^]36\eq1\radd[‹_13c_dbl›^]‹_13c_hlv›' lib/prelude.golfj \
+  && ok "S5's hook matches the templates: call rax is the last thing before each scalar body, whose third byte (distinct for the six) and length are the ones the hook dispatches on" \
+  || no "W13-C S5 template layout: $w13ct"
+# Elementwise, to any depth, mixed ints and lists, the original untouched;
+# inside € and ⍀ (a nested map parks the outer map's two cells); golf2 and
+# the oracle agree.
+w13cp='Ṿ1⍆Ṿ2⍆3⍆⍆4⍆ṾṾ5⍆⍆⍆6⍆"⊕⍕␤"±⍕␤"²⍕␤"⊗⍕␤"⊘⍕␤"⊖⍕␤⍕␤5⍳"⊕⍕⍕␤1000⍳′⍳€⊕′∑€∑Ṅ␤3⍳′⍳€′⊕€⍕␤:‹m›⊕∑;4⍳′⍳€′‹m›€⍕'
+w13cw=$(printf '2 [3 4] 5 [[6]] 7 \n-1 [-2 -3] -4 [[-5]] -6 \n1 [4 9] 16 [[25]] 36 \n2 [4 6] 8 [[10]] 12 \n0 [1 1] 2 [[2]] 3 \n0 [1 2] 3 [[4]] 5 \n1 [2 3] 4 [[5]] 6 \n1 2 3 4 5 0 1 2 3 4 \n166666500\n[] [1] [1 2] \n0 1 3 6 ')
+[ "$(printf '%s' "$w13cp" | gc)" = "$w13cw" ] && [ "$(printf '%s' "$w13cp" | gref)" = "$w13cw" ] \
+  && [ "$(printf '%s' ':‹f›3⍳"⌫⊕;′‹f›‹catch›⊐' | gc)" = "use after free" ] \
+  && ok "S5: ± ⊕ ⊖ ² ⊗ ⊘ map a mixed nested list to any depth, leave the original alone, nest inside € and ⍀ (1000 inner lists), a freed list is use after free; the oracle agrees" \
+  || no "W13-C S5 lists: $(printf '%s' "$w13cp" | gc 2>&1 | tr '\n' '|')"
+# Every word against Python on random lists (extremes and duplicates
+# included), golf2 and the oracle.
+rm -rf "$TMP/w13c"; mkdir -p "$TMP/w13c"
+python3 - "$TMP/w13c" <<'PY'
+import random, sys
+T = sys.argv[1]; R = random.Random(13)
+# ⍕ ≣ the dict and the bare - take an int in the tag band [0x7FFF<<48, 2^63)
+# for a list, so the extreme lists only go through Ṁ Ṃ (exact on every int).
+big = [[2**63 - 1, -2**63, 0, 2**63 - 1], [-2**63, 2**63 - 1], [2**62, -1, 1, 2**63 - 2]]
+lists = [[], [7], [5, 5], [-3, 0, -3], [0, 0, 0, 1]]
+lists += [[R.randint(-50, 50) for _ in range(R.randint(1, 20))] for _ in range(6)]
+lists += [[R.randint(-2**40, 2**40) for _ in range(16)]]
+def s(v): return (v + 2**63) % 2**64 - 2**63
+prog, want = [], []
+def mk(l):   # a list literal: a vector built with ⍆ (no int list syntax)
+    return "Ṿ" + "".join(f"{x if x >= 0 else '0 ' + str(-x) + '-'}⍆" if x != -2**63 else "1 63≪⍆" for x in l)
+for l in big:
+    L = mk(l)
+    prog.append(f"{L}ṀṄ␤{L}ṂṄ␤"); want += [str(max(l)), str(min(l))]
+for l in lists:
+    L = mk(l)
+    if l:
+        prog.append(f"{L}ṀṄ␤{L}ṂṄ␤"); want += [str(max(l)), str(min(l))]
+        prog.append(f"{L}⍘Ṅ␤⍕␤"); want += [str(l[0]), " ".join(map(str, l[1:]))]
+    acc, sc = None, []
+    for x in reversed(l):
+        acc = x if acc is None else s(acc - x); sc.append(acc)
+    prog.append(f"{L}′-⍂⍕␤"); want.append(" ".join(map(str, reversed(sc))))
+    prog.append(f"{L}\"⌽′-⍀⌽{L}′-⍂≣Ṅ␤"); want.append("-1")
+    xs, a = [], 100
+    for x in l:
+        xs.append(a); a = s(a * 3 + x)
+    prog.append(f"{L}100:‹g›&\"+++;′‹g›⍃⍕␤"); want.append(" ".join(map(str, xs)))
+    c = {}
+    for x in l: c[x] = c.get(x, 0) + 1
+    prog.append(f"{L}Ċ\"Ḳ⍕␤‹vals›⍕␤"); want += [" ".join(map(str, c)), " ".join(map(str, c.values()))]
+    prog.append(f"{L}′⊘⍖⍕␤"); want.append(" ".join(map(str, sorted(l, key=lambda x: -((x % 2**64) >> 1)))))
+    last, po = {}, []
+    for i, x in enumerate(l):
+        po.append(last.get(x, -1)); last[x] = i
+    prog.append(f"{L}Ṕ⍕␤"); want.append(" ".join(map(str, po)))
+    t = l[len(l) // 2] if l else 0
+    prog.append(f"{L}:‹p›{t if t >= 0 else '0 ' + str(-t) + '-'}≡1+;′‹p›⍷Ṅ␤")
+    want.append(str(l.index(t) if t in l else -1))
+    prog.append(f"{L}ℑ⍕␤⍕␤"); want += [" ".join(map(str, range(len(l)))), " ".join(map(str, l))]
+open(f"{T}/p.golfj", "w", encoding="utf-8").write("".join(prog))
+open(f"{T}/want", "w").write("\n".join(want) + "\n")
+PY
+w13cgc=$(gc < "$TMP/w13c/p.golfj" | sed 's/ *$//'); w13cgr=$(gref < "$TMP/w13c/p.golfj" | sed 's/ *$//')
+[ "$w13cgc" = "$(cat "$TMP/w13c/want")" ] && [ "$w13cgr" = "$w13cgc" ] \
+  && ok "Ṁ Ṃ ⍘ ⍂ (= ⌽ ′f⍀ ⌽) ⍃ Ċ ⍖ (stable, descending) Ṕ ⍷ ℑ equal Python on $(grep -c '' "$TMP/w13c/want") results over 15 lists (empty, duplicates, random; Ṁ Ṃ on INT64_MAX/MIN too); the oracle agrees" \
+  || no "W13-C vs Python: $(diff <(printf '%s\n' "$w13cgc") "$TMP/w13c/want" | head -6 | tr '\n' ' ')"
+# The threading contract: f / p / k see the caller's stack directly under
+# their arguments, and the stack under the call is kept.  ⍷ stops at the hit
+# (p counts its calls in a variable); ⍃ calls f n-1 times; nesting.
+w13cp=':‹g›+&+;1000 3⍳⊕ 0′‹g›⍃⍕Ṅ␤1000 3⍳′‹g›⍂⍕Ṅ␤:‹q›⇡n&-;0→n 5 9⍳′‹q›⍷Ṅ←nṄṄ␤:‹k›&*;0 1- 5⍳′‹k›⍖⍕Ṅ␤:‹h›⇡n+;0→n 5⍳0′‹h›⍃_←nṄ␤:‹i›_ 3⍳1′+⍃∑+;4⍳0′‹i›⍃⍕␤:‹r›⊖;:‹z›′‹r›⍷⊖;4⍳′⍳€′‹z›⍷Ṅ'
+w13cw=$(printf '0 1001 2003 1000\n2003 1003 2 1000\n565\n0 1 2 3 4 -1\n4\n0 4 8 12 \n2')
+[ "$(printf '%s' "$w13cp" | gc)" = "$w13cw" ] && [ "$(printf '%s' "$w13cp" | gref)" = "$w13cw" ] \
+  && ok "⍃ ⍂ ⍷ ⍖ thread the caller's stack to f/p/k and keep it; ⍷ calls p only up to its hit (6 calls), ⍃ n-1 times; ⍃ and ⍷ nest in their own f/p" \
+  || no "W13-C threading: $(printf '%s' "$w13cp" | gc 2>&1 | tr '\n' '|')"
+# Errors, through ‹catch› too, and an error inside f unwinds ⍃ / ⍷.
+[ "$(w110 '7Ṅ0⍳Ṁ')" = "rc=1 1 GOLF: empty reduce" ] && [ "$(w110 '0⍳⍘')" = "rc=1 0 GOLF: empty list" ] \
+  && [ "$(printf '%s' ':‹f›0⍳Ṃ;′‹f›‹catch›⊐:‹u›0⍳⍘;′‹u›‹catch›⊐' | gc)" = "empty reduceempty list" ] \
+  && [ "$(printf '%s' ':‹e›_“boom“⊃‹throw›;:‹f›3⍳0′‹e›⍃;:‹g›3⍳′‹e›⍷;′‹f›‹catch›⊐′‹g›‹catch›⊐3⍳′⊕€⍕' | gc)" = "boomboom1 2 3 " ] \
+  && [ "$(printf '%s' 'Ḋ"1 10Ṗ"1 5ǦṄ"2 5ǦṄ 0ṭ⊐1ṭ⊐' | gc)" = "105truefalse" ] \
+  && ok "Ṁ Ṃ on empty: empty reduce, ⍘: empty list (exit 1, earlier output flushed; ‹catch› gets them); a throw inside ⍃'s f or ⍷'s p unwinds cleanly; Ǧ is ‹getor›, ṭ is ‹tf›" \
+  || no "W13-C errors / aliases"
+# The digraph page: each ‹_dgHH› (HH = A..Z in hex) is a one-call word of the
+# long name REGISTRY §1.6 names, and behaves as it (‹catch›/‹throw› through
+# the extra frame included).
+w13cbad=""; w13cn=0
+while read -r w13cl w13cn2; do
+  w13ch=$(printf '%X' "'$w13cl")
+  grep -qxF ":‹_dg$w13ch›‹$w13cn2›;" lib/prelude.golfj || w13cbad="$w13cbad [prelude $w13cl]"
+  sed -n '/^### 1.6 Digraph page/,/^## 2\./p' REGISTRY.md | grep -qF "| \`ʘ$w13cl\` | \`‹_dg$w13ch›\` | \`‹$w13cn2›\` | W13-C | shipped |" || w13cbad="$w13cbad [REGISTRY $w13cl]"
+  sed -n '/^### Digraph page$/,/^### /p' REFERENCE.md | grep -qF "| \`ʘ$w13cl\` | \`BD $w13ch\` | \`‹_dg$w13ch›\` | \`‹$w13cn2›\` |" || w13cbad="$w13cbad [REFERENCE $w13cl]"
+  w13cn=$((w13cn+1))
+done <<'W13CDG'
+A assert
+B startswith
+C catch
+D del
+E expect
+F flush
+G getc
+H heapstats
+I sints
+J args
+K stack
+L swin
+M smap
+N num
+O sfold
+P pqpop
+Q pqpush
+R readbytes
+S sshow
+T throw
+U upto
+V grade
+W words
+X sfree
+Y has
+Z hash
+W13CDG
+w13cp=':‹bad›3⍳9⊇;′‹bad›‹_dg43›⊐␤:‹f›1 2“no“⊃‹_dg54›;7′‹f›‹_dg43›⊐Ṅ␤Ḋ"3 4Ṗ"3‹_dg59›Ṅ"9‹_dg59›Ṅ"3‹_dg44›"3‹_dg59›Ṅ␤“ab“⊃‹_dg5A›“ab“⊃‹hash›-Ṅ“abc“⊃“ab“⊃‹_dg42›Ṅ␤6⍳′⊘€⌽‹_dg56›⍕␤“12“⊃‹_dg4E›Ṅ“a bb“⊃‹_dg57›≢Ṅ␤5‹_dg55›0′+‹_dg4F›Ṅ4‹_dg55›′²‹_dg4D›‹_dg53›␤‹pq›5‹_dg51›2‹_dg51›‹_dg50›Ṅ_0 1-“t“⊃‹_dg41›‹_dg46›'
+w13cw=$(printf 'index out of range\nno7\n011\n00\n4 5 2 3 0 1 \n122\n100 1 4 9 \n2')
+[ -z "$w13cbad" ] && [ "$w13cn" = 26 ] && [ "$(printf '%s' "$w13cp" | gc 2>&1)" = "$w13cw" ] && [ "$(printf '%s' '1 2‹_dg4B›' | gc)" = "<2> 1 2" ] \
+  && ok "digraph page A-Z: 26 ‹_dgHH› one-call words of the 26 long names in REGISTRY §1.6 and REFERENCE; ‹catch› ‹throw› ‹has› ‹del› ‹hash› ‹startswith› ‹grade› ‹num› ‹words› ‹upto› ‹sfold› ‹smap› ‹sshow› ‹pqpush› ‹pqpop› ‹assert› ‹flush› ‹stack› behave through them" \
+  || no "W13-C digraphs:$w13cbad $(printf '%s' "$w13cp" | gc 2>&1 | tr '\n' '|')"
+# REFERENCE.md's "More one-byte words" examples print what they say.
+w13cbad=""
+while IFS= read -r w13cl; do
+  w13cx=${w13cl%%  ->*}; w13cx=${w13cx%"${w13cx##*[! ]}"}; w13ce=${w13cl##*->  }
+  [ "$(printf '%s' "$w13cx" | gc 2>&1 | sed 's/ *$//')" = "$w13ce" ] || w13cbad="$w13cbad [$w13cx]"
+done < <(sed -n '/^### More one-byte words$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w13cbad" ] && [ "$(sed -n '/^### More one-byte words$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 12 ] \
+  && ok "REFERENCE.md's More one-byte words examples print what they say" || no "W13-C examples:$w13cbad"
 
 # === W13-INT ===
 echo "W13-INT: the wave-1 features together (digraphs under S1, S3 output, blocks, ⍖ Ṁ, S5)"

@@ -1925,7 +1925,7 @@ o
 #   S1  a token IMMEDIATELY followed by an adverb byte (blob record 6,
 #       mkblob2.ADVERBS: € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ ⍂ ⍃ ⍖ ⍷) compiles as `′token` (X)
 #       instead of a call — unless it is one of blob record 7's bytes
-#       (mkblob2.UNQUOTED: the v1 stack/memory/I-O ops, and ∘ ⊸), which never
+#       (mkblob2.UNQUOTED: the v1 stack/memory/I-O ops, ⊙ ⊛, and ∘ ⊸), which never
 #       quote.  `f€` is `′f€`; `f €` is still "call f, then map".
 #
 # S1 needs one byte of lookahead.  ‹read› takes it (the include-aware `g` is

@@ -1525,7 +1525,21 @@
 # uses of these atoms are all on ints (lengths, indices, flags), so none of
 # them can reach the throw.  Installed LAST, after the W3 hooks, so no init
 # code above it can trip the check.
-:‹_12o1_nan›"T["16\shl16>5177396@\rsub5177400@\rlt1\radd[“not a number“U‹throw›]];
+# W13-C (S5): the list path no longer throws; it MAPS.  The hook reads its
+# own return address ([bp] from ⊷ — the prologue parked it there), which
+# points at the first byte of the calling atom's scalar body (mkblob2._numchk
+# puts the body right after `call rax`).  The body's third byte names the
+# atom — F7 ± · 04 ⊕ · 0C ⊖ · 0F ² · 24 ⊗ · 2C ⊘ — and its length (5 for ±,
+# 6 for ², 4 for the rest) is added to the return address, so the hook comes
+# back PAST the scalar body with the mapped list on TOS.  bp waits in 5180896
+# and the byte in 5180888 for the dispatch (the W13-C section has the six map
+# loops; no swap: the prelude never uses `\`, which decode -m cannot round-
+# trip before a mnemonic).  A freed list now says `use after free`
+# (‹_2d_chk›).  The int path is untouched: the templates still filter on the
+# top byte and only a heap list gets here.
+:‹_12o1_nan›"T["16\shl16>5177396@\rsub5177400@\rlt1\radd[
+ \spr5180896\store_5180896\fetch\fetch"2\radd?5180888\store5180888\fetch247\eq5180888\fetch15\eq"\radd\radd\rsub4\radd5180896\fetch\store
+ 5180888\fetch"247\eq1\radd[_‹_13c_neg›^]"4\eq1\radd[_‹_13c_inc›^]"12\eq1\radd[_‹_13c_dec›^]"15\eq1\radd[_‹_13c_sqr›^]36\eq1\radd[‹_13c_dbl›^]‹_13c_hlv›]];
 :‹_12o1_init›\ref‹_12o1_nan›5180864\store;
 ‹_12o1_init›
 
@@ -2155,3 +2169,144 @@
 :‹_13b_end›5180480\fetch\spr_\rsub16\rsub["T[Q\else N]];
 :‹_13b_init›\ref‹_13b_end›5179808\store;
 ‹_13b_init›
+# ===== W13-C =====
+# S5, the six unary atoms on lists, then twelve one-byte words (0xE4..0xEF)
+# and the A..Z digraph page.  Cells (REGISTRY §3.2, slot O1's spares, which
+# W13-C took over for S5 and the new leaf words): 5180872 the S5 map loop's
+# end pointer · 5180880 its source-to-result delta (both saved on the spill
+# stack around each map, see below) · 5180888 the hook's atom byte, Ṁ Ṃ's
+# end pointer, ⍘'s head, ⍂'s f and a swap temp, Ṕ's old value · 5180896 the
+# hook's bp, Ṁ Ṃ's accumulator, ⍂'s l, Ṕ's dict · 5180904 Ṕ's end pointer ·
+# 5180912 Ṕ's result delta · 5180920 Ṕ's base (&l[0]).  Apart from the S5
+# pair, each is live only across a stretch that runs no user code, maps no
+# list and cannot reach the same word again (⍂ is done with its two before ⍀
+# calls f), so none is live across a re-entry.  No `\` (swap) anywhere: the
+# prelude has none, because decode -m prints it bare and a mnemonic after it
+# then re-encodes differently (gtools' round-trip check).
+#
+# S5.  ‹_12o1_nan› (W12-O1 section, rewritten) sends a heap list here, by the
+# atom's byte, and returns past the atom's scalar body.  Each map is ONE pass:
+# ‹_13c_set›  l -> R p  allocates the result (‹_2d_chk› first: a freed list
+# is `use after free`), keeps the end of l in 5180872 and result - source in
+# 5180880, and leaves the tagged result R under the source pointer p; the
+# loop is then `"⊙⊕&D+⊛` with the atom itself inline, so an int element costs
+# the atom's own template.  An element that is a list goes through the same
+# atom's hook again and maps to any depth: ‹_13c_set› first parks the two
+# cells of the map it interrupts on the spill stack (‹_12a8_put›) and
+# ‹_13c_end› (R p -> R) puts them back, so only a nested list pays for that.
+:‹_13c_set›5180872\fetch‹_12a8_put›5180880\fetch‹_12a8_put›
+ ‹_2d_chk›"\fetch"1\radd A"5180880\store\store5180880\fetch&\rsub5180880\store"\fetch8\rmul&\radd8\radd5180872\store
+ 5180880\fetch\radd32767 48\shl|"16\shl16>5180880\fetch\rsub8\radd;
+:‹_13c_end›_‹_12a8_get›5180880\store‹_12a8_get›5180872\store;
+:‹_13c_neg›‹_13c_set›"5180872\fetch\eq[{"\fetch\neg&5180880\fetch\radd\store8\radd"5180872\fetch\eq}]‹_13c_end›;
+:‹_13c_inc›‹_13c_set›"5180872\fetch\eq[{"\fetch\inc&5180880\fetch\radd\store8\radd"5180872\fetch\eq}]‹_13c_end›;
+:‹_13c_dec›‹_13c_set›"5180872\fetch\eq[{"\fetch\dec&5180880\fetch\radd\store8\radd"5180872\fetch\eq}]‹_13c_end›;
+:‹_13c_sqr›‹_13c_set›"5180872\fetch\eq[{"\fetch\sqr&5180880\fetch\radd\store8\radd"5180872\fetch\eq}]‹_13c_end›;
+:‹_13c_dbl›‹_13c_set›"5180872\fetch\eq[{"\fetch\dbl&5180880\fetch\radd\store8\radd"5180872\fetch\eq}]‹_13c_end›;
+:‹_13c_hlv›‹_13c_set›"5180872\fetch\eq[{"\fetch\hlv&5180880\fetch\radd\store8\radd"5180872\fetch\eq}]‹_13c_end›;
+#
+# Ṁ (0xE4) / Ṃ (0xE5)  l -> x   the signed max / min of l: ⍁ with ⌈ / ⌊ as
+# one tight loop instead of a call per element.  The data stack holds the
+# element pointer; the end waits in 5180888 and the running value in
+# 5180896, which a pass overwrites only when the element beats it (≻ / ≺,
+# signed, so the answer is exact on every int — INT64_MAX and INT64_MIN
+# included, which the polymorphic ⌈ ⌊ would take for lists).  Empty:
+# `empty reduce` through ‹throw›, as ⍁.
+:\lmax‹_2d_chk›"\fetch"[_“empty reduce“U‹throw›]8\rmul&\radd8\radd5180888\store8\radd"\fetch5180896\store8\radd
+ "5180888\fetch\eq[{"\fetch"5180896\fetch\sgt1\radd[5180896\store0]_8\radd"5180888\fetch\eq}]_5180896\fetch;
+:\lmin‹_2d_chk›"\fetch"[_“empty reduce“U‹throw›]8\rmul&\radd8\radd5180888\store8\radd"\fetch5180896\store8\radd
+ "5180888\fetch\eq[{"\fetch"5180896\fetch\slt1\radd[5180896\store0]_8\radd"5180888\fetch\eq}]_5180896\fetch;
+# ⍘ (0xE6)  l -> tail head   `1↓` and `0⊇`; empty: `empty list` (‹throw›).
+:\uncons"‹_2d_chk›\fetch[“empty list“U‹throw›]"0I5180888\store1\drop5180888\fetch;
+# ⍂ (0xE7)  l ′f -> l'   the right scan, by definition ⌽ then ′f⍀ then ⌽: so
+# l'[n-1] = l[n-1] and l'[i] = f(l'[i+1], l[i]) (f gets acc x, as in ⍀).  The
+# reversed copy is parked on the spill stack (‹_12a8_put›) while ⍀ runs, so f
+# sees the caller's stack directly under acc (the A1 contract); both
+# intermediate lists go back to ⌫.
+:\rscan5180888\store V"‹_12a8_put›5180888\fetch\scan‹_12a8_get›\free"V5180888\store\free5180888\fetch;
+# ⍃ (0xE8)  l s ′f -> l'   the exclusive scan: l'[0] = s, l'[i] = f(l'[i-1],
+# l[i-1]), ≢l' = ≢l, so f runs n-1 times (never on l's last element) and an
+# empty l gives an empty list (s is dropped).  ⍀'s loop: one X/Y frame, s3 f,
+# s7 s until it is on the stack, s0 the source pointer, s1 its end
+# (&l[n-1]), s2 the result, s4 the delta from a source cell to the result
+# cell it feeds; the running value stays on the data stack, where f's first
+# argument goes (the A1 contract).
+:\xscan X5177464\store5177496\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store5177496\fetch
+ 5177440\fetch\fetch0\eq["5177456\fetch8\radd\store5177456\fetch5177440\fetch\rsub8\radd5177472\store5177440\fetch"\fetch8\rmul\radd5177448\store
+  5177440\fetch8\radd"5177440\store5177448\fetch\eq[{5177440\fetch\fetch5177464\fetch\exec"5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]]
+ _5177456\fetch32767 48\shl| Y;
+# Ċ (0xE9)  l -> d   a new dict of element -> count, keys in first-seen order
+# (‹dict›'s insertion order): `‹dict›′‹bump›⇤`.
+:\counter‹dict›\ref‹bump›F;
+# ⍖ (0xEA)  l ′k -> l'   ⍒ descending: the same body with every key replaced
+# by its bitwise NOT before ‹grade› (~ reverses the signed order and, unlike
+# ±, cannot overflow), so it stays stable — equal keys keep input order.
+:\dsort X5177464\store"‹_2d_chk›8\radd5177440\store5177464\fetch M"5177448\store
+ "‹_2d_chk›"\fetch8\rmul&\radd8\radd&8\radd&&\eq[{"\fetch~&\store8\radd&&\eq}]___‹grade›16\shl16>
+ "\fetch8\rmul&\radd8\radd&8\radd
+ &&\eq[{"\fetch8\rmul5177440\fetch\radd\fetch&\store8\radd&&\eq}]__
+ 5177448\fetch\free32767 48\shl| Y;
+# Ṕ (0xEB)  l -> l'   l'[i] = the largest j < i with l[j] = l[i], else -1.  One
+# dict probe per element (‹_2b_find›, the W12-P2 one-probe path): a hit swaps
+# i into the entry's value and yields the old one; a miss inserts i
+# (‹_12p2_ins›, which takes k from find's cell) and yields -1.  i waits in
+# P2's value cell 5180768 across the probe, as ‹put› parks its value.  Keys
+# match as in a dict (an int by value, a list by ≣).  The dict is not freed.
+# ‹_13c_xch›  p -> p old   the probe for the element at p.  (A long-name
+# helper, and no ⋄ in a one-byte word body: run2's M2 check feeds the prelude
+# to a pre-⋄ compiler with the long-name definitions cut out.)
+:‹_13c_xch›"5180920\fetch\rsub3>5180768\store5180896\fetch&\fetch‹_2b_find›
+ "[_5180768\fetch‹_12p2_ins›1\neg⋄16\radd"\fetch5180888\store5180768\fetch&\store_5180888\fetch];
+:\prevocc‹dict›5180896\store‹_2d_chk›"8\radd5180920\store"\fetch"1\radd A"5180888\store\store5180888\fetch&\rsub5180912\store"\fetch8\rmul\radd8\radd5180904\store
+ 5180920\fetch"5180904\fetch\eq[{‹_13c_xch›&5180912\fetch\radd\store8\radd"5180904\fetch\eq}]
+ _5180920\fetch8\rsub5180912\fetch\radd32767 48\shl|;
+# ⍷ (0xEC)  l ′p -> i   the first i with p l[i] = 0 (zero-is-true, as ⌿), or
+# -1; p is not called again after the hit.  One X/Y frame: s3 p, s0 the
+# element pointer, s1 its end, s6 &l[0], s2 the answer (-1 until a hit, which
+# also moves s0 to the end); p sees the caller's stack under x (A1 contract).
+:\findfirst X5177464\store‹_2d_chk›8\radd"5177488\store"5177440\store8\rsub"\fetch8\rmul\radd8\radd5177448\store1\neg5177456\store
+ 5177440\fetch5177448\fetch\eq[{5177440\fetch\fetch5177464\fetch\exec[5177440\fetch5177488\fetch\rsub3>5177456\store5177448\fetch8\rsub5177440\store]5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
+ 5177456\fetch Y;
+# ℑ (0xED)  l -> l [0..n-1]   keeps l: `"≢⍳`.
+:\indices"LR;
+# Ǧ (0xEE) / ṭ (0xEF): one-call aliases, as W12-Z1's.
+:\lookup‹getor›;
+:\tfword‹tf›;
+#
+# The digraph page, A..Z (S6).  `ʘB` compiles as a call of ‹_dgHH›, HH the
+# hex of B.  W13-C gives the 26 most used prelude long names that have no
+# byte of their own a letter, counted over examples/ lib/ gtools/ bench/ and
+# REFERENCE.md (W12-Z1's method; ties alphabetical); the letter follows the
+# name where it can.  Each is a one-call word, so the long name stays the
+# definition (same stack effect, same errors, one extra call and return).
+#   ʘA ‹assert›  ʘB ‹startswith›  ʘC ‹catch›  ʘD ‹del›  ʘE ‹expect›
+#   ʘF ‹flush›  ʘG ‹getc›  ʘH ‹heapstats›  ʘI ‹sints›  ʘJ ‹args›
+#   ʘK ‹stack›  ʘL ‹swin›  ʘM ‹smap›  ʘN ‹num›  ʘO ‹sfold›  ʘP ‹pqpop›
+#   ʘQ ‹pqpush›  ʘR ‹readbytes›  ʘS ‹sshow›  ʘT ‹throw›  ʘU ‹upto›
+#   ʘV ‹grade›  ʘW ‹words›  ʘX ‹sfree›  ʘY ‹has›  ʘZ ‹hash›
+:‹_dg41›‹assert›;
+:‹_dg42›‹startswith›;
+:‹_dg43›‹catch›;
+:‹_dg44›‹del›;
+:‹_dg45›‹expect›;
+:‹_dg46›‹flush›;
+:‹_dg47›‹getc›;
+:‹_dg48›‹heapstats›;
+:‹_dg49›‹sints›;
+:‹_dg4A›‹args›;
+:‹_dg4B›‹stack›;
+:‹_dg4C›‹swin›;
+:‹_dg4D›‹smap›;
+:‹_dg4E›‹num›;
+:‹_dg4F›‹sfold›;
+:‹_dg50›‹pqpop›;
+:‹_dg51›‹pqpush›;
+:‹_dg52›‹readbytes›;
+:‹_dg53›‹sshow›;
+:‹_dg54›‹throw›;
+:‹_dg55›‹upto›;
+:‹_dg56›‹grade›;
+:‹_dg57›‹words›;
+:‹_dg58›‹sfree›;
+:‹_dg59›‹has›;
+:‹_dg5A›‹hash›;

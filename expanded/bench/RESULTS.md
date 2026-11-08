@@ -138,3 +138,29 @@ and `mov; neg; and` for `x & -x`). Micro rows `popcnt` and `lowbit`, best of
 it 1.12–1.14, so each atom with its dup and drop costs about 0.3 ns. Implicit
 output adds 15 bytes to the end-of-program exit (a load, a test and a call
 at exit only), and nothing to any loop.
+## W13-C
+
+S5 (`± ⊕ ⊖ ² ⊗ ⊘` map over lists) leaves the int path alone: the atom
+templates are unchanged, and `100000000{⊕⊖⊖"0≡}_` compiles to the same loop
+bytes with the old and the new prelude and runs at 1.40–1.53 ns (old) vs
+1.42–1.50 ns (new) per iteration over five interleaved runs (`inc2`).
+
+Cache-resident rows: a 10^5-element list, 1000 passes, best of 3, ns per
+element (scrambled = `7919*1000003%` of `⍳`):
+
+| case | ns/el |
+|---|---|
+| `Ṁ` scrambled | 2.44 |
+| `Ṁ` on `⍳` (every element a new max) | 2.77 |
+| `Ṃ` scrambled | 2.52 |
+| `′⌈⍁` scrambled (what `Ṁ` replaces) | 3.66 |
+| `⊕` on a list (S5, one pass) | 2.53 |
+| `²` on a list (S5) | 2.53 |
+| `′⊕€` | 4.54 |
+| list `1+` (M-VEC broadcast) | 3.85 |
+
+`micro.sh` rows (fresh lists, `⍳` included, so subtract `iota`): `lmax`
+11.3, `xscan` 16.1 (`scan` 15.6), `findnone` 7.5, `prevocc` 223 and
+`counter` 204 per element on 10^6 (one dict probe each, against `dictbump`
+120), `dsort` 671 (`ksort` 652: one extra pass of `~` over the keys).
+The compiled prelude grew from 74341 to 79691 bytes.

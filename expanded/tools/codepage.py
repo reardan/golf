@@ -105,6 +105,21 @@ LIB = [
     (0xE1, "keys", "Ḳ", "alias of ‹keys›: d -> list, the keys in insertion order"),
     (0xE2, "bump", "Ḃ", "alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1)"),
     (0xE3, "vec", "Ṿ", "alias of ‹vec›: -> v, a new empty vector"),
+    # --- W13-C LIB rows: list words for LeetCode-style programs (prelude
+    # section W13-C).  Mnemonics are letters only and prefix-free: \lookup
+    # (not \dgetor, which \dget is a prefix of) and \tfword (\tf is the word).
+    (0xE4, "lmax", "Ṁ", "max of list: l -> x, signed (empty: empty reduce)"),
+    (0xE5, "lmin", "Ṃ", "min of list: l -> x, signed (empty: empty reduce)"),
+    (0xE6, "uncons", "⍘", "uncons: l -> tail head (empty: empty list)"),
+    (0xE7, "rscan", "⍂", "right scan: l ′f -> l'; exactly ⌽ ′f⍀ ⌽ (f gets acc x)"),
+    (0xE8, "xscan", "⍃", "exclusive scan: l s ′f -> l'; l'[0] = s, l'[i] = f(l'[i-1], l[i-1]), ≢l' = ≢l"),
+    (0xE9, "counter", "Ċ", "counter: l -> d; element -> count, keys in first-seen order"),
+    (0xEA, "dsort", "⍖", "sort by key, descending: l ′k -> l'; stable (ties keep input order)"),
+    (0xEB, "prevocc", "Ṕ", "previous occurrence: l -> l'; l'[i] = last j < i with l[j] = l[i], else -1"),
+    (0xEC, "findfirst", "⍷", "find first: l ′p -> i; first i where p l[i] is 0 (stops there), else -1"),
+    (0xED, "indices", "ℑ", "indices: l -> l [0..n-1] (keeps l)"),
+    (0xEE, "lookup", "Ǧ", "alias of ‹getor›: d k x -> v, k's value or x when absent"),
+    (0xEF, "tfword", "ṭ", "alias of ‹tf›: f -> list, “true“ when f is 0, else “false“"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

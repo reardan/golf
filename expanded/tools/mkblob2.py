@@ -130,12 +130,12 @@ ATOMS = [
     (0x3D, "xor", "=", [0x58, 0x48, 0x31, 0x04, 0x24],        "bitwise XOR"),
     (0x3E, "shr", ">", [0x59, 0x48, 0xD3, 0x2C, 0x24],        "shift right (by TOS)"),
     # Code-page atoms — single-byte ops in the high half of the byte space
-    (0x80, "neg", "±", [0x58, 0x48, 0xF7, 0xD8, 0x50],   "negate TOS (a list: not a number)"),
-    (0x81, "inc", "⊕", [0x48, 0xFF, 0x04, 0x24],         "TOS + 1 (a list: not a number)"),
-    (0x82, "dec", "⊖", [0x48, 0xFF, 0x0C, 0x24],         "TOS - 1 (a list: not a number)"),
-    (0x83, "sqr", "²", [0x58, 0x48, 0x0F, 0xAF, 0xC0, 0x50], "TOS * TOS (a list: not a number)"),
-    (0x84, "dbl", "⊗", [0x48, 0xD1, 0x24, 0x24],         "TOS * 2 (a list: not a number)"),
-    (0x85, "hlv", "⊘", [0x48, 0xD1, 0x2C, 0x24],         "TOS >> 1 (a list: not a number)"),
+    (0x80, "neg", "±", [0x58, 0x48, 0xF7, 0xD8, 0x50],   "negate TOS (a list: elementwise, any depth)"),
+    (0x81, "inc", "⊕", [0x48, 0xFF, 0x04, 0x24],         "TOS + 1 (a list: elementwise, any depth)"),
+    (0x82, "dec", "⊖", [0x48, 0xFF, 0x0C, 0x24],         "TOS - 1 (a list: elementwise, any depth)"),
+    (0x83, "sqr", "²", [0x58, 0x48, 0x0F, 0xAF, 0xC0, 0x50], "TOS * TOS (a list: elementwise, any depth)"),
+    (0x84, "dbl", "⊗", [0x48, 0xD1, 0x24, 0x24],         "TOS * 2 (a list: elementwise, any depth)"),
+    (0x85, "hlv", "⊘", [0x48, 0xD1, 0x2C, 0x24],         "TOS >> 1 (a list: elementwise, any depth)"),
     # Comparison / selection / signed arithmetic (result -1/0 like '<')
     (0x86, "gt",  "»", [0x59, 0x58, 0x48, 0x39, 0xC1, 0x48, 0x19, 0xC0, 0x50],
                                                           "a b -> (a>b unsigned ? -1 : 0)"),
@@ -515,10 +515,13 @@ ADVERBS = bytes([ord("M"), ord("F"), ord("W"), ord("Z"),
 #     `\€` "swap, then map" is real code;
 #   * ∘ (0xC5) and ⊸ (0xD0), the two words that BUILD a function: `′f⊸€`
 #     ("bind, then map with the result") is the idiom, so their result is what
-#     the adverb takes (the W13-A audit found it in REFERENCE.md and run2.sh).
+#     the adverb takes (the W13-A audit found it in REFERENCE.md and run2.sh);
+#   * ⊙ (0xA4) and ⊛ (0xA5), the 64-bit fetch and store: memory ops like
+#     v1's @ !, and `cell⊙⍀` "fetch the function, then scan" is real code (the
+#     integration audit found it in W13-C's ⍂).
 # Everything else that reaches the compiler's default case (the other v1 ops,
 # every atom, every word call) quotes.
-UNQUOTED = b'"_\\&@!?,().' + bytes([0xC5, 0xD0])
+UNQUOTED = b'"_\\&@!?,().' + bytes([0xC5, 0xD0, 0xA4, 0xA5])
 ADVERB_KEY = 6      # blob record keys: control bytes, never an op, so `f`
 UNQUOTED_KEY = 7    # finds these two only when asked by number
 DIGRAPH_BYTE = 0xBD # ʘB  W13-B (S6): compiles exactly as the long name ‹_dgHH› (HH = B in upper-case hex); no memory
