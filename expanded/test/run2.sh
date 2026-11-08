@@ -4809,11 +4809,34 @@ done
 
 # === W13-INT ===
 echo "W13-INT: the wave-1 features together (digraphs under S1, S3 output, blocks, ⍖ Ṁ, S5)"
-# ʘx€ quotes ‹_dg78› (A's S1 on B's digraph); `ʘx €` calls it first.  The
+# ʘ+€ quotes ‹_dg2B› (A's S1 on B's digraph; ʘ+ ʘ- are W13-B's test bytes),
+# `ʘ- €` calls it first, and a prelude digraph (ʘ1, D's ‹abs›) quotes too.  The
 # oracle agrees (selfcheck's W13-INT block checks seed == golf2).
-w13ip=':‹_dg78›⊕;:‹_dg79›′⊖;3⍳ʘx€⍕3⍳ʘy €⍕'
-[ "$(printf '%s' "$w13ip" | gc)" = "1 2 3 -1 0 1 " ] && [ "$(printf '%s' "$w13ip" | gref)" = "1 2 3 -1 0 1 " ] \
-  && ok "ʘx€ quotes the digraph word (S1), ʘy € calls it, golfref agrees" || no "W13-INT ʘ adverb: $(printf '%s' "$w13ip" | gc)"
+w13ip=':‹_dg2B›⊕;:‹_dg2D›′⊖;3⍳ʘ+€⍕3⍳ʘ- €⍕3⍳3-ʘ1€⍕'
+[ "$(printf '%s' "$w13ip" | gc)" = "1 2 3 -1 0 1 3 2 1 " ] && [ "$(printf '%s' "$w13ip" | gref)" = "1 2 3 -1 0 1 3 2 1 " ] \
+  && ok "ʘ+€ quotes the digraph word (S1), ʘ- € calls it, ʘ1€ maps ‹abs›, golfref agrees" || no "W13-INT ʘ adverb: $(printf '%s' "$w13ip" | gc)"
+# Cross-feature programs, each relying on S3 to print its one result:
+# stock (S1 ⌊⍀ + Ṁ), slidemax (⍘ then S1 ⌈⊟), a ⟦⟧ key for ⍖, a digraph
+# word (ʘg ‹gcd›) on S4 bare locals, S5 ⊕ on a nested list, ♯€.
+w13ibad=""
+while IFS='|' read -r w13ix w13ii w13iw; do
+  w13ig=$(printf '%s' "$w13ii" | gin "$w13ix" 2>&1 | sed 's/ *$//')
+  [ "$w13ig" = "$w13iw" ] || w13ibad="$w13ibad [$w13ix => '$w13ig']"
+done <<'W13ICASES'
+ℤ"⌊⍀-Ṁ|7 1 5 3 6 4|5
+ℤ⍘⌈⊟|3 1 3 -1 -3 5 3 6 7|3 3 5 5 6 7
+5⍳⟦3%⟧⍖||2 1 4 0 3
+⊡f⇒a⇒b a b ʘg;12 18f||6
+“1 2;3 4“⊃59‹split›⟦32‹split›‹num›€⟧€⊕⍕||[2 3] [4 5]
+8⍳♯€||0 1 1 2 1 2 2 3
+′⊕5177416⊛3⍳5177416⊙€||1 2 3
+W13ICASES
+[ -z "$w13ibad" ] && ok "W13 wave 1 together: stock ℤ\"⌊⍀-Ṁ, slidemax ℤ⍘⌈⊟, ⟦⟧ to ⍖, ʘg on bare locals, ⊕ on nested lists, ♯€, ⊙€ (⊙ never quotes)" \
+  || no "W13-INT programs:$w13ibad"
+w13io='ℤ"⌊⍀-Ṁ 5⍳⟦3%⟧⍖⍕⊡f⇒a⇒b a b ʘg;12 18fṄ“1 2;3 4“⊃59‹split›⟦32‹split›‹num›€⟧€⊕⍕'
+[ "$(printf '7 1 5 3 6 4' | gin "$w13io")" = "2 1 4 0 3 6[2 3] [4 5] 5" ] \
+  && [ "$(cat "$TMP/pre.gb" <(printf '%s' "$w13io" | python3 tools/codepage.py encode) | python3 boot/golfref.py | cmp -s - "$TMP/pin" && echo same)" = same ] \
+  && ok "oracle: golfref emits the same binary for the cross-feature program" || no "W13-INT oracle"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
