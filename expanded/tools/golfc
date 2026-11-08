@@ -24,7 +24,8 @@
 # (file offset + 0x400000, the program's one PT_LOAD).  The prelude's words
 # are listed too.  The binary is byte-identical with and without -g.
 #
-# `⎘“path“` includes resolve against the current directory, then lib/ (W11-2A);
+# `⎘“path“` includes resolve against the current directory, then lib/ (W11-2A),
+# then vendor/ (W11-4A, where tools/golfdeps fetches packages);
 # an included .golfj is encoded on the way, a .g2 is read raw.
 #
 # Walks the bootstrap ladder once into expanded/build/ and reuses the result:
@@ -82,7 +83,7 @@ else cat "$prog" >> "$src"; fi
 # W11-2A: `⎘“path“` makes golf2 read that file's bytes as they are — raw code
 # page, the form fd 0 carries.  A `.golfj` include is glyph source, so it is
 # encoded here first, like the program itself: each ⎘“x.golfj“ that resolves
-# (as written, then lib/x.golfj — golf2's search) is rewritten to name an
+# (as written, then lib/x.golfj, then vendor/x.golfj — golf2's search) is rewritten to name an
 # encoded copy in a temp dir, recursively, one copy per real file (so
 # include-once still holds).  A path that resolves to nothing is left alone
 # and golf2 reports it under its own name.  Any other path is untouched.
@@ -99,7 +100,7 @@ def fix(data):
         p = m.group(1)
         if not p.endswith(b".golfj"):
             return m.group(0)
-        for cand in (p, b"lib/" + p):
+        for cand in (p, b"lib/" + p, b"vendor/" + p):
             if os.path.isfile(cand):
                 break
         else:

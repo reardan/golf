@@ -141,6 +141,17 @@
 # and positions and the map never change an emitted byte, so the seed needed
 # no edit for them.  REGISTRY.md's m+176..m+188 (3B's scratch) stay unused.
 #
+# W11-4A (records, ⊜) adds five, live for the span of one ⊜ header, and its
+# own region at 0x43C000 (the field table; see Records below):
+#
+#   ‹record›  the record's name number
+#   ‹fields›  how many fields it has
+#   ‹field›   the field whose words are being emitted
+#   ‹from›    ‹recname›'s byte pointer, ‹upto› one past its last byte
+#
+# It borrows ‹entry› ‹len› ‹ch› ‹idx› ‹other› ‹left› from M2 to build and
+# intern the names it invents, and ‹left› from W11-2A for ‹vendor›'s copy.
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -150,8 +161,10 @@
 #
 # Words, in definition-before-use order: B Y Z U ‹read› ‹say› ‹put› ‹digits›
 # ‹hexits› ‹where› ‹toolarge› a o L w W k c C f E V ‹showname› ‹die› ‹badname›
-# ‹same› ‹readname› ‹getname› ‹forward› ‹resolve› ‹undefined› ‹symbols› e D
-# ‹badinclude› ‹import› ‹unnest› ‹inbyte› g h X ‹badlocal› ‹slot› t H.  The M2 words have long names for the same reason their state
+# ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹forward› ‹resolve›
+# ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
+# g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
+# ‹recstore› ‹recfields› ‹defrecord› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -580,7 +593,12 @@ _           # drop the last byte difference (0, or the dummy)
 }
 ;
 
-:‹readname› # ‹readname› : read a long name after ‹, intern it  [ -> 256+index ]
+# W11-4A split ‹readname› into the pieces ⊜ needs as well, because a record
+# INVENTS names (‹point-x›, ‹set-point-x›) and interns them exactly as if they
+# had been read: ‹fresh› starts a name in the next free entry, ‹legal› is the
+# name-byte test, ‹intern› looks the finished name up or claims its entry.
+
+:‹fresh›    # ‹fresh› : start a name in the next free table entry  [ -> ]
 ←‹count›
 256﹢
 64﹡
@@ -588,58 +606,10 @@ _           # drop the last byte difference (0, or the dummy)
 →‹entry›    # read it straight into the next free entry: a new name is then
 0           # interned just by counting it, with no copy
 →‹len›
-{
-‹read›
-"
-181﹣
-[           # › : the name is complete
-_
-←‹len›
-←‹entry›
-!           #   its length goes in the entry's first cell
-←‹len›
-[           #   ‹› is not a name
-‹badname›
-]
-0
-→‹idx›
-{           #   look for it among the names seen so far
-←‹idx›
-←‹count›
-﹣
-[           #     not one of them: a new name
-←‹count›
-1024<
-[           #       1024 long names fill the table
-“GOLF: too many long names “
-←‹entry›
-‹die›
-]
-←‹count›
-"
-1﹢
-→‹count›    #       claim the entry it was read into
-256﹢
-^
-]
-←‹idx›
-256﹢
-64﹡
-4702208﹢
-→‹other›
-‹same›
-[           #     the same name: its number
-←‹idx›
-256﹢
-^
-]
-←‹idx›
-1﹢
-→‹idx›
-0
-}
-]
-→‹ch›       # an ordinary byte of the name
+;
+
+:‹legal›    # ‹legal› : may this byte stand in a long name?  [ ch -> -1 or 0 ]
+→‹ch›       # (‹ch› keeps the byte for the caller)
 ←‹ch›
 48﹣
 10<         # 0-9
@@ -658,8 +628,69 @@ _
 ←‹ch›
 45﹣
 1<          # -
-﹢
-[           # -1 for exactly one of those, 0 for anything else — EOF included
+﹢           # -1 for exactly one of those, 0 for anything else — EOF included
+;
+
+:‹intern›   # ‹intern› : the name built in ‹entry›, as a number  [ -> 256+index ]
+←‹len›
+←‹entry›
+!           # its length goes in the entry's first cell
+←‹len›
+[           # ‹› is not a name
+‹badname›
+]
+0
+→‹idx›
+{           # look for it among the names seen so far
+←‹idx›
+←‹count›
+﹣
+[           #   not one of them: a new name
+←‹count›
+1024<
+[           #     1024 long names fill the table
+“GOLF: too many long names “
+←‹entry›
+‹die›
+]
+←‹count›
+"
+1﹢
+→‹count›    #     claim the entry it was read into
+256﹢
+^
+]
+←‹idx›
+256﹢
+64﹡
+4702208﹢
+→‹other›
+‹same›
+[           #   the same name: its number
+←‹idx›
+256﹢
+^
+]
+←‹idx›
+1﹢
+→‹idx›
+0
+}
+;
+
+:‹readname› # ‹readname› : read a long name after ‹, intern it  [ -> 256+index ]
+‹fresh›
+{
+‹read›
+"
+181﹣
+[           # › : the name is complete
+_
+‹intern›
+^
+]
+‹legal›     # an ordinary byte of the name (‹legal› leaves it in ‹ch›)
+[
 ‹badname›
 ]
 ←‹len›
@@ -915,7 +946,8 @@ Z           # fold the digit in
 # is its last token's end.
 #
 # Search: the path as written (relative to the compiler's cwd), then `lib/`
-# + path.  Include-once: a path already included (the same BYTES, as written)
+# + path, then `vendor/` + path (W11-4A: where tools/golfdeps fetches
+# packages; ‹vendor›).  Include-once: a path already included (the same BYTES, as written)
 # is skipped, so a file included twice — or including itself — compiles once.
 # The bytes read are the compiler's input form: raw code-page bytes, exactly
 # what fd 0 carries (tools/golfc encodes an included .golfj first).
@@ -944,6 +976,49 @@ Z           # fold the digit in
 _
 ‹where›     # the ⎘'s place in the includer (W11-3B), and the newline
 2.          # exit(2); nothing has been written to fd 1
+;
+
+# W11-4A: `vendor/` is the third place a path is looked for (where
+# tools/golfdeps fetches packages).  It needs 7 bytes in front of the path, and
+# the `lib/` trick has only the 4 of the length cell, so the C string
+# `vendor/path` is built in W11-4A's own region instead: `vendor/` at
+# 0x43F000, then the path, NUL included, copied from 0x438004.
+
+:‹vendor›   # ‹vendor› : open vendor/path, or stop the compile     [ -> fd ]
+1684956534  # 0x646E6576: the bytes `vend`
+4452352!    # at 0x43F000
+3109487     # 0x002F726F: `or/` — its NUL byte is the path's first, below
+4452356!
+0
+→‹left›
+{           # the path and its NUL, 0x438004.. -> 0x43F007..
+4423684
+←‹left›
+﹢
+?
+4452359
+←‹left›
+﹢
+,
+←‹left›
+1﹢
+"
+→‹left›
+←‹len›
+1﹢
+﹣
+1<          # until len+1 bytes are copied
+}
+4452352     # open(vendor/path, O_RDONLY)
+0
+0
+2⎈
+"
+1048576<
+[           # not there either
+“GOLF: cannot include “
+‹badinclude›
+]
 ;
 
 :‹import›   # ‹import› : the ⎘ case — enter the file named next [ -> ]
@@ -1067,9 +1142,9 @@ _
 2⎈
 "
 1048576<
-[
-“GOLF: cannot include “
-‹badinclude›
+[           #   and then vendor/path (W11-4A)
+_
+‹vendor›
 ]
 ]
 →‹fd›
@@ -1332,6 +1407,281 @@ V
 1﹢
 →‹idx›
 0
+}
+;
+
+
+# ---------------------------------------------------------------------------
+# Records (W11-4A): ⊜‹point›‹x›‹y›;
+# ---------------------------------------------------------------------------
+#
+# `⊜` (byte 0xB7) is a header the compiler expands, at compile time, into
+# ordinary words over a plain list — no runtime support, no new prelude word:
+#
+#   ‹point›        x y -> rec       n values, the first deepest, -> a new n-list
+#   ‹point-x›      rec -> x         field k is element k, read through ⊇ (I)
+#   ‹set-point-x›  rec v -> rec     field k := v, in place
+#
+# The record name and every field are names — a ‹long name› or one byte that
+# may stand in one (0-9 A-Z a-z _ -), since a field's byte is spelled into
+# `‹point-x›` — read up to `;`; whitespace between them is skipped.  The record
+# name follows the ⊜ directly.  The words are emitted exactly as if their
+# definitions had been written out, with `-` joining the parts (`.` is not a
+# long-name byte):
+#
+#   :‹point› 2⍳ \&16≪16>16﹢⊛ \&16≪16>8﹢⊛ ;          (one `\&…⊛` per field, last first)
+#   :‹point-x› 0⊇;   :‹set-point-x› &0⊇_&16≪16>8﹢⊛;   (k = 0; 8k+8 is its cell)
+#
+# — so ⊇ still checks the index and use after free on every access, a forward
+# call to ‹point-x› is patched like any other, and an unknown field
+# (‹point-z›) is just an undefined word.  Every invented name is interned like
+# a read one and counts against the 1024.
+#
+# Memory, compiler-only (../REGISTRY.md §3, the W11-4A region 0x43C000..):
+#
+#   0x43C000   the field table: field k's name number at 0x43C000 + 4*k, k < 256
+#   0x43F000   `vendor/path`, the C string ‹vendor› opens (Include, above)
+#
+# State in the bank: ‹record› (the record's name number), ‹fields› (how many),
+# ‹field› (the one being emitted), ‹from› / ‹upto› (‹recname›'s walk).  The
+# seed holds the first four at m+192..m+204 and its byte countdown at 0x43FF00.
+
+:‹badrecord› # ‹badrecord› : reject the record being read   [ msgblock -> !!! ]
+←‹record›
+→b
+‹badlocal›  # `<msg><the record's name> at line N`, exit 2
+;
+
+:‹recbyte›  # ‹recbyte› : append one byte to the name being built  [ ch -> ]
+←‹len›
+60<
+[           # an entry holds 60 bytes of name
+‹badname›
+]
+←‹entry›
+4﹢
+←‹len›
+﹢
+,
+←‹len›
+1﹢
+→‹len›
+;
+
+:‹recname›  # ‹recname› : append a name's spelling to it        [ name -> ]
+"
+256<
+1﹢
+[           # a one-byte name: the byte itself
+‹recbyte›
+^
+]
+64﹡         # a long name: the bytes of its table entry
+4702208﹢
+→‹from›
+←‹from›
+←‹from›
+@
+﹢
+4﹢
+→‹upto›     # one past its last byte
+←‹from›
+4﹢
+→‹from›
+{
+←‹from›
+?
+‹recbyte›
+←‹from›
+1﹢
+"
+→‹from›
+←‹upto›
+﹣
+1<
+}
+;
+
+:‹recdef›   # ‹recdef› : `:name`'s header, for a name number   [ name -> site ]
+→b          # exactly what the ':' case in `t` emits: jmp over the body,
+233o        # dict[name] = the body, patch the forward calls, the prologue
+←p
+4﹢
+←b
+Y
+!
+‹resolve›
+←p
+0
+w
+1E
+;
+
+:‹recstore› # ‹recstore› : emit `&16≪16>` 8k+8 `﹢⊛` — v into cell k [ k -> ]
+38e         # &  : rec v rec
+16W
+162e        # ≪
+16W
+62e         # >  : the list's address, untagged
+1﹢
+8﹡
+W
+145e        # ﹢  : + 8k+8, past the length cell
+165e        # ⊛  : rec
+;
+
+:‹recfields› # ‹recfields› : read the field names up to `;`    [ -> ]
+0
+→‹fields›
+{
+‹read›
+→b
+←b
+59﹣
+[           # ; : the header is complete
+←‹fields›
+[
+“GOLF: record without fields “
+‹badrecord›
+]
+^
+]
+←b
+[           # end of input first
+“GOLF: record without ; “
+‹badrecord›
+]
+←b
+33<
+[           # not whitespace: a field
+←b
+180﹣
+[
+‹readname›
+→b
+]
+←b
+256<
+1﹢
+[
+←b
+‹legal›
+[
+“GOLF: bad record field “
+V
+]
+]
+←‹fields›
+256<
+[
+“GOLF: too many record fields “
+‹badrecord›
+]
+←b
+←‹fields›
+4﹡
+4440064﹢
+!
+←‹fields›
+1﹢
+→‹fields›
+]
+0
+}
+;
+
+:‹defrecord› # ‹defrecord› : the ⊜ case                         [ -> ]
+‹getname›
+→‹record›
+←‹record›
+256<
+1﹢
+[           # a one-byte record name must be spellable in ‹point-x›
+←‹record›
+‹legal›
+[
+←‹record›
+→b
+“GOLF: bad record name “
+V
+]
+]
+‹recfields›
+←‹record›   # the constructor: `n⍳`, then each value into its cell, last first
+‹recdef›
+←‹fields›
+W
+82e         # ⍳ (R)
+←‹fields›
+→‹field›
+{
+←‹field›
+1﹣
+→‹field›
+92e         # \  : the list over the value below it
+←‹field›
+‹recstore›
+←‹field›
+1<
+}
+94E
+k
+0
+→‹field›
+{           # per field k: the accessor, then the setter
+‹fresh›
+←‹record›
+‹recname›
+45
+‹recbyte›
+←‹field›
+4﹡
+4440064﹢
+@
+‹recname›
+‹intern›    # ‹point-x›
+‹recdef›
+←‹field›
+W
+73e         # ⊇ (I)
+94E
+k
+‹fresh›
+115
+‹recbyte›
+101
+‹recbyte›
+116
+‹recbyte›
+45
+‹recbyte›
+←‹record›
+‹recname›
+45
+‹recbyte›
+←‹field›
+4﹡
+4440064﹢
+@
+‹recname›
+‹intern›    # ‹set-point-x›
+‹recdef›
+38e         # &
+←‹field›
+W
+73e         # ⊇ : the index and use-after-free checks
+95e         # _
+←‹field›
+‹recstore›
+94E
+k
+←‹field›
+1﹢
+"
+→‹field›
+←‹fields›
+﹣
+1<
 }
 ;
 
@@ -1729,6 +2079,14 @@ w           #   ... emitted as a placeholder, and left on the stack for ';'
 [           # 0xB6 ⎘ : include a file (W11-2A)
 _
 ‹import›
+^
+]
+
+"
+183-
+[           # 0xB7 ⊜ : a record header, expanded into words (W11-4A)
+_
+‹defrecord›
 ^
 ]
 

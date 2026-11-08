@@ -2658,6 +2658,86 @@ printf '%s' ':‹boom›3⍳9⊇;:‹safe›′‹boom›‹catch›;' | w112enc
 
 # === W11-4A ===
 
+echo "W11-4A: ⊜ records (constructor, accessors, setters over a plain list); vendor/ as the third include place"
+# w114a <compiler> compiles prelude + stdin in $TMP/inc (W11-2A's directory),
+# leaving "rc message" and the binary in $TMP/inc/p; w112run runs it.
+w114a(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && $1 < src > p 2>err; echo "$? $(cat err)"); }
+[ "$(printf '%s' '⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ' | gc)" = 4 ] \
+  && ok "⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ prints 4" || no "record accessor"
+[ "$(printf '%s' '⊜‹point›‹x›‹y›; 3 4‹point›"‹point-x›Ṅ␤9‹set-point-x›"⍕␤"‹point-x›Ṅ␤"≢Ṅ␤‹point-y›Ṅ' | gc)" = "$(printf '3\n9 4 \n9\n2\n4')" ] \
+  && ok "‹set-point-x› stores in place and leaves the record; ⍕ prints its fields; ≢ is the field count" || no "record setter / ⍕"
+[ "$(printf '%s' '⊜p a ‹b›
+  c ;:‹q›"‹p-c›\\‹p-a›-;1 2 3p"‹q›Ṅ␤"7‹set-p-b›‹p-b›Ṅ␤⍕' | gc)" = "$(printf '2\n7\n1 7 3 ')" ] \
+  && ok "one-byte record and field names, whitespace and a newline between fields, mixed with ‹long› ones" || no "one-byte record names"
+[ "$(printf '%s' ':‹len2›"‹v-x›²\\‹v-y›²+;⊚‹both›‹v-x›‹v-y›+;⊜‹v›‹x›‹y›;3 4‹v›"‹len2›Ṅ␤‹both›Ṅ␤2⍳′‹mk›€′‹v-y›€⍕:‹mk›"‹v›;' | gc)" = "$(printf '25\n7\n0 1 ')" ] \
+  && ok "the words are ordinary: called and chained before the ⊜ (forward references), quoted with ′" || no "record words as names"
+[ "$(printf '1Ṅ\n⊜‹point›‹x›‹y›; 3 4‹point›‹point-z›Ṅ' | w114a "$TMP/golf2")" = "2 GOLF: undefined word ‹point-z› at line 2" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "a wrong field: GOLF: undefined word ‹point-z› at line 2, exit 2, no binary" || no "wrong field: $(cat "$TMP/inc/err")"
+w114bad=""
+for w114c in '⊜‹point›;|2 GOLF: record without fields ‹point› at line 1' \
+             '\n⊜‹point›‹x› ‹y›|2 GOLF: record without ; ‹point› at line 2' \
+             '⊜p‹x›(;|2 GOLF: bad record field ( at line 1' \
+             '⊜(xy;|2 GOLF: bad record name ( at line 1' \
+             "⊜‹$(printf 'a%.0s' $(seq 1 55))›‹x›;|2 GOLF: bad long name ‹set-$(printf 'a%.0s' $(seq 1 55))-› at line 1"; do
+  w114g=$(printf "${w114c%%|*}" | w114a "$TMP/golf2")
+  [ "$w114g" = "${w114c#*|}" ] && [ ! -s "$TMP/inc/p" ] || w114bad="$w114bad [$w114g]"
+  w114s=$(printf "${w114c%%|*}" | w114a "$TMP/seed")
+  [ "$w114s" = "2 " ] && [ ! -s "$TMP/inc/p" ] || w114bad="$w114bad [seed: $w114s]"
+  w114r=$(printf "${w114c%%|*}" | w114a "python3 $EXP/boot/golfref.py")
+  [ "$w114r" = "${w114c#*|}" ] || w114bad="$w114bad [golfref: $w114r]"
+done
+[ -z "$w114bad" ] \
+  && ok "malformed ⊜ (no fields, no ;, bad field, bad name, a 61-byte invented name): golf2 and golfref say so with the line, exit 2; the seed exits 2" \
+  || no "malformed ⊜:$w114bad"
+w114many=$(python3 -c 'print("⊜‹r›" + "".join("‹f%d›" % k for k in range(256)) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-f255›Ṅ␤\"‹r-f0›Ṅ␤≢Ṅ")')
+[ "$(printf '%s' "$w114many" | gc)" = "$(printf '355\n100\n256')" ] \
+  && [ "$(printf '%s' "${w114many/;/‹f256›;}" | w114a "$TMP/golf2")" = "2 GOLF: too many record fields ‹r› at line 1" ] \
+  && ok "256 fields (512 invented names) work; a 257th: GOLF: too many record fields ‹r›" || no "record field bound: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⊜‹p›‹x›;5‹p›"⌫‹p-x›' | gc 2>&1)" = "GOLF: use after free" ] \
+  && [ "$(printf '%s' '⊜‹p›‹x›‹y›;3⍳9‹set-p-y›⍕␤1⍳‹p-y›' | gc 2>&1)" = "$(printf '0 9 2 \nGOLF: index out of range')" ] \
+  && ok "accessors and setters go through ⊇: use after free and index out of range still apply" || no "record checks"
+printf '%s' '⊜‹p›‹x›‹y›;' | w112enc > "$TMP/w114.rec.g2"
+printf '%s' ':‹p›2⍳\\&16≪16>16﹢⊛\\&16≪16>8﹢⊛;:‹p-x›0⊇;:‹set-p-x›&0⊇_&16≪16>8﹢⊛;:‹p-y›1⊇;:‹set-p-y›&1⊇_&16≪16>16﹢⊛;' | w112enc > "$TMP/w114.hand.g2"
+cat "$TMP/pre.gb" "$TMP/w114.rec.g2" | "$TMP/golf2" > "$TMP/w114.rec" 2>/dev/null
+cat "$TMP/pre.gb" "$TMP/w114.hand.g2" | "$TMP/golf2" > "$TMP/w114.hand" 2>/dev/null
+cmp -s "$TMP/w114.rec" "$TMP/w114.hand" && [ -s "$TMP/w114.rec" ] \
+  && ok "⊜‹p›‹x›‹y›; compiles to exactly the bytes of its five definitions written out (REFERENCE.md, Records)" || no "record expansion is not textual"
+# Includes: a record declared in an included file; vendor/ searched after the
+# path as written and lib/.
+mkdir -p "$TMP/inc/vendor/pkg"
+printf '%s' '⊜‹pt›‹x›‹y›;:‹norm2›"‹pt-x›²\\‹pt-y›²+;' | w112enc > "$TMP/inc/vendor/pkg/pt.g2"
+printf '%s' ':‹who›1;' | w112enc > "$TMP/inc/vendor/who.g2"
+printf '%s' ':‹who›2;' | w112enc > "$TMP/inc/lib/who.g2"
+printf '%s' ':‹vend›3;' | w112enc > "$TMP/inc/vendor/vend.g2"
+[ "$(printf '%s' '⎘“pkg/pt.g2“3 4‹pt›"‹norm2›Ṅ␤5‹set-pt-x›‹norm2›Ṅ' | w114a "$TMP/golf2")" = "0 " ] && [ "$(w112run)" = "$(printf '25\n41')" ] \
+  && ok "a record declared in an included file (found in vendor/) works in the includer" || no "record in include: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⎘“who.g2“⎘“vend.g2“‹who›Ṅ‹vend›Ṅ' | w114a "$TMP/golf2")" = "0 " ] && [ "$(w112run)" = 23 ] \
+  && [ "$(printf '%s' '⎘“nope.g2“' | w114a "$TMP/golf2")" = "2 GOLF: cannot include nope.g2 at line 1" ] \
+  && ok "search order: as written, lib/, then vendor/; in none of them: GOLF: cannot include nope.g2" || no "vendor search order: $(cat "$TMP/inc/err")"
+w114p='⎘“pkg/pt.g2“⎘“vend.g2“⊜q a ‹b›;3 4‹pt›‹norm2›Ṅ‹vend›Ṅ7 8q9‹set-q-b›"‹q-a›+⍕'
+[ "$(printf '%s' "$w114p" | w114a "$TMP/golf2")" = "0 " ] && cp "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && [ "$(printf '%s' "$w114p" | w114a "$TMP/seed")" = "0 " ] && cmp -s "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && (cd "$TMP/inc" && python3 "$EXP/boot/golfref.py" < src > p.ref 2>/dev/null) && cmp -s "$TMP/inc/p.ref" "$TMP/inc/p.g2" \
+  && [ "$(chmod +x "$TMP/inc/p.g2"; "$TMP/inc/p.g2")" = "25314 16 " ] \
+  && ok "seed, golf2 and boot/golfref.py emit the same bytes for records and a vendor/ include" || no "record parity (seed/golf2/golfref)"
+[ "$(printf '%s' '\rec\lnamep\rname xy;' | w112enc | od -An -tx1 | tr -d ' \n')" = "b7b470b52078793b" ] \
+  && [ "$(printf '\267\264p\265xy;' | python3 tools/codepage.py decode)" = "⊜‹p›xy;" ] \
+  && ok "⊜ and \\rec encode to 0xB7; decode shows ⊜" || no "⊜ encode/decode"
+# tools/golfc: a .golfj package in vendor/ is encoded on the way, like lib/'s.
+mkdir -p "$TMP/w114g/vendor"
+printf '%s\n' '# a package' '⊜‹pt›‹x›‹y›;' ':‹sum›"‹pt-x›\\‹pt-y›+;' > "$TMP/w114g/vendor/geo.golfj"
+printf '%s\n' '⎘“geo.golfj“' '3 4‹pt›‹sum›Ṅ' > "$TMP/w114g/main.golfj"
+(cd "$TMP/w114g" && "$EXP/tools/golfc" -j main.golfj m >/dev/null 2>&1) && [ "$("$TMP/w114g/m")" = 7 ] \
+  && ok "golfc -j: a .golfj include found in vendor/ is encoded and compiled (a record inside)" || no "golfc vendor .golfj"
+# REFERENCE.md's Records examples print what the doc says.
+w114bad=""
+while IFS= read -r w114l; do
+  w114q=${w114l%%  ->*}; w114q=${w114q%"${w114q##*[! ]}"}; w114w=${w114l##*->  }
+  [ "$(printf '%s' "$w114q" | gc 2>&1)" = "$w114w" ] || w114bad="$w114bad [$w114q]"
+done < <(sed -n '/^### Records$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w114bad" ] && [ "$(sed -n '/^### Records$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && ok "REFERENCE.md's Records examples print what they say" || no "REFERENCE Records examples:$w114bad"
+
 # === W11-4B ===
 
 # === W11-4C ===

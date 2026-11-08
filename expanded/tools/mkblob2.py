@@ -423,6 +423,12 @@ IMPORT_TABLE = 0x438200   # include-once table, 256 bytes per path: [len:4][byte
 IMPORT_DEPTH = 8          # includes nest at most this deep
 IMPORT_FILES = 60         # distinct files one compile may include
 IMPORT_LEN = 250          # the longest include path, in bytes
+IMPORT_DIRS = (b"", b"lib/", b"vendor/")  # where a path is looked for, in order (vendor/: W11-4A)
+REC_BYTE = 0xB7     # ⊜  ⊜‹point›‹x›‹y›; defines constructor/accessors/setters (W11-4A)
+# W11-4A's compiler-only memory (../REGISTRY.md §3; layout in self/golf2.golfj):
+REC_FIELDS = 0x43C000     # field k's name number at REC_FIELDS + 4*k
+REC_MAX = 256             # fields one record may have
+VENDOR_PATH = 0x43F000    # the C string `vendor/path` the third include try opens
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).

@@ -215,7 +215,8 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xB3` | `⇐` | `\lget` | prefix: ⇐x pushes local x (a..h or ‹name›) |
 | `0xB4` | `‹` | `\lname` | opens a long name: ‹name› stands wherever a one-byte name can |
 | `0xB5` | `›` | `\rname` | closes a long name |
-| `0xB6` | `⎘` | `\import` | prefix: ⎘“path“ compiles that file in place (once; searches . then lib/) |
+| `0xB6` | `⎘` | `\import` | prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/) |
+| `0xB7` | `⊜` | `\rec` | prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec) |
 
 ### Library words
 
@@ -487,6 +488,60 @@ zero-is-true, like `∊` and `T`.
 
 Names that start with `‹_1d` are these words' helpers.
 
+### Records
+
+`⊜‹point›‹x›‹y›;` (byte `0xB7`, mnemonic `\rec`) declares a record: a name,
+then its fields, up to `;` (W11-4A). The compiler turns the header into
+ordinary words at compile time. Nothing runs at the `⊜` itself:
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹point›` | `x y -> rec` | constructor: pops one value per field, the first field deepest, and returns a new list of that length |
+| `‹point-x›` | `rec -> x` | accessor: field *k* is element *k*, read with `⊇`, so `index out of range` and `use after free` still apply |
+| `‹set-point-x›` | `rec v -> rec` | setter: stores `v` in the field **in place** and leaves the record |
+
+A record is a plain list underneath, so every list word works on it: `⍕`
+prints its fields, `≢` counts them, `⊇` indexes them, `≣` compares two, and
+`⌫` frees one. A word that takes a "point" takes any list long enough.
+
+```
+⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ                         ->  4
+⊜‹point›‹x›‹y›; 3 4‹point›9‹set-point-x›⍕                    ->  9 4 
+⊜‹point›‹x›‹y›; 3 4‹point›"‹point-x›²&‹point-y›²+Ṅ           ->  25
+⊜‹pair›a b; 1 2‹pair›"≢Ṅ 1 2‹pair›≣Ṅ                         ->  2-1
+⊜p‹first›‹rest›; 7 3⍳p‹p-rest›⍕                              ->  0 1 2 
+```
+
+- **Names.** The accessor and setter names join the parts with `-`. `.` is
+  not a long-name byte, so the plan's `‹point.x›` is spelled `‹point-x›`.
+  The record name and each field are either a long name or one byte that may
+  stand in a long name (`0-9 A-Z a-z _ -`), because that byte becomes part of
+  `‹p-x›`. Whitespace may separate the fields. The record name follows `⊜`
+  directly. At most 256 fields.
+- **They are just words.** You can call them before the `⊜` (forward
+  references), quote them (`′‹point-x›`), and use them as chain links. A field
+  that does not exist is an ordinary undefined word:
+  `GOLF: undefined word ‹point-z› at line N`, exit 2. A record declared in an
+  included file works the same way.
+- **Limits.** Every invented name counts against the 1024 long names, two
+  per field, and so do the record and field names themselves. A name that
+  would pass 60 bytes (`‹set-…›` is 4 longer than the record name plus the
+  field) is `GOLF: bad long name ‹…›`.
+- **Errors** (exit 2): `GOLF: record without fields ‹point›` (`⊜‹point›;`),
+  `GOLF: record without ; ‹point›` (end of input first),
+  `GOLF: bad record field (` (a byte that is not a name), `GOLF: bad record
+  name (`, and `GOLF: too many record fields ‹point›`. Each ends with
+  ` at line N`.
+
+They compile to exactly what these definitions would (`8k+8` is field *k*'s
+cell, past the length cell):
+
+```golfj
+:‹point› 2⍳ \\&16≪16>16﹢⊛ \\&16≪16>8﹢⊛ ;   # last field first
+:‹point-x› 0⊇;
+:‹set-point-x› &0⊇_ &16≪16>8﹢⊛;
+```
+
 ### Modules
 
 `⎘“path“` (byte `0xB6`, mnemonic `\import“path“`) includes a file (W11-2A).
@@ -496,8 +551,8 @@ definitions become the program's, and there are no namespaces. It may stand
 anywhere a token may, but by convention the includes come first.
 
 - **Search order:** the path as written, relative to the directory the
-  compiler runs in, then `lib/` + path. (W11-4A adds `vendor/`.) An absolute
-  path is used as it is.
+  compiler runs in, then `lib/` + path, then `vendor/` + path (W11-4A; where
+  packages are fetched). An absolute path is used as it is.
 - **Include-once:** a path that was already included is skipped, so a file
   included twice compiles once, and a file that includes itself is harmless.
   Paths are compared byte for byte as written, so `x.g2` and `lib/x.g2` count
