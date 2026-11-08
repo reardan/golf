@@ -175,7 +175,7 @@
 #
 # Words, in definition-before-use order: B Y Z U ‹read› ‹say› ‹put› ‹digits›
 # ‹hexits› ‹where› ‹toolarge› a o L w W k c C f E V ‹showname› ‹die› ‹badname›
-# ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹forward› ‹resolve›
+# ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹digraph› ‹hexit› ‹forward› ‹resolve›
 # ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
 # g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
 # ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹step› ‹inrec› ‹quoted› ‹plain› ‹badglyph› t H (W13-A: the four before t).  The M2 words have long names for the same reason their state
@@ -733,6 +733,48 @@ _
 _
 ‹readname›
 ]
+"           # W13-B: ... or ʘ (0xBD): the digraph's long name ‹_dgHH›
+189﹣
+[
+_
+‹digraph›
+]
+;
+
+# W13-B (S6, the digraph page).  ʘ followed by ANY byte B is the long name
+# ‹_dgHH›, HH = B in upper-case hex, in every place a long name can stand
+# (a call, ′, a chain link, a prefix's operand, a forward reference): the
+# name is built in the next free entry with ‹recbyte› and interned exactly as
+# ‹readname› would intern the same text, so ʘ+ and ‹_dg2B› are one name.
+# Borrows ‹ch› (idle between tokens) for B.
+
+:‹digraph›  # ‹digraph› : read B after ʘ, intern ‹_dgHH›   [ -> 256+index ]
+‹read›
+→‹ch›
+‹fresh›
+95          # _
+‹recbyte›
+100         # d
+‹recbyte›
+103         # g
+‹recbyte›
+←‹ch›
+4>          # the high nibble ...
+‹hexit›
+←‹ch›
+15$         # ... then the low one
+‹hexit›
+‹intern›
+;
+
+:‹hexit›    # ‹hexit› : append nibble d as an upper-case hex digit  [ d -> ]
+"
+10<
+[           # A-F: 'A' is '0' + 17
+7﹢
+]
+48﹢
+‹recbyte›
 ;
 
 :‹forward›  # ‹forward› : emit `op rel32` to a name not yet defined [ op -> ]
@@ -2529,6 +2571,13 @@ w           #   ... push imm32 <the block's body address>
 “ outside a block“
 10985442    #   0xA79FE2: the UTF-8 of ⟧
 ‹badglyph›
+]
+
+"
+189-
+[           # 0xBD ʘ : a digraph (W13-B).  Its ‹_dgHH› name number takes the
+_           #   char's place and falls through like ‹'s, below: a link or a call
+‹digraph›
 ]
 
 "

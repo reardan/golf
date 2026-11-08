@@ -185,7 +185,7 @@ both include "$TMP/src.include"
 # a setter — and an include found through vendor/ (the third search place),
 # through both source forms.
 mkdir -p "$TMP/rec/vendor"
-printf '%s' '⊜‹pt›‹x›‹y›;:‹n2›"‹pt-x›²&‹pt-y›²+;' | python3 tools/codepage.py encode > "$TMP/rec/vendor/rpt.g2"
+printf '%s' '⊜‹pt›‹x›‹y›;:‹n2›"‹pt-x›²\\‹pt-y›²+;' | python3 tools/codepage.py encode > "$TMP/rec/vendor/rpt.g2"
 printf '%s' ':‹fy›‹q-b›;⎘“rpt.g2“⊜q a ‹b›;3 4‹pt›‹n2›Ṅ7 8q9‹set-q-a›"‹fy›\\‹q-a›+Ṅ7→‹v›←‹v›Ṅ' \
   | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.records"
 ( cd "$TMP/rec" && "$TMP/seed" < "$TMP/src.records" > "$TMP/old.records" 2>/dev/null; chmod +x "$TMP/old.records"
@@ -380,6 +380,16 @@ for w13ac in '⟧|⟧ outside a block' '[⟧]|⟧ outside a block' '⊚g ⟦1⟧
     && [ "$(cat "$TMP/badblk.newerr")" = "GOLF: ${w13ac#*|} at line 1" ] || w13ab="$w13ab [${w13ac%%|*}: seed $sst, golf2 $gst]"
 done
 [ -z "$w13ab" ] && ok "both refuse a stray ⟧, a ⟦ in a chain and a local inside a ⟦ in a ⊡ word, exit 2 (W13-A)" || no "W13-A rejection differs:$w13ab"
+
+# === W13-INT ===
+echo "W13-INT: ʘ digraphs through A's dispatch (S1 quoting, links, prefixes) — seed and golf2 agree"
+# ʘx€ quotes ‹_dg78› (S1), ʘx € (space) calls it first, ′ʘx, a ʘ chain, a ⊡ʘ header
+# with ⇒ʘb and a bare ʘb local, ⇡ʘv, ⊜ʘp, a forward ʘ reference.
+w13is=':‹_dg78›⊕;3⍳ʘx€⍕:‹mk›′⊖;3⍳‹_dg2B› €⍕:‹_dg2B›‹mk›;′ʘx3\\⍎Ṅ⊚ʘc ʘx ʘx;1ʘcṄ⊡ʘa⇒ʘb ʘb ʘb*;4ʘaṄ7→ʘv⇡ʘv←ʘvṄ⊜ʘp‹x›;3ʘp‹_dg70-x›Ṅ'
+printf '%s' "$w13is" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.w13i"
+both w13i "$TMP/src.w13i"
+[ "$("$TMP/new.w13i" 2>/dev/null)" = "1 2 3 -1 0 1 431683" ] && cmp -s "$TMP/old.w13i" "$TMP/new.w13i" \
+  && ok "golf2 == seed on the ʘ program, and ʘx€ quotes (W13-INT)" || no "W13-INT ʘ program: $("$TMP/new.w13i" 2>/dev/null) / seed $("$TMP/old.w13i" 2>/dev/null)"
 
 echo
 echo "self/golf2.golfj: $(wc -c < self/golf2.golfj) bytes of hand-written v2 GOLF"

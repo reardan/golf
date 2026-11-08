@@ -131,3 +131,10 @@ nothing measurable. golf2 compiling the prelude plus all twelve
 `bench/leetcode/golf/` files (36,701 bytes) took 19.0 ms before and 19.9 ms
 after, and compiling itself 7.2 ms before and 6.8 ms after (mean of 50 runs
 each, same session; the run-to-run spread is larger than either difference).
+W13-B shipped the bit atoms `♯ ⊣ ⊢ ⊥` (popcount, trailing and leading zero
+count, low bit), one inline instruction each (`popcnt` / `tzcnt` / `lzcnt`,
+and `mov; neg; and` for `x & -x`). Micro rows `popcnt` and `lowbit`, best of
+3: the bare `loop` row is 0.82 ns/iteration and `"♯_` / `"⊣_` / `"⊥_` inside
+it 1.12–1.14, so each atom with its dup and drop costs about 0.3 ns. Implicit
+output adds 15 bytes to the end-of-program exit (a load, a test and a call
+at exit only), and nothing to any loop.

@@ -2138,3 +2138,20 @@
 :\keys‹keys›;
 :\bump‹bump›;
 :\vec‹vec›;
+
+# ===== W13-B =====
+# S3 implicit output.  Running off the end of the program (the end-of-program
+# exit, blob record 5 — not `.`) calls through the END HOOK, 1C runtime cell
+# 5179808 (0x4F09A0, mkblob2.END_HOOK), before the flush hook.  ‹_13b_end›
+# prints the value left on the data stack when there is EXACTLY one above the
+# program's base — ⍕ for a list, Ṅ for anything else, no newline — and does
+# nothing otherwise.  The base is W11-4C's, recorded at prelude init in cell
+# 5180480 (‹stack›'s; the prelude's top level is stack-neutral, so it is the
+# program's base).  The hook is called from top level: `call` parks the
+# return address on the rbp stack via the prologue, so ⊷'s sp here is the
+# program's rsp.  Bare programs (golfc -n) and the compilers never fill the
+# cell, so nothing changes for them.
+# base - sp is 16 for one value: ⊷ runs with the base already pushed.
+:‹_13b_end›5180480\fetch\spr_\rsub16\rsub["T[Q\else N]];
+:‹_13b_init›\ref‹_13b_end›5179808\store;
+‹_13b_init›

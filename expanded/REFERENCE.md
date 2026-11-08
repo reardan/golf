@@ -60,7 +60,9 @@ dispatch of `+ - * ⌈ ⌊`. Without the prelude (`golfc -n`) those five ops wor
 on integers only.
 
 **Ending.** Running off the end of the program calls `exit(0)`. `.` exits
-earlier with the status it pops.
+earlier with the status it pops. With the prelude loaded, running off the end
+first prints the result if exactly one value is left on the data stack (see
+"Implicit output" under "Output" in section 3); `.` never does.
 
 **Three spellings of one program.** The compiler reads **raw bytes**. Bytes
 0–127 are ASCII ops and names. Bytes 0x80–0xFF are atoms, compiler ops and
@@ -158,7 +160,7 @@ large integers still work as numbers. Without the prelude (`golfc -n`, and the
 compiler itself) the hook cell is zero, so nothing is ever called and the
 atoms compute on the bits. To map one of them over a list, write `′⊕€`.
 
-The bitwise atoms `~ $ | = > ≪ ≫` stay **raw** on purpose. They work on a
+The bitwise atoms `~ $ | = > ≪ ≫` and the bit atoms `♯ ⊣ ⊢ ⊥` (W13-B) stay **raw** on purpose. They work on a
 list's bits with no check, because building and stripping the tag
 (`32767 48≪|`, `16≪16>`) is bit arithmetic on exactly those values. The same
 goes for the raw forms `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`, and for the comparisons `< » ≡ ≺ ≻`.
@@ -290,6 +292,10 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0xA7` | `⎈` | `\sys` | a1 a2 a3 num -> result: raw syscall |
 | `0xA8` | `⊷` | `\spr` | -> sp bp: push rsp (as before the atom), then rbp |
 | `0xA9` | `⊶` | `\spw` | sp bp ->: set rbp, then rsp (both stacks jump) |
+| `0xAA` | `♯` | `\pcnt` | x -> number of 1 bits (popcount) |
+| `0xAB` | `⊣` | `\ctz` | x -> trailing zero bits (64 for 0) |
+| `0xAC` | `⊢` | `\clz` | x -> leading zero bits (64 for 0) |
+| `0xAD` | `⊥` | `\lsb` | x -> x & -x, the lowest set bit (0 for 0) |
 
 ### Compiler ops
 
@@ -314,6 +320,7 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xBA` | `⇣` | `\vdec` | prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there) |
 | `0xBB` | `⟦` | `\blk` | opens an inline block: ⟦ … ⟧ is an anonymous word compiled in place; ⟧ pushes its address |
 | `0xBC` | `⟧` | `\endblk` | closes an inline block and pushes its address |
+| `0xBD` | `ʘ` | `\dig` | prefix: ʘB (any byte B) is the long name ‹_dgHH›, HH = B in upper-case hex (see Digraph page) |
 
 ### Library words
 
@@ -374,6 +381,14 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xE1` | `Ḳ` | `\keys` | — | alias of ‹keys›: d -> list, the keys in insertion order |
 | `0xE2` | `Ḃ` | `\bump` | — | alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1) |
 | `0xE3` | `Ṿ` | `\vec` | — | alias of ‹vec›: -> v, a new empty vector |
+
+### Digraph page
+
+Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the long name `‹_dgHH›` (HH = B in upper-case hex). The prelude gives a word a digraph with `:‹_dgHH›‹name›;`. Generated from `lib/prelude.golfj`.
+
+| digraph | bytes | long name | word | meaning |
+|---|---|---|---|---|
+| — | | | | none defined yet |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -472,6 +487,25 @@ missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 102
 name with `GOLF: too many long names ‹…›`, both exit status 2. Locals take long
 names inside a `⊡` word (M-FRAME2), up to 16 per word.
 
+**Digraphs: `ʘ` (`\dig`, `0xBD`, W13-B).** `ʘ` followed by any byte B is
+the long name `‹_dgHH›`, HH being B in upper-case hex: `ʘ+` is `‹_dg2B›`,
+2 bytes instead of 8. It is that name everywhere a long name can stand: a
+call, `′ʘ+`, a chain link, the operand of `→ ← ⇒ ⇐ ⇡ ⇣` and of the headers
+`: ⊡ ⊚ ⊜`, and a forward reference; and like any call token it is quoted
+before an adverb (`ʘx€` is `′ʘx€`, W13-A's S1). A library gives a word a digraph by
+defining `:‹_dgHH›‹realname›;`. Calling one that is not defined is
+`GOLF: undefined word ‹_dgHH› at line N`. In `.golfj` source B is written as
+its ordinary glyph or ASCII byte, so `ʘ⍳` is `BD 52`. The prelude's digraphs
+are listed in the generated "Digraph page" table, after "Library words"
+above.
+
+```
+:‹_dg2B›⊕;:‹_dg2D›⊖;5ʘ+ʘ+ʘ-Ṅ             ->  6
+:‹_dg2B›⊗;3⍳′ʘ+€⍕                       ->  0 2 4 
+⊚‹_dg2D›⊕⊕;7ʘ-Ṅ                         ->  9
+ʘ+:‹_dg2B›“late“🗲;                      ->  late
+```
+
 ### One-byte aliases
 
 W12-Z1 gives the nine most used prelude long names a byte each, `0xDB`–`0xE3`.
@@ -525,7 +559,8 @@ function: `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣`, and W13's `⍂ ⍃ ⍖ ⍷`
 **immediately** after a call token, with no whitespace in between, the
 compiler pushes that token's address instead of calling it, exactly as `′`
 would. So `f€` means `′f€`. A call token is an atom (`² ⊕ ⌊ ≡ …`), a v1
-arithmetic op (`+ - * / % <`), a one-byte word, or a `‹long name›`.
+arithmetic op (`+ - * / % <`), a one-byte word, a `‹long name›`, or a
+digraph `ʘB` (it is the long name `‹_dgHH›`, so `ʘx€` is `′ʘx€`).
 
 - `′f€` still works. A space (or a newline, or a comment) between the two
   gives back the old meaning, "call `f`, then run the adverb", for a word
@@ -634,6 +669,26 @@ Output still pending when the process dies of a signal (a kill, or the
 return-stack guard page's SIGSEGV) is lost. The cell `0x4F0988` (`5179784`)
 holds the fd the buffer drains to; `0` means fd 1.
 
+**Implicit output (W13-B).** When the program runs off its end (not `.`)
+with exactly one value left on the data stack above the program's base, that
+value is printed: with `⍕` if it is a list (`T` says list), else with `Ṅ`.
+No newline is added. Zero values, or two or more, print nothing. It is the
+prelude's: the end-of-program exit calls the end hook (cell `0x4F09A0`,
+`5179808`) before the final flush, and only the prelude fills it, so a bare
+program (`golfc -n`) and the compilers are unchanged. A string literal is a
+byte block, not a list, so a lone `“…“` prints as its address; end with `🗲`.
+A program whose last value is junk (a dict, a running minimum) ends with `_`.
+
+```
+5⍳                       ->  0 1 2 3 4 
+2 3*                     ->  6
+“ab“⊃                    ->  97 98 
+7Ṅ“ “🗲8                 ->  7 8
+1 2 9Ṅ                   ->  9
+```
+
+`1 2` prints nothing (two values), and so does `5 0.` (`.` skips it).
+
 ### Input
 
 The prelude's input words (W9-4C) have long names, so they take no letter
@@ -726,7 +781,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 186 in all after W12-O6, helpers included), so a program has 838 for itself.
+has 188 in all after W13-B, helpers included), so a program has 836 for itself.
 
 ### Sorting by key
 
@@ -816,7 +871,7 @@ prints its fields, `≢` counts them, `⊇` indexes them, `≣` compares two, an
 ```
 ⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ                         ->  4
 ⊜‹point›‹x›‹y›; 3 4‹point›9‹set-point-x›⍕                    ->  9 4 
-⊜‹point›‹x›‹y›; 3 4‹point›"‹point-x›²&‹point-y›²+Ṅ           ->  25
+⊜‹point›‹x›‹y›; 3 4‹point›"‹point-x›²\\‹point-y›²+Ṅ          ->  25
 ⊜‹pair›a b; 1 2‹pair›"≢Ṅ 1 2‹pair›≣Ṅ                         ->  2-1
 ⊜p‹first›‹rest›; 7 3⍳p‹p-rest›⍕                              ->  0 1 2 
 ```
@@ -968,7 +1023,7 @@ A freed list that reaches one stops the program with `GOLF: use after free`
 | `‹heapstats›` | `-> blocks bytes` | the number of allocator blocks now live (allocated and not yet freed) and their total size in bytes. A block counts whole: its header cell plus its size class, so `5⍳` (6 cells, class 8) is `(8+1)*8 = 72` bytes. The prelude's own blocks count too, so compare two readings |
 
 ```
-‹heapstats›_→n 5⍳‹heapstats›_←n-Ṅ                          ->  1
+‹heapstats›_→n 5⍳‹heapstats›_←n-Ṅ⌫                         ->  1
 ‹heapstats›→b_ 5⍳‹heapstats›←b-Ṅ                           ->  72
 :d⊗;5⍳→l‹heapstats›_→n 1000→i{←l′d€⌫←i1-"→i0≡}‹heapstats›_←n-Ṅ  ->  0
 5⍳"⌫ 5⍳"≢Ṅ                                                 ->  5
@@ -1132,7 +1187,7 @@ status 1.
 ‹dict›"1 10‹put›"1 0‹getor›Ṅ"2 0‹getor›Ṅ           ->  100
 ‹dict›"3′⊗‹upd›"3 5‹put›"3′⊗‹upd›3‹get›Ṅ           ->  10
 ‹dict›"“ab“⊃‹bump›"“ab“⊃‹bump›"“ab“⊃‹get›Ṅ‹keys›⍕   ->  2[97 98]
-‹set›"4‹add›"4 9‹getor›Ṅ"5 9‹getor›Ṅ‹keys›⍕          ->  094
+‹set›"4‹add›"4 9‹getor›Ṅ"5 9‹getor›Ṅ‹keys›⍕_         ->  094
 :f&+;‹dict›→d 7←d 3′f‹upd›_←d 3′f‹upd›_←d 3‹get›ṄṄ   ->  147
 ```
 
@@ -1166,8 +1221,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`), the prelude has 186 long
-names, which leaves 838 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers), the prelude has 188 long
+names, which leaves 836 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1421,7 +1476,7 @@ neither is used again.
 
 ```
 :f′⊕′⊗∘"⌫⌫;′f‹catch›⊐                          ->  double free
-‹heapstats›→b_ 3′+⊸"4\\⍎Ṅ⌫ ‹heapstats›←b-Ṅ        ->  70
+‹heapstats›→b_ 3′+⊸"4\\⍎Ṅ⌫ ‹heapstats›←b-Ṅ_       ->  70
 ‹heapstats›_→n 0→i{′⊕′⊗∘⌫←i1+"→i100000<1+}‹heapstats›_←n-Ṅ  ->  0
 ```
 
@@ -1500,7 +1555,7 @@ set the two stack pointers.
 ```
 :‹bad›3⍳9⊇;′‹bad›‹catch›⊐  ->  index out of range
 :‹ok›5 6;1′‹ok›‹catch›ṄṄṄṄ  ->  0651
-“oops“⊃′‹throw›‹catch›⊐  ->  oops
+“oops“⊃′‹throw›‹catch›⊐_  ->  oops
 :‹f›1 2 3“no“⊃‹throw›;7′‹f›‹catch›⊐Ṅ  ->  no7
 :‹in›“inner“⊃‹throw›;:‹out›′‹in›‹catch›⊐“outer“⊃‹throw›;′‹out›‹catch›⊐  ->  innerouter
 :‹g›‹throw›;:‹h›“again“⊃′‹g›‹catch›‹throw›;′‹h›‹catch›⊐  ->  again
@@ -1510,6 +1565,12 @@ set the two stack pointers.
 ```
 
 (The last line goes to stderr, with exit status 1.)
+
+In the third line `f` is `‹throw›` itself, which takes the message under it.
+The caught throw puts the stack back at its depth when `‹catch›` was called,
+so the slot that message held comes back holding junk, under the caught
+message. The `_` drops it: at the end of the program it would be the one
+value left, and implicit output (W13-B, "Output") would print it.
 
 Everything the runtime checks raises through `‹throw›`, so all of it is
 catchable: `⊇` (`index out of range`), `⌫` (`free of a non-heap value`,

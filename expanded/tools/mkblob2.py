@@ -229,6 +229,18 @@ ATOMS = [
     # (lib/prelude.golfj, W11-3A section).
     (0xA8, "spr", "⊷", [0x54, 0x55],                      "-> sp bp: push rsp (as before the atom), then rbp"),
     (0xA9, "spw", "⊶", [0x5D, 0x5C],                      "sp bp ->: set rbp, then rsp (both stacks jump)"),
+    # W13-B: bit atoms.  RAW like the other bitwise atoms (no list dispatch,
+    # no not-a-number check).  popcnt / tzcnt / lzcnt are F3 48 0F B8/BC/BD
+    # (the CPU baseline has popcnt + bmi1 + abm); tzcnt and lzcnt give 64 for
+    # 0.  The low bit is x & -x, written without BMI1's blsi.
+    (0xAA, "pcnt", "♯", [0x58, 0xF3, 0x48, 0x0F, 0xB8, 0xC0, 0x50],
+                                                          "x -> number of 1 bits (popcount)"),
+    (0xAB, "ctz", "⊣", [0x58, 0xF3, 0x48, 0x0F, 0xBC, 0xC0, 0x50],
+                                                          "x -> trailing zero bits (64 for 0)"),
+    (0xAC, "clz", "⊢", [0x58, 0xF3, 0x48, 0x0F, 0xBD, 0xC0, 0x50],
+                                                          "x -> leading zero bits (64 for 0)"),
+    (0xAD, "lsb", "⊥", [0x48, 0x8B, 0x04, 0x24, 0x48, 0xF7, 0xD8, 0x48, 0x21, 0x04, 0x24],
+                                                          "x -> x & -x, the lowest set bit (0 for 0)"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
@@ -385,7 +397,16 @@ OVERRIDES.update({b: _udivchk(v1.TEMPLATES[chr(b)]) for b in map(ord, "/%")})
 # read(2) per byte, as in v1.  The end-of-program exit (blob record 5) gets the
 # same prefix as AUTOEXIT2.
 OVERRIDES.update({b: _FLUSH_CALL + list(v1.TEMPLATES[chr(b)]) for b in map(ord, ".)(")})
-AUTOEXIT2 = bytes(_FLUSH_CALL) + v1.AUTOEXIT
+# W13-B (S3, implicit output): the end-of-program exit — and ONLY it, not `.`
+# — first calls through the END HOOK, the 1C runtime cell 0x4F09A0 (5179808,
+# next to the flush hook).  The prelude's init stores the program's base rsp
+# and fills the cell with ‹_13b_end›, which prints the one value left above
+# that base (⍕ a list, Ṅ anything else) when exactly one is.  Then the flush
+# hook drains it.  BSS 0 without the prelude (golfc -n, every compiler
+# binary): a load, a test and a not-taken jump, nothing else changes.
+END_HOOK = 0x4F09A0
+_END_CALL = _hook_call(END_HOOK)
+AUTOEXIT2 = bytes(_END_CALL) + bytes(_FLUSH_CALL) + v1.AUTOEXIT
 
 # W12-O1: the unary arithmetic atoms ± ⊕ ⊖ ² ⊗ ⊘ refuse a list.  Before W12
 # they computed on its tagged address (`5⍳⊕⍕` printed garbage).  They are the
@@ -500,6 +521,7 @@ ADVERBS = bytes([ord("M"), ord("F"), ord("W"), ord("Z"),
 UNQUOTED = b'"_\\&@!?,().' + bytes([0xC5, 0xD0])
 ADVERB_KEY = 6      # blob record keys: control bytes, never an op, so `f`
 UNQUOTED_KEY = 7    # finds these two only when asked by number
+DIGRAPH_BYTE = 0xBD # ʘB  W13-B (S6): compiles exactly as the long name ‹_dgHH› (HH = B in upper-case hex); no memory
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).

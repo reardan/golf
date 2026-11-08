@@ -80,7 +80,8 @@ empty and the answer is just "is one element left". `prodself` stays general
 `ℤ"∏*⍕` would do in 5 bytes.
 
 `golf/stock_stream.golfj` (W12-A8) is Stock as a stream, `‹sints›′p‹smap›0′⌈‹sfold›`
-with the running minimum threaded under the pipeline: 40 bytes, about 0.09 s
+with the running minimum threaded under the pipeline and dropped by a final `_`
+(W13-B: implicit output would print it): 41 bytes, about 0.09 s
 and 13 MB peak on the `stock` input, against `stock.golfj`'s 0.07 s and 32 MB
 (both measured after W12-P1), and constant memory however long the input. It
 is not one of the ten that `bench.sh` runs.
