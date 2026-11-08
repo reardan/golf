@@ -138,10 +138,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **948** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2807** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **8579** bytes |
-| assertions in the run2 suite | **495** |
+| the template blob itself | **958** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2817** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8589** bytes |
+| assertions in the run2 suite | **500** |
 | assertions in the selfcheck suite | **50** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -424,7 +424,8 @@ the golf2 fixpoint included. In order:
 - **M-TAG2 (W9-2A) — a real tag bit.** `T` was a range test, so an *integer*
   that happened to equal a heap address — the heap base read out of its own
   cell, say — was vectorized as a list. Now a list value handed to user code is
-  its address with bit 48 set (`addr | 2^48`): `T` is `v >> 48 == 1`, and the
+  its address with bit 48 set (`addr | 2^48`; W11-1A moved it to
+  `addr | 0x7FFF<<48`, see W11 decisions): `T` is `v >> 48 == 1`, and the
   M-VEC filter is exact — `cmp word [rsp+6],1` per operand, the top 16 bits of
   each, no cell read, two bytes *shorter* than the range filter it replaced. The
   sign bit was never an option (every negative number has it); a high-byte tag
@@ -450,7 +451,8 @@ the golf2 fixpoint included. In order:
   element, the prelude now asks it of every element and recurses. `⍕` prints an
   inner list in brackets (`3⍳′⍳€⍕` → `[] [0] [0 1] `) while a flat top-level
   list prints byte-for-byte as before; the inner call is `Q` itself, handed the
-  element with a second tag bit (`v | 2^49`) that its entry mask strips. The
+  element with a second tag bit (`v | 2^49`; since W11-1A `v - 2^48`, top
+  bits `0x7FFE`) that its entry mask strips. The
   bare `+ - *` now go to depth like `⌈ ⌊` always did: `∔ ∸ ⨰` answer int,int
   in place and otherwise hand `D` the word *itself*, so `Z`/`K`/`G` re-enter it
   per element (`3⍳′⍳€ 10+⍕` → `[] [10] [10 11] `). Two new high-byte words:
@@ -464,7 +466,7 @@ the golf2 fixpoint included. In order:
   stack, 28 frames then, 4096 since W10-C), ping-ponging between a `0↓` copy of the input and one block from `A`,
   with a branch-free merge step that reads both run heads at clamped indices.
   100,000 elements sort in well under a second. It is meant for int lists: an
-  inner list compares by its tagged value (after every int below 2^48, and by
+  inner list compares by its tagged value (after every int below the tag band, and by
   address among lists). `∊` is `list x -> 0/1` — zero-is-true like `T`, raw
   cell equality like `≡`, stopping at the first hit; the empty list gives 1.
 - **W9-4C — input for user programs (M6b).** The first prelude words with LONG
@@ -533,7 +535,11 @@ allocations they need are in [`REGISTRY.md`](REGISTRY.md) §1.3, §2 and §3.1.
    becomes `addr | 0x7FFF<<48` instead of `addr | 2^48`: the top 16 bits read
    `0x7FFF`, not `0x0001`. Afterwards only integers within `2^48` of
    `INT64_MAX` are mistaken for lists, instead of the everyday range
-   `[2^48, 2^49)` (281 to 562 trillion) today's Known limits row describes.
+   `[2^48, 2^49)` (281 to 562 trillion). **Shipped (W11-1A):** `T` is
+   `v >> 48 == 0x7FFF`, list words tag on exit with `32767 48≪|`, the M-VEC
+   filter is `cmp word [rsp+6],0x7FFF` (imm16, so each of the five templates
+   grew 2 bytes: blob 958), and `Q`'s nested-call marker is the tag minus 2^48
+   (top 16 bits `0x7FFE`) instead of `| 2^49`, which the new tag already sets.
 2. **Include is done in the compiler, by swapping fd 0 (W11-2A).** At an
    include the compiler `dup`s its current fd 0, `dup2`s the opened file onto
    fd 0, and restores the saved fd at that file's EOF; a stack of saved fds
@@ -586,7 +592,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 948 bytes, which is what keeps the compiler re-derivable in an
+  blob at 958 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
@@ -651,11 +657,16 @@ unbuilt, and three defects this list does not yet cover — see
   the block was handed out again. Blocks are never split or coalesced; small
   blocks round up to a power of two (≤ 2x), and the >256-cell class checks only
   its head, so a large freed block can be passed over by a bigger request.
-- **The integers in `[2^48, 2^49)` are lists.** A list value is `addr | 2^48`,
-  so an integer whose top 16 bits are exactly `0x0001` (281 to 562 trillion) is
+- **The integers in `[0x7FFF<<48, 2^63)` are lists.** A list value is
+  `addr | 0x7FFF<<48` (W11-1A; it was `addr | 2^48`, which sacrificed the
+  everyday `[2^48, 2^49)`), so an integer whose top 16 bits are exactly `0x7FFF`
+  — the 2^48 values from 9223090561878065152 up to and including `INT64_MAX` — is
   shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
   deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
-  M-TAG2); negatives and everything below `2^48` are ints.
+  M-TAG2); negatives (top bits `0xFFFF`) and everything below `0x7FFF<<48` are
+  ints, so the largest int the list words treat as a number is
+  9223090561878065151. Non-polymorphic atoms (`⊕`, `Ṅ`, `\radd`) still take
+  `INT64_MAX` as a plain word.
 - **Nesting depth is bounded by the spill stack, now generously (W10-C).**
   Every looping word frames its scratch with `X`/`Y`; recursive `⍕`, `≣` and
   `⍤` take one frame per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`).
