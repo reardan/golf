@@ -453,7 +453,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 67 in all after W11 wave 3, helpers included), so a program has 957 for itself.
+has 72 in all after W11-4B, helpers included), so a program has 952 for itself.
 
 ### Text
 
@@ -612,8 +612,8 @@ A word count over stdin:
 
 It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words), the prelude has 67 long
-names, which leaves 957 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers), the prelude has 72 long
+names, which leaves 952 for a program.
 
 ### Closures
 
