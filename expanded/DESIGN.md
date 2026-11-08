@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1146** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **4201** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **13834** bytes |
-| assertions in the run2 suite | **695** |
+| assertions in the run2 suite | **698** |
 | assertions in the selfcheck suite | **57** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -695,7 +695,7 @@ These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 - **Long names (M2) are bounded and global.** 1024 per program since W10-A
-  (the prelude's 73 count too, as of W11-4C), at most 60 bytes each, interned in a fixed
+  (the prelude's 73 count too, as of W11 wave 4), at most 60 bytes each, interned in a fixed
   compiler table; a 1025th is refused. Every name, one-byte or long, may be
   forward-referenced (W10-A). Locals take long names too (W9-4D), up to 16 per
   `⊡` word. And there are no scopes: a long name, like a letter, is
@@ -705,8 +705,8 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   `0x430000`, the W11-1C output buffer (the lowest address a running program
   uses; REGISTRY §3). Both compilers check it as they emit: `golf2` writes
   `GOLF: program too large` to fd 2 and exits 2 with nothing on fd 1, the seed
-  exits 2 silently. The prelude alone is about 42 KB (an empty program is 42632
-  bytes, after W11-4B), which leaves about 150 KB; an empty word costs 20 bytes. `p_filesz`
+  exits 2 silently. The prelude alone is about 43 KB (an empty program is 43047
+  bytes, after W11 wave 4), which leaves about 150 KB; an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).
   Raising the cap further means moving the 1C buffer and the spill stack up

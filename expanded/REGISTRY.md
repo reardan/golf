@@ -256,8 +256,9 @@ Prelude long names in use (all **shipped**):
 | `‹assert›` `‹expect›`, and the helpers `‹_4b_show›` `‹_4b_exit›` `‹_4b_fail›` | W11-4B (**shipped**) | `W11-4B test words` |
 | `‹stack›` | W11-4C (**shipped**) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 
-The table heading says shipped; the W11 rows marked *reserved* are allocated,
-not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows). **W11 helper names:** a W11 task that
+The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
+and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
+prelude long names). **W11 helper names:** a W11 task that
 needs a private helper word names it `‹_<id>…›` with its lowercase task id,
 e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
 `‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers

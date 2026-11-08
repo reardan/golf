@@ -853,7 +853,7 @@ exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
 past ~138k plain calls dies of SIGSEGV on the guard page), any other signal,
 `.` (exit is exit), and compile errors (`GOLF: undefined word x at line 3` …,
 below), which exit 2. So does a program whose binary would pass 192 KB
-(196608 bytes, the prelude's ~42 KB included): `GOLF: program too large`, and no binary.
+(196608 bytes, the prelude's ~43 KB included): `GOLF: program too large`, and no binary.
 
 ### Compile errors
 

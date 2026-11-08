@@ -3000,6 +3000,48 @@ else
   for k in $(seq 1 "$w114n"); do ok "golfdeps: git not available, skipped"; done
 fi
 
+# === W11-4 integration ===
+echo "W11-4 integration: one program over ⎘ + ⊜ + dict + ⊸ + ‹catch› + ‹fmt› + files + ‹expect›; golfi with records"
+w114x="$TMP/w114x"; rm -rf "$w114x"; mkdir -p "$w114x"
+cat > "$w114x/geom.golfj" <<'GOLF'
+⊜‹point›‹x›‹y›;
+:‹norm2›"‹point-x›²&‹point-y›²+;
+GOLF
+cat > "$w114x/main_test.golfj" <<'GOLF'
+⎘“geom.golfj“
+⎘“geom.golfj“
+3 4‹point›→p
+←p‹norm2›→n
+←n 25“norm2 via record“⊃‹expect›
+←p 9‹set-point-x›‹point-x› 9“setter“⊃‹expect›
+‹dict›“norm“⊃←n‹put›→d
+←d“norm“⊃‹get› 25“dict get“⊃‹expect›
+3⍳10′+⊸€→l
+←l∑ 33“bound add“⊃‹expect›
+:‹bad›←l9⊇;
+′‹bad›‹catch›→e
+←e“index out of range“⊃“caught“⊃‹expect›
+←n‹fmt›“n.txt“⊃‹writefile›
+“n.txt“⊃‹readfile›→r
+←r“25“⊃“file round trip“⊃‹expect›
+“caught: “⊃⊐←e⊐␤
+“norm2 = “⊃⊐←r⊐␤
+←l⍕␤
+GOLF
+sed 's/←l∑ 33/←l∑ 34/' "$w114x/main_test.golfj" > "$w114x/bad_test.golfj"
+(cd "$w114x" && "$EXP/tools/golfc" -j main_test.golfj main > /dev/null 2>&1 && ./main > out 2>&1; echo $? > rc)
+[ "$(cat "$w114x/rc")" = 0 ] && [ "$(cat "$w114x/out")" = "$(printf 'caught: index out of range\nnorm2 = 25\n10 11 12 ')" ] \
+  && [ "$(cat "$w114x/n.txt")" = 25 ] \
+  && ok "one program: ⎘ (twice, once), ⊜ record + setter, dict, ⊸, caught index error, ‹fmt› → ‹writefile›/‹readfile›, every ‹expect› passes" \
+  || no "W11 smoke program: rc=$(cat "$w114x/rc") $(cat "$w114x/out")"
+(cd "$w114x" && "$EXP/tools/golftest" . > gt 2>&1; echo $? > rc)
+[ "$(cat "$w114x/rc")" = 1 ] && grep -q '^PASS ./main_test.golfj$\|^PASS main_test.golfj$' "$w114x/gt" \
+  && grep -q '^  FAIL: bound add: expected 34 got 33$' "$w114x/gt" && grep -q '^1 passed, 1 failed$' "$w114x/gt" \
+  && ok "golftest on it: the program PASSes, the one-check variant FAILs with expected/got, exit 1" \
+  || no "golftest smoke: $(cat "$w114x/gt")"
+[ "$(printf '%s\n' '⊜‹point›‹x›‹y›;' '3 4‹point›' '"‹point-y›' | (cd "$w114x" && "$EXP/tools/golfi" 2>&1) | tail -3)" = "$(printf '<0>\n<1> [3 4]\n<2> [3 4] 4')" ] \
+  && ok "golfi keeps a ⊜ record across lines (constructor and accessor in later entries)" || no "golfi records"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
