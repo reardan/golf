@@ -2010,6 +2010,71 @@ them all. The streams read their input lists in place and do not own them.
   `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
   0.52 s. Names that start with `‹_13e` are these words' helpers.
 
+### Random numbers and SHA-256 (W14-J)
+
+Two seeded generators and a hash, for scripts that must reproduce what a
+Python tool did. A **generator** `r` is a small record (a tagged list) that
+every word below updates **in place**, so keep it in a variable and pass it
+again. Two kinds share the words, told apart by the record's first cell:
+
+- `‹mtrng›` is MT19937 seeded **exactly** as CPython's `random.Random(seed)`.
+  Every word then draws the same 32-bit outputs, in the same order, as the
+  Python method named in the table, so a Golf port of a Python script that
+  uses `random.Random(42)` makes the same choices.
+- `‹rng›` is xoshiro256\*\* seeded through splitmix64: four times smaller
+  (5 cells against 626) and faster. It has no Python twin.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹rng›` | `seed -> r` | a new xoshiro256\*\* generator. Its state is four splitmix64 outputs of `seed` (any 64-bit int) |
+| `‹mtrng›` | `seed -> r` | a new MT19937 generator, as `random.Random(seed)`: `init_by_array` over the 32-bit chunks of the seed, low chunk first. A negative seed is used as `\|seed\|`, as CPython does |
+| `‹rand›` | `r -> x` | 64 random bits (any int, negative too). MT: `getrandbits(64)`, so the first 32-bit output is the **low** half and the second the high half |
+| `‹randbits›` | `r k -> x` | `k` random bits, `0 ≤ k ≤ 64`, as `getrandbits(k)`: one 32-bit output for `k ≤ 32` (its top `k` bits), two above (low word first). `k = 0` gives `0` and draws nothing |
+| `‹randbelow›` | `r n -> x` | uniform in `[0, n)`, `n ≥ 1`, unbiased: `getrandbits(n.bit_length())` again until it is below `n`, which is CPython's `_randbelow_with_getrandbits` |
+| `‹randint›` | `r lo hi -> x` | uniform in `[lo, hi]`, as `randint(lo, hi)` (`lo + _randbelow(hi-lo+1)`). Any 64-bit range works, up to the whole of them |
+| `‹random53›` | `r -> x` | the 53-bit integer behind `random()`, which is this divided by 2^53: MT `a·2^26 + b` with `a`, `b` two outputs shifted right by 5 and 6. So `R.random() < 0.5` is `‹random53› 1 52≪<` (`-1` for true) |
+| `‹choice›` | `r list -> x` | a random element, as `choice(seq)` |
+| `‹shuffle›` | `r list -> list` | a **new** list in the order `shuffle` leaves a Python list in (Fisher–Yates from the back). The input is not changed |
+| `‹sample›` | `r list k -> list` | `k` elements at distinct positions, in pick order, as `sample(seq, k)`, both of its branches: the pool one when the list is short (`n ≤ 21 + 4^⌈log₄ 3k⌉`, the power only for `k > 5`) and the set one otherwise |
+| `‹sha256›` | `list -> digest` | the SHA-256 of a code list: a new list of the 32 digest bytes. Each element's low byte is hashed |
+| `‹sha256hex›` | `list -> list` | the same digest as 64 lowercase hex digits, a code list (`hashlib.sha256(b).hexdigest()`) |
+
+```
+42‹mtrng›→r←r1 6‹randint›Ṅ←r1 6‹randint›Ṅ←r1 6‹randint›Ṅ  ->  611
+42‹mtrng›“golf“⊃‹choice›)                              ->  g
+42‹mtrng›10⍳‹shuffle›⍕                                 ->  7 3 2 8 5 6 9 4 0 1
+42‹mtrng›100⍳5‹sample›⍕                                ->  81 14 3 94 35
+42‹mtrng›→r 8⍳⟦_←r‹random53›1 52≪<1﹢⟧€⍕               ->  1 0 0 0 1 1 1 0
+1 40≪3+‹mtrng›‹rand›Ṅ                                  ->  1122159575387338702
+7‹mtrng›8‹randbits›Ṅ                                   ->  82
+“abc“⊃‹sha256hex›16↑⊐                                  ->  ba7816bf8f01cfea
+““⊃‹sha256›≢Ṅ                                          ->  32
+‹readall›‹sha256hex›⊐                  # sha256sum, for stdin
+```
+
+In Python the first five are `random.Random(42)` followed by
+`[r.randint(1, 6) for _ in range(3)]`, `r.choice("golf")`, `r.shuffle(l)`
+for `l = list(range(10))`, `r.sample(range(100), 5)` and
+`[0 if r.random() < 0.5 else 1 for _ in range(8)]`.
+
+- **Failures** throw through `‹throw›`: `randbelow: empty range` (`n ≤ 0`),
+  `randint: empty range` (`hi < lo`), `randbits: k out of range`,
+  `choice: empty list`, `sample: k out of range` (`k < 0` or more than the
+  list holds), `sha256: not a list` (a `“…“` byte block: add `⊃`), and
+  `not a random generator` for anything that is not a list of 5 cells of
+  kind 0 or 626 of kind 1. A freed generator is `use after free`.
+- **Results are raw 64-bit ints.** `‹rand›`, `‹randbits› 64` and the
+  xoshiro words can return a value in the tag band `[0x7FFF<<48, 2^63)`,
+  which `+ - *` and `⍕` take for a list (see the notes after the
+  code-page tables); add such values
+  with the raw `﹢ ﹣ ﹡`, or draw fewer bits.
+- **Cost.** The words are `⊡` words with no fixed cells, so they nest and
+  recurse freely. A million `‹randbits›` or `‹rand›` draws take about 0.05 s
+  with either kind (MT twists its 624 words at a time);
+  hashing 1 MB of stdin takes about 0.07 s, `‹readall›` included. A generator
+  is an ordinary list: `⌫` frees it. Names that start with `‹_14j` are these
+  words' helpers.
+
 ### Prelude pruning
 
 `tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your
