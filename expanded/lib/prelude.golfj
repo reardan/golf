@@ -2111,3 +2111,10 @@
 :‹collect›‹vec›‹_12a8_put›‹_12a8_put›{5177392@4456440\radd\fetch‹_12a8_pull›1\rsub[‹_12a8_get›‹sfree›‹_12a8_get›^]5181344\store5177392@4456432\radd\fetch5181344\fetch\push5177392@4456432\radd\store0};
 :‹sshow›‹_12a8_put›{5177392@4456440\radd\fetch‹_12a8_pull›1\rsub[‹_12a8_get›‹sfree›^]"T[1 48\shl\rsub Q\else N]32‹_1c_put›0};
 :‹sfind›‹_12a8_put›‹_12a8_put›{5177392@4456440\radd\fetch‹_12a8_pull›1\rsub[‹_12a8_get›‹sfree›‹_12a8_get›_1^]"‹_12a8_put›5177392@4456424\radd\fetch\exec[‹_12a8_get›‹_12a8_get›‹sfree›‹_12a8_get›_0^]‹_12a8_get›_0};
+# === W12-O6 booleans for output ===
+# ‹tf›  f -> list       “true“ as a code list when f is 0, “false“ otherwise:
+#                       the zero-is-true convention of [ ∊ ‹has› ‹startswith›,
+#                       so `…‹tf›⊐` prints LeetCode's true/false.  A `≡ ≺ ≻`
+#                       result (-1 for true) prints “false“; flip it with 1+
+#                       (-1 -> 0, 0 -> 1).  A fresh list each call (⌫ frees it).
+:‹tf›[“true“U⋄“false“U];

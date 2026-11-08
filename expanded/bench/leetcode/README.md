@@ -43,6 +43,30 @@ Baseline, 2026-11-08 (main after PR #16), wall seconds on the large inputs:
 | queens | 110 | 0.022 (—) | 0.169 | 0.012 |
 | **total bytes** | **898** | | golfed Python 1,300 · Python 2,571 · C++ 4,613 · Jelly 144 | |
 
+### Byte ceilings
+
+The current size of each Golf solution, as `./bytes.sh` counts it. The gate
+(`test/run2.sh`, block W12-O4) compiles every solution, checks its answer
+against `py/` on `gen.py 0.001` inputs, and fails if a solution is larger than
+its number here. A solution may only get shorter: when one shrinks, lower its
+number.
+
+| problem | bytes |
+|---|---|
+| twosum | 87 |
+| parens | 99 |
+| stock | 26 |
+| longsub | 60 |
+| prodself | 32 |
+| topk | 67 |
+| islands | 128 |
+| trap | 33 |
+| slidemax | 17 |
+| queens | 106 |
+
+Total 655 (898 at the baseline above).
+
+### Notes
 `golf/stock_stream.golfj` (W12-A8) is Stock as a stream, `‹sints›′p‹smap›0′⌈‹sfold›`
 with the running minimum threaded under the pipeline: 40 bytes, about 0.09 s
 and 13 MB peak on the `stock` input, against `stock.golfj`'s 0.07 s and 32 MB

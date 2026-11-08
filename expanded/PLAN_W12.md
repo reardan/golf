@@ -285,6 +285,9 @@ Four tracks. Item ids are what the waves (section 4) schedule.
   - It asserts each solution's byte count is ≤ the number recorded in
     `bench/leetcode/README.md`. A solution may only get shorter.
   - Fast: tiny inputs, under 1 s total.
+  - **Shipped (W12-O4)**: run2 block W12-O4, about 0.9 s. The ceilings are
+    a new "Byte ceilings" table in `bench/leetcode/README.md` (655 bytes in all);
+    parens also gets two unbalanced inputs.
 - **O5. A "LeetCode in Golf" tutorial page.**
   - REFERENCE.md §4 gets three of the solutions (Stock, Trap, Sliding
     Window) in their post-W12 form, output-checked like the other tutorial
@@ -294,6 +297,9 @@ Four tracks. Item ids are what the waves (section 4) schedule.
     convention.
   - Small, but Valid Parentheses spends 13 of its 131 bytes on spelling
     them.
+  - **Shipped (W12-O6)**: `‹tf›` (0 -> true, else false; `1+` first for a
+    `≡` result). Valid Parentheses is now 99 bytes (was 111). REFERENCE.md,
+    "Output".
 - **O7. 2-D helpers (optional).**
   - `‹grid›` (`lines -> rows cols flat`) and `‹nbrs›` (`i -> up to 4 in-range
     neighbour indices`).

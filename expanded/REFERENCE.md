@@ -475,6 +475,20 @@ every raw `)` or `(`. `)` and `(` themselves are not buffered: still one
 5Ṅ‹flush›1“b“4+1 1⎈_     # prints 5b; without ‹flush› the raw ⎈ write comes first: b5
 ```
 
+**Booleans (W12-O6).** LeetCode answers are often `true` or `false`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹tf›` | `f -> list` | the code list `true` when `f` is `0`, else `false`, printed with `⊐`. This is zero-is-true, like `[`, `∊` and `‹has›`. A comparison `≡ ≺ ≻ < »` pushes `-1` for true, so add `1+` first (`-1` becomes `0`). Each call makes a new list |
+
+```
+0‹tf›⊐                   ->  true
+7‹tf›⊐                   ->  false
+3 3≡1+‹tf›⊐              ->  true
+“abc“⊃98∊‹tf›⊐           ->  true
+“abc“⊃“x“⊃‹startswith›‹tf›⊐  ->  false
+```
+
 Output still pending when the process dies of a signal (a kill, or the
 return-stack guard page's SIGSEGV) is lost. The cell `0x4F0988` (`5179784`)
 holds the fd the buffer drains to; `0` means fd 1.
@@ -568,7 +582,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 185 in all after W12-A8, helpers included), so a program has 839 for itself.
+has 186 in all after W12-O6, helpers included), so a program has 838 for itself.
 
 ### Sorting by key
 
@@ -1003,8 +1017,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`), the prelude has 185 long
-names, which leaves 839 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`), the prelude has 186 long
+names, which leaves 838 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
