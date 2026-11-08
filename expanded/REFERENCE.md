@@ -288,6 +288,8 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xD5` | `⍈` | `\putat` | — | store-at: list i v -> list; list[i] = v in place (bounds-checked) |
 | `0xD6` | `⍆` | `\push` | — | push: v x -> v'; append x (vector or deque back); use the returned v' |
 | `0xD7` | `⍅` | `\pop` | — | pop: v -> v x; remove the last element (empty: pop from empty) |
+| `0xD8` | `⊟` | `\win` | — | window reduce: l n ′f -> f-reduce of every length-n window (deque for ⌈ ⌊) |
+| `0xD9` | `⍣` | `\fix` | — | fixpoint: x ′f -> y; apply f until the result ≣ the previous one |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -888,6 +890,53 @@ The function must consume exactly its own arguments (the element, or `⇤`'s
 leaves or takes below that is the caller's business. Nesting works: a
 function that runs `€` itself sees its own caller's stack under its own
 element.
+
+### Windows and fixpoints
+
+W12-A5 and W12-A6 add two higher-order words. Both keep the threading
+contract above: their function runs with the caller's stack underneath.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `⊟` | `l n ′f -> l'` | window reduce: `l'[i]` is `f` folded over the window `l[i] … l[i+n-1]` with no seed, `f(…f(l[i], l[i+1])…, l[i+n-1])`, so `≢l'` is `≢l-n+1`. `n = 1` copies `l` without calling `f`. `n > ≢l` (so any `n` on an empty list) gives the empty list. `n < 1` is `GOLF: window size < 1`. A freed `l` is `GOLF: use after free`. The result is a new list and `l` is unchanged |
+| `⍣` | `x ′f -> y` | fixpoint (Jelly's `ÐL`): apply `f` until its result `≣` its argument, and leave that last result. `f` runs at least once. If `f` has no fixpoint from `x`, `⍣` never returns |
+
+```
+7⍳3′⌈⊟⍕                    ->  2 3 4 5 6
+7⍳3′⌊⊟⍕                    ->  0 1 2 3 4
+7⍳3′+⊟⍕                    ->  3 6 9 12 15
+“31415926“⊃48-3′⌈⊟⍕        ->  4 4 5 9 9 9
+5⍳1′+⊟⍕                    ->  0 1 2 3 4
+5⍳9′+⊟≢Ṅ                   ->  0
+3⍳4+′⍳€2′⧺⊟′∑€⍕            ->  16 25
+:f+\\⊕\\;0 5⍳2′f⊟⍕Ṅ        ->  1 3 5 7 4
+:d2/;100′d⍣Ṅ               ->  0
+:h"≢1≻[^]1↓;5⍳′h⍣⍕         ->  4
+:g\\⊕\\2/;0 100′g⍣ṄṄ       ->  08
+```
+
+- **`⊟` with `⌈` or `⌊` is O(≢l)**, whatever `n`: when `f` is `′⌈`, `′⌊`,
+  `′⩌`, `′⩍`, or a word whose code is exactly that of `⌈` / `⌊` (`:m⌈;`),
+  and no element of `l` is a list, `⊟` runs a monotonic deque instead of
+  calling `f`. Any other `f` is called `n-1` times per window, so it costs
+  O(≢l·n). Sliding-window maximum is `‹ints›"0⊇\\1↓\\′⌈⊟⍕` (17 bytes).
+- **Threading.** `⊟`'s `f` gets `acc x`, as `⇤`'s does. The counter `f`
+  above leaves `c+1` under the running sum, so the `4` printed last is the
+  number of calls, `(n-1)·(≢l-n+1)`. `⍣`'s `f` gets just the value, and
+  `g` counts its 8 calls (`100 50 25 12 6 3 1 0`, then `0` again).
+- **`⍣` frees what it made.** Each intermediate value `⍣` got from `f`
+  (never `x`, never the result) is given back with `⌫` once the next value has
+  been computed and compared, so a long run holds two lists at a time, not
+  all of them. It is kept when it is not a list, when `f` returned that same
+  block (`f` may return its argument: that result `≣` itself, so `⍣` stops),
+  or when `f`'s result is a list holding it as a direct element. So `f` must
+  not `⌫` its argument, keep it in a variable, or nest it deeper than one level
+  in its result. An `f` that changes its argument in place and returns it stops
+  after one step.
+- **`⍣` is O(n²) for rewrite-until-stable.** Each pass is a call of `f` plus
+  one `≣`. Jelly's Valid Parentheses (delete every `()` until nothing changes)
+  and Islands (flood one ring per pass) take up to n/2 passes over an input of
+  size n: O(n²) in the worst case. A stack or a deque is O(n) there.
 
 ### Closures
 

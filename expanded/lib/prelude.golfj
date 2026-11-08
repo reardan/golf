@@ -1704,3 +1704,117 @@
 :‹_12p3_llmax›‹_12p3_ll›&&\eq[{"\fetch&5177496\fetch\radd\fetch&48>32767=&48>32767=\rmul[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
 :‹_12p3_limax›‹_12p3_li›&&\eq[{"\fetch5177496\fetch&48>32767=[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
 :‹_12p3_ilmax›‹_12p3_il›&&\eq[{5177496\fetch&\fetch"48>32767=[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
+# === W12-A5 window reduce ===
+# ⊟ (0xD8)  l n ′f -> l'   f-reduce of every length-n window of l, so ≢l' is
+# ≢l-n+1: l'[i] = f(…f(f(l[i], l[i+1]), l[i+2])…, l[i+n-1]).  n < 1 throws
+# `window size < 1`; n > ≢l (so every n on an empty list) gives the empty
+# list; n = 1 copies l without calling f.  The result is a new tagged list;
+# l is left alone (use after free on entry, through ‹_2d_chk›).
+#
+# Two engines.  ‹_12a5_kind› classifies f: the address of ⩌ / ⩍, or code
+# byte-for-byte the same as the prelude's own ′\max / ′\min thunk (every ′⌈
+# makes a fresh thunk at its own address, but the bytes — prologue, M-VEC
+# template, epilogue — are fixed and position independent; their length is
+# the rel32 of the jmp in front of the prelude's thunk), is max / min.  A plain
+# `:m⌈;` compiles to the same bytes, so it is recognised too.  For max / min
+# on a list with no list elements (‹_12a5_ints›) ‹_12a5_mono› runs a
+# monotonic deque: O(≢l) in all, whatever n.  The deque is an A block of ≢l
+# cells holding ELEMENT POINTERS into l (each element is pushed once, so a
+# head and a tail pointer that only move up need no ring); it is given back
+# with ⌫ before ⊟ returns, so ‹heapstats› grows by exactly the result.  The
+# push (‹_12a5_pmax› / ‹_12a5_pmin›, called through c4) drops from the back
+# while the back's value is <= x (>= x for min), the front expires when it is
+# n or more elements behind, and the front's value is window i's answer.
+# Anything else (or ⌈ ⌊ on a list holding lists, which they treat
+# elementwise) goes to ‹_12a5_gen›: n-1 calls of f per window, O(≢l·n).
+#
+# Re-entrancy and the A1 contract.  Only ‹_12a5_gen› calls user code.  It
+# takes one X/Y frame and keeps its loop state in s0..s7: s0 the window's
+# first element · s1 the end of the first elements · s2 the result block ·
+# s3 f · s4 result-minus-list delta · s6 the inner pointer · s7 8(n-1); the
+# accumulator is the value f returns, left on the data stack where the next
+# call takes it, so f sees the caller's stack directly under `acc x`, exactly
+# as ⇤'s function does.  The cells of slot A5 (REGISTRY §3.2) are used only
+# by \win's set-up and the deque engine, which call no user code:
+#   5181184 c0 f · then the end of l's elements (deque)
+#   5181192 c1 n · then 8n (deque)
+#   5181200 c2 l (raw) · then the deque block
+#   5181208 c3 the result block (raw)
+#   5181216 c4 m = max(≢l-n+1, 0) · then the deque push word
+#   5181224 c5 the deque head · ‹_12a5_same›'s first pointer
+#   5181232 c6 the deque tail · ‹_12a5_same›'s second pointer · ‹_12a5_ints›'s end
+#   5181240 c7 the result write pointer · ‹_12a5_same›'s count · ‹_12a5_ints›'s flag
+# ‹_12a5_same›  f t -> 0 iff the code at f equals the thunk t (t's length is
+# the rel32 four bytes before it); stops at the first differing byte, so it
+# never reads past the end of f's own code.
+:‹_12a5_same›"4\rsub@5181240\store5181232\store5181224\store0
+ {5181224\fetch?5181232\fetch?=|5181224\fetch1\radd5181224\store5181232\fetch1\radd5181232\store5181240\fetch1\rsub"5181240\store0\eq&|};
+# ‹_12a5_kind›  f -> 0 (any f) / 1 (max) / 2 (min)
+:‹_12a5_kind›"\ref\vmax\eq1\radd[_1^]"\ref\vmin\eq1\radd[_2^]"\ref\max‹_12a5_same›[_1^]\ref\min‹_12a5_same›[2^]0;
+# ‹_12a5_ints›  P -> 0 iff no element of the raw list P is a list
+:‹_12a5_ints›0 5181240\store"\fetch8\rmul&\radd8\radd5181232\store8\radd"5181232\fetch\eq[{"\fetch48>32767\eq5181240\fetch|5181240\store8\radd"5181232\fetch\eq}]_5181240\fetch;
+# ‹_12a5_pmax› / ‹_12a5_pmin›  p -> p   push element pointer p on the deque
+:‹_12a5_pmax›"\fetch{5181232\fetch5181224\fetch\eq"[_5181232\fetch8\rsub\fetch\fetch&\sgt]"[5181232\fetch8\rsub5181232\store]}_"5181232\fetch\store5181232\fetch8\radd5181232\store;
+:‹_12a5_pmin›"\fetch{5181232\fetch5181224\fetch\eq"[_5181232\fetch8\rsub\fetch\fetch&\slt]"[5181232\fetch8\rsub5181232\store]}_"5181232\fetch\store5181232\fetch8\radd5181232\store;
+# ‹_12a5_mono›  -> R   the deque engine (m > 0 here, so 1 <= n <= ≢l).  Phase
+# 1 pushes elements 0..n-2; phase 2 pushes element i >= n-1, expires the front
+# when it points at or before p - 8n, and writes the front's value.  The
+# pointers ride on the data stack ([end p] as in the W12-P3 loops).
+:‹_12a5_mono›5181200\fetch"\fetch8\rmul&\radd8\radd5181184\store
+ 5181200\fetch\fetch A"5181200\store"5181224\store5181232\store
+ 5181208\fetch8\radd5181240\store5181192\fetch8\rmul5181192\store
+ 8\radd"5181192\fetch\radd8\rsub&&&\eq[{5181216\fetch\exec8\radd&&\eq}]_
+ 5181184\fetch&&&\eq[{5181216\fetch\exec
+ "5181192\fetch\rsub5181224\fetch\fetch\rlt[5181224\fetch8\radd5181224\store]
+ 5181224\fetch\fetch\fetch5181240\fetch\store5181240\fetch8\radd5181240\store
+ 8\radd&&\eq}]____
+ 5181200\fetch\free5181208\fetch32767 48\shl|;
+# ‹_12a5_gen›  -> R   any f: one X/Y frame, state in s0..s7 (see above).
+:‹_12a5_gen›X5181184\fetch5177464\store5181208\fetch5177456\store
+ 5181200\fetch"8\radd5177440\store"5181216\fetch8\rmul\radd8\radd5177448\store
+ 5181208\fetch&\rsub5177472\store_5181192\fetch1\rsub8\rmul5177496\store
+ {5177440\fetch\fetch5177440\fetch8\radd"5177488\store5177440\fetch5177496\fetch\radd8\radd\eq
+ [{5177488\fetch\fetch5177464\fetch\exec5177488\fetch8\radd"5177488\store5177440\fetch5177496\fetch\radd8\radd\eq}]
+ 5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}
+ 5177456\fetch32767 48\shl| Y;
+# ‹_12a5_mmax› / ‹_12a5_mmin›  -> R   the deque engine with its push word.
+# (A `′‹name›` stays inside long-named words: run2's pre-M1 prelude strips
+# every long name, and a bare ′ in \win would then quote the next byte.)
+:‹_12a5_mmax›\ref‹_12a5_pmax›5181216\store‹_12a5_mono›;
+:‹_12a5_mmin›\ref‹_12a5_pmin›5181216\store‹_12a5_mono›;
+:\win 5181184\store5181192\store‹_2d_chk›5181200\store
+ 5181192\fetch1\slt1\radd[“window size < 1“U‹throw›]
+ 5181200\fetch\fetch5181192\fetch\rsub1\radd"0\slt~$"5181216\store
+ "1\radd A"5181208\store\store
+ 5181216\fetch0\eq1\radd[5181208\fetch32767 48\shl|^]
+ 5181184\fetch‹_12a5_kind›"[_‹_12a5_gen›^]
+ 5181200\fetch‹_12a5_ints›0\eq[_‹_12a5_gen›^]
+ 1\rsub[‹_12a5_mmax›^]‹_12a5_mmin›;
+# === W12-A6 fixpoint ===
+# ⍣ (0xD9)  x ′f -> y   apply f until its result ≣ its argument (Jelly's ÐL):
+# y = f(f(…f(x)…)) with f(y) ≣ y — the LAST result is returned, the one that
+# matched the value before it.  f always runs at least once.  It never stops
+# if f has no fixpoint from x.  Each step is a call of f plus one ≣, so a
+# rewrite that removes one pair per pass (Jelly's Valid Parentheses: delete
+# every "()" until nothing changes; Islands' flood fill one ring per pass) is
+# O(n²) on an input of size n: n/2 passes over a list of up to n.
+#
+# Freeing.  Each intermediate value that ⍣ itself got from f (never x, never
+# the result) is given back with ⌫ as soon as the next value is computed and
+# compared — so a long run holds two lists, not all of them — EXCEPT when it
+# is not a list, or it is the very block f returned (f may return its input;
+# that is then ≣ itself and ⍣ stops), or f's result is a list that holds it as
+# an element (‹_12a6_drop›; ∊, raw equality).  So f must not free its argument
+# (⍣ does that), keep it in a variable, or nest it deeper than one level in
+# its result.  An f that changes its argument IN PLACE and returns it stops
+# after one step, since the result is compared with itself.
+#
+# Re-entrancy and the A1 contract: one X/Y frame; s0 x · s1 the newest
+# result · s2 the argument of the step · s3 f.  f is called with the caller's
+# stack directly under its argument; nothing else of ⍣'s is on the data stack
+# (the step's result is left there and becomes the next argument).  Slot A6's
+# cells (REGISTRY §3.2) are not needed.
+:‹_12a6_drop›5177456\fetch5177440\fetch\eq1\radd[^]5177456\fetch5177448\fetch\eq1\radd[^]5177456\fetch48>32767\eq[^]
+ 5177448\fetch48>32767\eq1\radd[5177448\fetch5177456\fetch\memb[^]]5177456\fetch\free;
+:\fix X5177464\store"5177440\store
+ {"5177456\store5177464\fetch\exec"5177448\store"5177456\fetch\match‹_12a6_drop›}Y;

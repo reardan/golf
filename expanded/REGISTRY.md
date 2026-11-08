@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **44** are now spent, leaving **67** free. It is partitioned as follows
+space; **46** are now spent, leaving **65** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -231,8 +231,8 @@ no glyph is in use.
 | `0xD5` | `\putat` | `⍈` | prelude: `l i v ⍈ -> l` store into a list in place (bounds- and free-checked). Planned as `\put1`; renamed because `codepage.encode` reads a mnemonic as letters only, so `\put1` could not be typed (W12-Z4) | Z4 | shipped |
 | `0xD6` | `\push` | `⍆` | prelude: `v x ⍆ -> v` vector push (capacity doubles; returns the possibly-new v); on a `‹deque›`, its back | Z4 | shipped |
 | `0xD7` | `\pop` | `⍅` | prelude: `v ⍅ -> v x` vector pop (empty throws `pop from empty`); on a `‹deque›`, its back | Z4 | shipped |
-| `0xD8` | `\win` | `⊟` | prelude: `l n ′f ⊟ -> l'` reduce of every length-`n` window (monotonic deque for `⌈`/`⌊`) | A5 | reserved |
-| `0xD9` | `\fix` | `⍣` | prelude: `x ′f ⍣ -> y` apply `f` until the result `≣` the previous one | A6 | reserved |
+| `0xD8` | `\win` | `⊟` | prelude: `l n ′f ⊟ -> l'` reduce of every length-`n` window (monotonic deque for `⌈`/`⌊`) | A5 | shipped |
+| `0xD9` | `\fix` | `⍣` | prelude: `x ′f ⍣ -> y` apply `f` until the result `≣` the previous one | A6 | shipped |
 | `0xDA` | `\next` | `⍞` | prelude: `s ⍞ -> s x 0 \| s 1` pull the next value of a stream | A8 | reserved |
 | `0xDB`–`0xE3` | — | — | one-byte aliases of the hottest long names, picked from measured usage | Z1 (W12-6) | reserved |
 
@@ -587,8 +587,8 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | A2 scan / reduce | `0x4F0E40`–`0x4F0E7F` | 5180992 | 5180992 … 5181048 |
 | A3 each-indexed | `0x4F0E80`–`0x4F0EBF` | 5181056 | 5181056 … 5181112 |
 | A4 sort-by / grade | `0x4F0EC0`–`0x4F0EFF` | 5181120 | 5181120 … 5181176 |
-| A5 window | `0x4F0F00`–`0x4F0F3F` | 5181184 | 5181184 … 5181240 |
-| A6 fixpoint | `0x4F0F40`–`0x4F0F7F` | 5181248 | 5181248 … 5181304 |
+| A5 window | `0x4F0F00`–`0x4F0F3F` | 5181184 | 5181184 … 5181240 — all eight used (shipped, W12-A5): `⊟`'s set-up (f · n · l · result · result length) and the deque engine (end · 8n · deque block · push word · head · tail · write pointer), see the prelude's W12-A5 section; the general path keeps its state in s0..s7 under X/Y |
+| A6 fixpoint | `0x4F0F40`–`0x4F0F7F` | 5181248 | 5181248 … 5181304 — none used (W12-A6 shipped: `⍣` keeps its state in s0..s3 under X/Y because it calls user code); all eight spare |
 | A8 streams | `0x4F0F80`–`0x4F0FBF` | 5181312 | 5181312 … 5181368 |
 | O2 freeable thunks | `0x4F0FC0`–`0x4F0FFF` | 5181376 | 5181376 … 5181432 |
 
