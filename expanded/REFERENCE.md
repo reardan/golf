@@ -312,6 +312,8 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xB8` | `⋄` | `\else` | separator: c[a⋄b] runs a when c is 0, else b; {c⋄body} tests c before each pass, runs body while it is 0 |
 | `0xB9` | `⇡` | `\vinc` | prefix: ⇡x adds 1 to variable x in place (←x⊕→x; in a ⊡ word, a local already named there) |
 | `0xBA` | `⇣` | `\vdec` | prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there) |
+| `0xBB` | `⟦` | `\blk` | opens an inline block: ⟦ … ⟧ is an anonymous word compiled in place; ⟧ pushes its address |
+| `0xBC` | `⟧` | `\endblk` | closes an inline block and pushes its address |
 
 ### Library words
 
@@ -389,7 +391,9 @@ A few notes on what the tables leave out:
   list ops work on text, and `⊐` prints such a list back as text.
 - **Quotations.** `′x` pushes the address of word `x`. For an atom, it pushes a
   small wrapper around the atom. `⍎` calls the address it pops. `€ ⇤ ⌿ ⊞` take
-  such an address as their function argument. `∘ ⇉ ⑂` combine them, and `⊸`
+  such an address as their function argument. Since W13-A, `f€` quotes `f`
+  by itself, and `⟦ … ⟧` is an anonymous word's address (see "Adverbs, blocks
+  and bare locals"). `∘ ⇉ ⑂` combine them, and `⊸`
   binds a value into one (see Closures below).
 - **Variables.** `→x` / `←x` store and load one global 64-bit cell per name
   byte. They are global, so a recursive word should use `⊡` locals instead:
@@ -422,6 +426,8 @@ its own cell, beyond the 256 one-byte ones.
 **Locals.** Inside `⊡name … ;` the prefixes `⇒` (pop into) and `⇐` (push)
 name per-call locals: any one lowercase letter `a`–`z` (W12-Z3; `a`–`h`
 before) or any long name, mixed freely.
+Since W13-A, a bare `x` after the word has named it reads it as `⇐x` does
+(see "Adverbs, blocks and bare locals").
 Each distinct name gets the next slot at its first appearance in the
 definition, so a `⊡` word that names *k* locals reserves exactly *k* cells
 (`⊡‹inc›1+;`, with none, costs what a `:` word does) and recurses that much
@@ -508,6 +514,89 @@ that matches, so no mnemonic may be a prefix of another.
 ```
 
 The last `->` example prints on stderr and exits 1, as `‹get›` does.
+
+### Adverbs, blocks and bare locals
+
+W13-A adds three spellings that make programs shorter and compile to the same
+code as the longer forms.
+
+**Adverbs quote the token in front of them (S1).** These words take a
+function: `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣`, and W13's `⍂ ⍃ ⍖ ⍷`. When one of them comes
+**immediately** after a call token, with no whitespace in between, the
+compiler pushes that token's address instead of calling it, exactly as `′`
+would. So `f€` means `′f€`. A call token is an atom (`² ⊕ ⌊ ≡ …`), a v1
+arithmetic op (`+ - * / % <`), a one-byte word, or a `‹long name›`.
+
+- `′f€` still works. A space (or a newline, or a comment) between the two
+  gives back the old meaning, "call `f`, then run the adverb", for a word
+  that *returns* a function: `‹mk› €`.
+- These never quote, because their result is what you pass: the v1 stack,
+  memory and I/O ops `" _ \ & @ ! ? , ( ) .` (so `\€`, "swap, then map",
+  keeps its meaning), and the two words that build a function, `∘` and `⊸`
+  (so `′-⊸€` still binds, then maps).
+- Only call tokens quote. A number, a character literal, a string, a prefix
+  op with its operand (`′x →x ←x ⇒x ⇐x ⇡x ⇣x`) and a closing `] } ⟧` never
+  do: `5+⍀` is `5`, then `′+⍀`. A bare local (below) is a value, not a call,
+  so it is never quoted either: `f€` with a local `f` maps with the function
+  the local holds.
+- Inside a `⊚` chain, a token is a link and is never quoted.
+- The adverb bytes are `mkblob2.ADVERBS` and the never-quote bytes
+  `mkblob2.UNQUOTED`, each listed once (REGISTRY.md §1.5). The compilers read
+  them from the template blob, so a new adverb is one byte in that list.
+
+```golfj
+5⍳²€⍕                    ->  0 1 4 9 16
+5⍳+⍀⍕                    ->  0 1 3 6 10
+5⍳⌈⍁Ṅ                    ->  4
+:‹sq›²;4⍳‹sq›€⍕          ->  0 1 4 9
+:‹mk›′⊕;3⍳‹mk› €⍕        ->  1 2 3
+3⍳5′-⊸€⍕                 ->  -5 -4 -3
+```
+
+**Inline blocks: `⟦ … ⟧` (S2; `\blk` / `\endblk`, `0xBB` / `0xBC`).** A block
+is an anonymous word, compiled where it stands. The compiler jumps over its
+body, and at run time `⟧` pushes the body's address, the value `′` would push
+for a named word. Its body is a `:` word's: `^` returns from the block, and
+blocks nest. It costs what a `:` word plus a `′` does: one `jmp` over the
+body and one `push imm32`.
+
+- In a `⊡` word, a block cannot reach the word's locals. The block is called
+  later, by whatever it is passed to (`€` and the rest call it under their own
+  frames), so `rbp` is not the word's. Rather than read a wrong cell, the
+  compiler refuses: inside a block in a `⊡` word, `⇒x` and `⇐x`, and a bare
+  `x`, `⇡x` or `⇣x` naming one of the word's locals, are `GOLF: block uses
+  local x`, exit 2. A `^` in such a block is the plain return and releases no
+  frame. Pass a value in on the stack instead, or bind it with `⊸`.
+- A block in a `⊚` chain is `GOLF: ⟦ inside a chain`, and a `⟧` with no `⟦`
+  open (inside the innermost `[`, `{` or `⟦`) is `GOLF: ⟧ outside a block`.
+  A `⋄` belongs to the innermost `[` or `{`, so one directly inside a block is
+  `GOLF: ⋄ outside [ ] or { }`. Both exit 2.
+
+```golfj
+5⍳⟦"*⟧€⍕                 ->  0 1 4 9 16
+6⍳⟦2%⟧⌿⍕                 ->  0 2 4
+3⍳⟦⟦1+⟧€⟧⍎⍕              ->  1 2 3
+⟦7Ṅ^8Ṅ⟧⍎9Ṅ               ->  79
+```
+
+**Bare locals (S4).** Inside a `⊡` word, once `⇒x` or `⇐x` has named the local
+`x` (a letter `a`–`z` or a `‹long name›`), a bare `x` compiles as `⇐x`, the
+same five bytes.
+
+- Shadowing: from the first `⇒x`/`⇐x` to the word's `;`, `x` is the local,
+  even if a word `x` exists. Before it, and in a word that never names `x`,
+  `x` is the call it always was. So a `⊡` word may still call itself by name,
+  as long as it does not also name a local that way.
+- `⇒x` is still the only way to store, and `⇐x` still works.
+
+```golfj
+⊡‹hyp›⇒a⇒b a a* b b*+;3 4‹hyp›Ṅ   ->  25
+⊡f⇒n n"[_1^]1-f n*;5fṄ            ->  120
+:a 100;⊡g a⇒a a+;7gṄ               ->  107
+```
+
+In the last line, the first `a` calls the word `a` (100), `⇒a` names the local,
+and the second `a` is the local.
 
 ### Output
 
@@ -1464,6 +1553,8 @@ wrote it, not by the encoded copy `golfc` hands the compiler.
 | `includes nested too deeply <path> at …` · `too many includes <path> at …` | a 9th level of nesting · a 61st file |
 | `⋄ outside [ ] or { } at …` · `⋄ twice in one block at …` | a `⋄` with no `[` or `{` open (top level, the body of a word, after a `]`) · a second `⋄` in one `[ ]` or `{ }` (W12-A7) |
 | `⇡ needs a variable at …` · `⇣ needs a variable at …` | a `⇡`/`⇣` not followed by a letter or a `‹long name›` (W12-Z2) |
+| `⟧ outside a block at …` · `⟦ inside a chain at …` | a `⟧` whose innermost open `[`/`{`/`⟦` is not a `⟦` · a `⟦` in the body of a `⊚` chain (W13-A) |
+| `block uses local x at …` | inside a `⟦ … ⟧` in a `⊡` word: any `⇒x`/`⇐x`, or a bare `x` / `⇡x` / `⇣x` naming one of the word's locals (W13-A) |
 | `program too large` | the binary would pass 192 KB. No place: it is the size of the whole image |
 
 ```

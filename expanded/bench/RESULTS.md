@@ -121,3 +121,13 @@ the same. `⍒` adds n key calls through `€`, the key block and the gather.
 key and its unpacking. It went from 100 to 67 bytes and from 0.0885 to
 0.0852 s (best of 5, same session), with output equal to Python's on
 `gen.py 1 in`.
+
+W13-A (S1 adverbs, `⟦ … ⟧` blocks, bare locals) changes no emitted code.
+`f€` compiles to the bytes of `′f€`, `⟦ … ⟧` to those of `:x … ;′x`, and a
+bare local to those of `⇐x` (run2.sh's W13-A block compares the binaries), so
+run time is unchanged. The compiler does a little more per token: a one-byte
+peek and a scan of the adverb record after every call token. That costs
+nothing measurable. golf2 compiling the prelude plus all twelve
+`bench/leetcode/golf/` files (36,701 bytes) took 19.0 ms before and 19.9 ms
+after, and compiling itself 7.2 ms before and 6.8 ms after (mean of 50 runs
+each, same session; the run-to-run spread is larger than either difference).

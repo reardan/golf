@@ -133,6 +133,10 @@ COMPILER = [
      "prefix: ⇡x adds 1 to variable x in place (←x⊕→x; in a ⊡ word, a local already named there)"),
     (mkblob2.VDEC_BYTE, "vdec", "⇣",
      "prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there)"),
+    # --- W13-A: S2 inline blocks ---
+    (mkblob2.BLOCK_BYTE, "blk", "⟦",
+     "opens an inline block: ⟦ … ⟧ is an anonymous word compiled in place; ⟧ pushes its address"),
+    (mkblob2.ENDBLOCK_BYTE, "endblk", "⟧", "closes an inline block and pushes its address"),
 ]
 
 def lib_byte(key) -> int:

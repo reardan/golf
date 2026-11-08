@@ -474,6 +474,32 @@ VENDOR_PATH = 0x43F000    # the C string `vendor/path` the third include try ope
 ELSE_BYTE = 0xB8    # ⋄  the else of c[a⋄b] and the test of {c⋄body} (W12-A7); no memory
 VINC_BYTE = 0xB9    # ⇡x  increment variable x in memory, inc qword [cell] (W12-Z2); no memory
 VDEC_BYTE = 0xBA    # ⇣x  decrement it, dec qword [cell]; in a ⊡ word a named local wins
+# W13-A: S2 inline blocks, ⟦ … ⟧ — an anonymous word compiled in place and
+# jumped over; ⟧ pushes its address.  No memory: the compile-time stack holds
+# the jmp site, the saved ⊡ flag and the tag 1000005 (see self/golf2.golfj).
+BLOCK_BYTE = 0xBB   # ⟦  opens an inline block
+ENDBLOCK_BYTE = 0xBC  # ⟧  closes it and pushes its address
+# W13-A: S1 adverbs.  A call token (an atom, a v1 arithmetic op, a one-byte
+# word, a ‹long name› — and any token that compiles as one, such as a digraph)
+# IMMEDIATELY followed by one of these bytes is compiled as `′token` instead
+# of a call: `f€` is `′f€`.  Listed ONCE, here: build_blob2() stores the set as
+# blob record ADVERB_KEY, which golf2 and the seed scan, and boot/golfref.py
+# imports it.  Glyphs, in order: € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣, then W13's ⍂ ⍃ ⍖ ⍷
+# (0xE7 0xE8 0xEA 0xEC, prelude words another W13 agent adds).
+ADVERBS = bytes([ord("M"), ord("F"), ord("W"), ord("Z"),
+                 0xD1, 0xD2, 0xD3, 0xD4, 0xD8, 0xD9,
+                 0xE7, 0xE8, 0xEA, 0xEC])
+# ... except the bytes below, which never quote: blob record UNQUOTED_KEY.
+#   * the v1 stack, memory and I/O ops: no use as a function argument, and
+#     `\€` "swap, then map" is real code;
+#   * ∘ (0xC5) and ⊸ (0xD0), the two words that BUILD a function: `′f⊸€`
+#     ("bind, then map with the result") is the idiom, so their result is what
+#     the adverb takes (the W13-A audit found it in REFERENCE.md and run2.sh).
+# Everything else that reaches the compiler's default case (the other v1 ops,
+# every atom, every word call) quotes.
+UNQUOTED = b'"_\\&@!?,().' + bytes([0xC5, 0xD0])
+ADVERB_KEY = 6      # blob record keys: control bytes, never an op, so `f`
+UNQUOTED_KEY = 7    # finds these two only when asked by number
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).
@@ -591,7 +617,8 @@ def _check_atoms():
     dup = sorted({b for b in bs if bs.count(b) > 1})
     assert not dup, "duplicate ATOMS byte: " + ", ".join(f"0x{b:02X}" for b in dup)
     taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE, CHAIN_BYTE, FRAME_BYTE,
-             LSET_BYTE, LGET_BYTE, LNAME_BYTE, RNAME_BYTE}
+             LSET_BYTE, LGET_BYTE, LNAME_BYTE, RNAME_BYTE,
+             BLOCK_BYTE, ENDBLOCK_BYTE}           # W13-A
     taken |= {ord(ch) for ch in v1.TEMPLATES}
     clash = sorted(set(bs) & taken)
     assert not clash, ("ATOMS byte already allocated: "
@@ -664,6 +691,8 @@ def build_blob2():
     b += v1.rec(3, STARTUP2)                     # M-TOOL stash + W9-2C guard + M-MEM rbp
     b += v1.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
     b += v1.rec(5, AUTOEXIT2)                    # W11-1C: flush hook, then exit(0)
+    b += v1.rec(ADVERB_KEY, ADVERBS)             # W13-A: S1's adverb set
+    b += v1.rec(UNQUOTED_KEY, UNQUOTED)          # W13-A: and the ops it never quotes
     used = set()
     def emit(key, tpl):
         """One record per op byte — the M-VEC override REPLACES the scalar one."""

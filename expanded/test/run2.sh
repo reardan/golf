@@ -1401,7 +1401,9 @@ w9g ':r"[^]\dec r;200000 r N E'
   || no "200,000-deep recursion: rc $w9grc, output '$w9gout' (want 139, nothing)"
 # Since M-FRAME2 (W9-4D) a ⊡ frame is one cell per local named, so the word
 # names all eight one-letter locals to keep its 72-byte frame.
-w9g '\dlocc\lseta\lgetb\lgetc\lgetd\lgete\lgetf\lgetg\lgeth_______\lgeta0\slt1+[0^]\lgeta1-c;20000cN E'
+# W13-A: the word is r, not c — it names a local c, and a bare c is that
+# local since S4 (bare locals), so `c` would no longer recurse.
+w9g '\dlocr\lseta\lgetb\lgetc\lgetd\lgete\lgetf\lgetg\lgeth_______\lgeta0\slt1+[0^]\lgeta1-r;20000rN E'
 [ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
   && ok "a ⊡ word (72-byte frames) recursing 20,000 deep dies the same way" \
   || no "20,000-deep ⊡ recursion: rc $w9grc, output '$w9gout' (want 139, nothing)"
@@ -1819,7 +1821,7 @@ w9g '⊡c"⇒a⇒‹d›⇐a[0^]⇐a1-c⇐‹d›+;40000cN E'
 [ "$w9grc" = 0 ] && [ "$w9gout" = "800020000" ] \
   && ok "a two-local ⊡ word recurses 40,000 deep (24-byte frames)" \
   || no "two-local depth: rc $w9grc, output '$w9gout'"
-w9g '⊡c"⇒a⇒‹d›⇐b⇐c⇐e⇐f⇐g⇐h______⇐a[0^]⇐a1-c⇐‹d›+;40000cN E'
+w9g '⊡r"⇒a⇒‹d›⇐b⇐c⇐e⇐f⇐g⇐h______⇐a[0^]⇐a1-r⇐‹d›+;40000rN E'   # r: see W13-A above
 [ "$w9grc" = 139 ] && [ -z "$w9gout" ] \
   && ok "... the same word naming eight locals hits the guard page (72-byte frames)" \
   || no "eight-local depth: rc $w9grc, output '$w9gout' (want 139)"
@@ -4193,6 +4195,89 @@ done
 [ "$w12o5n" = "stock trap slidemax" ] && [ -z "$w12o5bad" ] \
   && ok "the LeetCode tutorial's Stock, Trap and Sliding Window are bench/leetcode/golf/'s text, their stated sizes, and print their documented (and Python's) output" \
   || no "W12-O5 LeetCode tutorial ($w12o5n):$w12o5bad"
+
+# === W13-A ===
+echo "W13-A: S1 adverbs quote the token before them, S2 ⟦ … ⟧ inline blocks, S4 bare locals"
+# w13ac SRC OUT: compile glyph source with the prelude (golf2), no run.  w13ar
+# RAWBYTES OUT: the same from raw code-page bytes (for bytes the encoder has no
+# glyph for yet).  w13ae SRC: golf2's and golfref's "rc stderr" for a compile.
+w13ac(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$2" 2>/dev/null; }
+w13ar(){ printf "$1" | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$2" 2>/dev/null; }
+w13ae(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/w13a.src"
+         "$TMP/golf2" < "$TMP/w13a.src" > /dev/null 2> "$TMP/w13a.e1"; w13a1=$?
+         python3 boot/golfref.py < "$TMP/w13a.src" > /dev/null 2> "$TMP/w13a.e2"; w13a2=$?
+         echo "$w13a1 $(cat "$TMP/w13a.e1") | $w13a2 $(cat "$TMP/w13a.e2")"; }
+w13asame(){ w13ac "$1" "$TMP/w13a.x" && w13ac "$2" "$TMP/w13a.y" && cmp -s "$TMP/w13a.x" "$TMP/w13a.y"; }
+# S1 is exactly ′: for every adverb that exists today, `f<adv>` compiles to the
+# bytes of `′f<adv>` — after a one-byte word, a long name, an atom and a v1 op.
+w13abad=""
+for w13aa in € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣; do
+  w13asame ":f+;:‹g›+;f$w13aa ‹g›$w13aa ⌈$w13aa +$w13aa" ":f+;:‹g›+;′f$w13aa ′‹g›$w13aa ′⌈$w13aa ′+$w13aa" || w13abad="$w13abad $w13aa"
+done
+[ -z "$w13abad" ] && ok "f€ is ′f€, byte for byte, for € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ after a word, a long name, an atom and a v1 op" \
+  || no "S1 bytes differ for:$w13abad"
+# The four W13 adverb bytes (0xE7 ⍂, 0xE8 ⍃, 0xEA ⍖, 0xEC ⍷, prelude words of
+# another W13 task) are in the set already: defined here as stand-in words.
+w13abad=""
+for w13ab in E7 E8 EA EC; do
+  w13ar ":\\x${w13ab}_;:f+;f\\x$w13ab" "$TMP/w13a.x"; w13ar ":\\x${w13ab}_;:f+;\\x8Cf\\x$w13ab" "$TMP/w13a.y"
+  w13ar ":\\x${w13ab}_;:f+;f \\x$w13ab" "$TMP/w13a.z"
+  cmp -s "$TMP/w13a.x" "$TMP/w13a.y" && ! cmp -s "$TMP/w13a.x" "$TMP/w13a.z" || w13abad="$w13abad $w13ab"
+done
+[ -z "$w13abad" ] && ok "the W13 adverb bytes 0xE7 0xE8 0xEA 0xEC quote too (f⍂ is ′f⍂; f ⍂ is not)" || no "W13 adverb bytes:$w13abad"
+# ... and nothing else does: whitespace, the never-quote bytes, non-adverbs.
+w13asame '5⍳²€⍕' '5⍳′²€⍕' && w13asame ':‹mk›′⊕;3⍳‹mk› €' ':‹mk›′⊕;3⍳‹mk›
+€' && ! w13asame ':‹mk›′⊕;3⍳‹mk› €' ':‹mk›′⊕;3⍳‹mk›€' \
+  && w13asame '3⍳5′-⊸€' '3⍳5′-⊸ €' && w13asame '′⊕3⍳\\€' '′⊕3⍳\\ €' && w13asame '3⍳"_€' '3⍳" _ €' \
+  && w13asame '5⍳⊕⍕' '5⍳⊕ ⍕' && w13asame '5+⍀' '5′+⍀' \
+  && ok "a space or newline keeps call-then-adverb; \\ _ \" ∘ ⊸ never quote; a number never does; ⍕ is no adverb" \
+  || no "S1 boundaries"
+[ "$(printf '%s' '5⍳²€⍕␤5⍳+⍀⍕␤5⍳⌈⍁Ṅ␤:‹sq›²;4⍳‹sq›€⍕␤4⍳‹z›€⍕:‹z›1+;␤3⍳5′-⊸€⍕␤′⊕3⍳\\€⍕␤4⍳4⍳*⊞⍕␤4⍳10+⇤Ṅ␤6⍳⊘⌿⍕' | gc)" \
+  = "$(printf '0 1 4 9 16 \n0 1 3 6 10 \n4\n0 1 4 9 \n1 2 3 4 \n-5 -4 -3 \n1 2 3 \n0 1 4 9 \n16\n0 1 ')" ] \
+  && [ "$(printf '%s' '5⍳²€⍕␤4⍳‹z›€⍕:‹z›1+;␤4⍳10+⇤Ṅ␤6⍳⊘⌿⍕' | gref)" = "$(printf '0 1 4 9 16 \n1 2 3 4 \n16\n0 1 ')" ] \
+  && ok "S1 programs run (a forward long name quotes too); the oracle agrees" || no "S1 programs"
+# The undefined-word line is the token's own, though S1 peeked past a newline.
+[ "$(w13ae '1Ṅ
+q
+2Ṅ')" = "2 GOLF: undefined word q at line 2 | 2 GOLF: undefined word q at line 2" ] \
+  && [ "$(w13ae '1Ṅ
+‹qq›€
+2Ṅ')" = "2 GOLF: undefined word ‹qq› at line 2 | 2 GOLF: undefined word ‹qq› at line 2" ] \
+  && ok "S1's one-byte peek does not move an undefined word's line (golf2 and the oracle)" || no "S1 peek line: $(w13ae '1Ṅ
+q
+2Ṅ')"
+# S2: a block is a :-word with no name — its bytes ARE `:x … ;′x`.
+w13asame '5⍳⟦"*⟧€⍕' '5⍳:x"*;′x€⍕' && w13asame '⟦⟦1+⟧€⟧' ':x:y1+;′y€;′x' \
+  && w13asame '5\blk"*\endblk' '5⟦"*⟧' \
+  && ok "⟦ … ⟧ compiles to exactly :x … ;′x (nested too); \\blk / \\endblk spell it" || no "S2 bytes"
+[ "$(printf '%s' '5⍳⟦"*⟧€⍕␤6⍳⟦2%⟧⌿⍕␤3⍳⟦⟦1+⟧€⟧⍎⍕␤⟦7Ṅ^8Ṅ⟧⍎9Ṅ␤⊡f⇒a 3⍳⟦^⟧€⍕ a;5fṄ␤:f ⟦⊡g⇒x x x*;⟧_ 5gṄ;f' | gc)" \
+  = "$(printf '0 1 4 9 16 \n0 2 4 \n1 2 3 \n79\n0 1 2 5\n25')" ] \
+  && [ "$(printf '%s' '5⍳⟦"*⟧€⍕␤3⍳⟦⟦1+⟧€⟧⍎⍕␤⟦7Ṅ^8Ṅ⟧⍎9Ṅ␤⊡f⇒a 3⍳⟦^⟧€⍕ a;5fṄ' | gref)" = "$(printf '0 1 4 9 16 \n1 2 3 \n79\n0 1 2 5')" ] \
+  && ok "blocks run: as € ⌿ arguments, nested, ⍎, ^ returns from the block (also in a ⊡ word); the oracle agrees" || no "S2 programs"
+w13abad=""
+for w13ad in '⟧|⟧ outside a block' '[⟧]|⟧ outside a block' '{⟧}|⟧ outside a block' '⊚g ⟦1⟧;|⟦ inside a chain' \
+             '⟦1⋄2⟧|⋄ outside [ ] or { }' '⊡f⇒a 3⍳⟦a+⟧€;|block uses local a' '⊡f⇒‹n› ⟦⇐‹n›⟧;|block uses local ‹n›' \
+             '⊡f⟦⇒b⟧;|block uses local b' '⊡f⇒a ⟦⇡a⟧;|block uses local a' '⊡f⇒a ⟦⟦a⟧⟧;|block uses local a'; do
+  [ "$(w13ae "${w13ad%%|*}")" = "2 GOLF: ${w13ad#*|} at line 1 | 2 GOLF: ${w13ad#*|} at line 1" ] || w13abad="$w13abad [${w13ad%%|*}: $(w13ae "${w13ad%%|*}")]"
+done
+[ -z "$w13abad" ] && [ "$(printf '%s' '⊡f⇒a ⟦⇡q←qṄ⟧⍎a;5fṄ' | gc)" = "15" ] \
+  && ok "a stray ⟧, a ⟦ in a chain, ⋄ directly in a block and any local inside a ⟦ in a ⊡ word: exit 2, golf2 and the oracle alike (a variable is fine)" \
+  || no "S2 errors:$w13abad"
+# S4: a bare local is ⇐x's bytes; it shadows a word only after it is named.
+w13asame '⊡f⇒a⇒‹b›a ‹b›*a+;' '⊡f⇒a⇒‹b›⇐a⇐‹b›*⇐a+;' && ! w13asame ':a 1;⊡f a⇒a a;' ':a 1;⊡f⇐a⇒a a;' \
+  && [ "$(printf '%s' '⊡f⇒n n"[_1^]1-f n*;5fṄ␤⊡‹g›⇒‹n›‹n›"[_0^]1-‹g›‹n›+;10‹g›Ṅ␤:a 100;⊡g a⇒a a+;7gṄ␤⊡h⇒c c 2*;21hṄ␤3⍳⟦1+⟧⊡k⇒f f€;k⍕' | gc)" \
+     = "$(printf '120\n55\n107\n42\n1 2 3 ')" ] \
+  && [ "$(printf '%s' '⊡f⇒n n"[_1^]1-f n*;5fṄ␤:a 100;⊡g a⇒a a+;7gṄ' | gref)" = "$(printf '120\n107')" ] \
+  && ok "bare locals: ⇐x's bytes; a ⊡ word still recurses by name; a word named like a later local is called until ⇒ names it; the oracle agrees" \
+  || no "S4"
+# REFERENCE.md's "Adverbs, blocks and bare locals" examples print what they say.
+w13abad=""; w13an=0
+while IFS= read -r w13al; do
+  w13ax=${w13al%%  ->*}; w13ax=${w13ax%"${w13ax##*[! ]}"}; w13aw=${w13al##*->  }; w13an=$((w13an+1))
+  [ "$(printf '%s' "$w13ax" | gc 2>&1 | sed 's/ *$//')" = "$w13aw" ] || w13abad="$w13abad [$w13ax]"
+done < <(sed -n '/^### Adverbs, blocks and bare locals$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w13abad" ] && [ "$w13an" -ge 13 ] && grep -q '^| `0xBB` | `⟦` | `\\blk` |' REFERENCE.md \
+  && ok "REFERENCE.md's Adverbs, blocks and bare locals examples ($w13an) print what they say" || no "W13-A examples ($w13an):$w13abad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

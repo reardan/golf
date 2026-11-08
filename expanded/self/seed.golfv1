@@ -174,14 +174,23 @@
 # appearance; a new name claims slot m88 (the count so far), at most 16, so every
 # displacement is a disp8.  m80 is the walking index (M2's, idle by now).  golf2
 # names the offending local on fd 2; the seed can only exit(2).
-:l"256<1+["97-26<[2.]]m56+@["256<[2.]"97-8<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
+:l"256<1+["97-26<[2.]]m56+@2-[2.]m56+@["256<[2.]"97-8<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
 # W12-Z2 — ⇡x (0xB9) / ⇣x (0xBA): inc / dec qword [0x4E0000+8x] in place, or
 # [rbp+disp] when this ⊡ word has already named x as a local (M walks l's table
 # without claiming a slot: name -> name slot+1, or name 0).  T: k -> ; k is 0
 # for inc, 8 for dec (the modrm's /0 or /1).  x must be a letter or a long
 # name; golf2 says `GOLF: ⇡ needs a variable`, the seed exits 2.
-:Mm56+@1-[0m80+!{m80+@m88+@-[0^]"m80+@4*m96++@-[m80+@1+^]m80+@1+m80+!0}]0; # M: name -> name s
+:Mm56+@[0^]0m80+!{m80+@m88+@-[0^]"m80+@4*m96++@-[m56+@2-[2.]m80+@1+^]m80+@1+m80+!0}; # M: name -> name s (W13-A: m56 = 2, a ⟦ block in a ⊡ word: a named local exits 2)
 :TG"256<1+["65-26<&97-26<+[2.]]M"[_72o255o\4+o37o8*5111808+w^]1-8*\_72o255o\69+oo; # T: k -> ; ⇡/⇣'s bytes
+# W13-A — the default token (golf2.golfj: ‹inrec› ‹quoted› ‹plain›; its
+# comments have the rules).  A: ch key -> 0 iff ch is a byte of blob record
+# key's body (scratch m176 the byte, m180 the cursor, m184 the end — W11-3B's
+# spare cells).  p: name -> ; S4 first (M: a local this ⊡ word has named is
+# ⇐x's bytes), then S1: peek one byte with `(` into Q, and if it is in record 6
+# (the adverbs) quote the name with X — a long name always, a one-byte name
+# unless it is in record 7 (the bytes that never quote) — else e as before.
+:Af"2+m180+!1+?m180+@+m184+!m176+!{m180+@m184+@-[1^]m180+@?m176+@-[0^]m180+@1+m180+!0}; # A: ch key -> f
+:pM"[_(Q!Q@6A["256<[X^]"7A[e^]X^]e^]1-8*\_72o139o69oo80o; # p: name -> ; bare local, quote, or e
 # ---------------------------------------------------------------------------
 # W11-4A — records, ⊜‹point›‹x›‹y›; (0xB7).  At compile time the header becomes
 # the words golf2's ‹defrecord› emits (see self/golf2.golfj, Records):
@@ -325,13 +334,20 @@
 "184-[_"1000001-[_233oP0w\k1000003^]"1000002-[_2E133oP0w1000004^]2.] # 0xB8  ⋄  else / while test
 "182-[_I^]                                              # 0xB6  ⎘  include a file (W11-2A)
 "183-[_y^]                                              # 0xB7  ⊜  a record header (W11-4A)
+# ⟦ (0xBB) / ⟧ (0xBC, W13-A S2) — an inline block: ⟦ is `:`'s header with no
+# name (refused inside a chain: exit 2) and leaves [site][saved m56][1000005];
+# inside a ⊡ word m56 becomes 2, so ^ is plain and locals exit 2 (l, M).  ⟧
+# checks the tag (else exit 2), restores m56, emits the epilogue, lands the
+# jmp and pushes the block's address.
+"187-[_m32+@1-[2.]233oP0w1Em56+@"1<[2m56+!]1000005^]     # 0xBB  ⟦  open an inline block
+"188-[_1000005-[m56+!94E"k4+606208-Lw^]2.]               # 0xBC  ⟧  close it, push its address
 "180-[_N]                                               # 0xB4  ‹  a long name used as a token
 
 # A token inside a chain is a LINK.  This case must sit LAST, just before the
 # `e;` fallthrough: everything `t` recognizes earlier — whitespace, comments,
 # digits, the structural bytes — keeps its ordinary meaning inside a chain body.
 m32+@1-[m36+@1+m36+!m36+@1-[m40+!^]m36+@2-[m44+!^]m36+@3-[m48+!m40+@Xm44+@Xm48+@X199e^]e^] # LINK: buffer or emit a chain link
-e;                                                      # default: e
+p;                                                      # default: p (W13-A; e before)
 # H: write the ELF header from (offset,value) pairs (record key 4) over the
 # zeroed output buffer.  end kept in S; store each value byte at B+offset.
 :H4f"1+?\2+\&+S!{"?B+&1+?\,2+"S@<1+}_;
