@@ -3954,6 +3954,50 @@ while IFS= read -r w12o3l; do
 done < <(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
 [ -z "$w12o3bad" ] && [ "$(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 6 ] \
   && ok "REFERENCE.md's Priority queues examples print what they say" || no "REFERENCE Priority queues examples:$w12o3bad"
+# === W12-O6 ===
+echo "W12-O6: booleans for output — ‹tf› (0 -> “true“, else “false“, as a code list)"
+w12o6p='0‹tf›⊐32)1‹tf›⊐32)5±‹tf›⊐32)3 3≡‹tf›⊐32)3 3≡1+‹tf›⊐32)3 4≡1+‹tf›⊐32)0‹tf›"TṄ32)≢Ṅ32)1‹tf›≢Ṅ'
+[ "$(printf '%s' "$w12o6p" | gc)" = "true false false false true false 0 4 5" ] \
+  && [ "$(printf '%s' "$w12o6p" | gref)" = "true false false false true false 0 4 5" ] \
+  && ok "‹tf›: 0 true, 1 / -5 / -1 false, a tagged list of 4 or 5 codes; 1+ flips a ≡ result (oracle too)" \
+  || no "W12-O6 ‹tf›: $(printf '%s' "$w12o6p" | gc)"
+# Fresh list each call, freeable; and it leaves the caller's stack alone.
+[ "$(printf '%s' '‹heapstats›→b→n 0→j{←j2%‹tf›⌫←j1+"→j1000<1+}‹heapstats›←b-Ṅ32)←n-Ṅ32)9 0‹tf›⌫Ṅ' | gc)" = "0 0 9" ] \
+  && ok "1000 ‹tf› lists made and freed: ‹heapstats› flat; the stack under f is untouched" || no "W12-O6 heapstats"
+w12o6bad=""
+while IFS= read -r w12o6l; do
+  w12o6x=${w12o6l%%  ->*}; w12o6x=${w12o6x%"${w12o6x##*[! ]}"}; w12o6w=${w12o6l##*->  }
+  [ "$(printf '%s' "$w12o6x" | gc 2>&1 | sed 's/ *$//')" = "$w12o6w" ] || w12o6bad="$w12o6bad [$w12o6x]"
+done < <(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w12o6bad" ] && [ "$(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && grep -q '‹tf›⊐' bench/leetcode/golf/parens.golfj \
+  && ok "REFERENCE.md's ‹tf› examples print what they say; Valid Parentheses prints through ‹tf›" || no "W12-O6 examples:$w12o6bad"
+# === W12-O4 ===
+echo "W12-O4: bench/leetcode/golf/* — answers match Python on gen.py 0.001 inputs; bytes never grow past README.md"
+# The ten problems and their ceilings are bench/leetcode/README.md's "Byte
+# ceilings" table; bytes are counted as bytes.sh counts them (code-page bytes,
+# newlines dropped).  gen.py seeds random.Random(42), so its inputs are the
+# same every run; parens gets two extra unbalanced inputs (gen.py's are all
+# balanced).  Python's own solution (bench/leetcode/py/) is the reference.
+w12o4L=bench/leetcode; w12o4D="$TMP/lc"; w12o4bad=""; w12o4n=0
+python3 "$w12o4L/gen.py" 0.001 "$w12o4D"
+printf '([)]\n' > "$w12o4D/parens2.txt"; printf '((\n' > "$w12o4D/parens3.txt"
+while read -r w12o4p w12o4c; do
+  w12o4n=$((w12o4n+1))
+  python3 tools/codepage.py encode < "$w12o4L/golf/$w12o4p.golfj" > "$TMP/lc.gb"
+  w12o4b=$(tr -d '\n' < "$TMP/lc.gb" | wc -c)
+  [ "$w12o4b" -le "$w12o4c" ] || w12o4bad="$w12o4bad [$w12o4p: $w12o4b bytes > $w12o4c]"
+  cat "$TMP/pre.gb" "$TMP/lc.gb" | "$TMP/golf2" > "$TMP/lcbin" 2>/dev/null; chmod +x "$TMP/lcbin"
+  for w12o4i in "$w12o4D/$w12o4p".txt "$w12o4D/$w12o4p"[0-9].txt; do
+    [ -f "$w12o4i" ] || continue
+    [ "$("$TMP/lcbin" < "$w12o4i" 2>&1 | tr -s ' \n' '  ' | sed 's/ *$//')" \
+      = "$(python3 "$w12o4L/py/$w12o4p.py" < "$w12o4i" | tr -s ' \n' '  ' | sed 's/ *$//')" ] \
+      || w12o4bad="$w12o4bad [$w12o4p: wrong answer on $(basename "$w12o4i")]"
+  done
+done < <(sed -n '/^### Byte ceilings$/,/^### /p' "$w12o4L/README.md" | sed -n 's/^| \([a-z]*\) | \([0-9]*\) |$/\1 \2/p')
+[ "$w12o4n" = 10 ] && [ -z "$w12o4bad" ] \
+  && ok "the 10 LeetCode solutions give Python's answers on tiny inputs, each within its README byte ceiling" \
+  || no "W12-O4 leetcode ($w12o4n problems):$w12o4bad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

@@ -474,6 +474,20 @@ every raw `)` or `(`. `)` and `(` themselves are not buffered: still one
 5Ṅ‹flush›1“b“4+1 1⎈_     # prints 5b; without ‹flush› the raw ⎈ write comes first: b5
 ```
 
+**Booleans (W12-O6).** LeetCode answers are often `true` or `false`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹tf›` | `f -> list` | the code list `true` when `f` is `0`, else `false`, printed with `⊐`. This is zero-is-true, like `[`, `∊` and `‹has›`. A comparison `≡ ≺ ≻ < »` pushes `-1` for true, so add `1+` first (`-1` becomes `0`). Each call makes a new list |
+
+```
+0‹tf›⊐                   ->  true
+7‹tf›⊐                   ->  false
+3 3≡1+‹tf›⊐              ->  true
+“abc“⊃98∊‹tf›⊐           ->  true
+“abc“⊃“x“⊃‹startswith›‹tf›⊐  ->  false
+```
+
 Output still pending when the process dies of a signal (a kill, or the
 return-stack guard page's SIGSEGV) is lost. The cell `0x4F0988` (`5179784`)
 holds the fd the buffer drains to; `0` means fd 1.

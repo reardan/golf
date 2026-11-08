@@ -1968,3 +1968,10 @@
   \fetch"5180984\fetch\slt5181384\fetch5181376\fetch\rlt$1\radd"[
    _5180976\fetch\store5181384\fetch5180976\store0]}_
  5180984\fetch5180976\fetch\store;
+# === W12-O6 booleans for output ===
+# ‹tf›  f -> list       “true“ as a code list when f is 0, “false“ otherwise:
+#                       the zero-is-true convention of [ ∊ ‹has› ‹startswith›,
+#                       so `…‹tf›⊐` prints LeetCode's true/false.  A `≡ ≺ ≻`
+#                       result (-1 for true) prints “false“; flip it with 1+
+#                       (-1 -> 0, 0 -> 1).  A fresh list each call (⌫ frees it).
+:‹tf›[“true“U⋄“false“U];
