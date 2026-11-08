@@ -2171,6 +2171,74 @@ not set), `stopwatch.golfj` (sleeps, then reports the time that passed on
 `‹now›` and what `‹rusage›` says), and `procinfo.golfj` (pid, which of fds
 0–2 are terminals, the epoch, `HOME`, with an `‹eputs›` message and status
 `1` when it is not set).
+### Filesystem (W14-E)
+
+The filesystem words (W14-E) work on paths the way the file words do: a path
+is a **code list** (`“d/x“⊃`, an element of `‹args›`), and so is every name or
+path they return, always a NEW list. A flag is zero-is-true, like `∊` and
+`‹has›`, so `‹isdir›[…]` runs on a directory. They are the `os` / `os.path`
+calls the repo's Python tools use, each one or a few raw syscalls through `⎈`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹stat›` | `path -> info` | the list `[size mode mtime dev ino nlink]` of `path`, following symlinks: `st_size`, `st_mode` (type and permission bits, as Python's `st_mode`), `st_mtime` in whole seconds, `st_dev`, `st_ino`, `st_nlink`. A missing path throws |
+| `‹lstat›` | `path -> info` | the same, but a final symlink is described itself, not followed |
+| `‹exists›` | `path -> f` | `0` when `path` exists (after symlinks: a dangling link does not), else `1`. Never throws |
+| `‹isfile›` | `path -> f` | `0` for a regular file, after symlinks, else `1`. Never throws |
+| `‹isdir›` | `path -> f` | `0` for a directory, after symlinks, else `1`. Never throws |
+| `‹samefile›` | `a b -> f` | `0` when `a` and `b` are the same file (equal `dev` and `ino`: a hard link, a symlink and its target, `d` and `d/.`), else `1`. A missing path throws. This is what an include-once check needs instead of `realpath` |
+| `‹mkdir›` | `path ->` | create a directory, mode `0755` less the umask. An existing `path` throws (`EEXIST`) |
+| `‹makedirs›` | `path ->` | create every missing parent, then `path`. Nothing happens when `path` is already a directory (Python's `os.makedirs(path, exist_ok=True)`); a file in the way throws (`EEXIST`, or `ENOTDIR` for a parent) |
+| `‹unlink›` | `path ->` | remove a file or a symlink (a directory is `EISDIR`) |
+| `‹rmdir›` | `path ->` | remove an empty directory (`ENOTEMPTY` otherwise) |
+| `‹rename›` | `old new ->` | `rename(2)`: move `old` to `new`, atomically replacing a file `new` |
+| `‹listdir›` | `path -> names` | the names in a directory, without `.` and `..`, sorted bytewise (`‹lexcmp›` order, which is Python's `sorted` on bytes). An empty directory gives the empty list |
+| `‹rmtree›` | `path ->` | delete `path` and everything under it. It never follows a symlink: a link inside the tree, or `path` itself, is unlinked and its target left alone (a trailing `/` is dropped first, so `link/` also removes just the link). A missing `path` is not an error |
+| `‹mkdtemp›` | `prefix -> path` | create a new private directory (mode `0700`) `<tmp>/<prefix>XXXXXX` and return its path. `<tmp>` is `$TMPDIR` when it is set and non-empty, else `/tmp`; the six characters come from `getrandom(2)`, drawn from `a-z 0-9 _`. A name that exists is retried (up to 100 times) |
+| `‹getcwd›` | `-> path` | the current directory, an absolute path |
+| `‹chdir›` | `path ->` | change the current directory |
+| `‹pathjoin›` | `a b -> path` | `os.path.join(a, b)`: `a`, one `/` unless `a` is empty or already ends with one, then `b`. An absolute `b` replaces `a`, so `“a“ “/b“` gives `/b`, and an empty `b` gives `a/` |
+| `‹dirname›` | `path -> part` | `os.path.dirname`: everything before the last `/`, with trailing slashes dropped unless that is all it is (`/a` gives `/`, `//a` gives `//`, `a` gives the empty list) |
+| `‹basename›` | `path -> part` | `os.path.basename`: everything after the last `/` (`a/b/` gives the empty list) |
+
+```
+“a/b/c.txt“⊃‹dirname›⊐                        ->  a/b
+“a/b/“⊃‹basename›≢Ṅ                           ->  0
+“a“⊃“b“⊃‹pathjoin›⊐                           ->  a/b
+“a“⊃“/etc“⊃‹pathjoin›⊐                        ->  /etc
+“/etc“⊃‹isdir›Ṅ“nope“⊃‹exists›Ṅ               ->  01
+“t/u/v“⊃‹makedirs›“t“⊃‹listdir›⍕              ->  [117]
+“hi“⊃“a.txt“⊃‹writefile›“a.txt“⊃‹stat›0⊇Ṅ     ->  2
+“x“⊃‹mkdir›“x“⊃‹stat›1⊇12≫Ṅ                   ->  4
+“t“⊃‹rmtree›“t“⊃‹exists›Ṅ“gone“⊃‹rmtree›       ->  1
+“job-“⊃‹mkdtemp›"⊐“ “🗲‹basename›≢Ṅ            ->  /tmp/job-i0hftc 10
+“nope“⊃‹stat›                                 ->  GOLF: cannot stat nope (ENOENT)
+:‹f›“x“⊃‹rmdir›;′‹f›‹catch›⊐                   ->  cannot rmdir x (ENOENT)
+```
+
+Each example starts in an empty directory. The `4` is the mode's type field,
+`S_IFDIR >> 12`; the six characters after `job-` differ on every call.
+
+**A failure throws** through `‹throw›`, as the file words do (see "Files"):
+`GOLF: cannot <verb> <path> (<ENAME>)`, exit status 1, catchable with
+`‹catch›`. The verb is the word's name (`stat`, `lstat`, `mkdir`, `unlink`,
+`rmdir`, `rename`, `listdir`, `rmtree`, `mkdtemp`, `chdir`; `‹makedirs›`
+says `mkdir` and names the directory that failed, `‹rename›` names `old`),
+and `‹getcwd›` says `cannot getcwd (<ENAME>)`. Besides the file words'
+errno names, `ENOTEMPTY EXDEV EBUSY ERANGE` are named. The positive errno is
+stored in the cell `5179712` first, as there.
+
+Notes:
+
+- The info list of `‹stat›` is a fresh list each call; `0⊇` is the size and
+  `1⊇` the mode, so `1⊇61440$16384-` is `0` for a directory (`S_IFMT` is
+  `61440`, `S_IFDIR` `16384`, `S_IFREG` `32768`, `S_IFLNK` `40960`).
+- `‹listdir›` reads 32 KB of entries per `getdents64(2)` call and sorts with a
+  merge sort on `‹lexcmp›`: 20,000 entries list in about 0.02 s. `‹rmtree›`
+  recurses once per directory level, on the return stack.
+- None of the words keeps state in a fixed cell: each is a `⊡` word, so they
+  may run inside each other and inside `‹catch›`. Names that start with
+  `‹_14e` are these words' helpers.
 
 ### Prelude pruning
 

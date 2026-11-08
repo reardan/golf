@@ -4594,6 +4594,141 @@ printf '5N' > "$w14dg/r.g2"; printf '3‹nope›' > "$w14dg/bad.golfj"
   && [ "$(PATH="$EXP/tools:$PATH" examples/scripts/stopwatch.golfj 30 | sed 's/[0-9][0-9]*/N/g' | tr '\n' ' ')" = "slept N ms (asked N) user N us, system N us, maxrss N KB " ] \
   && [ "$(env -u HOME PATH="$EXP/tools:$PATH" examples/scripts/procinfo.golfj 2>&1 >/dev/null; echo "rc=$?")" = "$(printf 'procinfo: HOME is not set\nrc=1')" ] \
   && ok "examples/scripts: printenv (all, or named, status 1 if unset), stopwatch, procinfo run through #!/usr/bin/env golfrun" || no "W14-D example scripts"
+# === W14-E ===
+echo "W14-E: filesystem — ‹stat› ‹lstat› ‹exists› ‹isfile› ‹isdir› ‹samefile› ‹mkdir› ‹makedirs› ‹unlink› ‹rmdir› ‹rename› ‹listdir› ‹rmtree› ‹mkdtemp› ‹getcwd› ‹chdir› ‹pathjoin› ‹dirname› ‹basename›"
+# w14e PROG [ARGS…] compiles PROG (whole prelude, golf2) and runs it inside
+# $TMP/w14e/d with ARGS, printing `rc=<status> <stdout>|<stderr>`.  Python's
+# os / os.path, run on the same paths, is the oracle throughout.
+mkdir -p "$TMP/w14e/d"
+w14e(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14e/p" 2>/dev/null \
+          && chmod +x "$TMP/w14e/p" && shift && (cd "$TMP/w14e/d" && "$TMP/w14e/p" "$@" > ../out 2> ../err; echo "rc=$? $(cat ../out)|$(cat ../err)"); }
+# Path words on the awkward cases (trailing slashes, '/', '', '.', runs of '/').
+w14ep=('' / . .. a a/ a/b a/b/ /a /a/ /a/b //a /// a//b a/b// a/./b .hidden ../x x/..)
+w14epr=':‹l›"‹dirname›⊐“|“🗲‹basename›⊐␤0;‹args›′‹l›€_'
+w14epw=$(python3 -c 'import os.path,sys
+for p in sys.argv[1:]: print(os.path.dirname(p) + "|" + os.path.basename(p))' "${w14ep[@]}")
+[ "$(w14e "$w14epr" "${w14ep[@]}")" = "rc=0 $w14epw|" ] \
+  && [ "$(printf '%s' "$w14epr" | python3 tools/codepage.py encode | cat <(python3 tools/codepage.py encode < lib/prelude.golfj) - \
+       | python3 boot/golfref.py > "$TMP/w14e/o" 2>/dev/null && chmod +x "$TMP/w14e/o" && "$TMP/w14e/o" "${w14ep[@]}")" = "$w14epw" ] \
+  && ok "‹dirname› ‹basename› agree with os.path on ${#w14ep[@]} paths ('', '/', '.', trailing and doubled slashes); the oracle compiler agrees" \
+  || no "W14-E dirname/basename: $(w14e "$w14epr" "${w14ep[@]}" | tr '\n' '~')"
+w14ej=()
+for a in '' / a a/ /a //a a/b .; do for b in '' / b b/ /b ./b ..; do w14ej+=("$a" "$b"); done; done
+w14ejw=$(python3 -c 'import os.path,sys
+a = sys.argv[1:]
+for i in range(0, len(a), 2): print(os.path.join(a[i], a[i+1]))' "${w14ej[@]}")
+[ "$(w14e '‹args›→‹v›0→‹i›{←‹i›←‹v›≢<1+⋄←‹v›←‹i›⊇←‹v›←‹i›1+⊇‹pathjoin›⊐␤←‹i›2+→‹i›}' "${w14ej[@]}")" = "rc=0 $w14ejw|" ] \
+  && ok "‹pathjoin› agrees with os.path.join on $(( ${#w14ej[@]} / 2 )) pairs (absolute b replaces a, empty sides, one '/')" \
+  || no "W14-E pathjoin"
+# stat / lstat / exists / isfile / isdir against os.stat, os.lstat, os.path.*
+# on a file, a hard link, a directory, symlinks to each, a dangling symlink, a
+# missing path, a path through a file, and ''.
+(cd "$TMP/w14e/d" && printf 'hello' > f && ln f h && mkdir -p sd && ln -s f lf && ln -s sd ld && ln -s nowhere dang \
+   && touch -d '2001-02-03 04:05:06' f)
+w14es=(f h sd lf ld dang)
+w14esw=$(cd "$TMP/w14e/d" && python3 -c 'import os,sys
+for p in sys.argv[1:]:
+    for s in (os.stat(p) if os.path.exists(p) else None, os.lstat(p)):
+        print("-" if s is None else " ".join(map(str, [s.st_size, s.st_mode, int(s.st_mtime), s.st_dev, s.st_ino, s.st_nlink])) + " ")' "${w14es[@]}")
+[ "$(w14e ':‹l›""‹exists›[‹stat›⍕⋄_“-“🗲]␤‹lstat›⍕␤0;‹args›′‹l›€_' "${w14es[@]}")" = "rc=0 $w14esw|" ] \
+  && ok "‹stat› ‹lstat› give [size mode mtime dev ino nlink] as os.stat / os.lstat do (file, hard link, dir, symlinks, a dangling one)" \
+  || no "W14-E stat/lstat"
+w14ex=(f h sd lf ld dang missing f/x '' . / sd/)
+w14exw=$(cd "$TMP/w14e/d" && python3 -c 'import os.path,sys
+print("".join("%d%d%d" % tuple(0 if t(p) else 1 for t in (os.path.exists, os.path.isfile, os.path.isdir)) for p in sys.argv[1:]))' "${w14ex[@]}")
+[ "$(w14e ':‹l›"‹exists›Ṅ"‹isfile›Ṅ‹isdir›Ṅ0;‹args›′‹l›€_' "${w14ex[@]}")" = "rc=0 $w14exw|" ] \
+  && ok "‹exists› ‹isfile› ‹isdir› (zero-is-true) agree with os.path on ${#w14ex[@]} paths, never throwing (missing, ENOTDIR, '', dangling)" \
+  || no "W14-E exists/isfile/isdir"
+[ "$(w14e '“f“⊃“h“⊃‹samefile›Ṅ“lf“⊃“f“⊃‹samefile›Ṅ“f“⊃“sd“⊃‹samefile›Ṅ“sd“⊃“ld/“⊃‹samefile›Ṅ“f“⊃“zz“⊃‹samefile›')" = "rc=1 0010|GOLF: cannot stat zz (ENOENT)" ] \
+  && ok "‹samefile›: hard link and symlink 0, other file 1, dir through a symlink 0; a missing path throws" \
+  || no "W14-E samefile"
+# listdir: 1500 names (several getdents64 calls) with bytes 0x01-0xFF except
+# '/' and '\n', sorted bytewise as Python sorts bytes; . and .. left out; an
+# empty directory gives the empty list.
+python3 -c 'import os,random
+random.seed(14)
+os.makedirs("'"$TMP"'/w14e/d/big/sub")
+al = [b for b in range(1, 256) if b not in (10, 47)]
+names = set()
+while len(names) < 1500: names.add(bytes(random.choice(al) for _ in range(random.randint(1, 12))))
+names -= {b".", b".."}
+for n in names: open(os.path.join(b"'"$TMP"'/w14e/d/big", n), "wb").close()
+os.makedirs("'"$TMP"'/w14e/d/empty")'
+python3 -c 'import os,sys; sys.stdout.buffer.write(b"".join(n + b"\n" for n in sorted(os.listdir(b"'"$TMP"'/w14e/d/big"))))' > "$TMP/w14e/ld.exp"
+w14e ':‹l›⊐␤0;“big“⊃‹listdir›′‹l›€_' > /dev/null
+[ "$(cat "$TMP/w14e/err")" = "" ] && cmp -s "$TMP/w14e/out" "$TMP/w14e/ld.exp" \
+  && [ "$(w14e '“empty“⊃‹listdir›"≢Ṅ T Ṅ“sd/“⊃‹listdir›≢Ṅ')" = "rc=0 000|" ] \
+  && ok "‹listdir›: $(wc -l < "$TMP/w14e/ld.exp") entries with high and control bytes match sorted(os.listdir(bytes)); an empty dir is an empty list" \
+  || no "W14-E listdir"
+# Errors: verb, path, errno name, catchable, errno cell; errno names checked
+# against Python's for the same operation.
+w14eer=$(cd "$TMP/w14e/d" && python3 -c 'import os,errno
+def e(f, *a):
+    try: f(*a)
+    except OSError as x: return errno.errorcode[x.errno]
+print(" ".join([e(os.mkdir, "sd"), e(os.rmdir, "big"), e(os.unlink, "zz"), e(os.unlink, "sd"), e(os.listdir, "f"),
+                e(os.stat, "zz"), e(os.lstat, "f/x"), e(os.chdir, "f"), e(os.rename, "zz", "y"), e(os.rmdir, "f")]))')
+w14eeg=$(w14e ':‹t›‹catch›⊐“ “🗲;“sd“⊃′‹mkdir›‹t›“big“⊃′‹rmdir›‹t›“zz“⊃′‹unlink›‹t›“sd“⊃′‹unlink›‹t›“f“⊃′‹listdir›‹t›“zz“⊃′‹stat›‹t›“f/x“⊃′‹lstat›‹t›“f“⊃′‹chdir›‹t›“zz“⊃“y“⊃′‹rename›‹t›“f“⊃′‹rmdir›‹t›5179712⊙Ṅ')
+[ "$w14eeg" = "rc=0 cannot mkdir sd (EEXIST) cannot rmdir big (ENOTEMPTY) cannot unlink zz (ENOENT) cannot unlink sd (EISDIR) cannot listdir f (ENOTDIR) cannot stat zz (ENOENT) cannot lstat f/x (ENOTDIR) cannot chdir f (ENOTDIR) cannot rename zz (ENOENT) cannot rmdir f (ENOTDIR) 20|" ] \
+  && [ "$(printf '%s\n' "$w14eeg" | grep -o '([A-Z]*)' | tr -d '()' | tr '\n' ' ' | sed 's/ $//')" = "$w14eer" ] \
+  && [ "$(w14e '“nope“⊃‹mkdir›')" = "rc=0 |" ] && [ "$(w14e '“nope“⊃‹mkdir›')" = "rc=1 |GOLF: cannot mkdir nope (EEXIST)" ] \
+  && ok "failures throw 'cannot <verb> <path> (<ENAME>)' with Python's errno for each (EEXIST ENOTEMPTY ENOENT EISDIR ENOTDIR), catchable, errno in 5179712; uncaught: exit 1" \
+  || no "W14-E errors: $w14eeg / $w14eer"
+rmdir "$TMP/w14e/d/nope"
+# mkdir / makedirs / rename / unlink / rmdir / chdir / getcwd, then the tree
+# compared with what os would leave.
+w14em=$(w14e '“m“⊃‹mkdir›“m/a/b/c/“⊃‹makedirs›“m/a/b“⊃‹makedirs›“m/a/b/c“⊃‹makedirs›“m/a/b/c“⊃‹chdir›‹getcwd›⊐␤
+“../../x“⊃‹mkdir›“..“⊃‹chdir›“hi“⊃“c/f“⊃‹writefile›“c/f“⊃“c/g“⊃‹rename›“c/g“⊃‹readfile›⊐␤
+“hj“⊃“c/k“⊃‹writefile›“c/k“⊃“c/g“⊃‹rename›“c/g“⊃‹readfile›⊐␤“c/g“⊃‹unlink›“c“⊃‹rmdir›“../../..“⊃‹chdir›‹getcwd›⊐
+:‹t›‹catch›⊐;“f“⊃′‹makedirs›‹t›“f/x/y“⊃′‹makedirs›‹t›“f“⊃“sd“⊃′‹rename›‹t›')
+w14emw=$(cd "$TMP/w14e/d" && python3 -c 'import os
+print(os.path.realpath("m/a/b/c")); print("hi"); print("hj"); print(os.path.realpath("."), end="")')
+[ "$w14em" = "rc=0 ${w14emw}cannot mkdir f (EEXIST)cannot mkdir f/x (ENOTDIR)cannot rename f (EISDIR)|" ] \
+  && [ "$(cd "$TMP/w14e/d/m" && find . | sort | tr '\n' ' ')" = ". ./a ./a/b ./a/x " ] \
+  && [ "$(stat -c %a "$TMP/w14e/d/m")" = "$(mkdir "$TMP/w14e/um" && stat -c %a "$TMP/w14e/um")" ] \
+  && ok "mkdir, makedirs (trailing '/', existing dirs, exist_ok), chdir + getcwd = realpath, rename replaces atomically, unlink, rmdir; makedirs over a file is EEXIST / ENOTDIR as in os" \
+  || no "W14-E mkdir/makedirs/rename/chdir: $(printf '%s' "$w14em" | tr '\n' '~')"
+# rmtree: nested dirs and files, a symlink loop (loop -> .), a symlink to a
+# directory outside the tree (left intact), a dangling link; a missing path is
+# a no-op; a symlink given with a trailing '/' loses only the link; a file is
+# just unlinked.
+(cd "$TMP/w14e/d" && mkdir -p t/a/b/c out && echo keep > out/k && echo x > t/a/b/c/f && echo y > t/a/f \
+   && ln -s . t/a/loop && ln -s ../../out t/a/b/o && ln -s nowhere t/dang && ln -s out lo && echo z > plain)
+[ "$(w14e '“t“⊃‹rmtree›“t“⊃‹exists›Ṅ“t“⊃‹rmtree›“no/such“⊃‹rmtree›“plain/x“⊃‹rmtree›“lo/“⊃‹rmtree›“plain“⊃‹rmtree›“plain“⊃‹exists›Ṅ“lo“⊃‹lstat›')" = "rc=1 11|GOLF: cannot lstat lo (ENOENT)" ] \
+  && [ "$(cat "$TMP/w14e/d/out/k")" = keep ] && [ ! -e "$TMP/w14e/d/t" ] && [ ! -L "$TMP/w14e/d/lo" ] \
+  && ok "‹rmtree› deletes a tree with a symlink loop and an outward link without following either (out/k survives); missing is a no-op; 'link/' removes only the link" \
+  || no "W14-E rmtree: $(ls "$TMP/w14e/d")"
+# mkdtemp: under $TMPDIR (else /tmp), prefix + six of [a-z0-9_], mode 0700, a
+# new name each call.
+mkdir -p "$TMP/w14e/tmp"
+printf '%s' '“w14etest-“⊃‹mkdtemp›⊐␤“w14etest-“⊃‹mkdtemp›⊐' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14e/p" 2>/dev/null \
+  && chmod +x "$TMP/w14e/p"
+w14et=$(TMPDIR="$TMP/w14e/tmp" "$TMP/w14e/p")
+w14et1=$(printf '%s\n' "$w14et" | head -1); w14et2=$(printf '%s\n' "$w14et" | tail -1)
+w14eu=$(env -u TMPDIR "$TMP/w14e/p" | head -1); w14ev=$(TMPDIR= "$TMP/w14e/p" | head -1)
+printf '%s\n' "$w14et1" | grep -qx "$TMP/w14e/tmp/w14etest-[a-z0-9_]\{6\}" && [ "$w14et1" != "$w14et2" ] && [ "$(stat -c %a "$w14et1")" = 700 ] \
+  && [ -d "$w14et2" ] && [ "$(printf '%s\n' "$w14eu" "$w14ev" | grep -cx '/tmp/w14etest-[a-z0-9_]\{6\}')" = 2 ] &&[ -d "$w14eu" ] && [ -d "$w14ev" ] \
+  && [ "$(ls "$TMP/w14e/tmp" | wc -l)" = 2 ] \
+  && ok "‹mkdtemp›: \$TMPDIR/w14etest-XXXXXX (else /tmp, also for an empty \$TMPDIR), mode 0700, a fresh name each call" \
+  || no "W14-E mkdtemp: $w14et / $w14eu / $w14ev"
+rm -rf /tmp/w14etest-??????
+# The words through tools/golfc (pruned prelude): a scratch dir round trip.
+printf '%s' '“w14e“⊃‹mkdtemp›"→‹d›“x“⊃‹pathjoin›"→‹p›‹mkdir›“hi“⊃←‹p›“f“⊃‹pathjoin›‹writefile›←‹p›‹listdir›⍕←‹d›‹rmtree›←‹d›‹exists›Ṅ' > "$TMP/w14e/g.golfj"
+tools/golfc -j "$TMP/w14e/g.golfj" "$TMP/w14e/g" 2>/dev/null && [ "$(TMPDIR="$TMP/w14e/tmp" "$TMP/w14e/g")" = "[102] 1" ] \
+  && ok "golfc (pruned prelude): mkdtemp, mkdir, writefile, listdir, rmtree in one program" || no "W14-E golfc pruned"
+# REFERENCE.md's Filesystem examples print (stdout + stderr) what they say,
+# each in an empty directory (a mkdtemp path compares as JOB).
+w14ebad=""; w14en=0
+while IFS= read -r w14el; do
+  w14en=$((w14en+1)); mkdir -p "$TMP/w14e/doc$w14en"
+  w14ep=${w14el%%  ->*}; w14ep=${w14ep%"${w14ep##*[! ]}"}; w14ew=${w14el##*->  }
+  printf '%s' "$w14ep" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14e/p" 2>/dev/null && chmod +x "$TMP/w14e/p"
+  w14eg=$(cd "$TMP/w14e/doc$w14en" && TMPDIR="$TMP/w14e/tmp" "$TMP/w14e/p" 2>&1); w14eg=${w14eg%"${w14eg##*[! ]}"}
+  w14ej='s#[^ ]*/job-[a-z0-9_]\{6\}#JOB#'
+  [ "$(printf '%s' "$w14eg" | sed "$w14ej")" = "$(printf '%s' "$w14ew" | sed "$w14ej")" ] || w14ebad="$w14ebad [$w14ep]"
+done < <(sed -n '/^### Filesystem (W14-E)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14ebad" ] && [ "$w14en" -ge 12 ] \
+  && ok "REFERENCE.md's Filesystem examples print what they say ($w14en)" || no "REFERENCE Filesystem examples:$w14ebad"
 
 # === W13-C ===
 echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"
