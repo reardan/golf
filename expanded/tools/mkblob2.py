@@ -184,13 +184,13 @@ ATOMS = [
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
 # These five op bytes keep their v1/atom scalar body but get a shape-dispatch
-# preamble in front of it.  Layout (36 bytes + the untouched scalar body):
+# preamble in front of it.  Layout (38 bytes + the untouched scalar body):
 #
 #     48 83 3C 25 <hook> 00     cmp qword [hook], 0     ; per-op hook cell
-#     74 19                     je  .scalar             ; no dispatcher -> scalar
-#     66 83 7C 24 06 01         cmp word [rsp+6], 1     ; b's tag  (TOS)
-#     74 08                     je  .call
-#     66 83 7C 24 0E 01         cmp word [rsp+14], 1    ; a's tag
+#     74 1B                     je  .scalar             ; no dispatcher -> scalar
+#     66 81 7C 24 06 FF 7F      cmp word [rsp+6], 0x7FFF  ; b's tag  (TOS)
+#     74 09                     je  .call
+#     66 81 7C 24 0E FF 7F      cmp word [rsp+14], 0x7FFF ; a's tag
 #     75 09                     jne .scalar             ; neither is a list
 #   .call:
 #     FF 14 25 <hook>           call qword [hook]       ; (a b) still on the stack
@@ -210,13 +210,14 @@ ATOMS = [
 #     that divergence is absorbed at the v1c -> seed rung, which is never
 #     compared against anything.)
 #   * **The filter is EXACT (M-TAG2).**  A list value is its heap address with
-#     bit 48 set — `addr | 2^48`, so `v >> 48 == 1` — and the top 16 bits of a
-#     little-endian qword are the word at byte offset 6.  So `cmp word [rsp+6],1`
-#     is exactly `T`, with no cell to read: an operand is a list iff its high
-#     word is 0x0001.  Negative integers (high word 0xFFFF) and everything below
-#     2^48 (high word 0) take the scalar path without ever reaching the prelude;
-#     the only integers that dispatch are those in [2^48, 2^49), the range the
-#     tag sacrifices.  Until M-TAG2 this was a conservative `(a|b) <u heap base`
+#     top 16 bits 0x7FFF — `addr | 0x7FFF<<48`, so `v >> 48 == 0x7FFF` (W11-1A;
+#     it was bit 48, `addr | 2^48`, through W10) — and the top 16 bits of a
+#     little-endian qword are the word at byte offset 6.  So
+#     `cmp word [rsp+6],0x7FFF` is exactly `T`, with no cell to read: an operand
+#     is a list iff its high word is 0x7FFF.  Negative integers (high word
+#     0xFFFF) and everything below 0x7FFF<<48 take the scalar path without ever
+#     reaching the prelude; the only integers that dispatch are those in
+#     [0x7FFF<<48, 2^63), the band the tag sacrifices.  Until M-TAG2 this was a conservative `(a|b) <u heap base`
 #     against the 32-bit cell 0x4F0034 — a range test that sent a -1 flag to the
 #     prelude and let an integer that happened to equal a heap address in.
 #   * **Stack-neutral.**  `call` pushes its return address on the DATA stack and
@@ -224,7 +225,7 @@ ATOMS = [
 #     exactly (a b) and leaves one result — the scalar path's net effect.
 HOOK_BASE = 0x4F0100       # hook table (REGISTRY.md §3), 256 entries
 HOOK_STRIDE = 8            # 8, not 4: `call qword [disp32]` reads 64 bits
-LIST_TAG = 1 << 48         # M-TAG2: a list value is addr | LIST_TAG (lib/prelude.golfj)
+LIST_TAG = 0x7FFF << 48    # M-TAG2/W11-1A: a list value is addr | LIST_TAG (lib/prelude.golfj)
 
 def hook_addr(byte):
     """The hook cell for op `byte`."""
@@ -234,20 +235,24 @@ def hook_addr(byte):
 def _u32(v):
     return list(v.to_bytes(4, "little"))
 
+def _u16(v):
+    return list(v.to_bytes(2, "little"))
+
 def _poly(byte, scalar):
     """Wrap a scalar template in the hook-cell shape dispatch shown above."""
     hook, scalar = _u32(hook_addr(byte)), list(scalar)
     assert len(scalar) < 128, "scalar body too long to jump over with a rel8"
     call = [0xFF, 0x14, 0x25] + hook + [0xEB, len(scalar)]   # call [hook]; jmp .done
-    b_tag = [0x66, 0x83, 0x7C, 0x24, 0x06, 0x01]   # cmp word [rsp+6], 1   (b: TOS)
-    a_tag = [0x66, 0x83, 0x7C, 0x24, 0x0E, 0x01]   # cmp word [rsp+14], 1  (a)
+    # W11-1A: imm16 (66 81 /7 iw), since 0x7FFF does not fit cmp's sign-extended imm8.
+    b_tag = [0x66, 0x81, 0x7C, 0x24, 0x06] + _u16(LIST_TAG >> 48)   # cmp word [rsp+6], 0x7FFF  (b: TOS)
+    a_tag = [0x66, 0x81, 0x7C, 0x24, 0x0E] + _u16(LIST_TAG >> 48)   # cmp word [rsp+14], 0x7FFF (a)
     fast = (b_tag + [0x74, len(a_tag) + 2]          # je  .call
             + a_tag + [0x75, len(call)]             # jne .scalar
             + call)
     tpl = ([0x48, 0x83, 0x3C, 0x25] + hook + [0x00]   # cmp qword [hook], 0
            + [0x74, len(fast)]                        # je  .scalar
            + fast + scalar)
-    assert len(tpl) == 36 + len(scalar) <= 255, (byte, len(tpl))
+    assert len(tpl) == 38 + len(scalar) <= 255, (byte, len(tpl))
     return tpl
 
 # --- M-FRAME: every definition gets a private slab of locals ----------------

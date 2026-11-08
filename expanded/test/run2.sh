@@ -426,7 +426,7 @@ echo "Growable heap (M-MEM): ⌸ brk, the list heap is the kernel's, not a BSS h
 # The prelude's init publishes what the kernel gave into A's base/span cells.
 # The base is ASLR-shifted (observed anywhere from ~0x1C00000 to ~0x3B000000),
 # so only its relation to the static image is assertable — never its value.
-# W9-2A/M-TAG2: a list VALUE is addr | 2^48, so the address is masked out with
+# W9-2A/M-TAG2: a list VALUE is addr | 0x7FFF<<48 (W11-1A; 2^48 before), so the address is masked out with
 # (v<<16)>>16 before it is compared against the window.
 [ "$(printf '%s' '0 5177400@\rlt1\radd N E' | gc)" = "0" ] \
   && ok "heap span cell is non-zero (brk handed back the initial chunk)" || no "brk heap span"
@@ -1194,9 +1194,10 @@ echo "W9-1A: ⌈ ⌊ (and ⩌ ⩍) are SIGNED; ⊔ ⊓ stay unsigned"
 [ "$(printf '%s' '5R 2-0\vmax QE 5R 2-0\vmin QE' | gc)" = "$(printf -- '0 0 0 1 2 \n-2 -1 0 0 0 ')" ] \
   && ok "⩌ ⩍ list,int elementwise signed" || no "vmax/vmin list signed"
 # The extremes: d = b-a overflows here, but the compare is a ≻ a+d = a ≻ b, exact.
-[ "$(printf '%s' '9223372036854775807 0 9223372036854775807- 1-\vmax N E 9223372036854775807 0 9223372036854775807- 1-\vmin N E' | gc)" \
-    = "$(printf -- '9223372036854775807\n-9223372036854775808')" ] \
-  && ok "⩌ ⩍ at INT64_MAX vs INT64_MIN" || no "vmax/vmin extremes"
+# W11-1A: the top int is 0x7FFF<<48 - 1 now — [0x7FFF<<48, 2^63) is the list tag's band.
+[ "$(printf '%s' '9223090561878065151 1 63\shl\vmax N E 9223090561878065151 1 63\shl\vmin N E' | gc)" \
+    = "$(printf -- '9223090561878065151\n-9223372036854775808')" ] \
+  && ok "⩌ ⩍ at the largest int (0x7FFF<<48 - 1) vs INT64_MIN" || no "vmax/vmin extremes"
 [ "$(printf '%s' '6R 3-0 9-\ref\maxFNE' | gc)" = "2" ] && ok "fold ′⌈ over negatives (seed -9) = 2" || no "fold signed max"
 # ⊔ ⊓ stay UNSIGNED — the prelude's pointer math depends on it: -5 is 2^64-5.
 [ "$(printf '%s' '0 5-3\rmax N E 0 5-3\rmin N E' | gc)" = "$(printf -- '-5\n3')" ] \
@@ -1305,7 +1306,7 @@ done
   || no "tutorial: $w9dn examples extracted (need 6-10), failing:$w9dbad"
 
 # @@ W9-2A-TAG2 @@
-echo "M-TAG2: a list value is addr | 2^48; T and the M-VEC filter test the tag, not a range"
+echo "M-TAG2: a list value is addr | 0x7FFF<<48; T and the M-VEC filter test the tag, not a range"
 # The regression the range test could not pass: the heap BASE, read out of A's
 # cell as a plain integer, sat inside [base, base+span) and so was dispatched
 # as a list.  It is an int now, and bare + is scalar on it.
@@ -1317,26 +1318,26 @@ echo "M-TAG2: a list value is addr | 2^48; T and the M-VEC filter test the tag, 
   && ok "T: a list's untagged address is an int" || no "tag2 raw addr T"
 [ "$(printf '%s' '5⍳16\shl16>→a ←a 3* ←a 3\rmul≡N E' | gc)" = "-1" ] \
   && ok "bare * on an untagged heap address is scalar" || no "tag2 raw addr *"
-[ "$(printf '%s' '5⍳48>N E' | gc)" = "1" ] \
-  && ok "a list value carries the tag: v >> 48 == 1" || no "tag2 tag bit"
+[ "$(printf '%s' '5⍳48>N E' | gc)" = "32767" ] \
+  && ok "a list value carries the tag: v >> 48 == 0x7FFF" || no "tag2 tag bits"
 [ "$(printf '%s' '0 1-T N E' | gc)" = "1" ] && ok "T: -1 is still an int" || no "tag2 -1"
 [ "$(printf '%s' '0 1 63\shl- T N E' | gc)" = "1" ] && ok "T: -2^63 is an int" || no "tag2 min int"
 [ "$(printf '%s' '0 1000000000000000-T N E 0 1000000000000000- 7+N E' | gc)" = "$(printf '1\n-999999999999993')" ] \
   && ok "a large negative is an int, and bare + is scalar on it" || no "tag2 big negative"
-[ "$(printf '%s' '1 48\shl1\rsub T N E 1 49\shl T N E' | gc)" = "$(printf '1\n1')" ] \
-  && ok "T: 2^48-1 and 2^49 are ints (only [2^48, 2^49) is sacrificed)" || no "tag2 edges"
+[ "$(printf '%s' '1 48\shl T N E 32767 48\shl1\rsub T N E 1 63\shl1\rsub T N E' | gc)" = "$(printf '1\n1\n0')" ] \
+  && ok "T: 2^48 and 0x7FFF<<48 - 1 are ints; 2^63-1 is in the sacrificed band" || no "tag2 edges"
 [ "$(printf '%s' '5⍳→x←x T N E ←x Q E ←x 10+Q E' | gc)" = "$(printf '0\n0 1 2 3 4 \n10 11 12 13 14 ')" ] \
   && ok "a list round-trips through →x/←x and still vectorizes" || no "tag2 var round trip"
 # Lists of lists: R's result stored as an element stays a tagged list, so it
 # indexes, measures and vectorizes like the outer one.
-[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 1 48\shl| "T N E "0 I T N E "0 I Q E 0 I 100+Q E' | gc)" = "$(printf '0\n0\n0 1 2 \n100 101 102 ')" ] \
+[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 32767 48\shl| "T N E "0 I T N E "0 I Q E 0 I 100+Q E' | gc)" = "$(printf '0\n0\n0 1 2 \n100 101 102 ')" ] \
   && ok "a list of lists stores and indexes; the inner element is a tagged list" || no "tag2 nested"
 [ "$(printf '%s' ':s3⍳;3⍳\refs M "L N E 1 I"L N E ∑N E' | gc)" = "$(printf '3\n3\n3')" ] \
   && ok "map building a list per element (inner lists keep the tag)" || no "tag2 map of lists"
 # A hand-built block from A is a raw address: every list word accepts it (the
 # masking is idempotent), but it is an INT to T and the bare operators until it
-# is tagged with 1 48≪|.
-[ "$(printf '%s' '3A 2&\store 5&8\radd\store 6&16\radd\store "S N E "T N E 1 48\shl| 1+Q E' | gc)" = "$(printf '11\n1\n6 7 ')" ] \
+# is tagged with 32767 48≪|.
+[ "$(printf '%s' '3A 2&\store 5&8\radd\store 6&16\radd\store "S N E "T N E 32767 48\shl| 1+Q E' | gc)" = "$(printf '11\n1\n6 7 ')" ] \
   && ok "hand-built list: list words take it raw; tagging it makes it vectorize" || no "tag2 hand-built"
 
 # @@ W9-2B-CHECKS @@
@@ -1648,7 +1649,7 @@ echo "List words (W9-4A): ⧺ cat, ↑ take, ↓ drop — new tagged lists, inpu
 [ "$(printf '%s' '5⍳2↑T N E 5⍳2↓T N E' | gc)" = "$(printf '0\n0')" ] && ok "↑/↓ results are tagged lists" || no "take/drop tag"
 [ "$(printf '%s' '3⍳→a 2⍳→b ←a←b⧺_ ←a 1↑_ ←a 1↓_ ←a 0 1-↑_ ←a⍕E ←b⍕E' | gc)" = "$(printf '0 1 2 \n0 1 ')" ] \
   && ok "⧺/↑/↓ leave their inputs unchanged" || no "inputs unchanged"
-[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 1 48≪| 5⍳1↑⧺"≢N E"0⊇100+⍕E 1⊇N E' | gc)" = "$(printf '2\n100 101 102 \n0')" ] \
+[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 32767 48≪| 5⍳1↑⧺"≢N E"0⊇100+⍕E 1⊇N E' | gc)" = "$(printf '2\n100 101 102 \n0')" ] \
   && ok "⧺ carries a nested (tagged inner) list through unchanged" || no "cat nested"
 tools/golfc -j examples/listwords.golfj "$TMP/lw" 2>/dev/null
 LWOUT=$(printf '0 1 2 0 1 \n0 1 \n2 3 4 5 \n4 5 \n0 1 2 3 \n6\ngol is fun')
@@ -1661,8 +1662,8 @@ echo "List words (W9-4B): ⍋ sort (new list, signed, O(n log n)), ∊ member"
   && ok "⍋: empty, one element, already sorted, reverse sorted" || no "sort basic"
 [ "$(printf '%s' '6⍳⌽3- 4⍳⧺⍋⍕E 7⍳⌽7⍳⌽⧺0 5-+⍋⍕' | gc)" = "$(printf -- '-3 -2 -1 0 0 1 1 2 2 3 \n-5 -5 -4 -4 -3 -3 -2 -2 -1 -1 0 0 1 1 ')" ] \
   && ok "⍋: duplicates and negatives sort signed" || no "sort dup/neg"
-[ "$(printf '%s' '1⍳1 63≪1-+ 1⍳0 1 63≪-+⧺ 1⍳0 1-+⧺ 1⍳5+⧺⍋⍕' | gc)" = "-9223372036854775808 -1 5 9223372036854775807 " ] \
-  && ok "⍋: the full signed 64-bit range, -2^63 .. 2^63-1" || no "sort extremes"
+[ "$(printf '%s' '1⍳32767 48≪1\rsub+ 1⍳0 1 63≪-+⧺ 1⍳0 1-+⧺ 1⍳5+⧺⍋⍕' | gc)" = "-9223372036854775808 -1 5 9223090561878065151 " ] \
+  && ok "⍋: the full signed int range, -2^63 .. 0x7FFF<<48 - 1 (W11-1A)" || no "sort extremes"
 [ "$(printf '%s' ':f7919*1000%500-;37⍳′f€⍋⍕' | gc)" = "$(python3 -c 'print(" ".join(str(x) for x in sorted(i*7919%1000-500 for i in range(37))), end=" ")')" ] \
   && ok "⍋: 37 scrambled values (odd length, runs of unequal width) match Python's sorted" || no "sort scrambled"
 [ "$(printf '%s' '5⍳⌽→a ←a⍋_ ←a⍕E 5⍳⌽⍋T N E 3⍳⌽⍋10+⍕' | gc)" = "$(printf '4 3 2 1 0 \n0\n10 11 12 ')" ] \
@@ -1711,7 +1712,7 @@ W94UB=$(printf '%s' '200000⍳"⧺‹unique›≢N' > "$TMP/u10k.golfj"; tools/g
 [ "$(printf '%s' '0⍳‹flatten›≢N E :z_0⍳;5⍳‹flatten›⍕E 3⍳′z€‹flatten›≢N E 3⍳′⍳€‹flatten›⍤N E 5⍳→a ←a‹flatten›T N E ←a⍕E' | gc)" \
     = "$(printf '0\n0 1 2 3 4 \n0\n1\n0\n0 1 2 3 4 ')" ] \
   && ok "‹flatten›: empty, already flat (a copy), only empty inner lists, depth 1, tagged, input untouched" || no "flatten edges"
-[ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
+[ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 32767 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
   && ok "‹flatten› of a list nested 201 deep (no recursion, so no spill frames per level)" || no "flatten deep"
 [ "$(printf '%s' ':s⍳′⍳€;4⍳′s€"‹flatten›_⍕E' | gc)" = "[] [[]] [[] [0]] [[] [0] [0 1]] " ] \
   && ok "‹flatten› leaves its nested input intact" || no "flatten input"
@@ -1916,7 +1917,7 @@ echo "Spill stack (W10-C): 4096 frames at 0x440000, overflow checked in X"
 # nested-list recursion and nested higher-order words go hundreds deep; past the
 # end X writes `GOLF: spill stack exhausted` to fd 2 and exits 1.  `w10cn D K`
 # pushes K⍳ nested D deep (W10CW defines ‹wrap›: x -> a one-element list [x]).
-W10CW=':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;'
+W10CW=':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 32767 48≪|;'
 w10cn(){ printf '%s⍳%s→i{‹wrap›←i1-"→i0\\eq}' "$2" "$1"; }
 [ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 200))0 1 2$(printf ']%.0s' $(seq 200)) " ] \
   && ok "⍕ of a list nested 200 deep" || no "⍕ 200 deep"
@@ -1951,6 +1952,21 @@ w110(){ printf '%s' "$1" | gc > "$TMP/w110.out" 2> "$TMP/w110.err"; echo "rc=$? 
   && ok "‹throw›: user message, empty message, and the four routed errors unchanged" || no "‹throw› stub / routed errors"
 
 # === W11-1A ===
+echo "W11-1A: the list tag is 0x7FFF<<48; [2^48, 2^49) are ordinary integers again"
+# Through W10 a list was addr | 2^48, so 2^48+1 was dispatched as a list by the
+# bare + and segfaulted, and big sums of squares printed garbage.
+[ "$(printf '%s' '16777216 16777216* 1+Ṅ' | gc)" = "281474976710657" ] \
+  && ok "2^24*2^24 + 1 is scalar arithmetic (281474976710657)" || no "w111a 2^48+1"
+[ "$(printf '%s' '100000⍳"*∑Ṅ' | gc)" = "333328333350000" ] \
+  && ok "sum of squares below 100000 passes through [2^48, 2^49)" || no "w111a sum of squares"
+[ "$(printf '%s' '1 48\shl"T Ṅ␤1\rsub T Ṅ␤1 48\shl 2⍳+⍕␤1 49\shl 1\rsub 1+Ṅ' | gc)" \
+    = "$(printf '1\n1\n281474976710656 281474976710657 \n562949953421312')" ] \
+  && ok "2^48 boundary: 2^48 and 2^48-1 are ints, 2^48 broadcasts as a scalar, 2^49-1 + 1" || no "w111a 2^48 boundary"
+[ "$(printf '%s' '0 5-"T Ṅ␤3+Ṅ␤0 1 48\shl-"T Ṅ␤1-Ṅ␤0 5-3⍳*⍕' | gc)" \
+    = "$(printf '1\n-2\n1\n-281474976710657\n0 -5 -10 ')" ] \
+  && ok "negatives (top bits 0xFFFF) stay ints, scalar and broadcast" || no "w111a negatives"
+[ "$(printf '%s' '32766 48\shl"T Ṅ␤1+Ṅ␤3⍳48>Ṅ' | gc)" = "$(printf '1\n9222809086901354497\n32767')" ] \
+  && ok "0x7FFE<<48 is an int; a list's top 16 bits are 0x7FFF" || no "w111a band edge"
 
 # === W11-1B ===
 

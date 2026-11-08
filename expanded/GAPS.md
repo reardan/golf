@@ -52,7 +52,7 @@ inner lists as raw heap addresses, and M-VEC's five operators dispatched on the
 shapes of their two operands once, never recursing into elements.
 
 A GOLF list is a heap block `[len, e0, …]` of 64-bit cells, and an inner list is
-a tagged value (`addr | 2^48`, M-TAG2), so "is this element a list?" is an exact
+a tagged value (`addr | 0x7FFF<<48` since W11-1A; `addr | 2^48` from M-TAG2), so "is this element a list?" is an exact
 shift-and-compare. W9-3B asks it of every element:
 
 ```
@@ -364,6 +364,16 @@ silently, as above). Chain links go through `X`, so they are covered too.
 gap that most limited what could be written. The tag bit (M-TAG2, W9-2A) was its
 prerequisite; W9-3B then made `⍕` recursive, made the bare `+ - *` recurse like
 `⌈ ⌊`, and added `≣` (structural equality) and `⍤` (depth).
+
+### 3.4 Integers in `[2^48, 2^49)` were lists — FIXED (W11-1A)
+
+M-TAG2's tag was bit 48 (`addr | 2^48`), so every integer from 281 to 562
+trillion was shape-tested as a list: `16777216 16777216* 1+Ṅ` segfaulted, and a
+sum of squares such as `100000⍳"*∑Ṅ` broke once it passed 2^48. W11-1A moved the
+tag to the top 16 bits `0x7FFF` (`addr | 0x7FFF<<48`); both programs now print
+`281474976710657` and `333328333350000`. The band sacrificed is now
+`[0x7FFF<<48, 2^63)` — the 2^48 integers just below `INT64_MAX` (DESIGN.md, known
+limits); negatives (top bits `0xFFFF`) stay ints as before.
 
 Already recorded and confirmed accurate: the `T` range-test misclassification
 (queue §1 — **fixed** by M-TAG2, W9-2A), the global-bank recursion footgun (queue §2),

@@ -448,7 +448,7 @@ Notes:
   that are < 2^31 in practice, and plain `@`/`!` on them is therefore exact.
   Until M-TAG2 `0x4F0034` was also baked into every M-VEC template as a 32-bit
   compare operand; it no longer is — the templates test a value's high word for
-  the list tag (`addr | 2^48`) and read no cell but their hook — so the base and
+  the list tag (`addr | 0x7FFF<<48` since W11-1A) and read no cell but their hook — so the base and
   span are now private to `A`, and widening them would touch only the prelude.
   The **user variable bank at `0x4E0000` was 4 bytes per name for the same
   reason and is now 8** (M3W): unlike the four fixed cells, no template hard-codes
@@ -484,7 +484,8 @@ Notes:
   needs both it and the span to know when to move the break.
   **Do not add a fixed heap-base row to this table.**
 - **A list value is tagged (M-TAG2).** What a list word hands user code is
-  `addr | 2^48` — the heap address with bit 48 set, so `v >> 48 == 1` — and
+  `addr | 0x7FFF<<48` — the heap address with the top 16 bits `0x7FFF`, so
+  `v >> 48 == 0x7FFF` (W11-1A; it was `addr | 2^48` through W10) — and
   every list word masks it back off (`(v<<16)>>16`, idempotent, so a raw `A`
   block is accepted too). The tag is a property of the *value*, not an address:
   it needs no cell, and nothing in this table records it.
