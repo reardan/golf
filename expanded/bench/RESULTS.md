@@ -44,6 +44,23 @@ best of 7, same session: twosum 71 → 71 ms, longsub 70 → 80, islands 108 →
 | Python, same runs as W12 final | 0.121 | 0.142 | 0.253 | 0.340 | 1.202 | 0.108 | 0.560 | 0.301 | 1.221 | 0.209 | 2,571 |
 | W13-G before (base 9b14c93), 2026-11-08 | 0.053 | 0.098 | 0.063 | 0.073 | 0.106 | 0.069 | 0.085 | 0.092 | 0.143 | 0.017 | 411 |
 | W13-G, 2026-11-08 | 0.053 | 0.097 | 0.065 | 0.073 | 0.107 | 0.067 | 0.084 | 0.090 | 0.143 | 0.018 | 411 |
+| **W13 final** (W13-F), 2026-11-08 | 0.091 | 0.081 | 0.073 | 0.174 | 0.130 | 0.071 | 0.049 | 0.090 | 0.142 | 0.018 | 177 |
+| Python, same runs as W13 final | 0.099 | 0.146 | 0.196 | 0.332 | 0.974 | 0.087 | 0.446 | 0.259 | 1.145 | 0.176 | 2,571 |
+
+W13-F rewrote all ten with the W13 language (adverbs, `⟦ ⟧` blocks, implicit
+output, bare locals, `Ṁ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ℑ Ǧ ṭ`, the digraphs, the bit atoms):
+411 → 177 bytes, against Jelly's 144. Every one keeps its time complexity and
+beats Python. The W13 final row is the better of two `bench.sh in` runs.
+Stock is `ℤ"⌊⍀-Ṁ`, Trap `ℤ"⌈⍀&⌈⍂⌊\\-∑`, Sliding Window `ℤ⍘⌈⊟`, Islands
+`⎕ʘW′⊣ʘ7` (‹gcomps›, 101 → 7 bytes and 0.09 → 0.05 s), longsub `⏎_Ṕ⌈⍀ℑ\\-Ṁ`
+(42 → 9 bytes; 0.08 → 0.17 s, since `Ṕ` probes a dict per letter where the
+old word indexed a 256-cell table, still half Python's time), and parens keeps
+its bracket stack on the data stack under `€` (41 → 22 bytes, 0.10 → 0.08 s).
+twosum moved between 0.058 and 0.091 s across this session's runs (Python
+0.080–0.099); best of 9, interleaved: golf 59 ms, Python 80 ms. topk's
+shortest form, `ℤ⍘\\"ĊḲ⍋\\⧺\\ʘk` (12 bytes), counts the input twice and takes
+0.106 s against Python's 0.092, so the benchmark keeps the 17-byte one
+(0.068 s). bench/leetcode/README.md has notes on each solution.
 
 W12-6 rewrote all ten with the W12 vocabulary and Z1's one-byte aliases
 (`ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ`): 655 → 411 bytes. Stock is `ℤ"′⌊⍀-′⌈⍁Ṅ` and Trap
@@ -269,4 +286,29 @@ polymorphic atom itself needs no check at all (its own M-VEC / W12-O1 test
 sends a list to `∔` … or `‹_12o1_nan›` exactly as the thunk would) and is
 what shipped. Four elements per pass instead of two was 0–10% faster and 6 KB
 bigger.
+
+## W13-F: ten more LeetCode problems
+
+`bench/leetcode/` has twenty problems since W13-F. The second ten each use
+one piece of the W13 library; `bench.sh in`, the better of two runs, wall
+seconds, input parsing included (Python and C++ on the same runs):
+
+| problem | library | Golf bytes | Golf s | Python s | C++ s |
+|---|---|---|---|---|---|
+| search (35) | `‹bisect›` | 4 | 0.077 | 0.138 | 0.076 |
+| koko (875) | `‹bsearch›` | 25 | 0.045 | 0.215 | 0.019 |
+| oranges (994) | `‹adj›` `‹bfs›` | 121 | 0.395 | 0.741 | 0.020 |
+| course (207) | `‹dadj›` `‹toposort›` | 15 | 0.124 | 0.452 | 0.085 |
+| delay (743) | `‹dwadj›` `‹dijkstra›` | 28 | 0.265 | 1.057 | 0.142 |
+| redundant (684) | `‹uf›` `‹uunion›` `‹chunk›` `⍷` | 33 | 0.199 | 0.524 | 0.054 |
+| coins (322) | `‹table1›` | 54 | 0.058 | 0.169 | 0.007 |
+| lcs (1143) | `⍃` `⌈⍀` `⇤` | 33 | 0.178 | 0.492 | 0.008 |
+| temps (739) | `‹nextgreater›` `ℑ` | 7 | 0.124 | 0.992 | 0.084 |
+| bits (338) | `♯` | 6 | 0.047 | 0.824 | 0.056 |
+| **total** | | **326** | | Python 3,055 · golfed Python 1,697 · C++ 5,485 | |
+
+All twenty: Golf 503 bytes, golfed Python 2,997, Python 5,626, C++ 10,098.
+oranges is the slowest against C++ (20×): building the graph calls a
+`⊡` word per cell and pushes every edge end onto a vector before `‹adj›`
+and `‹bfs›` run.
 

@@ -947,8 +947,9 @@ has 377 in all after W13-G, helpers included), so a program has 647 for itself.
   key at or above `0x7FFF<<48` is a list value, and a list key compares by its
   tagged value (after every smaller int, among lists by address), so there is
   no lexicographic order on list keys. To sort by two ints, pack them into
-  one, as `bench/leetcode/golf/topk.golfj` does: `x - (count<<32)` sorts by
-  count descending, then by `x`.
+  one, as `bench/leetcode/golf/topk.golfj` did before W13: `x - (count<<32)`
+  sorts by count descending, then by `x`. (It now sorts the values with `⍋`
+  and then by count with `⍖`, which is stable.)
 - **`k` runs once per element**, in order, through `€`. So it sees the
   caller's stack under its element (see "Threading state" below) and may run
   `⍒` itself. The keys are computed first and then sorted with `⍋`'s merge
@@ -1983,8 +1984,10 @@ them all. The streams read their input lists in place and do not own them.
   `ʘt ‹table1›` `ʘu ‹uunion›` `ʘv ‹ufind›` `ʘw ‹dijkstra›` `ʘx ‹cartesian›`
   `ʘy ‹memo›` `ʘz ‹transpose›` `ʘ5 ‹nbrs4›` `ʘ6 ‹adj›` `ʘ7 ‹gcomps›`
   `ʘ8 ‹nbrs8›` `ʘ9 ‹combs›`. Number of Islands is `:p49-;⎕10‹split›′pʘ7Ṅ`
-  (21 bytes, 27 with `‹gcomps›` spelled out; `bench/leetcode/golf/islands.golfj`
-  is 101), and runs the 1000 × 1000 benchmark grid in 0.06 s.
+  (21 bytes, 27 with `‹gcomps›` spelled out), and runs the 1000 × 1000
+  benchmark grid in 0.06 s. `bench/leetcode/golf/islands.golfj` is `⎕ʘW′⊣ʘ7`,
+  7 bytes: `‹words›` for the rows, and the atom `⊣` (trailing zeros, `0` for
+  the odd code of `1`) as the predicate.
 - Speed (1M-edge random graph, 200k vertices, input included): `‹adj›` then
   `‹bfs›` 0.39 s, `‹wadj›` then `‹dijkstra›` 1.1 s, 1M `‹uunion›`s 0.19 s,
   `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
@@ -2475,24 +2478,28 @@ Ifmmp
 
 ### LeetCode in Golf
 
-Here are three of the ten problems in `bench/leetcode/`, in the form the
-benchmark runs (its README has all ten and the timings). Each one reads its
-input from stdin: `tools/golfc -j ex.golfj ex && ./ex < input`. The `stdin`
-block is a sample input and the `text` block is the exact output.
-`test/run2.sh` (block W12-O5) checks both. It also checks that each program
-here is the same text as its file in `bench/leetcode/golf/`.
+Here are three of the twenty problems in `bench/leetcode/`, in the form the
+benchmark runs (its README has all twenty, notes on each, and the timings).
+Each one reads its input from stdin: `tools/golfc -j ex.golfj ex && ./ex <
+input`. The `stdin` block is a sample input and the `text` block is the
+exact output. `test/run2.sh` (block W12-O5) checks both. It also checks that
+each program here is the same text as its file in `bench/leetcode/golf/`.
+None of them prints anything itself: each leaves its answer as the only
+value on the stack, and implicit output prints it (`Ṅ` for a number, `⍕`
+for a list).
 
 <!-- LEETCODE BEGIN -->
 
-**Best Time to Buy and Sell Stock (121), `stock.golfj`, 10 bytes.** Buy on one
+**Best Time to Buy and Sell Stock (121), `stock.golfj`, 6 bytes.** Buy on one
 day and sell on a later one, for the largest profit, or 0. `ℤ` reads the
-prices. `"′⌊⍀` keeps them and makes the running minimum, the cheapest buy up
-to each day. `-` subtracts it from every price, which gives the profit of
-selling on that day, and `′⌈⍁` takes the largest. The first difference is
-always `0`, so a falling market prints `0`.
+prices. `"⌊⍀` keeps them and makes the running minimum, the cheapest buy up
+to each day (`⌊⍀` is `′⌊⍀`: an adverb quotes the atom in front of it).
+`-` subtracts it from every price, which gives the profit of selling on that
+day, and `Ṁ` takes the largest. The first difference is always `0`, so a
+falling market prints `0`.
 
 ```golfj
-ℤ"′⌊⍀-′⌈⍁Ṅ
+ℤ"⌊⍀-Ṁ
 ```
 
 ```stdin
@@ -2503,16 +2510,16 @@ always `0`, so a falling market prints `0`.
 5
 ```
 
-**Trapping Rain Water (42), `trap.golfj`, 16 bytes.** The water over a bar is
+**Trapping Rain Water (42), `trap.golfj`, 11 bytes.** The water over a bar is
 the lower of the highest bar to its left and the highest bar to its right,
-less its own height. `"′⌈⍀` is the running maximum from the left. `&⌽′⌈⍀⌽`
-reverses the heights, scans them and reverses back, which gives the running
-maximum from the right. `⌊` takes the smaller of the two at each bar, `\\-`
-subtracts the heights, and `∑` adds up the water. Both maxima include the bar
-itself, so no term is negative.
+less its own height. `"⌈⍀` is the running maximum from the left. `&⌈⍂` is
+the running maximum from the right: `⍂` is the right scan, `⌽`, `⍀`, `⌽` in
+one word. `⌊` takes the smaller of the two at each bar, `\\-` subtracts the
+heights, and `∑` adds up the water. Both maxima include the bar itself, so
+no term is negative.
 
 ```golfj
-ℤ"′⌈⍀&⌽′⌈⍀⌽⌊\\-∑Ṅ
+ℤ"⌈⍀&⌈⍂⌊\\-∑
 ```
 
 ```stdin
@@ -2523,14 +2530,14 @@ itself, so no term is negative.
 6
 ```
 
-**Sliding Window Maximum (239), `slidemax.golfj`, 11 bytes.** The input is
-the window size `k`, then the numbers. `"1↓` copies the list without its
-first element, and `\\0⊇` takes `k` from the original. `′⌈⊟` is the window
+**Sliding Window Maximum (239), `slidemax.golfj`, 4 bytes.** The input is
+the window size `k`, then the numbers. `⍘` splits the list into its tail and
+its head, which is just the numbers and `k` on top. `⌈⊟` is the window
 reduce, the maximum of every window of `k` numbers. With `⌈` (or `⌊`), `⊟`
 runs a monotonic deque, so it is O(n) for any `k`.
 
 ```golfj
-ℤ"1↓\\0⊇′⌈⊟⍕
+ℤ⍘⌈⊟
 ```
 
 ```stdin
