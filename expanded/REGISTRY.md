@@ -451,7 +451,7 @@ both forms are given here and the decimal is the one you type.
 | `0x4F003C` | 5177404 | code-arena pointer (a byte offset into `0x4D0000`; BSS-zero at start) | shipped |
 | `0x4F0040`–`0x4F0047` | 5177408 | **entry `rsp`** — the process stack pointer as the kernel left it, stashed by `STARTUP` before anything pushes; `argc` is at `[cell]`, `argv[i]` at `[cell]+8+8*i` (W8, M-TOOL) | shipped |
 | `0x4F0048`–`0x4F004F` | 5177416 | reserved for future scratch (run2.sh's W1 atom test round-trips a value through it) | free |
-| `0x4F0050` | 5177424 | **prelude input buffer** (W9-4C): the RAW address of the stdin buffer block `[pos][len][8192 bytes]` that `‹getc›`/`‹readline›`/`‹readall›`/`‹ints›` share; 0 (BSS) until the first read allocates it with `A` | shipped |
+| `0x4F0050` | 5177424 | **prelude input buffer** (W9-4C): the RAW address of the stdin buffer block `[pos][len][8192 bytes][8 spare]` (1027 cells since W12-P1: the spare cell takes `‹ints›`'s sentinel byte) that `‹getc›`/`‹readline›`/`‹readall›`/`‹ints›`/`‹readbytes›` share; 0 (BSS) until the first read allocates it with `A` | shipped |
 | `0x4F0058`–`0x4F005F` | 5177432 | reserved for future scratch | free |
 | `0x4F0060`–`0x4F0098` | 5177440–5177496 | prelude scratch `s0`–`s7`, **stride 8** — **all eight in use** (`s0` list, `s1` index, `s2` accumulator, `s3` fn addr, `s4` result, `s5` alloc temp (`A` and `⌫` only), `s6` filter count, `s7` zip's 2nd list / K's + G's parked broadcast scalar). Decimals in order: 5177440 · 5177448 · 5177456 · 5177464 · 5177472 · 5177480 · 5177488 · 5177496 | shipped |
 | `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
@@ -574,7 +574,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 
 | Task | Slot (hex) | Slot base (dec) | Cells (dec) |
 |------|------------|-----------------|-------------|
-| P1 input | `0x4F0D00`–`0x4F0D3F` | 5180672 | 5180672 … 5180728 |
+| P1 input | `0x4F0D00`–`0x4F0D3F` | 5180672 | 5180672 … 5180728 — all eight used (shipped): `‹ints›` `‹words›` `‹num›` `‹readbytes›` `‹readall›` state, see the prelude's W12-P1 section |
 | P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | 5180736 … 5180792 |
 | P3 list loops | `0x4F0D80`–`0x4F0DBF` | 5180800 | 5180800 … 5180856 |
 | O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 |

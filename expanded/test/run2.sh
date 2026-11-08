@@ -3057,6 +3057,82 @@ done < <(sed -n '/^### Threading state through/,/^### /p' REFERENCE.md | sed -n 
 w120reg=$(sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -cE '\| (reserved|shipped) \|$')
 [ "$w120reg" -ge 13 ] && ok "REGISTRY.md §1.4 reserves the W12 bytes ($w120reg rows)" || no "W12 byte reservations: $w120reg"
 
+# === W12-P1 ===
+echo "W12-P1: ‹ints› scans the stdin buffer directly; ‹readbytes›; ‹words› ‹num› ‹readall› rewritten"
+# w12p1m FILE: the REFERENCE "Input" semantics of ‹ints› in Python (words split
+# on 9-13 and 32, one optional sign, digits up to a non-digit, mod 2^64), printed
+# the way ⍕ prints a flat list.
+w12p1m(){ python3 - "$1" <<'PY'
+import sys
+out = []
+for w in open(sys.argv[1], "rb").read().split():
+    i, neg, acc = 0, w[:1] == b"-", 0
+    if w[:1] in (b"-", b"+"): i = 1
+    while i < len(w) and 48 <= w[i] <= 57: acc = acc * 10 + w[i] - 48; i += 1
+    v = (-acc if neg else acc) % 2**64
+    out.append(v - 2**64 if v >= 2**63 else v)
+sys.stdout.write("".join("%d " % v for v in out))
+PY
+}
+# the oracle on stdin: golfref compiles prelude + $1, the binary reads our stdin
+w12p1o(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | python3 boot/golfref.py > "$TMP/w12p1o" 2>/dev/null \
+            && chmod +x "$TMP/w12p1o" && "$TMP/w12p1o"; }
+[ "$(printf '' | gin '‹ints›"≢Ṅ⍕')" = "0" ] && [ "$(printf ' \t\n\r\n  \x0b\x0c ' | gin '‹ints›≢Ṅ')" = "0" ] \
+  && ok "‹ints›: empty input and whitespace-only input give the empty list" || no "ints empty/blank"
+[ "$(printf -- '-1 +2 -30 +0 -0 7 +12 -9x' | gin '‹ints›⍕')" = "-1 2 -30 0 0 7 12 -9 " ] \
+  && ok "‹ints›: '-' negates, '+' is skipped, -0 is 0" || no "ints signs"
+[ "$(printf -- '12ab x -7z +x - + 5-3 -+5 +-5 --1 1x2' | gin '‹ints›⍕')" = "12 0 -7 0 0 0 5 0 0 0 1 " ] \
+  && ok "‹ints›: a word like 12ab is 12, x is 0; a lone sign, a second sign or a later '-' ends the number" || no "ints words"
+[ "$(printf '1\r\n-2\r\n\r\n3\r\n' | gin '‹ints›⍕')" = "1 -2 3 " ] && [ "$(printf '4\t5\x0b6\x0c7' | gin '‹ints›⍕')" = "4 5 6 7 " ] \
+  && ok "‹ints›: CRLF lines, and tab, \\v, \\f between numbers" || no "ints CRLF"
+[ "$(printf '99999999999999999999 9223372036854775808 18446744073709551616 18446744073709551617 -18446744073709551615' | gin '‹ints›⍕')" \
+     = "7766279631452241919 -9223372036854775808 0 1 1 " ] \
+  && [ "$(printf '9223372036854775807 -9223372036854775808' | gin '‹ints›→l←l0⊇Ṅ␤←l1⊇Ṅ')" = "$(printf '9223372036854775807\n-9223372036854775808')" ] \
+  && ok "‹ints›: overflow wraps mod 2^64 (INT64 max and min exactly, 2^64 is 0)" || no "ints wraparound"
+# Numbers, signs and non-number words straddling every 8192-byte refill: token
+# k starts j bytes before the boundary 8192k (j = 0..8), so its sign, its
+# digits or its tail land in the next read.
+python3 - > "$TMP/w12p1b.in" <<'PY'
+import sys
+toks = [b"-1234567", b"+987654", b"12ab34", b"x9", b"7", b"-", b"31415926535"]
+out = bytearray(); k = 1
+for j in range(9):
+    for t in toks:
+        pad = 8192 * k - j - len(out)
+        out += b" " * max(pad, 1) + t; k += 1
+out += b"\n"
+sys.stdout.buffer.write(bytes(out))
+PY
+[ "$(wc -c < "$TMP/w12p1b.in")" -gt 500000 ] && [ "$(gin '‹ints›⍕' < "$TMP/w12p1b.in")" = "$(w12p1m "$TMP/w12p1b.in")" ] \
+  && [ "$(gin '‹readall›‹words›′‹num›€⍕' < "$TMP/w12p1b.in")" = "$(w12p1m "$TMP/w12p1b.in")" ] \
+  && ok "‹ints› (and ‹readall›‹words›′‹num›€) on tokens split across the 8 KB buffer boundary, 63 placements, match Python" \
+  || no "ints across the buffer boundary"
+python3 -c 'import random; r=random.Random(5); a=[b"0",b"1",b"9",b"-",b"+",b" ",b"\n",b"\r",b"\t",b"x",b"\x00",b"\xff",b"/",b":"]; open("'"$TMP"'/w12p1r.in","wb").write(b"".join(r.choice(a) for _ in range(60000)))'
+[ "$(gin '‹ints›⍕' < "$TMP/w12p1r.in")" = "$(w12p1m "$TMP/w12p1r.in")" ] \
+  && [ "$(gin '‹readall›‹words›′‹num›€⍕' < "$TMP/w12p1r.in")" = "$(w12p1m "$TMP/w12p1r.in")" ] \
+  && ok "60 KB of random digits, signs, blanks, NUL and 0xFF: ‹ints› and the ‹words›/‹num› pipeline match Python" || no "ints random bytes"
+[ "$(printf '12 34\n' | gin '‹getc›Ṅ␤‹ints›⍕')" = "$(printf '49\n2 34 ')" ] \
+  && [ "$(printf 'n 2\n5 6\n' | gin '‹readline›_⊐␤‹ints›⍕‹getc›Ṅ')" = "$(printf 'n 2\n5 6 -1')" ] \
+  && ok "‹ints› picks up where ‹getc› / ‹readline› left the shared buffer, and leaves it at end of input" || no "ints after getc"
+# ‹ints› keeps ONE growing list: after it, the live heap holds that list and
+# the 8 KB buffer, not a code list (8 bytes/byte) or 200000 small lists.
+[ "$(gin '‹heapstats›→b_‹ints›≢Ṅ␤‹heapstats›←b-3145728<Ṅ_' < "$TMP/big.in")" = "$(printf '200000\n-1')" ] \
+  && ok "‹ints› of 200000 numbers grows the live heap by under 3 MB (one doubled result list and the buffer)" || no "ints heap growth"
+[ "$(printf '1 -2 x 3\r\n+4' | w12p1o '‹ints›⍕')" = "1 -2 0 3 4 " ] && [ "$(printf 'ab\ncd' | w12p1o '‹readbytes›"🗲⊃≢Ṅ')" = "$(printf 'ab\ncd5')" ] \
+  && ok "oracle: ‹ints› and ‹readbytes› behave identically" || no "oracle ints/readbytes"
+[ "$(printf 'hello\nworld\n' | gin '‹readbytes›🗲')" = "$(printf 'hello\nworld')" ] && [ "$(printf '' | gin '‹readbytes›"@Ṅ⊃≢Ṅ')" = "00" ] \
+  && [ "$(printf 'ab cd' | gin '‹getc›Ṅ‹readbytes›"🗲⊃≢Ṅ‹getc›Ṅ')" = "97b cd4-1" ] \
+  && ok "‹readbytes›: 🗲 prints it, ⊃ makes a code list, empty input is length 0; it takes the rest after ‹getc›, then end of input" \
+  || no "readbytes basics"
+python3 -c 'open("'"$TMP"'/w12p1y.in","wb").write(bytes(range(256))*300)'
+gin '‹readbytes›🗲' < "$TMP/w12p1y.in" > "$TMP/w12p1y.out"; gin '‹readall›⊐' < "$TMP/w12p1y.in" > "$TMP/w12p1z.out"
+cmp -s "$TMP/w12p1y.in" "$TMP/w12p1y.out" && cmp -s "$TMP/w12p1y.in" "$TMP/w12p1z.out" \
+  && [ "$(gin '‹readbytes›⊃"≢Ṅ␤∑Ṅ' < "$TMP/big.in")" = "$(python3 -c 'd=open("'"$TMP"'/big.in","rb").read(); print(len(d)); print(sum(d))')" ] \
+  && ok "‹readbytes›🗲 and ‹readall›⊐ copy 76800 bytes of every value 0-255 exactly; ‹readbytes›⊃ of the 1 MB input: length and byte sum" \
+  || no "readbytes binary / big"
+[ "$(printf 'abc' | gin '‹heapstats›_→n‹readbytes›⌫‹heapstats›_←n-Ṅ')" = "0" ] \
+  && ok "‹readbytes› is an ordinary A block: ⌫ gives it back" || no "readbytes free"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
