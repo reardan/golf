@@ -36,7 +36,7 @@ import v1        # frozen v1: ELF header, prologue/epilogue, v1 op templates
 import mkblob2   # v2: the atom table (byte -> template) and v2's STARTUP2
 
 BASE = v1.BASE          # ELF load address; file offset f maps to VA BASE+f
-FILESZ = v1.FILESZ      # fixed p_filesz (binary must stay under this)
+CAP = mkblob2.PROGRAM_CAP   # W11-1E: largest image (192 KB); p_filesz = its size
 
 # v1's op templates plus every v2 atom.  A local copy: the frozen module is read
 # from, never written to.
@@ -371,8 +371,12 @@ def compile_bytes(src: bytes) -> bytes:
         if mkblob2.LONG_BASE + k in pending:
             raise SystemExit(f"golfref: undefined word ‹{name.decode()}›")
     emit(mkblob2.AUTOEXIT2)                          # W11-1C: flush hook, exit(0)
-    if len(out) >= FILESZ:
-        raise SystemExit(f"golfref: output {len(out)} bytes exceeds p_filesz {FILESZ}")
+    if len(out) > CAP:                               # W11-1E: golf2's diagnostic
+        sys.stderr.write("GOLF: program too large\n")
+        raise SystemExit(2)
+    # W11-1E: p_filesz is the image's true size (golf2 and the seed patch it
+    # the same way), so the kernel maps exactly the file and BSS starts after it.
+    out[v1.FILESZ_OFF:v1.FILESZ_OFF + 8] = len(out).to_bytes(8, "little")
     return bytes(out)
 
 

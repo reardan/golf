@@ -1552,7 +1552,10 @@ for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj;
     *) cp "$f" "$TMP/w93.src";;
   esac
   "$TMP/golf2" < "$TMP/w93.src" > "$TMP/w93.new" 2>/dev/null
+  # W11-1E: the pre-M2 logic leaves v1's fixed p_filesz (0x10000) in the header;
+  # today's compilers write the image's size there, so the old output gets the same.
   if [ "$w93ref" = pre-m2 ]; then "$TMP/pre-m2" < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null
+    python3 -c 'import sys; f=sys.argv[1]; b=bytearray(open(f,"rb").read()); b[96:104]=len(b).to_bytes(8,"little"); open(f,"wb").write(b)' "$TMP/w93.old"
   else python3 boot/golfref.py < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null; fi
   # M-FRAME2 (W9-4D) deliberately changed what a ⊡ word compiles to (its frame
   # is sized to its locals), so a program using ⊡ is held to the same OUTPUT
@@ -1879,17 +1882,12 @@ cat "$TMP/pre.gb" <(printf '%s' "$W10AP" | python3 tools/codepage.py encode) > "
 python3 boot/golfref.py < "$TMP/w10a.src" > "$TMP/w10a.ref" 2>/dev/null
 [ -s "$TMP/w10a.g2" ] && cmp -s "$TMP/w10a.g2" "$TMP/w10a.ref" \
   && ok "oracle: identical bytes for one-byte forward references" || no "oracle one-byte forward bytes"
-# 1024 long names: every one a variable (cells 0x4E0800..0x4E27F8), the first,
-# the last two and every 16th also a word, two of them called forward, so the
-# table, the heads and the bank all reach their ends.  P are the prelude's, so
-# the program adds 1024 - P.  (Not every name is a word: an empty word costs 20
-# bytes, a `k→‹vk›` 14, and a compiled program must stay under the 64 KB
-# p_filesz the ELF header maps — the prelude alone is ~33 KB since W11-1D.)
+# 1024 long names: every one a word AND a variable (cells 0x4E0800..0x4E27F8),
+# two of them called forward, so the table, the heads and the bank all reach
+# their ends.  P are the prelude's, so the program adds 1024 - P.  (About 66 KB
+# with the prelude: past the old 64 KB image, inside W11-1E's 192 KB cap.)
 w10n=$((1024 - w93p)); w10s=""
-for k in $(seq 1 $w10n); do
-  if [ "$k" = 1 ] || [ "$k" -ge $((w10n-1)) ] || [ $((k % 16)) = 0 ]; then w10s="$w10s:‹v$k›$k→‹v$k›;"
-  else w10s="$w10s$k→‹v$k›"; fi
-done
+for k in $(seq 1 $w10n); do w10s="$w10s:‹v$k›$k→‹v$k›;"; done
 w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
 w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
 [ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z›" ] \
@@ -2115,6 +2113,51 @@ while IFS= read -r w111dl; do
 done < <(sed -n '/^### Text$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
 [ -z "$w111dbad" ] && [ "$(sed -n '/^### Text$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
   && ok "REFERENCE.md's Text examples print what they say" || no "REFERENCE Text examples:$w111dbad"
+
+# === W11-1E ===
+echo "W11-1E: the program-size cap is 192 KB (196608 bytes), checked; p_filesz is the image's size"
+# Until W11-1E every program was one PT_LOAD with v1's fixed 64 KB p_filesz and
+# nothing checked it: a bigger one compiled and then crashed.  Now p_filesz is
+# the file's true size and both compilers refuse an image past 0x430000 (the
+# W11-1C output buffer, the lowest runtime region; REGISTRY §3).
+w11e(){ cat "$TMP/pre.gb" - > "$TMP/e.src"; "$1" < "$TMP/e.src" > "$TMP/e.out" 2>"$TMP/e.err"; echo "$?"; }
+w11efsz(){ python3 -c 'import sys; b=open(sys.argv[1],"rb").read(); print(int.from_bytes(b[96:104],"little"), len(b))' "$1"; }
+# P(a,b) = `0 0`, a x ⊕ (4 bytes each), b x `&_` (5 bytes), `Ṅ`: any size from
+# P(0,0) up is reachable, so the test lands on the cap exactly.
+w11eprog(){ python3 -c 'import sys; a,b=int(sys.argv[1]),int(sys.argv[2]); sys.stdout.write("0 0"+"⊕"*a+"&_"*b+"Ṅ")' "$1" "$2" | python3 tools/codepage.py encode; }
+[ "$(w11eprog 0 0 | w11e "$TMP/golf2")" = 0 ] && w11e0=$(stat -c%s "$TMP/e.out") || w11e0=0
+w11ed=$((196608 - w11e0)); w11eb=$((w11ed % 4)); w11ea=$(((w11ed - 5*w11eb) / 4))
+w11eprog "$w11ea" "$w11eb" > "$TMP/e.cap.g2"
+[ "$(w11e "$TMP/golf2" < "$TMP/e.cap.g2")" = 0 ] && [ "$(w11efsz "$TMP/e.out")" = "196608 196608" ] \
+  && chmod +x "$TMP/e.out" && [ "$("$TMP/e.out")" = "$w11ea" ] \
+  && ok "a program of exactly 196608 bytes (image up to 0x430000) compiles, p_filesz = 196608, runs and prints $w11ea" \
+  || no "program at the cap ($w11e0 base, $(cat "$TMP/e.err"))"
+cp "$TMP/e.out" "$TMP/e.cap.bin"
+python3 boot/golfref.py < "$TMP/e.src" > "$TMP/e.cap.ref" 2>/dev/null
+cmp -s "$TMP/e.cap.bin" "$TMP/e.cap.ref" && ok "oracle: golfref emits the same 196608 bytes" || no "oracle at the cap"
+[ "$(w11e "$TMP/seed" < "$TMP/e.cap.g2")" = 0 ] && cmp -s "$TMP/e.out" "$TMP/e.cap.bin" \
+  && ok "... and so does seed" || no "seed at the cap"
+w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
+[ "$(w11e "$TMP/golf2" < "$TMP/e.over.g2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
+  && ok "4 bytes over the cap: GOLF: program too large on fd 2, exit 2, nothing on fd 1" || no "over the cap: $(cat "$TMP/e.err")"
+[ "$(w11e "$TMP/seed" < "$TMP/e.over.g2")" = 2 ] && [ ! -s "$TMP/e.out" ] && [ ! -s "$TMP/e.err" ] \
+  && ok "... seed exits 2 silently, as for an undefined word" || no "seed over the cap"
+[ "$(python3 boot/golfref.py < "$TMP/e.src" 2>"$TMP/e.err" > "$TMP/e.out"; echo $?)" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] \
+  && ok "... and golfref says the same" || no "golfref over the cap"
+# Far over (a 1 MB program): refused while compiling, before the buffer can
+# reach the compiler's own state.
+[ "$(w11eprog 262144 0 | w11e "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
+  && ok "a 1 MB program is refused the same way" || no "far over the cap"
+# Between the old 64 KB and the new cap, with real work in it: one word of
+# 2000 store/load/increment statements, then the list heap and the printers.
+w11es=""; for k in $(seq 1 2000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
+w11es=":‹f›0$w11es←‹x›⊕;‹f›Ṅ 100⍳"'"*∑Ṅ'
+[ "$(printf '%s' "$w11es" | python3 tools/codepage.py encode | w11e "$TMP/golf2")" = 0 ] && chmod +x "$TMP/e.out" \
+  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "2002328350" ] \
+  && ok "a $(stat -c%s "$TMP/e.out")-byte program (> 64 KB) runs: the list heap and the output buffer above the image still work" \
+  || no "program past 64 KB: $(cat "$TMP/e.err")"
+w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
+  && ok "golf2's own p_filesz is its size, under the 64 KB its data base (0x410000) needs" || no "golf2 p_filesz"
 
 # === W11-2A ===
 

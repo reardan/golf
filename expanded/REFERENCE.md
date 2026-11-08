@@ -498,6 +498,8 @@ one word, which a program may call too:
 (`free of a non-heap value`, `double free`) go through `‹throw›`. The spill
 stack's `spill stack exhausted` and the divide-by-zero check of `/ % ÷ ∣` print
 the same way without it. Compile errors (`GOLF: undefined word x` …) exit 2.
+So does a program whose binary would pass 192 KB (196608 bytes, the prelude's
+~33 KB included): `GOLF: program too large`, and no binary.
 
 ## 4. Tutorial
 

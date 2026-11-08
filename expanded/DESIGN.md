@@ -139,9 +139,9 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **1078** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2938** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **8710** bytes |
-| assertions in the run2 suite | **535** |
+| the generated bootstrap seed (`self/seed.golf`) | **2965** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8958** bytes |
+| assertions in the run2 suite | **544** |
 | assertions in the selfcheck suite | **50** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -624,13 +624,19 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   forward-referenced (W10-A). Locals take long names too (W9-4D), up to 16 per
   `⊡` word. And there are no scopes: a long name, like a letter, is
   one dictionary entry and one variable cell for the whole program.
-- **A compiled program is at most 64 KB of code, and nothing checks it.** The
-  ELF header's one `LOAD` segment has a fixed `p_filesz` of `0x10000`, so bytes
-  past 64 KB are in the file but never mapped: the program dies of SIGSEGV or
-  SIGILL when it reaches them. The prelude alone compiles to about 33 KB since
-  W11 wave 1 (an empty program is 33184 bytes), which leaves about 32 KB for a
-  user program; an empty word costs 20 bytes. Found when the 1024-long-name
-  tests stopped fitting after W11-1D; they now make most names variables only.
+- **A compiled program is at most 192 KB (196608 bytes), header included
+  (W11-1E).** It is one `LOAD` segment at `0x400000` and may not reach
+  `0x430000`, the W11-1C output buffer (the lowest address a running program
+  uses; REGISTRY §3). Both compilers check it as they emit: `golf2` writes
+  `GOLF: program too large` to fd 2 and exits 2 with nothing on fd 1, the seed
+  exits 2 silently. The prelude alone is about 33 KB (an empty program is 33184
+  bytes), which leaves about 159 KB; an empty word costs 20 bytes. `p_filesz`
+  is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
+  program past 64 KB compiled cleanly and then crashed in its unmapped tail).
+  Raising the cap further means moving the 1C buffer and the spill stack up
+  (and the compilers' buffer at `0x494000`, which has 240 KB to the arena).
+  A compiler image (`golf2`, the seed) must stay under 64 KB, below its own
+  data base `m` = `0x410000`; it is about 12 KB.
 - **`(` and the input words are two readers.** `‹readall›`, `‹readline›`,
   `‹getc›` and `‹ints›` read through the prelude's 8 KB buffer; `(` is a raw
   one-byte `read` that bypasses it, so mixing the two loses or reorders bytes.

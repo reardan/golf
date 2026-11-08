@@ -377,7 +377,8 @@ both forms are given here and the decimal is the one you type.
 
 | Address (hex) | Decimal | Use | Status |
 |---------------|---------|-----|--------|
-| `0x410000` | 4259840 | compiler data base `D` (`m`) | shipped |
+| `0x400000`–`0x42FFFF` | 4194304–4390911 | **a compiled program's image**: the ELF header and code, one `PT_LOAD` whose `p_filesz` is the file's true size (W11-1E; v1's fixed `0x10000` before), at most **196608 bytes = 192 KB** (`mkblob2.PROGRAM_CAP`) — the image may not reach `0x430000`, the lowest address a compiled program uses at run time. Both compilers refuse a bigger one (`GOLF: program too large`, exit 2). Everything from here down to `0x43FFFF` is **compiler-process-only** state: it lives above the compiler's own image (~12 KB, which must stay under 64 KB so it ends below `m`) and is never touched by a compiled program, so a user image may cover it | shipped (W11-1E) |
+| `0x410000` | 4259840 | compiler data base `D` (`m`), **compiler-only** | shipped |
 | `m+4` … `m+16` | | v1 compiler scratch (`P`, `S`, `Q`) | shipped |
 | `m+20`, `m+24`, `m+28` | | golf2 compiler scratch: `′` jmp-site / thunk addr, `“` len-site / count | shipped |
 | `m+32`, `m+36` | | M-CHAIN2 chain state in the **seed** only: the in-a-chain flag, the link count | shipped |
@@ -392,7 +393,7 @@ both forms are given here and the decimal is the one you type.
 | `m+192`…`m+204` | 4260032 · 4260036 · 4260040 · 4260044 | **W11-4A** compiler scratch, four 4-byte cells (record field count, the record's name number, …) | reserved (W11-4A) |
 | `m+208` | 4260048 | **first free compiler scratch** | free |
 | `m+2048`–`m+4095` | 0x410800–0x410FFF | **RETIRED** (W10-A) — v1's dictionary (`m+2048 + 4*name`; M2 ran its long names into `m+3072`…). Neither `golf2` nor `seed` touches it any more (v1c, a frozen binary, still uses it in its own process); do not encroach anyway, it is what v1 documents | free |
-| `m+4096` | 0x411000 | the output buffer, at most `p_filesz` = 64 KB | shipped |
+| `m+4096`–`0x42FFFF` | 0x411000 | **RETIRED** (W11-1E) — the compilers' old output buffer (64 KB, to `0x420FFF`); it moved to `0x494000` below so a program may be 192 KB. Free in the compiler's process; part of a big program's image in a compiled one | free |
 | `0x430000`–`0x43FFFF` | 4390912– | **RETIRED** (W10-A) — M2's long-name region (the 256-name table and its heads), moved up below. W11-0 re-allocated parts of it (next three rows); the rest stays free | free |
 | `0x430000`–`0x431FFF` | 4390912–4399103 | **W11-1C output buffer**, 8192 bytes, compiled programs only: `Ṅ ⍕ ␤ 🗲 ⊐` (and `‹fmt›`-based printers) append here; the pending-byte count is `0x4F0980` below. BSS, so untouched it costs no RAM | shipped (W11-1C) |
 | `0x432000`–`0x437FFF` | 4399104–4423679 | free (headroom, e.g. if 1C's buffer grows) | free |
@@ -402,6 +403,7 @@ both forms are given here and the decimal is the one you type.
 | `0x47C000`+ | 4702208 + 64*E | M2 long-name table, **compiler-only**: name `E` (256–1279) has a 64-byte entry at `0x47C000 + 64*E`, `[len:4][≤60 bytes]`, so the entries fill `0x480000`–`0x48FFFF` (E < 256 has no entry: nothing below `0x480000` is touched, which is W10-C's spill-stack range); `0x490000`–`0x49003F` (E = 1280) is scratch — `‹readname›` reads every name into the next free entry before it knows the name is new. 1024 names (W10-A; 256 at `0x430000` before) | shipped |
 | `0x490400`–`0x4917FF` | 4785152 + 4*N | forward-reference heads, **compiler-only**: the last unpatched `call`/`jmp rel32` site for ANY name `N` (0–1279, one-byte names included since W10-A), each placeholder holding the next (M2, W9-3A) | shipped |
 | `0x492000`–`0x4933FF` | 4792320 + 4*N | the compiler's **dictionary**, **compiler-only**: the body address of name `N` (0–1279). Moved here from `m+2048` by W10-A — that table had room for 512 names before it met the output buffer | shipped |
+| `0x494000`–`0x4C3FFF` | 4800512–4997119 | the compilers' **output buffer** `B`, **compiler-only** (W11-1E; it was `m+4096`): the byte at file offset `f` is at `B+f`, so a target address is `bufaddr - 606208`. 196608 bytes, the cap; `a` (the one word that moves the cursor, in both compilers) refuses a cursor past `B+196608` (it tests `< 4997121`), and `0x4C4000`–`0x4CFFFF` is slack for the at most 255-byte template written before that test | shipped (W11-1E) |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
 | `0x4E0800`–`0x4E27FF` | 5113856–5121023 | long-named variables (`→‹name›`/`←‹name›`): the bank above, continued by its own formula `0x4E0000 + 8*name` for name numbers 256–1279 — **user space** (W9-3A; W10-A extended it from `0x4E0FFF`, so no long-named variable moved) | shipped |

@@ -400,6 +400,22 @@ tag to the top 16 bits `0x7FFF` (`addr | 0x7FFF<<48`); both programs now print
 `[0x7FFF<<48, 2^63)` — the 2^48 integers just below `INT64_MAX` (DESIGN.md, known
 limits); negatives (top bits `0xFFFF`) stay ints as before.
 
+### 3.5 A program past 64 KB compiled cleanly and then crashed — FIXED (W11-1E)
+
+Found during W11 wave 1. Every binary was one `PT_LOAD` with v1's fixed
+`p_filesz` of `0x10000`, and the compilers' output buffer at `m+4096` held
+64 KB, so bytes past 64 KB were written to the file but never mapped: no
+diagnostic, then SIGSEGV or SIGILL at run time. The prelude alone had reached
+~33 KB, and the 1024-long-name tests (every name a word and a variable, ~66 KB)
+were the first to fall over.
+
+**Fixed.** The compilers' buffer moved to `0x494000` (REGISTRY §3), `p_filesz`
+is now written as the image's true size, and the cap is 196608 bytes (192 KB),
+where the image would meet the 1C output buffer at `0x430000`. Past it `golf2`
+says `GOLF: program too large` (fd 2, exit 2, nothing on fd 1) and the seed exits
+2 silently; `run2.sh` pins a program of exactly 196608 bytes that runs, one 4
+bytes over, and the 1024-name tests are back to their all-words form.
+
 Already recorded and confirmed accurate: the `T` range-test misclassification
 (queue §1 — **fixed** by M-TAG2, W9-2A), the global-bank recursion footgun (queue §2),
 allocator leaks (queue §3), the letter shortage (REGISTRY §2), and the

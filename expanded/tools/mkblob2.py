@@ -421,7 +421,11 @@ assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime
 # The list heap is brk-grown now (atom 0xA6 ⌸, driven by lib/prelude.golfj), so
 # v2 binaries reserve only what is *statically addressed* (../REGISTRY.md §3):
 #
-#   0x400000..0x421000   image: code, compiler data base 0x410000, output buffer
+#   0x400000..0x430000   image: header + code, at most PROGRAM_CAP (W11-1E);
+#                        the compiler's own data base m = 0x410000 is BSS
+#                        above ITS image, which must stay under 64 KB
+#   0x430000..0x432000   W11-1C output buffer (the lowest runtime region)
+#   0x494000..0x4C4000   the compiler's output buffer, compiler-only (W11-1E)
 #   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
 #   0x440000..0x480000   X/Y scratch spill stack, 4096 frames (W10-C)
 #   0x4E0000..0x4E2800   →x/←x variable bank, 8 bytes per name: 256 one-byte
@@ -451,6 +455,32 @@ assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime
 MEMSZ = 0x200000                    # v2 p_memsz (v1: 0x800000)
 RSTACK_TOP = v1.BASE + MEMSZ        # 0x600000: return-stack top AND heap floor
 MEMSZ_OFF = 64 + 40                 # Phdr at file offset 64; p_memsz at +40
+
+# --- W11-1E: the program-size cap ---------------------------------------------
+# A compiled program is ONE PT_LOAD at 0x400000.  Until W11-1E its p_filesz was
+# v1's fixed 0x10000 and nothing checked it: bytes past 64 KB were in the file
+# but never mapped, so a big program compiled cleanly and then crashed.  Now
+# both compilers (self/golf2.golfj and the seed) write the image's TRUE size into
+# p_filesz at the end (record 4 below still carries v1's 0x10000; it is
+# overwritten), so the kernel maps exactly the file and BSS starts right after
+# it — and they refuse an image past PROGRAM_CAP (golf2: `GOLF: program too
+# large` on fd 2, exit 2; seed: exit 2).  The cap is where the image would meet
+# the lowest region a compiled program addresses at run time, W11-1C's output
+# buffer at 0x430000.  The regions below it (m = 0x410000, the old output
+# buffer, W11-2A's/4A's compiler-only state at 0x438000/0x43C000) belong to the
+# compiler's process only, where the image is the compiler's own (~12 KB).
+# The compiler's buffer had to leave m+4096 (64 KB to 0x421000) for the free
+# span between the dictionary and the thunk arena.  Both compilers spell these
+# as literals (no constant import in GOLF): B = 4800512, the cap test 4997121
+# (= OUTBUF + PROGRAM_CAP + 1) and the vaddr bias 606208 (= OUTBUF - BASE).
+PROGRAM_CAP = 0x30000                # 196608 bytes = 192 KB, header included
+OUTBUF = 0x494000                    # 4800512: the compilers' output buffer B
+RUNTIME_FLOOR = 0x430000             # W11-1C output buffer: lowest runtime region
+FILESZ_OFF = v1.FILESZ_OFF           # 96: where the compilers patch the size
+assert v1.BASE + PROGRAM_CAP <= RUNTIME_FLOOR, "image cap overlaps runtime state"
+assert OUTBUF >= NAME_DICT + 4 * NAME_END, "output buffer overlaps the dictionary"
+assert OUTBUF + PROGRAM_CAP + 0x1000 <= 0x4D0000, "output buffer (+slack) runs into the thunk arena"
+assert OUTBUF + PROGRAM_CAP + 1 == 4997121 and OUTBUF - v1.BASE == 606208
 
 def header_pairs2():
     """v1's ELF header with p_memsz overridden, as (offset, value) pairs.

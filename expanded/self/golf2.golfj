@@ -46,7 +46,6 @@
 #   0x410034   (m+52) a 4-byte staging cell: `e` builds the two bytes of its
 #              undefined-word diagnostic here (the name, then a newline), the
 #              only fixed address this compiler writes outside the three below
-#   0x411000   output buffer B: the byte at file offset f is stored at B+f
 #   0x4E0000   variable bank: cell for name x is at 0x4E0000+8*x  (→x / ←x)
 #   0x480000   long-name table (M2): the name with number E (256..1279) has
 #              a 64-byte entry at 0x47C000+64*E — [length:4][up to 60 bytes];
@@ -59,11 +58,14 @@
 #              0x492000+4*N, N = 0..1279 (W10-A moved it up from v1's D+2048,
 #              where 256 one-byte and 256 long slots were all that fit below
 #              the output buffer)
+#   0x494000   output buffer B: the byte at file offset f is stored at B+f;
+#              196608 bytes (192 KB, the program-size cap) plus slack up to
+#              the thunk arena at 0x4D0000 (W11-1E; it was v1's D+4096 =
+#              0x411000, which had room for 64 KB)
 #
-# The output buffer is the one v1 documents as D+4096 with D = 0x410000.  None
-# of these regions is ever seen by a compiled program, so moving one changes
-# no emitted byte.  A target virtual address is bufaddr - 69632 (= file offset
-# + 0x400000).
+# None of these regions is ever seen by a compiled program, so moving one
+# changes no emitted byte.  A target virtual address is bufaddr - 606208
+# (= file offset + 0x400000).
 #
 # The compiler's scalar state lives in the variable bank instead of v1's D+0..
 # D+28 cells.  It owns its whole process — user programs are *compiled*, never
@@ -124,7 +126,7 @@
 # together, for exactly the span of one chain definition, and the seed holds the
 # same five in its own scratch at m32..m48 (../REGISTRY.md §3).
 #
-# Words, in definition-before-use order: B Y Z U a o L w W k c C f E ‹say› V
+# Words, in definition-before-use order: B Y Z U ‹say› ‹toolarge› a o L w W k c C f E V
 # ‹die› ‹badname› ‹same› ‹readname› ‹getname› ‹forward› ‹resolve› ‹undefined›
 # e D g h X ‹badlocal› ‹slot› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
@@ -164,8 +166,8 @@
 # ---------------------------------------------------------------------------
 
 :B          # B : the output buffer's base address              [ -> addr ]
-4263936     # 0x411000.  File offset f is held at B+f.
-;
+4800512     # 0x494000 (W11-1E; v1's D+4096 = 0x411000 held only 64 KB).
+;           # File offset f is held at B+f.
 
 :Y          # Y : the dictionary slot of a word name            [ name -> addr ]
 4*          # one 4-byte cell per name ...
@@ -189,10 +191,48 @@
 # Emitting bytes into the output buffer
 # ---------------------------------------------------------------------------
 
+:‹say›      # ‹say› : write a “…“ block to fd 2                  [ msgblock -> ]
+→S          # park the block; its address is needed twice
+2           # fd 2
+←S
+4+          # the bytes start after the block's 4-byte length field ...
+←S
+@           # ... which is the length
+1⎈          # write(2, msg, len)
+_
+;
+
+# W11-1E: the program-size cap.  A compiled program is ONE PT_LOAD at
+# 0x400000 and its image may not reach 0x430000, the lowest address a compiled
+# program uses at run time (W11-1C's output buffer, ../REGISTRY.md §3): at most
+# 196608 bytes = 192 KB, header included.  `a` is the only word that moves the
+# cursor, so it is where the cap is checked — before the buffer can run past
+# B+192 KB into anything the compiler itself still needs (the largest single
+# advance is one 255-byte template, and 0x4C4000..0x4CFFFF is slack).
+
+:‹toolarge› # ‹toolarge› : the output passed the cap               [ -> !!! ]
+“GOLF: program too large“
+‹say›
+10          # a newline, staged in m+52
+4259892!
+2
+4259892
+1
+1⎈
+_
+2.          # exit(2); nothing has been written to fd 1
+;
+
 :a          # a : advance the write cursor by n                    [ n -> ]
 ←p
 +
+"
 →p
+4997121     # B + 196608 + 1: the cursor may stand AT the cap, not past it
+<
+[           # not below it: too large
+‹toolarge›
+]
 ;
 
 :o          # o : emit one byte                                    [ b -> ]
@@ -325,17 +365,6 @@ C
 # ---------------------------------------------------------------------------
 # Compiling one ordinary token
 # ---------------------------------------------------------------------------
-
-:‹say›      # ‹say› : write a “…“ block to fd 2                  [ msgblock -> ]
-→S          # park the block; its address is needed twice
-2           # fd 2
-←S
-4+          # the bytes start after the block's 4-byte length field ...
-←S
-@           # ... which is the length
-1⎈          # write(2, msg, len)
-_
-;
 
 :V          # V : report a compile error and stop            [ msgblock -> !!! ]
             # Writes `<msg> <the byte in b>` to fd 2 and exits 2.  fd 2, never
@@ -745,7 +774,7 @@ f
 ‹forward›
 L
 ←r
-69632﹣
+606208﹣
 w
 ^
 ]
@@ -764,11 +793,11 @@ E           #   [the atom's own template]
 k           #   backpatch the jmp to land after the thunk
 L
 ←r
-69632-
+606208-
 w           #   emit `push imm32 <the thunk's address>`
 ^
 ]
-69632-      # a defined word: push its body address directly
+606208-      # a defined word: push its body address directly
 L
 w
 ;
@@ -1047,7 +1076,7 @@ D           #   its length, in decimal, terminated by one space
 "
 w           #   the length is exactly the jmp displacement
 ←p
-69632-
+606208-
 →v          #   the data's virtual address, for the push below
 {
 (           #   copy that many bytes straight from stdin to the output
@@ -1084,7 +1113,7 @@ w
 ←p
 →l          #   the block's 4-byte length field goes here
 ←p
-69632-
+606208-
 →v          #   ... and its address is the string's value
 0
 w           #   the length, as a placeholder for now
@@ -1374,6 +1403,13 @@ t           #   compile it
 ‹undefined› # a name called but never defined stops here, before a byte of
             # output exists (M2, W10-A)
 5E          # blob record 5: exit(0)
+
+←p          # W11-1E: p_filesz is the image's true size, not v1's fixed
+B           # 0x10000 (record 4 still carries that and H painted it): the
+-           # kernel maps exactly the file, and everything past it — m and this
+B           # buffer in the compiler's own process — is BSS
+96+         # p_filesz is the 8 bytes at header offset 64+32; the size is under
+!           # 2^31, so the 32-bit store writes it and zeroes the old 0x01 byte
 
 B
 →A          # flush the buffer to stdout, one byte at a time

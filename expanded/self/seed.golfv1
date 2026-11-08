@@ -29,7 +29,8 @@
 # Everything up to the `#` in each line is one v1-GOLF word or token case, in
 # definition-before-use order.  The single-letter accessor words defined on the
 # first line (P B S Q U Y Z, and L below) are the size-reducing rewrites v1's
-# own build applied: P = m4+@ the output pointer, B = m4096+ the output buffer,
+# own build applied: P = m4+@ the output pointer, B = 4800512 the output buffer
+# (0x494000 since W11-1E, 192 KB of program; v1's m4096+ held only 64 KB),
 # S = m12+ scratch, Q = m16+ the pushed-back char, U = 48-10< the is-digit test,
 # Y = 4*4792320+ the dict slot for the key on top (0x492000 + 4*name since
 # W10-A; v1's was m2048+\4*+, which had room for 512 names), Z = 48-\10*+ fold a decimal
@@ -39,8 +40,8 @@
 # features go in self/golf2.golfj, and only reach here when they must (a case
 # the seed has to understand to compile golf2.golf).  See ../DESIGN.md.
 
-:m4259840;:Pm4+@;:Bm4096+;:Sm12+;:Qm16+;:U48-10<;:Y4*4792320+;:Z48-\10*+; # m: data base D, then the accessors
-:am4+\&@+\!;                                            # a: advance P by n
+:m4259840;:Pm4+@;:B4800512;:Sm12+;:Qm16+;:U48-10<;:Y4*4792320+;:Z48-\10*+; # m: data base D, then the accessors
+:am4+\&@+\!P4997121<[2.];                               # a: advance P by n -- past the 192 KB cap (P > B+196608): exit 2 (W11-1E)
 :oP!1a;:L104o;                                          # o: emit byte  ·  L: emit push-imm32 (0x68)
 :wP!4a;                                                 # w: emit dword
 :k"P\-4-\!;                                             # k: backpatch pop site
@@ -123,7 +124,7 @@
 # the name's pending list; ⍎ on the thunk tail-jumps into the word.  If it never
 # comes (`′typo`), z rejects it at end of input with exit(2).  Before W9-1C it
 # was wrapped like an atom, around a template that does not exist (SIGILL).
-:X"Y@"[_"f?[233o5wPm24+!233&FLm24+@69632-w_^]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+:X"Y@"[_"f?[233o5wPm24+!233&FLm24+@606208-w_^]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@606208-w_^]\_606208-Lw; # X: emit a push of a word's address
 # l — M-FRAME2: the rbp displacement of a local, from its name number.  A
 # one-byte local must be a..h.  Outside a ⊡ word (m56 clear) it keeps M-FRAME's
 # fixed slot name-'a', and a long name is refused.  Inside, the definition's
@@ -146,7 +147,7 @@
 "93-[_k^]                                               # ']' end if
 "'{-[_P^]                                               # '{' loop start ('{ = 123)
 "'}-[_2E132oP4+-w^]                                     # '}' loop end  ('} = 125)
-"96-[_D233o"wP69632-S!{(o1-"1<}_LS@w^]                  # '`' blob
+"96-[_D233o"wP606208-S!{(o1-"1<}_LS@w^]                  # '`' blob
 # ---------------------------------------------------------------------------
 # Everything from here to the `e;` fallthrough is v2's, not v1's: the compiler
 # cases the seed has to understand because self/golf2.golfj uses them.  Each is
@@ -165,7 +166,7 @@
 # block; `chars` converts it to a list of codes so every list op applies.
 # Compiler scratch: m20 jmp-site, m24 len-site, S push-VA, m28 count.
 # golf2's own source never uses this — it is here for the programs golf2 compiles.
-"142-[_233oPm20+!0wPm24+!P69632-S!0w0m28+!{("142-[_m28+@m24+@!Pm20+@4+-m20+@!LS@w^]om28+@1+m28+!0}] # 0x8E  “  string literal -> inline byte block
+"142-[_233oPm20+!0wPm24+!P606208-S!0w0m28+!{("142-[_m28+@m24+@!Pm20+@4+-m20+@!LS@w^]om28+@1+m28+!0}] # 0x8E  “  string literal -> inline byte block
 
 # →x (0x8F) / ←x (0x90) — named variables.  Compiler prefixes: read the name
 # byte and emit an absolute 64-bit store/load against a per-program variable
@@ -262,5 +263,6 @@ e;                                                      # default: e
 
 # main: store the blob address, write the ELF header, set P = B+120, emit
 # the startup stub, run the token loop, check no long name is left undefined
-# (z), exit, then flush the output buffer.
-m8+!HB120+m4+!3E{g"m!tm@1<}z5EB{"?)1+"P<1+}_
+# (z), exit, write the image size into p_filesz (header offset 96, W11-1E),
+# then flush the output buffer.
+m8+!HB120+m4+!3E{g"m!tm@1<}z5EPB-B96+!B{"?)1+"P<1+}_
