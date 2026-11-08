@@ -33,9 +33,10 @@ and prints `golf-where` every time the program stops.
 A word's extent comes from the binary: every body is preceded by the `jmp`
 that skips it (`E9 rel32`), so the body is [ADDR, ADDR + rel32).  Code in no
 word is "(top level)" (the program's and the prelude's top-level code), and
-code on the list heap (W12-O2: ∘ and ⊸ thunks are A blocks, and the heap is
-RWX) is "(thunk)", the heap being [base, base+span) from the cells 0x4F0034 and
-0x4F0038; the old M-CHAIN arena 0x4D0000–0x4E0000 still counts.  The return
+code on the list heap is "(thunk)", the heap being [base, base+span) from the
+cells 0x4F0034 and 0x4F0038, and the old M-CHAIN arena 0x4D0000–0x4E0000
+counts too (W12-O2's ∘/⊸ thunks lived there; since W13-H closures are data
+records and the heap is not executable, so no pc is ever there).  The return
 stack runs from rbp up to the segment end (p_vaddr + p_memsz, 0x600000); a cell
 on it counts as a return address when the bytes just before it in memory are a
 call instruction (`E8 rel32`, `FF 14 25 abs32`, `FF /2` through a register), so
@@ -104,7 +105,8 @@ def golf_reg(r):
     return int(gdb.parse_and_eval("$" + r)) & 0xFFFFFFFFFFFFFFFF
 
 def golf_thunk(a):
-    """W12-O2: is a in the old thunk arena or on the (RWX) list heap?"""
+    """Is a in the old thunk arena or on the list heap (W12-O2; no code runs
+    there since W13-H, but a stray pc is still named)?"""
     if 0x4D0000 <= a < 0x4E0000:
         return True
     hb = golf_bytes(0x4F0034, 8)
@@ -140,6 +142,7 @@ def golf_is_ret(v):
         return False
     return (b[2] == 0xE8                                  # call rel32
             or b[:3] == b"\xff\x14\x25"                   # call [abs32]
+            or b[4:] == b"\xff\x50\x10"                   # call [rax+16]: ⍎ on a closure (W13-H)
             or (b[5] == 0xFF and 0xD0 <= b[6] <= 0xD7)    # call reg
             or (b[4] == 0x41 and b[5] == 0xFF and 0xD0 <= b[6] <= 0xD7))
 

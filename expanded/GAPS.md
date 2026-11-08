@@ -194,8 +194,8 @@ actually comes from — far more than from single-byte atoms.
 GOLF has no concept of arity anywhere. Words are variadic by stack discipline
 and nothing checks them — a word that under-pops silently eats its caller's
 values. Its combinators are **ordinary runtime library words**: `∘` compose
-literally assembles 39 bytes of machine code into an RWX arena and returns the
-address; `€` map and `⇤` fold are plain words that need an explicit `′`
+literally assembled 39 bytes of machine code into an RWX arena and returned the
+address (since W13-H it builds a 3-cell data record that `⍎` dispatches on); `€` map and `⇤` fold are plain words that need an explicit `′`
 quotation. `⊚` chain definitions ([M-CHAIN2](DESIGN.md)) are the one parse-time
 piece, and they are sugar over a fixed shape table (1 link = call, 2 = atop,
 3 = fork, n>3 = fork then the rest), not an algebra.

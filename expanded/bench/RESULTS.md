@@ -270,3 +270,35 @@ sends a list to `∔` … or `‹_12o1_nan›` exactly as the thunk would) and i
 what shipped. Four elements per pass instead of two was 0–10% faster and 6 KB
 bigger.
 
+## W13-H: closures as data records, heap not executable
+
+W13-H replaced `∘`/`⊸`'s machine-code thunks with 3-cell data records and
+gave `⍎` a heap-floor test (`cmp rax,0x600000; jb`: code is called, a record
+runs through its kind word, `call [rax+16]`). Base 07d2afa's toolchain and
+W13-H's, both programs compiled from the same sources and run interleaved,
+best of 9, same session; ns per iteration (the `⍎` rows are 10^8-iteration
+loops, the `€` rows ns per element of 10^7):
+
+| case | program | before | after |
+|---|---|---|---|
+| loop, no call | `:f;′f→q 100000000{←q_⊖"0≡}_` | 0.95 | 0.95 |
+| `⍎` of a word | `:f;′f→q 100000000{←q⍎⊖"0≡}_` | 1.74 | 1.75 |
+| `⍎` of a bind | `0′_⊸→q 100000000{←q⍎⊖"0≡}_` | 2.62 | 4.65 |
+| `⍎` of a compose | `:f;′f′f∘→q 100000000{←q⍎⊖"0≡}_` | 3.22 | 5.42 |
+| `€` of a word | `:f;10000000⍳′f€_` | 13.38 | 13.36 |
+| `€` of a bind | `10000000⍳1′+⊸€_` | 14.95 | 17.91 |
+| `€` of a compose | `:f;10000000⍳′f′f∘€_` | 14.13 | 16.47 |
+| make + free, ∘ then ⊸ | `0→j{′⊗′⊕∘⌫ 5′+⊸⌫ ←j1+"→j1000000<1+}` (per closure) | 50.5 | 22.1 |
+
+So the tag test costs nothing measurable on a code address (`⍎` of a word:
+0.79 ns over the bare loop before, 0.80 after; one compare and a taken
+branch, predicted). A call through a closure costs about 2 ns more than
+through a thunk (bind 1.67 → 3.70 ns over the loop, compose 2.27 → 4.47):
+the kind words are GOLF code — a poison test for use after free and the
+record read through the data stack — where the thunk was two `mov`/`call`
+pairs. Building one is twice as fast (no byte-by-byte code writes) and a
+closure is a 40-byte block instead of 72. The prelude got 74 bytes smaller
+(a trivial program `1Ṅ`: 125,566 → 125,492 bytes): the 77 `\exec` sites grew
+by 14 bytes each and the two thunk assemblers went away. `bench/micro/cases.txt`
+has the five rows as `exec bind comp mapbind mapcomp`.
+

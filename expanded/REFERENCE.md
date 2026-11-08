@@ -277,7 +277,7 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0x89` | `⌊` | `\min` | a b -> min(a,b) signed |
 | `0x8A` | `÷` | `\sdv` | a b -> a/b signed (b=0: error exit 1) |
 | `0x8B` | `∣` | `\smd` | a b -> a%b signed (b=0: error exit 1) |
-| `0x8D` | `⍎` | `\exec` | pop a word address, call it |
+| `0x8D` | `⍎` | `\exec` | pop a function (a code address, or a ∘ ⊸ closure record), call it |
 | `0x91` | `﹢` | `\radd` | raw add (never polymorphic) |
 | `0x92` | `﹣` | `\rsub` | raw sub (never polymorphic) |
 | `0x93` | `﹡` | `\rmul` | raw mul (never polymorphic) |
@@ -480,7 +480,8 @@ A few notes on what the tables leave out:
   `[len:u32][bytes]`. `🗲` prints one. `⊃` turns one into a list of codes, so
   list ops work on text, and `⊐` prints such a list back as text.
 - **Quotations.** `′x` pushes the address of word `x`. For an atom, it pushes a
-  small wrapper around the atom. `⍎` calls the address it pops. `€ ⇤ ⌿ ⊞` take
+  small wrapper around the atom. `⍎` calls the function it pops: a code
+  address, or a closure record that `∘` or `⊸` built (W13-H, see Closures). `€ ⇤ ⌿ ⊞` take
   such an address as their function argument. Since W13-A, `f€` quotes `f`
   by itself, and `⟦ … ⟧` is an anonymous word's address (see "Adverbs, blocks
   and bare locals"). `∘ ⇉ ⑂` combine them, and `⊸`
@@ -922,7 +923,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 377 in all after W13-G, helpers included), so a program has 647 for itself.
+has 381 in all after W13-H, helpers included), so a program has 643 for itself.
 
 ### Sorting by key
 
@@ -1362,8 +1363,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers), the prelude has 377 long
-names, which leaves 647 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words), the prelude has 381 long
+names, which leaves 643 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1639,25 +1640,38 @@ afterwards. A word that reads a variable reads it at call time instead:
 3 4′+⊸⊸⍎Ṅ                         ->  7
 ```
 
-`⊸` builds its quotation like `∘` does: a 38-byte machine-code thunk
-(`∘`'s are 39 bytes) in an ordinary heap block. Since W12-O2 there is no
-limit on how many a program makes, and `⌫` gives one back: a thunk costs one
-72-byte block in `‹heapstats›`, and freeing a thunk twice is `GOLF: double
-free`. A composed or bound quotation is an int, not a list, to `T` and the
-list words. Calling a thunk after it has been freed is not checked: it
-usually dies with SIGSEGV, and if the block has been reused it runs whatever
-is there. A quotation built from another one (`′f′g∘′h∘`, `x′f⊸⊸`) only
-points at the inner one, so free the outer before the inner, and only when
-neither is used again.
+`∘` and `⊸` build **closure records**, not code (W13-H). A closure is an
+ordinary 3-cell heap block holding the captured values and its kind:
+`′f′g∘` is `[f g ‹_13h_cmp›]`, `x′f⊸` is `[f x ‹_13h_bnd›]`, and the quotation
+is the block's address (an int, not a list, to `T` and the list words). `⍎`
+tells the two kinds of function apart with one compare: every code address
+(a word, a `′`-wrapped atom, a `⟦ ⟧` block) lies below the heap at `0x600000`,
+so a value at or above it is a record, and `⍎` calls its kind word with the
+record on the stack. Everything that calls a function value (`€ ⇤ ⌿ ⍀ ⍁ ⍸ ⊞
+⊟ ⍣ ⇉ ⑂ ‹catch› ‹memo›`, streams) does it through `⍎`, so all of them take
+closures. The heap itself is data only: since W13-H it is mapped
+read-write, not executable (W12-O2 had made it RWX so that `∘` and `⊸` could
+write machine-code thunks there).
+
+Since W12-O2 there is no limit on how many closures a program makes, and `⌫`
+gives one back: a closure costs one 40-byte block in `‹heapstats›` (a thunk
+was 72), and freeing one twice is `GOLF: double free`. Calling a closure
+after it has been freed is `GOLF: use after free` (catchable; before W13-H it
+died of SIGSEGV). Not caught, as for lists: a stale copy of a closure whose
+block has since been handed out again runs, or misreads, the new owner. A
+quotation built from another one (`′f′g∘′h∘`, `x′f⊸⊸`) only points at the
+inner one, so free the outer before the inner, and only when neither is
+used again.
 
 ```
 :f′⊕′⊗∘"⌫⌫;′f‹catch›⊐                          ->  double free
+:g3′+⊸"⌫4\\⍎;′g‹catch›⊐                        ->  use after free
 ‹heapstats›→b_ 3′+⊸"4\\⍎Ṅ⌫ ‹heapstats›←b-Ṅ_       ->  70
 ‹heapstats›_→n 0→i{′⊕′⊗∘⌫←i1+"→i100000<1+}‹heapstats›_←n-Ṅ  ->  0
 ```
 
-The second example prints `7` and then `0`: the thunk was freed, so the
-bytes in use are back where they were. The third makes and frees 100,000
+The third example prints `7` and then `0`: the closure was freed, so the
+bytes in use are back where they were. The fourth makes and frees 100,000
 compositions.
 
 ### Checked arithmetic
@@ -2042,7 +2056,8 @@ Everything the runtime checks raises through `‹throw›`, so all of it is
 catchable: `⊇` (`index out of range`), `⌫` (`free of a non-heap value`,
 `double free`), `⍅` and `‹pqpop›` (`pop from empty`), `‹get›` (`key
 not found`), `‹cadd›` `‹csub›` `‹cmul›` (`integer overflow`, see Checked
-arithmetic above), every list word (`use after free`, see Memory above), the file
+arithmetic above), every list word and `⍎` of a freed closure (`use after
+free`, see Memory and Closures above), the file
 words (`cannot open x.txt (ENOENT)` …), the spill stack (`spill stack
 exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
 ÷ ∣` (`divide by zero`). Not catchable: a return-stack overflow (a recursion
@@ -2208,8 +2223,9 @@ The script adds five commands, and prints `golf-where` at every stop:
 | `golf-words [TEXT]` | the map's words (names containing TEXT) with their address ranges |
 
 A word's range comes from the `jmp` that skips its body (`E9 rel32` just
-before ADDR); code in no word is `(top level)`, code on the heap (a `∘` or `⊸` thunk)
-`(thunk)`. A return-stack cell counts as a return address only when the bytes
+before ADDR); code in no word is `(top level)`, and a pc on the heap is named `(thunk)`
+(no code runs there since W13-H; a `∘` or `⊸` closure is data, and a call
+through one shows as its kind word, `‹_13h_cmp›` or `‹_13h_bnd›`). A return-stack cell counts as a return address only when the bytes
 before it are a `call`, so `⊡` locals (which share the return stack) are
 skipped. Plain gdb still works alongside: `stepi`, `x/8gx $rsp`,
 `break *0x…`, `info registers` (and `golf-bt` / `golf-stack` are right even
