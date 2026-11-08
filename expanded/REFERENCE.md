@@ -285,6 +285,9 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xCE` | `⍋` | `\sort` | — | sort: list -> new list, ascending signed (stable merge sort) |
 | `0xCF` | `∊` | `\memb` | — | member: list x -> 0 if x is an element, else 1 |
 | `0xD0` | `⊸` | `\bind` | — | bind: x ′f -> ′g; g pushes the captured x, then calls f |
+| `0xD5` | `⍈` | `\putat` | — | store-at: list i v -> list; list[i] = v in place (bounds-checked) |
+| `0xD6` | `⍆` | `\push` | — | push: v x -> v'; append x (vector or deque back); use the returned v' |
+| `0xD7` | `⍅` | `\pop` | — | pop: v -> v x; remove the last element (empty: pop from empty) |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -708,6 +711,66 @@ then reused reads (or frees) the new owner's list without an error. A value
 pointing into the middle of a block is not checked either. Names that start
 with `‹_2d` are helpers.
 
+### Vectors and deques
+
+W12-Z4 adds a store into a list, a growable **vector**, and a **deque**. None
+of these words copies: each one changes its block in place.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `⍈` | `l i v -> l` | store `v` at index `i` of `l`, in place, and leave the same `l`. It is the twin of `⊇` and is checked the same way: an `i` at or past `≢l`, or any negative `i`, is `GOLF: index out of range` (a negative `i` does **not** count from the end, as with `⊇`). A freed `l` is `GOLF: use after free` |
+| `‹vec›` | `-> v` | a new, empty vector: room for 3 elements before its first growth |
+| `‹vecn›` | `n -> v` | a new, empty vector with room for at least `n` elements |
+| `⍆` | `v x -> v` | push `x` on the end. **Use the returned `v`**: it is the same value while there is room and a new one after a growth (see below). On a deque, pushes at the back |
+| `⍅` | `v -> v x` | pop the last element. `v` is left unchanged: the block never shrinks. An empty one is `GOLF: pop from empty`. On a deque, pops the back |
+| `‹last›` | `v -> x` | the last element (a deque: the back), without removing it. Empty is `GOLF: index out of range` |
+| `‹first›` | `v -> x` | the first element (a deque: the front), the same as `0⊇` on a vector |
+| `‹deque›` | `-> d` | a new, empty deque (room for 6) |
+| `‹pushf›` | `d x -> d` | push `x` at the front of a deque. Use the returned `d`, as with `⍆`. Anything but a deque is `GOLF: not a deque` |
+| `‹popf›` | `d -> d x` | pop the front of a deque. Empty is `GOLF: pop from empty` |
+
+**A vector is a list.** Every allocator block already records its capacity
+in its header cell, and `A` rounds every request up to a size class, so most
+lists have spare room: `5⍳` has room for 7. `⍆` writes into that room and
+bumps the length cell. When the block is full, it allocates one of twice the
+capacity, copies the elements, frees the old block with `⌫`, and returns the
+new value. So a push is amortized O(1), and the rule is the one Go's `append`
+has: keep what `⍆` returns (`←v x⍆→v`). After a growth the old value is a
+freed list, and a list word on it is `GOLF: use after free`. Since the length
+cell is still the first cell, every list word reads a vector: `≢ ⊇ ∑ ⍕ €`
+and the rest. `⍆` works on any list, a `⍳` result included, and because it
+appends in place, every other copy of that value sees the new element. `⌫`
+of the current value frees the current block, and `‹heapstats›` stays exact.
+A growth is one allocation and one free, so the block count does not change.
+
+**A deque is not a list.** It is one block that holds the count, the head
+index and a ring buffer, and its value carries its own tag (`0x7FFD<<48`
+instead of the list tag `0x7FFF<<48`). `≢` gives its element count and `⌫`
+frees it. `⍆ ⍅ ‹first› ‹last›` see the tag and work on either end; `⊇ ∑ ⍕ €`
+and the other list words do not understand the ring and must not be given a
+deque. A full ring doubles the same way a vector does, so both ends are
+amortized O(1), and `⍆` and `‹pushf›` return the possibly new `d`.
+
+```
+5⍳2 9⍈⍕                                          ->  0 1 9 3 4
+‹vec›3⍆1⍆4⍆⍕                                     ->  3 1 4
+‹vec›3⍆1⍆5⍆⍅Ṅ∑Ṅ                                  ->  54
+:p←v\\⍆→v0;‹vec›→v 1000⍳′p€_←v"≢Ṅ‹last›Ṅ         ->  1000999
+5⍳→l ←l7⍆_ ←l≢Ṅ                                  ->  6
+‹deque›1⍆2⍆0‹pushf›"≢Ṅ‹popf›Ṅ⍅Ṅ‹first›Ṅ           ->  3021
+:p←v\\⍆→v0;1000⍳→l‹heapstats›_→n‹vec›→v←l′p€⌫‹heapstats›_←n-Ṅ  ->  1
+‹vec›⍅                                           ->  GOLF: pop from empty
+5⍳5 9⍈                                           ->  GOLF: index out of range
+:‹f›‹vec›⍅;′‹f›‹catch›⊐                           ->  pop from empty
+```
+
+In the third example `⍅` pops the `5` and leaves `3 1`. In the seventh,
+the vector grows from 3 elements to 1023 over nine doublings and is still
+one live block. The two `GOLF:` lines go to stderr with exit status 1, and
+`‹catch›` turns the error into its message. The ten words use bytes `0xD5`
+to `0xD7` and seven long names; names that start with `‹_12z4` are their
+helpers.
+
 ### Dicts and sets
 
 A **dict** (W11-2B) maps keys to values. A key is an int or a list, nested
@@ -764,8 +827,8 @@ A word count over stdin:
 
 It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers), the prelude has 81 long
-names, which leaves 943 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-Z4's seven vector and deque words and five helpers), the prelude has 95 long
+names, which leaves 929 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 

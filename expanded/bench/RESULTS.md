@@ -12,6 +12,14 @@ rows taken on the same day and treat ±15% as noise.
 | baseline (main after #16), 2026-11-08 | 0.293 | 0.147 | 0.566 | 0.142 | 0.411 | 0.564 | 0.089 | 0.620 | 0.633 | 0.022 | 898 |
 | Python, 2026-11-08 | 0.096 | 0.155 | 0.235 | 0.349 | 1.175 | 0.087 | 0.559 | 0.292 | 1.406 | 0.169 | 2,571 |
 | C++ -O2, 2026-11-08 | 0.063 | 0.019 | 0.032 | 0.009 | 0.080 | 0.032 | 0.019 | 0.059 | 0.097 | 0.012 | 4,613 |
+| W12-Z4, 2026-11-08 | 0.141 | 0.149 | 0.132 | 0.102 | 0.152 | 0.450 | 0.117 | 0.184 | 0.289 | 0.021 | 851 |
+
+W12-Z4 rewrote parens, islands and slidemax on `⍆ ⍅ ⍈` and the deque
+instead of raw `⍶`/`⊛` stacks: 131 → 113, 158 → 131 and 127 → 125 bytes
+(898 → 851 for all ten). They are slower, because
+each push, pop, peek and `⊇` is now a checked prelude call where the old
+code had four or five inline ops. Old and new on the same inputs, best of 5,
+same session: parens 96 → 137 ms, islands 67 → 130 ms, slidemax 208 → 294 ms.
 
 ## Micro, ns per element
 

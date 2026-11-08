@@ -1,4 +1,4 @@
-:p"←n﹤1+["8*←a﹢⊙49-["8*←a﹢48\\⊛"←s←t8*﹢⊛←t⊕→t]]_;
-:q{←t⊖"→t8*←s﹢⊙"⊕p"⊖p"←w﹢p←w﹣p←t0≡};
-:mp←t0≡[q←c⊕→c]0;
-‹readall›"→g10‹indexof›⊕→w←g≢"→n⍶→s←g16≪16>8﹢→a←n⍳′m€_←cṄ
+:p"←n﹤1+[←g&⊇49-[←g&48⍈_"←s\\⍆→s]]_;
+:q{←s⍅\\_"⊕p"⊖p"←w﹢p←w﹣p←s≢0≡};
+:mp←s≢0≡[q←c⊕→c]0;
+‹readall›"→g10‹indexof›⊕→w←g≢→n‹vec›→s←n⍳′m€_←cṄ
