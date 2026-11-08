@@ -3,31 +3,28 @@
 
 The GOLF-written build tools under `gtools/` have to know exactly what
 `tools/codepage.py` and `tools/mkblob2.py` know: the byte<->glyph<->mnemonic
-code page, and the machine-code template blob.  Today both live as **Python
-literals**, and a GOLF program cannot read a Python literal.
+code page, and the machine-code template blob.  Since W14-L both are SOURCE
+DATA — data/ops.tsv (the code page, with docs) and data/templates.txt (the
+blob, in a small template notation) — and the two files written here are
+DERIVED from them: the code page with its glyphs hex-encoded and its docs
+dropped, and the blob fully expanded, one record per line.  They stay checked
+in because the older GOLF tools (gtools/encode, decode, mkblob, hexcat) read
+them; gtools/tables.golfj builds both from the sources, byte for byte.
 
-Nor can it carry a copy of the code page as GOLF source.  A `“...“` string
-literal cannot contain byte 0x8E (that byte *is* the delimiter), and
-`tools/codepage.py`'s encoder is not string-aware anyway: inside a literal a `#`
-would still eat the rest of the line, a `\\` would still start a mnemonic
-escape, and every non-ASCII character must already be a code-page glyph.  A
-table of glyphs is precisely the thing that cannot be written down that way.
+Python is still the reference reformatter here — nothing below invents a byte,
+a glyph or a template; every value is read back out of `mkblob2`/`codepage`,
+which load the data files.  That is why the blob is serialised by *parsing
+what `build_blob2()` actually emitted* rather than by walking `ATOMS` a second
+time: a second walk would be a second implementation of the emission policy
+(record order, and the overrides that REPLACE a record instead of following
+it), and a second implementation is a second thing that can drift.
 
-So the tables become **data**: generated here by Python, checked in, and read at
-runtime by the GOLF tools.  Python stays the single source of truth — nothing
-below invents a byte, a glyph or a template; every value is read back out of
-`mkblob2`/`codepage`, which are the registry-disciplined tables
-(`../REGISTRY.md`).  This script only reformats.  That is why the blob is
-serialised by *parsing what `build_blob2()` actually emitted* rather than by
-walking `ATOMS` a second time: a second walk would be a second implementation of
-the emission policy (record order, and the M-VEC overrides that REPLACE a scalar
-record instead of following it), and a second implementation is a second thing
-that can drift.
-
-Both outputs are GENERATED — never hand-edit them; run `python3
-tools/mktables.py` from `expanded/` and commit the result.  `test/selfcheck.sh`
-re-derives them and fails if what is committed differs, which is what keeps them
-honest when someone adds an atom to `mkblob2.ATOMS`.
+Both outputs are GENERATED — never hand-edit them.  `python3 tools/mkblob2.py`
+rewrites them (it calls main() below), and so does `python3
+tools/mktables.py` alone.  `test/selfcheck.sh` re-derives them and fails if
+what is committed differs.  Their headers below still name this script and the
+Python tables, which remain true and keep the files byte-identical to what
+they were before the tables moved to data/.
 
 Design constraints on the formats, all three of them for the reader's sake:
 

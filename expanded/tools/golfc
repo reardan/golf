@@ -50,7 +50,9 @@ GOLF2="$BUILD/golf2"
 # tools/mkblob2.py, so the files a human actually edits are the real sources:
 #   self/golf2.golfj  the compiler's logic, written in v2 GOLF  (since M-SELF)
 #   self/seed.golfv1  the same compiler in v1 GOLF, the bootstrap rung
-#   tools/mkblob2.py  the template blob and the atom table
+#   data/ops.tsv      the code page: every op byte's mnemonic and glyph (W14-L)
+#   data/templates.txt the template blob, in its small notation (W14-L)
+#   tools/mkblob2.py  the reader of both, and the memory map
 #   tools/codepage.py the encoder that turns golf2.golfj into golf2.golf
 # An edit to any of them is a source change. The generated files are listed too,
 # so a stray hand-edit is not silently ignored — but mkblob2.py rewrites them
@@ -59,7 +61,7 @@ GOLF2="$BUILD/golf2"
 stale=""
 [ -x "$GOLF2" ] || stale=1
 for s in self/golf2.golfj self/seed.golfv1 tools/mkblob2.py tools/codepage.py \
-         self/seed.golf self/golf2.golf; do
+         data/ops.tsv data/templates.txt self/seed.golf self/golf2.golf; do
   if [ "$HERE/$s" -nt "$GOLF2" ]; then stale=1; fi
 done
 if [ -n "$stale" ]; then
@@ -143,7 +145,8 @@ with open(src, "wb") as f:
         import hashlib
         h = hashlib.sha1()
         for d in (prelude, os.path.join(sys.argv[3], "codepage.py"),
-                  os.path.join(sys.argv[3], "mkblob2.py")):
+                  os.path.join(sys.argv[3], "mkblob2.py"),
+                  os.path.join(sys.argv[3], "..", "data", "ops.tsv")):
             with open(d, "rb") as g:
                 h.update(g.read())
         cache = os.path.join(build, "prelude.gb")

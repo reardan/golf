@@ -5,7 +5,7 @@ A GOLF program is a sequence of bytes, one byte per operation, drawn from the
 full 0..255 space.  Like Jelly, the canonical form is raw bytes; humans read and
 write them through a *code page* that shows each byte as a glyph.  Bytes 0..127
 are ASCII (so ordinary GOLF text is already valid); bytes 0x80+ are single-byte
-atoms shown as chosen glyphs (see tools/mkblob2.py, the source of truth).
+atoms shown as chosen glyphs (see data/ops.tsv, the source of truth).
 
 Authoring is easiest in ASCII with backslash mnemonics — write `\\sqr`, `\\neg`,
 … and `encode` turns them into the raw atom bytes.  Literal glyphs work too.
@@ -25,137 +25,27 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import mkblob2
 
-# Prelude library words (see lib/prelude.golf).  (key, mnemonic, glyph, doc)
-# The key is the byte the word is called by, in one of two forms:
-#   * a 1-char ASCII letter — an ordinary letter-named word.  Encode-only: ⍳ and
-#     \range both map to byte 'R', but decode shows the plain letter, since a
-#     low byte could equally be a *user* word of the same name.
+# W14-L: the three tables are SOURCE DATA, data/ops.tsv (format: its header),
+# which mkblob2 reads; this module keeps the shapes everything imports.
+#
+# Prelude library words (lib/prelude.golfj): ops.tsv's L rows, as
+# (key, mnemonic, glyph, doc).  The key is the byte the word is called by, in
+# one of two forms:
+#   * a 1-char ASCII letter (a byte below 0x80) — an ordinary letter-named
+#     word.  Encode-only: ⍳ and \range both map to byte 'R', but decode shows
+#     the plain letter, since a low byte could equally be a *user* word of the
+#     same name.
 #   * an int byte >= 0x80 — a word living in the high-byte word range (see
-#     ../REGISTRY.md §1, 0xC0-0xCF).  Unambiguous, so it decodes like an atom.
+#     ../REGISTRY.md §1, 0xC0-0xEF).  Unambiguous, so it decodes like an atom.
 # Byte/mnemonic/glyph allocations come from ../REGISTRY.md; `codepage.py check`
 # enforces them.
-LIB = [
-    ("R", "range", "⍳", "range(n) -> [0..n-1]"),
-    ("S", "sum",   "∑", "sum(list)"),
-    ("L", "len",   "≢", "len(list)"),
-    ("I", "index", "⊇", "index(list, i)"),
-    ("A", "alloc", "⍶", "alloc(cells) -> addr"),
-    ("N", "num",   "Ṅ", "print signed decimal"),
-    ("E", "nl",    "␤", "print newline"),
-    ("M", "map",   "€", "map(list, fn) -> list"),
-    ("F", "fold",  "⇤", "fold(list, init, fn) -> x"),
-    ("Q", "show",  "⍕", "print a list, space-separated; inner lists as [a b]"),
-    ("P", "prod",  "∏", "product(list)"),
-    ("V", "rev",   "⌽", "reverse(list) -> list"),
-    ("W", "filter","⌿", "filter(list, pred) -> list (keep where pred==0)"),
-    ("O", "puts",  "🗲", "print a “...” byte string"),
-    ("U", "chars", "⊃", "byte string -> list of char codes"),
-    ("J", "join",  "⊐", "print a code list as text (cell -> byte)"),
-    ("Z", "zip",   "⊞", "zip(l1, l2, fn) -> list (elementwise)"),
-    # --- W2 LIB rows ---
-    # M-TAG shape-polymorphic operators (REGISTRY.md §1.2).  High-byte prelude
-    # words: 0xC0-0xC4 are word *names*, not atoms — no mkblob2 template — but
-    # being >= 0x80 they decode as well as encode.
-    (0xC0, "vadd", "∔", "polymorphic add (int/list, elementwise, broadcast)"),
-    (0xC1, "vsub", "∸", "polymorphic sub (int/list, elementwise, broadcast)"),
-    (0xC2, "vmul", "⨰", "polymorphic mul (int/list, elementwise, broadcast)"),
-    (0xC3, "vmin", "⩍", "polymorphic signed min (int/list, elementwise, broadcast)"),
-    (0xC4, "vmax", "⩌", "polymorphic signed max (int/list, elementwise, broadcast)"),
-    (0xC5, "comp", "∘", "compose: ′f ′g -> ′(x -> g(f x))"),
-    (0xC6, "pipe", "⇉", "pipeline: x qlist -> y (apply each quotation in turn)"),
-    (0xC7, "fork", "⑂", "fork: x ′f ′g ′h -> h(f x, g x)"),
-    (0xC8, "match", "≣", "match: a b -> -1/0, structural equality into nested lists"),
-    (0xC9, "depth", "⍤", "depth: int 0, flat list 1, list of lists 2, ..."),
-    # --- W9-4A LIB rows: list words (prelude anchor W9-4A-LISTWORDS1) ---
-    (0xCB, "cat",  "⧺", "concatenate: l1 l2 -> new list (l1 then l2)"),
-    (0xCC, "take", "↑", "take: list n -> first n (n<0: last |n|; clamped to len)"),
-    (0xCD, "drop", "↓", "drop: list n -> all but first n (n<0: all but last |n|)"),
-    # --- W9-3C LIB row ---
-    (0xCA, "free", "⌫", "free(list|block): release an A block to the free list"),
-    # --- W9-4B LIB rows: list words (prelude anchor W9-4B-LISTWORDS2) ---
-    (0xCE, "sort", "⍋", "sort: list -> new list, ascending signed (stable merge sort)"),
-    (0xCF, "memb", "∊", "member: list x -> 0 if x is an element, else 1"),
-    # --- W11-2C LIB row: closures by value (prelude anchor W11-2C bind) ---
-    (0xD0, "bind", "⊸", "bind: x ′f -> ′g; g pushes the captured x, then calls f"),
-    # --- W12-A2 / W12-A3 LIB rows (prelude sections W12-A2, W12-A3) ---
-    (0xD1, "scan", "⍀", "scan: l ′f -> l'; inclusive, l'[0] = l[0], l'[i] = f(l'[i-1], l[i])"),
-    (0xD2, "reduce", "⍁", "reduce: l ′f -> x; fold seeded by l[0] (empty: empty reduce)"),
-    (0xD3, "eachi", "⍸", "each-indexed: l ′f -> l'; l'[i] = f(l[i], i)"),
-    # --- W12-A4 LIB row: sort by key (prelude section W12-A4) ---
-    (0xD4, "ksort", "⍒", "sort by key: l ′k -> l'; stable, ascending by k x (k once per element)"),
-    # --- W12-Z4 LIB rows: store-at, vector push/pop (prelude section W12-Z4) ---
-    (0xD5, "putat", "⍈", "store-at: list i v -> list; list[i] = v in place (bounds-checked)"),
-    (0xD6, "push", "⍆", "push: v x -> v'; append x (vector or deque back); use the returned v'"),
-    (0xD7, "pop",  "⍅", "pop: v -> v x; remove the last element (empty: pop from empty)"),
-    # --- W12-A5 / W12-A6 LIB rows (prelude sections W12-A5, W12-A6) ---
-    (0xD8, "win",  "⊟", "window reduce: l n ′f -> f-reduce of every length-n window (deque for ⌈ ⌊)"),
-    (0xD9, "fix",  "⍣", "fixpoint: x ′f -> y; apply f until the result ≣ the previous one"),
-    # --- W12-A8 LIB row: the stream protocol (prelude section W12-A8) ---
-    (0xDA, "next", "⍞", "stream next: s -> s x 0 | s 1 (zero-is-true, like ‹readline›)"),
-    # --- W12-Z1 LIB rows: one-byte aliases of the hottest long names (prelude
-    # section W12-Z1).  Each byte is a one-call word that runs the long name,
-    # which stays.  Mnemonics are letters only and prefix-free: \dget \dput
-    # because \get (←) is a compiler op and \puts / \putat exist.
-    (0xDB, "ints", "ℤ", "alias of ‹ints›: -> list, all of stdin as integers"),
-    (0xDC, "readall", "⎕", "alias of ‹readall›: -> list, the rest of stdin as a code list"),
-    (0xDD, "readline", "⏎", "alias of ‹readline›: -> list flag, the next line without its \\n (flag 0), 1 at end"),
-    (0xDE, "dict", "Ḋ", "alias of ‹dict›: -> d, a new empty dict"),
-    (0xDF, "dget", "Ġ", "alias of ‹get›: d k -> v (missing: key not found)"),
-    (0xE0, "dput", "Ṗ", "alias of ‹put›: d k v -> d"),
-    (0xE1, "keys", "Ḳ", "alias of ‹keys›: d -> list, the keys in insertion order"),
-    (0xE2, "bump", "Ḃ", "alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1)"),
-    (0xE3, "vec", "Ṿ", "alias of ‹vec›: -> v, a new empty vector"),
-    # --- W13-C LIB rows: list words for LeetCode-style programs (prelude
-    # section W13-C).  Mnemonics are letters only and prefix-free: \lookup
-    # (not \dgetor, which \dget is a prefix of) and \tfword (\tf is the word).
-    (0xE4, "lmax", "Ṁ", "max of list: l -> x, signed (empty: empty reduce)"),
-    (0xE5, "lmin", "Ṃ", "min of list: l -> x, signed (empty: empty reduce)"),
-    (0xE6, "uncons", "⍘", "uncons: l -> tail head (empty: empty list)"),
-    (0xE7, "rscan", "⍂", "right scan: l ′f -> l'; exactly ⌽ ′f⍀ ⌽ (f gets acc x)"),
-    (0xE8, "xscan", "⍃", "exclusive scan: l s ′f -> l'; l'[0] = s, l'[i] = f(l'[i-1], l[i-1]), ≢l' = ≢l"),
-    (0xE9, "counter", "Ċ", "counter: l -> d; element -> count, keys in first-seen order"),
-    (0xEA, "dsort", "⍖", "sort by key, descending: l ′k -> l'; stable (ties keep input order)"),
-    (0xEB, "prevocc", "Ṕ", "previous occurrence: l -> l'; l'[i] = last j < i with l[j] = l[i], else -1"),
-    (0xEC, "findfirst", "⍷", "find first: l ′p -> i; first i where p l[i] is 0 (stops there), else -1"),
-    (0xED, "indices", "ℑ", "indices: l -> l [0..n-1] (keeps l)"),
-    (0xEE, "lookup", "Ǧ", "alias of ‹getor›: d k x -> v, k's value or x when absent"),
-    (0xEF, "tfword", "ṭ", "alias of ‹tf›: f -> list, “true“ when f is 0, else “false“"),
-]
+LIB = [(chr(b) if b < 0x80 else b, mn, gl, doc)
+       for t, b, mn, gl, doc in mkblob2.OPS if t == "L"]
 
-# Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
-# (byte, mnemonic, glyph, doc)
-COMPILER = [
-    (mkblob2.REF_BYTE, "ref", "′", "prefix: ′name pushes that word's address"),
-    (mkblob2.STR_BYTE, "str", "“", "string literal delimiter: “text“ -> byte block"),
-    (mkblob2.SET_BYTE, "set", "→", "prefix: →x pops TOS into variable x"),
-    (mkblob2.GET_BYTE, "get", "←", "prefix: ←x pushes variable x"),
-    (mkblob2.CHAIN_BYTE, "chain", "⊚",
-     "prefix: ⊚name f g h; defines a tacit chain (a train of links)"),
-    (mkblob2.FRAME_BYTE, "dloc", "⊡",
-     "prefix: ⊡name ... ; defines a word with a frame of per-call locals, one cell each"),
-    (mkblob2.LSET_BYTE, "lset", "⇒", "prefix: ⇒x pops TOS into local x (a..z or ‹name›)"),
-    (mkblob2.LGET_BYTE, "lget", "⇐", "prefix: ⇐x pushes local x (a..z or ‹name›)"),
-    (mkblob2.LNAME_BYTE, "lname", "‹",
-     "opens a long name: ‹name› stands wherever a one-byte name can"),
-    (mkblob2.RNAME_BYTE, "rname", "›", "closes a long name"),
-    (mkblob2.IMPORT_BYTE, "import", "⎘",
-     "prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/)"),
-    (mkblob2.REC_BYTE, "rec", "⊜",
-     "prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec)"),
-    (mkblob2.ELSE_BYTE, "else", "⋄",
-     "separator: c[a⋄b] runs a when c is 0, else b; {c⋄body} tests c before each pass, runs body while it is 0"),
-    (mkblob2.VINC_BYTE, "vinc", "⇡",
-     "prefix: ⇡x adds 1 to variable x in place (←x⊕→x; in a ⊡ word, a local already named there)"),
-    (mkblob2.VDEC_BYTE, "vdec", "⇣",
-     "prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there)"),
-    # --- W13-A: S2 inline blocks ---
-    (mkblob2.BLOCK_BYTE, "blk", "⟦",
-     "opens an inline block: ⟦ … ⟧ is an anonymous word compiled in place; ⟧ pushes its address"),
-    (mkblob2.ENDBLOCK_BYTE, "endblk", "⟧", "closes an inline block and pushes its address"),
-    # W13-B (S6): the digraph prefix.  ʘ + any byte B is the long name ‹_dgHH›.
-    (mkblob2.DIGRAPH_BYTE, "dig", "ʘ",
-     "prefix: ʘB (any byte B) is the long name ‹_dgHH›, HH = B in upper-case hex (see Digraph page)"),
-]
+# Compiler-level ops that are not atoms (handled specially in golf2's
+# tokenizer): ops.tsv's C rows, as (byte, mnemonic, glyph, doc).  mkblob2 names
+# each byte (REF_BYTE, STR_BYTE, ...).
+COMPILER = [(b, mn, gl, doc) for t, b, mn, gl, doc in mkblob2.OPS if t == "C"]
 
 def lib_byte(key) -> int:
     """The call byte of a LIB row: an int byte, or a 1-char ASCII letter."""

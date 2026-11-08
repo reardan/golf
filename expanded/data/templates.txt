@@ -1,0 +1,392 @@
+# expanded/data/templates.txt -- the v2 template blob.  SOURCE DATA: edit this.
+#
+# The blob is the machine-code table both generated compilers embed
+# (self/seed.golf, self/golf2.golf): [key][len][len bytes] records ended by a
+# 0 key.  Keys 1-7 are fixed sections (1 prologue, 2 cond, 3 startup, 4 the ELF
+# header's non-zero (offset,value) pairs, 5 the end-of-program exit, 6 the
+# adverb set, 7 the bytes adverbs never quote); every later record is one op
+# byte's template, which the compiler copies inline wherever that byte occurs.
+# This file says what every byte of it is.  tools/mkblob2.py and the GOLF tool
+# gtools/tables.golfj both expand it, and test/gtools.sh requires the two to
+# agree byte for byte.  The v1 substrate it builds on is data/v1.hex (frozen);
+# the atoms' bytes, mnemonics and glyphs are data/ops.tsv.  After an edit run
+# `python3 tools/mkblob2.py`, which rewrites self/*.golf, data/blob.hex and
+# data/codepage.tsv.
+#
+# ===========================================================================
+# The notation
+# ===========================================================================
+#
+# `#` starts a comment, to the end of the line, anywhere.  A line that starts
+# with a keyword is a statement; a line that starts with a space or a TAB
+# continues the statement above it.  Statements:
+#
+#   def NAME [PARAM ...]   a named fragment (a macro), its body on the
+#                          following indented lines; the PARAMs are its
+#                          arguments, used in the body as $PARAM
+#   rec KEY  BODY          the next fixed blob record, KEY in hex
+#   v1ops                  every v1 op record of data/v1.hex (key > 5), in
+#                          that file's order
+#   atoms                  every atom's record, in data/ops.tsv's A-row order
+#   tpl BYTE  BODY         the template of atom BYTE (mkblob2.ATOMS)
+#   override BYTE  BODY    a template that REPLACES op BYTE's record where
+#                          v1ops/atoms emit it (mkblob2.OVERRIDES).  The
+#                          compiler's lookup returns the FIRST record for a
+#                          key, so emitting both would make this a silent
+#                          no-op; every override must replace exactly one
+#
+# The rec/v1ops/atoms statements, in file order, ARE the blob: its record
+# order is this file's order.
+#
+# A BODY is a sequence of space-separated tokens, each giving bytes:
+#
+#   HH          one byte, two hex digits
+#   w:HEX       a 32-bit little-endian value: w:4F0990 is 90 09 4F 00
+#   NAME        the bytes of fragment NAME (one with no parameters)
+#   NAME(A,B)   the bytes of fragment NAME with its parameters bound to the
+#               tokens A and B: each argument is ONE token (no spaces, no
+#               nested parentheses), expanded where the call is
+#   $PARAM      the bytes the enclosing fragment's parameter was bound to
+#   v1:HH       data/v1.hex's record HH: a v1 op template, or a fixed section
+#   v1:HH+N     the same from its byte N on (N decimal)
+#   atom:HH     the `tpl` template of atom HH
+#   len:NAME    one byte: the length of fragment NAME
+#   LABEL:      no bytes; names this position in the current body
+#   >LABEL      one byte: rel8 jump displacement to LABEL, from the end of
+#               this byte (forward or back, -128..127)
+#   >>LABEL     four bytes: the same as a rel32 (for rip-relative operands)
+#
+# Labels are local to the body they are written in: a fragment's labels are
+# resolved inside each expansion of it, so the same fragment can be expanded
+# many times.  A template is at most 255 bytes.
+#
+# Why a notation, and not the expanded bytes.  Most templates are plain hex,
+# and those are written as plain hex.  The rest are BUILT: the polymorphic
+# dispatch, the divide-by-zero check, the hook calls and the not-a-number
+# check each wrap a scalar body in a fixed shape with jumps over parts of
+# it.  Written out, each copy would hide which bytes are the shape and
+# which the body, every jump length would be a number to recompute by hand,
+# and a change to the shape would be a change in many places.  As fragments
+# with labels, each shape is written once, a jump says where it goes, and an
+# override reads as what it is: `poly(w:4F0258,v1:2B)`.  The notation is
+# small enough that a GOLF tool expands it too (gtools/tables.golfj).
+#
+# The one record kept as expanded bytes is the ELF header (`def hdrpairs`):
+# it is v1's header with one field changed, stored as its non-zero bytes,
+# and tools/mkblob2.py checks that header_pairs2() still derives exactly
+# these bytes from data/v1.hex and MEMSZ.  mkblob2.py also checks every
+# address below against its named constant (FLUSH_HOOK, END_HOOK, NAN_HOOK,
+# DIV0_HOOK, hook_addr(b), GUARD_LO, RSTACK_TOP, EXEC_FLOOR, the argv cell).
+
+# ===========================================================================
+# Hook calls
+# ===========================================================================
+# `call [cell]` when the cell is non-zero: 15 bytes, absolute, rax only.
+# Absolute addressing, no rip: the sequence is copied inline into templates,
+# ′-thunks and chain links.  rax is the only register it touches (the callee is
+# a GOLF word: data stack rsp and return stack rbp are preserved), and every
+# user reloads rax afterwards.  Each cell is BSS, so a program without the
+# prelude (every compiler binary among them) sees 0 and runs a load, a test
+# and a not-taken jump.
+def hookcall cell
+    48 8B 04 25 $cell       # mov rax, [cell]
+    48 85 C0                # test rax, rax
+    74 >no FF D0            # jz .no ; call rax
+    no:
+
+# W11-1C: the flush hook, cell 0x4F0990, filled with ‹flush› by the prelude's
+# init.  The prelude's printers append to an 8 KB buffer; every template that
+# exits or does raw I/O (`.` `)` `(`, the end-of-program exit and the
+# divide-by-zero exit) calls it first.
+def flush
+    hookcall(w:4F0990)
+
+# W11-3A: the divide-by-zero hook, cell 0x4F0B10, filled with ‹_3a_div0›.
+# Called FIRST: with a ‹catch› armed it raises `divide by zero` and never comes
+# back; with none it returns and the template flushes, prints and exits.
+def div0hook
+    hookcall(w:4F0B10)
+
+# W13-B (S3, implicit output): the end hook, cell 0x4F09A0, filled with
+# ‹_13b_end›.  Only the end-of-program exit calls it, not `.`.
+def endhook
+    hookcall(w:4F09A0)
+
+# W12-O1: the not-a-number hook, cell 0x4F0DC0, filled with ‹_12o1_nan›.
+def nanhook
+    hookcall(w:4F0DC0)
+
+# ===========================================================================
+# W9-2B: the divide-by-zero check shared by ÷ ∣ / %
+# ===========================================================================
+# Templates are copied inline at every use, and into ′-thunks and chain links,
+# so the check must be position-independent: the message travels INSIDE the
+# template and is addressed rip-relative.  No shared stub at a fixed address.
+# The data stack is rsp, so push/pop imm8 are the short way to load the
+# syscall registers; nothing on it matters any more once we are on the way
+# out.
+def div0msg
+    47 4F 4C 46 3A 20 64 69 76 69 64 65 20 62 79 20 7A 65 72 6F 0A   # "GOLF: divide by zero\n"
+
+def div0
+    div0hook                # W11-3A: a ‹catch› takes it
+    flush                   # W11-1C: prior output first
+    48 8D 35 >>msg          # lea rsi, [rip+msg]
+    6A 02 5F                # push 2;  pop rdi   fd 2
+    6A len:div0msg 5A       # push n;  pop rdx   length
+    6A 01 58                # push 1;  pop rax   write
+    0F 05                   # syscall
+    6A 01 5F                # push 1;  pop rdi   status 1
+    6A 3C 58                # push 60; pop rax   exit
+    0F 05                   # syscall
+    msg: div0msg
+
+# pop rcx (b); pop rax (a); b == 0 -> div0.  The common head of all four
+# checked division templates.
+def div0guard
+    59 58                   # pop rcx; pop rax
+    48 85 C9                # test rcx, rcx
+    75 >ok div0             # jnz .ok ; else die
+    ok:
+
+# b == -1 -> `minus1` (the wrapped result, no idiv: INT64_MIN / -1 would
+# trap); else cqo; idiv rcx; then `push` (50 rax = quotient, 52 rdx =
+# remainder).
+def divchk minus1 push
+    div0guard
+    48 83 F9 FF             # .ok: cmp rcx, -1
+    75 >div $minus1         # jne .div ; ÷: neg rax · ∣: xor edx,edx
+    EB >done                # jmp .done
+    div: 48 99 48 F7 F9     # .div: cqo; idiv rcx
+    done: $push             # .done: push rax / rdx
+
+def negrax
+    48 F7 D8                # neg rax
+def xoredx
+    31 D2                   # xor edx, edx
+
+# ===========================================================================
+# M-VEC (W3): the polymorphic dispatch of + - * ⌈ ⌊
+# ===========================================================================
+# These five op bytes keep their scalar body but get a shape-dispatch
+# preamble in front of it (38 bytes + the untouched scalar body).  The hook
+# table is 256 cells of 8 bytes at 0x4F0100, indexed by op byte, so op b's
+# cell is 0x4F0100 + 8*b (mkblob2.hook_addr checks each one).
+#
+#   * Off by default.  The table is BSS, so a program that does not install a
+#     dispatcher (every compiler binary on the bootstrap ladder) takes the
+#     9-byte check and then exactly the old scalar path.
+#   * The filter is EXACT (M-TAG2).  A list value is its heap address with top
+#     16 bits 0x7FFF, and the top 16 bits of a little-endian qword are the
+#     word at byte offset 6, so `cmp word [rsp+6],0x7FFF` is exactly `T`.
+#     imm16 (66 81 /7 iw), since 0x7FFF does not fit cmp's imm8.
+#   * Stack-neutral.  `call` pushes its return address on the DATA stack and
+#     the hooked word's PROLOGUE parks it on the return stack, so the word sees
+#     exactly (a b) and leaves one result, the scalar path's net effect.
+def poly hook scalar
+    48 83 3C 25 $hook 00    # cmp qword [hook], 0
+    74 >scalar              # je  .scalar           ; no dispatcher
+    66 81 7C 24 06 FF 7F    # cmp word [rsp+6], 0x7FFF   ; b (TOS)
+    74 >call                # je  .call
+    66 81 7C 24 0E FF 7F    # cmp word [rsp+14], 0x7FFF  ; a
+    75 >scalar              # jne .scalar           ; neither is a list
+    call: FF 14 25 $hook    # call qword [hook]     ; (a b) still on the stack
+    EB >done                # jmp .done
+    scalar: $scalar         # the original scalar template, byte for byte
+    done:
+
+# ===========================================================================
+# W12-O1: the unary arithmetic atoms ± ⊕ ⊖ ² ⊗ ⊘ check for a list
+# ===========================================================================
+# The int path pays one compare-and-branch and no cell load.  The filter is
+# the top BYTE, a superset of the tag test (every list has top byte 0x7F);
+# the hook (‹_12o1_nan›) is exact and returns at once for anything that is not
+# a live list.  22 bytes in front of the atom.
+def numchk scalar
+    80 7C 24 07 7F          # cmp byte [rsp+7], 0x7F   ; TOS's top byte
+    75 >scalar nanhook      # jne .scalar ; hook call
+    scalar: $scalar
+
+# ===========================================================================
+# The fixed records
+# ===========================================================================
+# W8/M-TOOL: the entry-rsp stash.  At process entry rsp points at argc, and
+# the first push destroys it, so STARTUP is the only place argv can be saved:
+# mov [0x4F0040], rsp.
+def argvstash
+    48 89 24 25 w:4F0040
+
+# W9-2C: the return-stack guard page.  mprotect(0x4F1000, 1, PROT_NONE): the
+# first frame pushed past the bottom of the return stack faults.  The return
+# value is ignored.
+def guardpage
+    6A 0A 58                # push 10; pop rax  (mprotect)
+    BF w:4F1000             # mov edi, GUARD_LO
+    6A 01 5E                # push 1; pop rsi   (len: 1 page)
+    31 D2                   # xor edx, edx      (PROT_NONE)
+    0F 05                   # syscall
+
+# M-MEM: mov ebp, RSTACK_TOP (0x600000, v1's was 0xC00000).  p_memsz and the
+# return-stack top are one number, so record 4 changes with it.
+def setuprstack
+    BD w:600000
+
+# v1's ELF header with p_memsz = MEMSZ (0x200000; v1: 0x800000), as its
+# non-zero (offset, value) pairs: data/v1.hex's record 4 with `6A 80` made
+# `6A 20`.  Expanded, not built (see the top of this file): mkblob2 checks
+# header_pairs2() == these bytes.
+def hdrpairs
+    00 7F 01 45 02 4C 03 46 04 02 05 01 06 01 10 02 12 3E 14 01 18 78 1A 40
+    20 40 34 40 36 38 38 01 40 01 44 07 52 40 5A 40 62 01 6A 20 71 10
+
+# W11-2A: the seed's syscall, spliced into self/seed.golfv1 at @SYS@ (not part
+# of the blob): ⎈'s template, then `jmp +5` over the `push imm32` the blob
+# escape emits after its data.
+def seedsys
+    atom:A7 EB 05
+
+rec 01 v1:01                            # prologue
+rec 02 v1:02                            # cond
+rec 03 argvstash guardpage setuprstack  # STARTUP2
+rec 04 hdrpairs                         # M-MEM: the shrunken p_memsz
+rec 05 endhook flush v1:05              # AUTOEXIT2: end hook, flush, exit(0)
+# W13-A: S1's adverbs, € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ ⍂ ⍃ ⍖ ⍷.  A call token immediately
+# followed by one of these is compiled as `′token`.  golf2 and the seed scan
+# this record; boot/golfref.py imports it as mkblob2.ADVERBS.
+rec 06 4D 46 57 5A D1 D2 D3 D4 D8 D9 E7 E8 EA EC
+# ... except these, which never quote: the v1 stack, memory and I/O ops
+# " _ \ & @ ! ? , ( ) . , then ∘ ⊸ (they build a function) and ⊙ ⊛.
+rec 07 22 5F 5C 26 40 21 3F 2C 28 29 2E C5 D0 A4 A5
+v1ops
+atoms
+
+# ===========================================================================
+# Overrides of v1 templates
+# ===========================================================================
+# M-VEC: + - * dispatch on shape.
+override 2B poly(w:4F0258,v1:2B)
+override 2D poly(w:4F0268,v1:2D)
+override 2A poly(w:4F0250,v1:2A)
+# W10-B: v1's UNSIGNED / % get the zero check.  Unsigned div has no other #DE
+# case, so the tail is v1's own (xor edx,edx; div rcx; push) and every nonzero
+# divisor gives exactly v1's result.
+override 2F div0guard v1:2F+2
+override 25 div0guard v1:25+2
+# W11-1C: `.` (exit), `)` (write one byte) and `(` (read one byte) flush
+# first.  `)` and `(` themselves stay raw: one write(2) or read(2) per byte.
+override 2E flush v1:2E
+override 29 flush v1:29
+override 28 flush v1:28
+
+# ===========================================================================
+# The atoms (data/ops.tsv's A rows)
+# ===========================================================================
+# Each is a pure machine-code template (no compiler-logic change): adding a
+# "dumb" operator is a row in data/ops.tsv and a `tpl` here.  The compiler's
+# `e` word dispatches ANY byte it finds in the blob, 128-255 included.
+
+# Milestone 1 -- bitwise/shift
+tpl 7E 58 48 F7 D0 50                   # ~ not
+tpl 24 58 48 21 04 24                   # $ and
+tpl 7C 58 48 09 04 24                   # | or
+tpl 3D 58 48 31 04 24                   # = xor
+tpl 3E 59 48 D3 2C 24                   # > shr (by TOS)
+
+# Code-page atoms
+tpl 80 58 48 F7 D8 50                   # ± neg
+tpl 81 48 FF 04 24                      # ⊕ inc
+tpl 82 48 FF 0C 24                      # ⊖ dec
+tpl 83 58 48 0F AF C0 50                # ² sqr
+tpl 84 48 D1 24 24                      # ⊗ dbl
+tpl 85 48 D1 2C 24                      # ⊘ hlv
+override 80 numchk(atom:80)
+override 81 numchk(atom:81)
+override 82 numchk(atom:82)
+override 83 numchk(atom:83)
+override 84 numchk(atom:84)
+override 85 numchk(atom:85)
+
+# Comparison / selection (result -1/0 like '<')
+tpl 86 59 58 48 39 C1 48 19 C0 50       # » gt, unsigned
+tpl 87                                  # ≡ eq
+    59 58 48 29 C8 48 83 E8 01 48 19 C0 50
+# W9-1A: ⌈ ⌊ are SIGNED (cmp rax,rcx then cmovl / cmovg), like ÷ ∣ ≺ ≻;
+# unsigned max/min stay available as the raw ⊔ ⊓ below.  Both dispatch on
+# shape (M-VEC).
+tpl 88 59 58 48 39 C8 48 0F 4C C1 50    # ⌈ max
+tpl 89 59 58 48 39 C8 48 0F 4F C1 50    # ⌊ min
+override 88 poly(w:4F0540,atom:88)
+override 89 poly(w:4F0548,atom:89)
+
+# W9-2B: ÷ ∣ are CHECKED.  A zero divisor writes `GOLF: divide by zero` to fd 2
+# and exits 1; a divisor of -1 skips idiv and gives the wrapped result (÷ is
+# `neg`, so INT64_MIN ÷ -1 = INT64_MIN, and ∣ is 0).
+tpl 8A divchk(negrax,50)                # ÷ sdv
+tpl 8B divchk(xoredx,52)                # ∣ smd
+
+# Quotations: exec is an indirect call.  Its partner `ref` (′) is a compiler
+# prefix, not an atom.
+tpl 8D 58 FF D0                         # ⍎ exec: pop rax; call rax
+# W13-H: ⍎ dispatches on CLOSURE RECORDS.  Every callable code address lies in
+# the program image, below the heap floor 0x600000 (EXEC_FLOOR == RSTACK_TOP),
+# and every heap address at or above it, so one unsigned compare tells a code
+# address from a closure record [a, b, kind], whose kind word (cell 2) is
+# called with the record on the stack.
+override 8D
+    58                      # pop rax
+    48 3D w:600000          # cmp rax, EXEC_FLOOR
+    72 >call                # jb .call              ; code: call it
+    50 FF 50 10             # push rax; call [rax+16] ; a record: its kind
+    EB >done                # jmp .done
+    call: FF D0             # .call: call rax
+    done:
+
+# Raw scalar ops: byte-for-byte copies of the original scalar templates for
+# `+ - * ⌊ ⌈ <` (⊓ ⊔ keep the UNSIGNED cmova/cmovb).  Reserved for prelude
+# use: they are guaranteed to stay pure scalar forever.
+tpl 91 58 48 01 04 24                   # ﹢ radd
+tpl 92 58 48 29 04 24                   # ﹣ rsub
+tpl 93 59 58 48 0F AF C1 50             # ﹡ rmul
+tpl 94 59 58 48 39 C8 48 0F 47 C1 50    # ⊓ rmin, unsigned
+tpl 95 59 58 48 39 C8 48 0F 42 C1 50    # ⊔ rmax, unsigned
+tpl 96 59 58 48 29 C8 48 19 C0 50       # ﹤ rlt, unsigned
+
+# M4 atoms: signed compare, shifts, 64-bit cells.  v1's `<` `»` are UNSIGNED
+# and its `@` `!` are 32-bit; these are the signed/64-bit counterparts.
+tpl A0                                  # ≺ slt
+    59 58 48 39 C8 0F 9C C0 0F B6 C0 48 F7 D8 50
+tpl A1                                  # ≻ sgt
+    59 58 48 39 C8 0F 9F C0 0F B6 C0 48 F7 D8 50
+tpl A2 59 48 D3 24 24                   # ≪ shl
+tpl A3 59 48 D3 3C 24                   # ≫ sar
+tpl A4 58 48 8B 00 50                   # ⊙ fetch, 64-bit
+tpl A5 58 59 48 89 08                   # ⊛ store, 64-bit
+
+# M-MEM (wave 6): brk(2).  `0⌸` reads the current break, `addr⌸` moves it;
+# either way the kernel returns the break IN EFFECT afterwards.
+tpl A6 5F 6A 0C 58 0F 05 50             # ⌸ brk: pop rdi; push 12; pop rax; syscall; push rax
+
+# M-TOOL: the language's first general syscall.  `a1 a2 a3 num ⎈ -> result`,
+# popped rax, rdx, rsi, rdi so the source reads left to right in argument
+# order; the kernel's return is pushed back unchanged (negative errno on
+# failure).  syscall clobbers rcx and r11, which no template holds across an
+# op; rbp (the return stack) is untouched.
+tpl A7 58 5A 5E 5F 0F 05 50             # ⎈ sys
+
+# W11-3A: setjmp/longjmp for ‹catch› / ‹throw›.  `push rsp` stores the value
+# rsp had BEFORE the push; ⊶ pops bp first, then `pop rsp` loads rsp.
+tpl A8 54 55                            # ⊷ spr: push rsp; push rbp
+tpl A9 5D 5C                            # ⊶ spw: pop rbp; pop rsp
+
+# W13-B: bit atoms.  RAW like the other bitwise atoms.  popcnt / tzcnt / lzcnt
+# are F3 48 0F B8/BC/BD; tzcnt and lzcnt give 64 for 0.  The low bit is
+# x & -x, written without BMI1's blsi.
+tpl AA 58 F3 48 0F B8 C0 50             # ♯ pcnt
+tpl AB 58 F3 48 0F BC C0 50             # ⊣ ctz
+tpl AC 58 F3 48 0F BD C0 50             # ⊢ clz
+tpl AD 48 8B 04 24 48 F7 D8 48 21 04 24 # ⊥ lsb
+
+# W14-A: the six-argument syscall.  ⎈ fills rdi rsi rdx only; wait4, mmap and
+# friends need all six.  a1 is the deepest operand, num the top: pop rax, r9,
+# r8, r10, rdx, rsi, rdi; syscall; push rax.
+tpl AE 58 41 59 41 58 41 5A 5A 5E 5F 0F 05 50   # ⌁ scall
