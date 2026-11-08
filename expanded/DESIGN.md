@@ -138,10 +138,10 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
-| the template blob itself | **948** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2807** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **8579** bytes |
-| assertions in the run2 suite | **495** |
+| the template blob itself | **958** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **2817** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **8589** bytes |
+| assertions in the run2 suite | **500** |
 | assertions in the selfcheck suite | **50** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -592,7 +592,7 @@ person does not have to guess whether they were forgotten.
 - **A numeric tower.** One type, a 64-bit machine word: no floats, no bignums,
   no rationals, no complex, and no character distinct from its code. This is
   what lets an atom be a raw one-instruction template, which is what keeps the
-  blob at 948 bytes, which is what keeps the compiler re-derivable in an
+  blob at 958 bytes, which is what keeps the compiler re-derivable in an
   afternoon. Floats would put an SSE calling convention in every arithmetic
   template; bignums would put an allocator on the arithmetic path. Either ends
   the property this project exists to demonstrate.
