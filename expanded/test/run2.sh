@@ -2158,12 +2158,12 @@ w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
 [ "$(w11eprog 262144 0 | w11e "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
   && ok "a 1 MB program is refused the same way" || no "far over the cap"
 # Between the old 64 KB and the new cap, with real work in it: one word of
-# 1200 store/load/increment statements (2000 until W13-C, D and E grew the
-# compiled prelude to 110 KB; the image is 180 KB of the 192 KB cap), then the list heap and the printers.
-w11es=""; for k in $(seq 1 1200); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
+# 1000 store/load/increment statements (2000 until W13-C, D, E and G grew the
+# compiled prelude to 123 KB; the image is about 184 KB of the 192 KB cap), then the list heap and the printers.
+w11es=""; for k in $(seq 1 1000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
 w11es=":‹f›0$w11es←‹x›⊕;‹f›Ṅ 100⍳"'"*∑Ṅ'
 [ "$(printf '%s' "$w11es" | python3 tools/codepage.py encode | w11e "$TMP/golf2")" = 0 ] && chmod +x "$TMP/e.out" \
-  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "1202328350" ] \
+  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "1002328350" ] \
   && ok "a $(stat -c%s "$TMP/e.out")-byte program (> 64 KB) runs: the list heap and the output buffer above the image still work" \
   || no "program past 64 KB: $(cat "$TMP/e.err")"
 w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
@@ -3926,7 +3926,7 @@ for w12o3s in 1 2 3; do
 import heapq, random, sys
 r = random.Random(int(sys.argv[1])); h, prog, out = [], ["‹pq›"], []
 lit = lambda v: str(v) if v >= 0 else str(-v) + "±"
-for _ in range(2000):
+for _ in range(1200):   # 2000 until W13 grew the prelude past what the image cap leaves
     if h and r.random() < 0.45:
         out.append(heapq.heappop(h)); prog.append("‹pqpop›Ṅ32)")
     else:
@@ -3941,7 +3941,7 @@ print("".join(prog) + "≢Ṅ"); print(" ".join(map(str, out)) + " 0")' "$w12o3s
   [ "$(sed -n 1p "$TMP/o3r.txt" | gc)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s golf2]"
   [ "$(sed -n 1p "$TMP/o3r.txt" | gref)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s oracle]"
 done
-[ -z "$w12o3bad" ] && ok "3 random sequences of 2000 ops match Python heapq (golf2 and the oracle)" || no "W12-O3 random:$w12o3bad"
+[ -z "$w12o3bad" ] && ok "3 random sequences of 1200 ops match Python heapq (golf2 and the oracle)" || no "W12-O3 random:$w12o3bad"
 [ "$(printf '%s' '‹pq›5‹pqpush›1‹pqpush›4‹pqpush›"‹pqtop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ≢Ṅ32)‹pq›3±‹pqpush›2‹pqpush›7±‹pqpush›"TṄ32)⍕' | gc)" = "11450 0 -7 2 -3 " ] \
   && ok "push/top/pop/size; a queue is a tagged list (T 0) shown in heap order" || no "W12-O3 basics"
 [ "$(printf '%s' '‹pq›2 32≪9|‹pqpush›1±32≪5|‹pqpush›0 32≪7|‹pqpush›{‹pqpop›"32≫Ṅ32)4294967295$Ṅ32)"≢0≡}_' | gc)" = "-1 5 0 7 2 9 " ] \
@@ -4806,6 +4806,67 @@ done
 # The prelude section stays free of the raw swap byte (gtools' decode round trip).
 [ "$(sed -n '/^# ===== W13-E =====$/,/^# ===== W13-[A-DF-Z]/p' lib/prelude.golfj | grep -v '^ *#' | grep -c '\\\\')" = 0 ] \
   && ok "the W13-E prelude section has no swap byte" || no "W13-E section uses the swap byte"
+
+# === W13-G ===
+echo "W13-G: atoms as the function of € ⌿ ⇤ ⍁ ⍀ ⍸ ⊞ run inline (fast paths), with the general path's results and errors"
+# Recognition: ‹_13g_kind› f -> f k (1..5 + - * ⌈ ⌊, 6..11 ⊕ ⊖ ± ² ⊗ ⊘, 0 any other f).
+w13g=""; for w13ga in ′+ ′- ′* ′⌈ ′⌊ ′∔ ′∸ ′⨰ ′⩌ ′⩍ ′⊕ ′⊖ ′± ′² ′⊗ ′⊘ ':f+;′f' ':g1+;′g' ′+′⊕∘ ′≡; do w13g="$w13g$w13ga‹_13g_kind›Ṅ_32)"; done
+[ "$(printf '%s' "$w13g" | gc)" = "1 2 3 4 5 1 2 3 4 5 6 7 8 9 10 11 1 0 0 0 " ] \
+  && ok "‹_13g_kind› names the sixteen atoms and words (and a word whose body is ′+'s bytes), 0 for anything else" || no "W13-G kind"
+# Every word with every atom, fast (′atom) against the general path (the same
+# atom wrapped so that its bytes differ, `:s+0﹢;`), one program per list and
+# side: flat lists with negatives (odd and even lengths: the single head
+# element and the paired loop), lists of lists (each element then goes to ∔ …
+# from inside the fast loop), and the empty list.  The unary atoms get the
+# list + 50: ⊘ of a negative is in the tag band, and ⍕ would print it as a list.
+w13gbad=""
+for w13gl in '41⍳17-' '40⍳9-' '7⍳′⍳€' '0⍳' '1⍳9+'; do
+  w13gp=""; w13gs=""
+  for w13ga in + - '*' ⌈ ⌊ ∔ ∸ ⨰ ⩌ ⩍; do
+    w13gws="0′A⇤ ′A⍀ ′A⍸ \"′A⊞ 3⍳′A⊞"; case "$w13gl" in 0*) ;; *) w13gws="$w13gws ′A⍁";; esac
+    for w13gw in $w13gws; do
+      w13gp="$w13gp$w13gl${w13gw/A/$w13ga}\"T[⍕⋄Ṅ]␤"; w13gs="$w13gs:s${w13ga}0﹢;$w13gl${w13gw/A/s}\"T[⍕⋄Ṅ]␤"
+    done
+  done
+  case "$w13gl" in 7*) ;; *) for w13ga in ⊕ ⊖ ± ² ⊗ ⊘; do for w13gw in ′A€ ′A⌿; do
+    w13gp="$w13gp${w13gl}50+${w13gw/A/$w13ga}⍕␤"; w13gs="$w13gs:s${w13ga}0﹢;${w13gl}50+${w13gw/A/s}⍕␤"; done; done;; esac
+  w13go=$(printf '%s' "$w13gp" | gc 2>&1)
+  { [ -n "$w13go" ] && [ "$w13go" = "$(printf '%s' "$w13gs" | gc 2>&1)" ]; } || w13gbad="$w13gbad [$w13gl]"
+done
+[ -z "$w13gbad" ] && ok "each fast path prints what the general path prints (10 binary atoms × ⇤ ⍀ ⍸ ⊞ ⍁, 6 unary × € ⌿; flat, nested and empty lists)" \
+  || no "W13-G fast vs general, on the lists:$w13gbad"
+[ "$(printf '%s' '“31415“⊃48-′⌈⍀⍕␤5⍳"′*⊞⍕␤40⍳0′+⇤Ṅ␤6⍳′⊖⌿⍕␤3⍳′⍳€"′+⊞⍕␤5⍳1+′*⍁Ṅ' | gc)" = "$(printf '3 3 4 4 5 \n0 1 4 9 16 \n780\n1 \n[] [0] [0 2] \n120')" ] \
+  && ok "REFERENCE's W13-G examples" || no "W13-G examples"
+# Errors, in the general path's order and wording, and ‹heapstats› unchanged.
+w13gc(){ printf '%s' ":g$1;′g‹catch›⊐" | gc 2>&1; }
+[ "$(w13gc '5⍳"⌫′⊕€')" = "use after free" ] && [ "$(w13gc '5⍳"⌫0′+⇤')" = "use after free" ] \
+  && [ "$(w13gc '3⍳5⍳"⌫′+⊞')" = "use after free" ] && [ "$(w13gc '0⍳′+⍁')" = "empty reduce" ] \
+  && [ "$(w13gc '0⍳"⌫′+⍁')" = "use after free" ] \
+  && [ "$(printf '%s' '3⍳′⍳€′⊕€⍕' | gc)" = "$(printf '%s' ':s⊕;3⍳′⍳€′s€⍕' | gc)" ] && [ "$(printf '%s' '3⍳′⍳€′⊕€⍕' | gc)" = "[] [1] [1 2] " ] \
+  && [ "$(printf '%s' '3⍳′⍳€′±⌿≢' | gc)" = "$(printf '%s' ':s±;3⍳′⍳€′s⌿≢' | gc)" ] \
+  && ok "fast paths raise use after free and empty reduce as before (catchable); a nested list goes to S5's map, as on the general path" || no "W13-G errors"
+w13gh(){ printf '%s' "$1‹heapstats›ṄṄ" | gc; }
+[ "$(w13gh '40⍳′⊕€_')" = "$(w13gh ':s⊕0﹢;40⍳′s€_')" ] && [ "$(w13gh '40⍳′⊘⌿_')" = "$(w13gh ':s⊘0﹢;40⍳′s⌿_')" ] \
+  && [ "$(w13gh '40⍳"′+⊞_')" = "$(w13gh ':s+0﹢;40⍳"′s⊞_')" ] && [ "$(w13gh '7⍳′⍳€′⌈⍀_')" = "$(w13gh ':s⌈0﹢;7⍳′⍳€′s⍀_')" ] \
+  && [ "$(w13gh ':g5⍳"⌫′⊕€;′g‹catch›_40⍳′⊕€_')" = "$(w13gh ':s⊕0﹢;:g5⍳"⌫′s€;′g‹catch›_40⍳′s€_')" ] \
+  && ok "‹heapstats› after a fast path (and after one that throws) is the general path's" || no "W13-G heapstats"
+# The spill stack: n nested €s of a user word, then a fast € and ⇤ at the
+# bottom.  The fast path reserves the frame the general path pushes, so the
+# 4096-frame bound bites at the same depth.
+w13gs(){ printf '%s' ":q_←‹n›⊖\"→‹n›0≡[1⍳′q€_⋄5⍳$2⍕6⍳0$3⇤Ṅ]0;$1→‹n›1⍳′q€_" | gc 2>&1; }
+[ "$(w13gs 4095 ′⊕€ ′+)" = "1 2 3 4 5 15" ] && [ "$(w13gs 4095 ′⊕€ ′+)" = "$(w13gs 4095 ':s⊕0﹢;′s€' ′+)" ] \
+  && [ "$(w13gs 4096 ′⊕€ ′+)" = "GOLF: spill stack exhausted" ] \
+  && [ "$(printf '%s' ':h3⍳′⍳€"′+⊞≢;:q_←‹n›⊖"→‹n›0≡[1⍳′q€_⋄hṄ]0;4094→‹n›1⍳′q€_' | gc 2>&1)" = "3" ] \
+  && [ "$(printf '%s' ':h3⍳′⍳€"′+⊞≢;:q_←‹n›⊖"→‹n›0≡[1⍳′q€_⋄hṄ]0;4095→‹n›1⍳′q€_' | gc 2>&1)" = "GOLF: spill stack exhausted" ] \
+  && ok "fast paths keep the spill-stack bound: 4095 nested frames leave room for one, 4096 do not" || no "W13-G spill"
+# Re-entrancy mark G (4423528): while it is at or below the spill offset a
+# driver is "nested" and takes the general path (G stays: 64 inside t, which
+# € runs with one frame pushed); a G above the offset is stale (a throw
+# unwound past its loop) and the fast path runs and clears it.
+[ "$(printf '%s' ':t5177392@4423528\store5⍳′⊕€_4423528\fetchṄ0;1⍳′t€__' | gc)" = "64" ] \
+  && [ "$(printf '%s' ':t5177392@64\radd4423528\store5⍳′⊕€_4423528\fetchṄ0;1⍳′t€__' | gc)" = "0" ] \
+  && [ "$(printf '%s' ':g5⍳"⌫′⊕€;′g‹catch›_4423528\fetch0≡Ṅ32)5⍳0′+⇤Ṅ32)4423528\fetchṄ' | gc)" = "0 10 0" ] \
+  && ok "the re-entrancy mark sends a nested call to the general path and heals after a throw" || no "W13-G re-entrancy"
 
 # === W13-INT ===
 echo "W13-INT: the wave-1 features together (digraphs under S1, S3 output, blocks, ⍖ Ṁ, S5)"

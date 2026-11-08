@@ -26,3 +26,14 @@ findnone | 10000000  | :f1;10000000⍳′f⍷_
 prevocc  | 1000000   | :f7919*1000003%;1000000⍳′f€Ṕ_
 counter  | 1000000   | :f7919*1000003%;1000000⍳′f€Ċ_
 dsort    | 1000000   | :f7919*1000003%;:k;1000000⍳′f€′k⍖_
+# W13-G: atoms handed straight to the higher-order words (the fast paths;
+# fold scan reduce eachi above are atom cases too — `:f+;` is ′+'s bytes)
+mapinc   | 10000000  | 10000000⍳′⊕€_
+mapsqr   | 10000000  | 10000000⍳′²€_
+foldmax  | 10000000  | 10000000⍳0′⌈⇤_
+scanmax  | 10000000  | 10000000⍳′⌈⍀_
+redmax   | 10000000  | 10000000⍳′⌈⍁_
+zipadd   | 10000000  | 10000000⍳"′+⊞_
+zipmin   | 10000000  | 10000000⍳"′⩍⊞_
+eachimul | 10000000  | 10000000⍳′*⍸_
+filtneg  | 10000000  | 10000000⍳′±⌿_

@@ -42,6 +42,8 @@ best of 7, same session: twosum 71 → 71 ms, longsub 70 → 80, islands 108 →
 | W12-6 before (base 072cdca), 2026-11-08 | 0.075 | 0.125 | 0.108 | 0.081 | 0.141 | 0.092 | 0.103 | 0.130 | 0.185 | 0.032 | 655 |
 | **W12 final** (W12-6), 2026-11-08 | 0.072 | 0.115 | 0.080 | 0.085 | 0.136 | 0.091 | 0.111 | 0.116 | 0.175 | 0.025 | 411 |
 | Python, same runs as W12 final | 0.121 | 0.142 | 0.253 | 0.340 | 1.202 | 0.108 | 0.560 | 0.301 | 1.221 | 0.209 | 2,571 |
+| W13-G before (base 9b14c93), 2026-11-08 | 0.053 | 0.098 | 0.063 | 0.073 | 0.106 | 0.069 | 0.085 | 0.092 | 0.143 | 0.017 | 411 |
+| W13-G, 2026-11-08 | 0.053 | 0.097 | 0.065 | 0.073 | 0.107 | 0.067 | 0.084 | 0.090 | 0.143 | 0.018 | 411 |
 
 W12-6 rewrote all ten with the W12 vocabulary and Z1's one-byte aliases
 (`ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ`): 655 → 411 bytes. Stock is `ℤ"′⌊⍀-′⌈⍁Ṅ` and Trap
@@ -65,6 +67,8 @@ grid once with `⧺`, is the largest).
 | W12-P3 before (base 7a867ca), 2026-11-08 | 1.05 | 8.70 | 19.77 | 25.12 | 21.31 | 26.64 | 40.53 | — |
 | W12-P3, 2026-11-08 | 1.01 | 6.96 | 10.52 | 15.59 | 11.61 | 15.00 | 17.97 | — |
 | **W12 final** (W12-6), 2026-11-08 | 1.09 | 7.10 | 11.19 | 15.83 | 15.60 | 17.27 | 18.68 | 164.08 |
+| W13-G before (base 9b14c93), 2026-11-08 | 0.83 | 5.41 | 9.22 | 13.96 | 11.04 | 12.50 | 16.12 | 90.43 |
+| W13-G, 2026-11-08 | 0.82 | 6.13 | 9.46 | 13.82 | 8.84 | 12.80 | 16.02 | 92.47 |
 
 The W12 final run's other `cases.txt` rows, in ns per element: inc2 1.78,
 dictbump 128.44, scan 17.60, reduce 13.70, eachi 18.94, sort 708.46, ksort
@@ -199,3 +203,70 @@ graph file is 0.10 s). Graph: 200,000 vertices and 1,000,000 random edges
 The pack adds 17.9 KB of code to every program: a trivial program (`1Ṅ`)
 compiles to 74,351 bytes before W13-E and 92,254 after. It uses no scratch
 cells: every word is a `⊡` word with its state in its own frame.
+## W13-G: atoms as the function of a higher-order word
+
+W13-G gave `€ ⌿ ⇤ ⍁ ⍀ ⍸ ⊞` a fast path for an atom function (`+ - * ⌈ ⌊`
+and `∔ ∸ ⨰ ⩌ ⩍` for the two-operand words, `⊕ ⊖ ± ² ⊗ ⊘` for `€ ⌿`): the
+atom runs inline in the word's loop instead of through a call per element.
+The micro rows below are `micro.sh`'s cases, the new ones added by W13-G
+(`fold scan reduce eachi` were atom cases already: `:f+;` is `′+`'s bytes),
+compiled with the base prelude and with W13-G's and run interleaved, best of
+5, same session; ns per element, the `iota` row (5.4–6.1) and the result's
+page faults included:
+
+| case | program | before | after |
+|---|---|---|---|
+| fold | `10000000⍳0′+⇤_` | 11.04 | 8.84 |
+| reduce | `10000000⍳′+⍁_` | 10.27 | 8.92 |
+| scan | `10000000⍳′+⍀_` | 13.47 | 12.06 |
+| eachi | `:f+;10000000⍳′f⍸_` | 15.14 | 12.88 |
+| mapinc | `10000000⍳′⊕€_` | 13.44 | 11.40 |
+| mapsqr | `10000000⍳′²€_` | 13.39 | 13.18 |
+| foldmax | `10000000⍳0′⌈⇤_` | 10.60 | 8.17 |
+| scanmax | `10000000⍳′⌈⍀_` | 13.62 | 11.88 |
+| redmax | `10000000⍳′⌈⍁_` | 10.66 | 8.28 |
+| zipadd | `10000000⍳"′+⊞_` | 14.71 | 12.77 |
+| zipmin | `10000000⍳"′⩍⊞_` | 21.28 | 12.93 |
+| eachimul | `10000000⍳′*⍸_` | 14.57 | 12.78 |
+| filtneg | `10000000⍳′±⌿_` | 11.08 | 9.68 |
+| map (`:f;`, not an atom) | `:f;10000000⍳′f€_` | 13.96 | 13.82 |
+
+On 10^7 fresh elements the words are memory-bound, so the gain there is
+2–3 ns per element. The words' own cost shows on a list that stays in
+cache: 10^5 elements, 1000 passes, best of 5, interleaved (ns per element,
+the pass's `⌫` included):
+
+| form | before | after |
+|---|---|---|
+| `′⊕€` | 4.62 | 2.23 |
+| `′²€` | 4.42 | 2.20 |
+| `′±⌿` | 3.99 | 2.28 |
+| `0′+⇤` | 4.05 | 1.92 |
+| `0′⌈⇤` | 4.20 | 1.70 |
+| `′+⍁` | 3.52 | 1.92 |
+| `′+⍀` | 4.82 | 3.07 |
+| `′⌊⍀` | 4.90 | 2.96 |
+| `′*⍸` | 5.78 | 3.94 |
+| `"′+⊞` | 5.87 | 3.11 |
+| `"′⩍⊞` | 13.23 | 3.49 |
+| `:f;` `′f€` (no fast path) | 4.19 | 4.11 |
+
+The fixed cost per call: `0′+⇤` on a 10-element list, 10^6 calls, 74 → 48
+ms; a user word (`:f;10⍳…′f€`, which takes the general path) 113 → 115 ms,
+the ~3 ns that recognising f costs (an 8-entry cache, and a cell holding the
+last word found not to be an atom). The LeetCode rows above (`lc` = the ten
+solutions compiled both ways, interleaved, best of 5, `gen.py 1` inputs,
+outputs identical) do not move: stock and trap run `⌈⍀ ⌊⍀ ⌈⍁` over a
+million prices, which saves 2–6 ms of 65–90, inside the noise; input parsing
+dominates. The prelude grew by about 15 KB of code (a program's image is
+74 → 89 KB before its own code; the cap is 192 KB).
+
+Not shipped, measured: the fast loops first used the raw ops (`\radd`, a
+branch-free max) with a tag check on every operand and a bail to the general
+path; that was slower than the call (5.8 ns per element for `0′+⇤`, against
+4.1), because the checks cost more than the call they saved. Inlining the
+polymorphic atom itself needs no check at all (its own M-VEC / W12-O1 test
+sends a list to `∔` … or `‹_12o1_nan›` exactly as the thunk would) and is
+what shipped. Four elements per pass instead of two was 0–10% faster and 6 KB
+bigger.
+
