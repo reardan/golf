@@ -4438,6 +4438,14 @@ PY
 [ "$(printf '%s' '“HOME“⊃‹getenv›__‹now›_‹walltime›_‹getpid›_‹environ›_0‹isatty›_0‹rusage›_0‹sleep›““⊃‹eputs›“x“⊃⊐' | gcp)" = x ] \
   && [ "$(printf '%s' '“HOME“⊃‹getenv›__‹now›_‹walltime›_‹getpid›_‹environ›_0‹isatty›_0‹rusage›_0‹sleep›““⊃‹eputs›“x“⊃⊐' | grefp)" = x ] \
   && ok "pruned golfc keeps what the W14-D words reach; the oracle (boot/golfref.py) compiles them the same" || no "W14-D pruned / oracle"
+# REFERENCE.md's "Environment and time (W14-D)" examples print what they say.
+w14dbad=""
+while IFS= read -r w14dl; do
+  w14dp=${w14dl%%  ->*}; w14dp=${w14dp%"${w14dp##*[! ]}"}; w14dw=${w14dl##*->  }
+  [ "$(printf '%s' "$w14dp" | gc 2>&1)" = "$w14dw" ] || w14dbad="$w14dbad [$w14dp]"
+done < <(sed -n '/^### Environment and time (W14-D)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14dbad" ] && [ "$(sed -n '/^### Environment and time (W14-D)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 10 ] \
+  && ok "REFERENCE.md's Environment and time examples print what they say" || no "REFERENCE W14-D examples:$w14dbad"
 # tools/golfrun: compile into build/golfrun/<key>, then exec with the args.
 w14dg="$TMP/w14dg"; mkdir -p "$w14dg"
 printf '#!%s\n⎘“%s/i1.golfj“ ‹args›′⊐€_ ‹readall›≢Ṅ 3‹f›Ṅ 5‹exit›\n' "$EXP/tools/golfrun" "$w14dg" > "$w14dg/s.golfj"

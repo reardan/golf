@@ -2010,6 +2010,93 @@ them all. The streams read their input lists in place and do not own them.
   `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
   0.52 s. Names that start with `‹_13e` are these words' helpers.
 
+### Environment and time (W14-D)
+
+The words a script needs from its process: the environment, the terminal,
+the clocks and its own resource use. They are long names on `⎈` and `⌁`, and
+each one is re-entrant (no fixed cells). Strings are **code lists**, as in
+"Text" and "Files".
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹getenv›` | `name -> value f` | look `name` up in the environment the program was started with. Set (an empty value too): `f` is `0` and `value` is its code list. Not set: `f` is `1` and `value` is the empty list. Zero-is-true, like `‹readline›`, so `‹getenv›[…⋄_…]` runs its first branch on a hit. The first matching entry wins; the empty name is never set |
+| `‹environ›` | `-> list` | every environment entry, `KEY=VALUE`, as a list of code lists in the order the kernel passed them (not sorted). An empty environment gives the empty list |
+| `‹isatty›` | `fd -> f` | `0` if `fd` is a terminal (the `TCGETS` ioctl succeeds), else `1`: a file, a pipe, `/dev/null`, a closed or negative fd |
+| `‹getpid›` | `-> pid` | the process id |
+| `‹exit›` | `code ->` | exit with status `code`. It is exactly `.`, given a name: it runs the flush hook first, so buffered output is written and a failed `‹assert›` still turns a status `0` into `1`; like `.`, it prints no implicit output. Not catchable |
+| `‹eputs›` | `list ->` | write a code list to stderr (fd 2). The stdout buffer is drained first, so on a terminal (or `2>&1`) the two streams keep their order. It is `2‹fwrite›` |
+| `‹now›` | `-> ns` | `CLOCK_MONOTONIC` in nanoseconds: never goes backwards, for timing (`‹now›…‹now›\\-`) |
+| `‹walltime›` | `-> ns` | `CLOCK_REALTIME` in nanoseconds since 1970-01-01 UTC (`1000000000/` gives Unix seconds) |
+| `‹sleep›` | `ms ->` | sleep for `ms` milliseconds (`clock_nanosleep` on the monotonic clock). A signal that interrupts it (`EINTR`) restarts it with the time left; a negative `ms` counts as `0` |
+| `‹rusage›` | `who -> list` | `getrusage(2)`: `who` `0` is this process, `-1` its waited-for children, `1` this thread. The list is `[user µs, system µs, maxrss KB]`. Linux keeps `maxrss` across `exec`, so a fresh process starts at its parent's high-water mark. A bad `who` throws `cannot getrusage (EINVAL)` |
+
+```
+“NO_SUCH_VAR“⊃‹getenv›Ṅ≢Ṅ               ->  10
+““⊃‹getenv›Ṅ≢Ṅ                          ->  10
+‹environ›T Ṅ                            ->  0
+99‹isatty›Ṅ                             ->  1
+0 1-‹isatty›Ṅ                           ->  1
+‹getpid›0≻Ṅ                             ->  -1
+‹now›‹now›≻Ṅ                            ->  0
+‹walltime›1000000000/1700000000≻Ṅ       ->  -1
+‹now›20‹sleep›‹now›\\-1000000/19≻Ṅ       ->  -1
+0‹rusage›≢Ṅ0 1-‹rusage›⍕                ->  30 0 0 
+:‹b›5‹rusage›;′‹b›‹catch›⊐              ->  cannot getrusage (EINVAL)
+7Ṅ3‹exit›8Ṅ                             ->  7
+```
+
+The last one exits with status `3`. On the command line:
+
+```
+HOME=/h ./p                  # p: “HOME“⊃‹getenv›Ṅ⊐  prints 0/h
+env -i A=1 B=2 ./p           # p: ‹environ›⍕         prints [65 61 49] [66 61 50]
+./p > out.txt                # p: 1‹isatty›Ṅ          prints 1 into out.txt; 0 on a terminal
+```
+
+A failure stores the positive errno in the cell `5179712` first, as the
+file words do. Names that start with `‹_14d` are these words' helpers.
+
+### Scripts (W14-D)
+
+`tools/golfrun` runs a program as a script:
+
+```sh
+tools/golfrun PROG.golfj [args...]   # glyph/mnemonic source, compiled with golfc -j
+tools/golfrun PROG.g2 [args...]      # any other name: raw code-page bytes (golfc)
+```
+
+It compiles the program with `tools/golfc` into a cache,
+`build/golfrun/<key>`, and then `exec`s the binary with the arguments, so
+stdin, stdout, stderr and the exit status are the program's own and
+`‹args›` sees exactly `args`. The key is a sha256 over the program, every file
+it includes (`⎘“path“`, followed recursively and resolved as golfc does: as
+written, then `lib/`, then `vendor/`, from the current directory),
+`lib/prelude.golfj`, `tools/golfc`, the compiler's sources and
+`build/golf2`. An edit to any of them recompiles; an unchanged script starts
+at once (a few tens of ms, where a compile takes about 150). A compile error is
+golfc's own (`GOLF: undefined word x at line 3`, exit 2), and nothing is
+cached. `rm -rf build/golfrun` clears the cache.
+
+**`#!` scripts.** `#` starts a comment in `.golfj` and in raw source, so a
+first line `#!/path/to/expanded/tools/golfrun`, or `#!/usr/bin/env golfrun`
+with `tools/` on `PATH`, costs nothing, and line numbers in errors still
+count it:
+
+```sh
+$ cat hello.golfj
+#!/usr/bin/env golfrun
+“hello, “🗲‹args›0⊇⊐␤
+$ chmod +x hello.golfj && PATH=$PWD/tools:$PATH ./hello.golfj world
+hello, world
+```
+
+`examples/scripts/` has three: `printenv.golfj` (like `printenv(1)`: every
+`KEY=VALUE`, or the named variables' values with exit status `1` if one is
+not set), `stopwatch.golfj` (sleeps, then reports the time that passed on
+`‹now›` and what `‹rusage›` says), and `procinfo.golfj` (pid, which of fds
+0–2 are terminals, the epoch, `HOME`, with an `‹eputs›` message and status
+`1` when it is not set).
+
 ### Prelude pruning
 
 `tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your
