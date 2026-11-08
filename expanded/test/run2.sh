@@ -3534,6 +3534,56 @@ w12p3x=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '"+⍤N E'; } | cat "$T
   && [ "$( { printf '%s:‹d›"+⍤;' "$W10CW"; w10cn 100000 3; printf '′‹d›‹catch›⊐␤5⍳"+⍕'; } | gc)" = "$(printf 'spill stack exhausted\n0 2 4 6 8 ')" ] \
   && ok "+ 100,000 deep: GOLF: spill stack exhausted, exit 1; under ‹catch› the message, then + works" || no "W12-P3 + spill exhaustion: $w12p3x"
 
+# === W12-A4 ===
+echo "W12-A4: ⍒ sort by key and ‹grade› (the sorting permutation)"
+# ⍒ is € for the keys, then ‹grade› of them, then a gather in place; ‹grade›
+# is ⍋'s merge sort on indices, comparing K[a] >s K[b].  Checked against
+# Python's sorted (stable) and the oracle.
+w12a4p=':f7919*1000%;:g10%;:h500-;37⍳′f€"′g⍒⍕␤′h€"‹grade›⍕␤′±⍒⍕␤:q7%3-;12⍳′q⍒⍕'
+w12a4w=$(python3 -c '
+l=[i*7919%1000 for i in range(37)]; m=[x-500 for x in l]; j=lambda v:" ".join(map(str,v))
+print(j(sorted(l,key=lambda x:x%10))); print(j(sorted(range(37),key=lambda i:m[i])))
+print(j(sorted(m,key=lambda x:-x))); print(j(sorted(range(12),key=lambda i:i%7-3)))')
+[ "$(printf '%s' "$w12a4p" | gc | sed 's/ *$//')" = "$w12a4w" ] \
+  && [ "$(printf '%s' "$w12a4p" | gref)" = "$(printf '%s' "$w12a4p" | gc)" ] \
+  && ok "⍒ is stable (keys with duplicates), descending by ′±, negative keys; ‹grade› gives the sorting permutation: Python's sorted, and the oracle agrees" \
+  || no "W12-A4 basics: $(printf '%s' "$w12a4p" | gc | head -2 | tr '\n' '|')"
+[ "$(printf '%s' '0⍳′±⍒≢Ṅ0⍳‹grade›≢Ṅ␤1⍳5+′±⍒⍕1⍳5+‹grade›⍕␤5⍳′±⍒TṄ5⍳‹grade›TṄ0⍳′±⍒TṄ0⍳‹grade›TṄ␤5⍳→a ←a′±⍒_ ←a‹grade›_ ←a⍕' | gc)" \
+    = "$(printf '00\n5 0 \n0000\n0 1 2 3 4 ')" ] \
+  && ok "⍒ and ‹grade› on empty and one-element lists; tagged results (T 0); the input is never written" || no "W12-A4 edges"
+[ "$(printf '%s' ':k←t\\⊇;1⍳32767 48≪1\rsub+ 1⍳1 63≪+⧺ 1⍳0 1-+⧺ 1⍳5+⧺→t 4⍳′k⍒⍕␤←t‹grade›⍕␤←t′±⍒⍕' | gc)" \
+    = "$(printf '1 2 3 0 \n1 2 3 0 \n-9223372036854775808 9223090561878065151 5 -1 ')" ] \
+  && ok "keys over the full signed range -2^63 .. 0x7FFF<<48 - 1 compare signed, as ⍋ (± of -2^63 is itself)" || no "W12-A4 extremes"
+# The A1 contract: k is called once per element, in order, with the caller's
+# stack under x.  A counter below the list ends at 5; a printing key prints
+# each element once.  k may run ⍒ itself (nested frames).
+[ "$(printf '%s' ':k\\⊕\\±;0 5⍳′k⍒⍕Ṅ␤:p"Ṅ;5⍳⌽′p⍒⍕␤:i±;:m′i⍒0⊇;3⍳1+′⍳€⌽"′m⍒⍕␤⍕␤:n5⍳′±⍒≢;3⍳′n⍒⍕' | gc)" \
+    = "$(printf '4 3 2 1 0 5\n432100 1 2 3 4 \n[0] [0 1] [0 1 2] \n[0 1 2] [0 1] [0] \n0 1 2 ')" ] \
+  && ok "k is called exactly n times, in order, with the caller's stack under x (A1); ⍒ nested inside k" || no "W12-A4 threading"
+[ "$(w113 ':k“bad“⊃‹throw›;:f5⍳′k⍒;1 2′f‹catch›⊐␤Ṅ␤Ṅ␤:j"3-[“three“⊃‹throw›];:g9⍳′j⍒;′g‹catch›⊐␤5⍳′±⍒⍕␤5177392@Ṅ')" \
+    = "$(printf 'bad\n2\n1\nthree\n4 3 2 1 0 \n0 rc=0')" ] \
+  && ok "a throw inside k (first call, and mid-way) is caught with the caller's stack restored; ⍒ works again; spill stack back to 0" || no "W12-A4 catch"
+w12a4bad=""
+for w12a4a in '5⍳"⌫′±⍒' '5⍳"⌫‹grade›' '300⍳"⌫′±⍒' '300⍳"⌫‹grade›'; do
+  [ "$(w110 "$w12a4a")" = "rc=1 0 GOLF: use after free" ] || w12a4bad="$w12a4bad [$w12a4a: $(w110 "$w12a4a")]"
+done
+[ -z "$w12a4bad" ] && ok "⍒ and ‹grade› on a freed list (small and class 7): use after free" || no "W12-A4 use after free:$w12a4bad"
+[ "$(printf '%s' '1000⍳→l ‹heapstats›→b→n ←l′±⍒⌫ ←l‹grade›⌫ :k5⍳"′±⍒⌫⌫;←l′k⍒⌫ ‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)" = "0 0" ] \
+  && ok "⍒ and ‹grade› give their scratch blocks (keys, the other merge buffer) back: ‹heapstats› unchanged" || no "W12-A4 heap"
+# 1M elements, 1000 distinct keys (so stability matters everywhere): output
+# against Python, and the cost against ⍋ on the same list (reported, not
+# asserted: the machine is shared).
+printf '%s' ':f7919*1000003%;:k1000%±;1000000⍳′f€′k⍒⍕' > "$TMP/a4big.golfj"
+printf '%s' ':f7919*1000003%;1000000⍳′f€⍋_' > "$TMP/a4sort.golfj"
+printf '%s' ':f7919*1000003%;:k;1000000⍳′f€′k⍒_' > "$TMP/a4ks.golfj"
+for w12a4f in a4big a4sort a4ks; do python3 tools/codepage.py encode < "$TMP/$w12a4f.golfj" | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/$w12a4f" 2>/dev/null; chmod +x "$TMP/$w12a4f"; done
+w12a4t0=$(date +%s%N); "$TMP/a4sort"; w12a4t1=$(date +%s%N); "$TMP/a4ks"; w12a4t2=$(date +%s%N)
+[ "$("$TMP/a4big" | md5sum)" = "$(python3 -c '
+l=[i*7919%1000003 for i in range(1000000)]
+print(" ".join(map(str,sorted(l,key=lambda x:-(x%1000)))),end=" ")' | md5sum)" ] \
+  && ok "1M elements by a key with 1000 values match Python's sorted; ⍋ $(( (w12a4t1-w12a4t0)/1000000 )) ns/element, ⍒ $(( (w12a4t2-w12a4t1)/1000000 )) ns/element" \
+  || no "W12-A4 1M"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

@@ -73,3 +73,13 @@ brk growth in `A` (one line) cuts that page-fault floor to about 1.5 ns and
 the `iota` row to 5.1–5.6 ns, for 1–2 MB more peak RSS on the leetcode
 inputs (`stock` 31.6 → 32.6 MB). It changes the allocator, not a list word,
 so W12-P3 leaves it to the integrator.
+
+W12-A4 shipped `⍒` (sort by key) and `‹grade›` (micro rows `sort`, `ksort`,
+`grade`). On 10^6 scrambled ints, best of 3, the 18 ns/element scramble
+included: `⍋` 653 ns/element, `‹grade›` 661, `⍒` with an identity key 751,
+with `′±` 738. `‹grade›` is `⍋`'s merge sort on indices, so it costs about
+the same. `⍒` adds n key calls through `€`, the key block and the gather.
+`topk` was rewritten on `⍒`: the key `x - (count<<32)` replaces the packed
+key and its unpacking. It went from 100 to 67 bytes and from 0.0885 to
+0.0852 s (best of 5, same session), with output equal to Python's on
+`gen.py 1 in`.

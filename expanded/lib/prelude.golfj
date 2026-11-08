@@ -1704,3 +1704,51 @@
 :‹_12p3_llmax›‹_12p3_ll›&&\eq[{"\fetch&5177496\fetch\radd\fetch&48>32767=&48>32767=\rmul[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
 :‹_12p3_limax›‹_12p3_li›&&\eq[{"\fetch5177496\fetch&48>32767=[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
 :‹_12p3_ilmax›‹_12p3_il›&&\eq[{5177496\fetch&\fetch"48>32767=[5177464\fetch\exec1 63\shl]&\rsub&&&\radd\sgt~$\radd&5177472\fetch\radd\store8\radd&&\eq}]__5177448\fetch32767 48\shl|;
+# === W12-A4 sort by key and grade ===
+# ‹grade›  l -> perm   the STABLE permutation that sorts l: a new list of the
+# indices 0..n-1, ordered so that l[perm[0]] <= l[perm[1]] <= …, ties in index
+# order.  The compare is ⍋'s: SIGNED on the raw 64-bit cell, so an inner list
+# compares by its tagged value (after every int below 0x7FFF<<48, among
+# themselves by address — no lexicographic order).  l is never written.
+# ⍒ (0xD4, \ksort)  l ′k ⍒ -> l'   a new list: l stably sorted ascending by the
+# key `k x` of each element.  Descending is a negating key, `′(k ±)`.  k is
+# called exactly once per element, in order, through € — so with the A1
+# contract: the caller's stack is directly under x, and k may read and leave
+# values there — and the keys are then graded: l' = l[‹grade› keys].
+#
+# ‹grade› is ⍋'s bottom-up merge sort run on INDICES: src starts as n⍳ (from
+# R), dst is a second block of n cells from A; a merge step reads the two head
+# indices a b at ⍋'s clamped cursors and compares K[a] >s K[b], where K is the
+# key list's element 0 (5181120, slot A4); the rest — F, the branch-free pick
+# a + ((b-a)&F), j -= F, i += 1+F — is ⍋'s, with F parked in 5181128.  Taking
+# the left head on a tie keeps it stable.  s0..s7 are ⍋'s (s0 src · s7 dst ·
+# s2 n · s3 w · s1 i · s4 j · s5 mid · s6 hi) under one X/Y frame.  The sort
+# calls no user code (A and R come before it), so the two slot cells are
+# never live across a re-entry.  The losing block is given back with ⌫.
+# ⍒: X, k in s3, l's element 0 in s0; l k € gives the keys (€'s own frame
+# keeps ours, so k may itself call ⍒); ‹grade› the keys; then the gather
+# overwrites the permutation IN PLACE, perm[i] = l[perm[i]], walking a pointer
+# on the data stack ([perm end p], as P3's loops), and the keys go back to ⌫.
+# A throw inside k unwinds past all of this (‹catch› resets the spill stack);
+# the half-built key list is then leaked, never freed twice.  Both words check
+# their list with ‹_2d_chk› and tag their result.
+:‹grade›X‹_2d_chk›"8\radd5181120\store\fetch"5177456\store"R16\shl16>5177440\store"1\radd A"5177496\store\store
+ 1 5177464\store
+ 1 5177456\fetch\rlt1\radd[{0 5177448\store{
+  5177448\fetch5177464\fetch\radd5177456\fetch\rmin"5177480\store"5177472\store5177464\fetch\radd5177456\fetch\rmin5177488\store
+  {5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
+   5177440\fetch5177472\fetch5177488\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
+   &8\rmul5181120\fetch\radd\fetch&8\rmul5181120\fetch\radd\fetch\sgt
+   5177448\fetch5177480\fetch\rlt~|5177472\fetch5177488\fetch\rlt$
+   5181128\store&\rsub5181128\fetch$\radd
+   5177496\fetch5177448\fetch5177472\fetch\radd5177480\fetch\rsub8\rmul\radd8\radd\store
+   5177472\fetch5181128\fetch\rsub5177472\store5177448\fetch5181128\fetch\radd1\radd5177448\store
+   5177448\fetch5177472\fetch\radd5177480\fetch\rsub5177488\fetch\rlt1\radd}
+  5177488\fetch5177448\store5177448\fetch5177456\fetch\rlt1\radd}
+ 5177440\fetch5177496\fetch5177440\store5177496\store
+ 5177464\fetch2\rmul5177464\store5177464\fetch5177456\fetch\rlt1\radd}]
+ 5177496\fetch\free5177440\fetch32767 48\shl| Y;
+:\ksort X5177464\store"‹_2d_chk›8\radd5177440\store5177464\fetch M"5177448\store‹grade›16\shl16>
+ "\fetch8\rmul&\radd8\radd&8\radd
+ &&\eq[{"\fetch8\rmul5177440\fetch\radd\fetch&\store8\radd&&\eq}]__
+ 5177448\fetch\free32767 48\shl| Y;

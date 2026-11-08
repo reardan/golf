@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **44** are now spent, leaving **67** free. It is partitioned as follows
+space; **45** are now spent, leaving **66** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -227,7 +227,7 @@ no glyph is in use.
 | `0xD1` | `\scan` | `⍀` | prelude: `l ′f ⍀ -> l'` inclusive scan, the first element is the seed | A2 | reserved |
 | `0xD2` | `\reduce` | `⍁` | prelude: `l ′f ⍁ -> x` fold with no seed; empty list throws `empty reduce` | A2 | reserved |
 | `0xD3` | `\eachi` | `⍸` | prelude: `l ′f ⍸ -> l'` map, `f` gets `x i` | A3 | reserved |
-| `0xD4` | `\ksort` | `⍒` | prelude: `l ′k ⍒ -> l'` stable sort by key `k x`, ascending | A4 | reserved |
+| `0xD4` | `\ksort` | `⍒` | prelude: `l ′k ⍒ -> l'` stable sort by key `k x`, ascending (k once per element, A1 threading); with `‹grade›` (W12-A4) | A4 | shipped |
 | `0xD5` | `\putat` | `⍈` | prelude: `l i v ⍈ -> l` store into a list in place (bounds- and free-checked). Planned as `\put1`; renamed because `codepage.encode` reads a mnemonic as letters only, so `\put1` could not be typed (W12-Z4) | Z4 | shipped |
 | `0xD6` | `\push` | `⍆` | prelude: `v x ⍆ -> v` vector push (capacity doubles; returns the possibly-new v); on a `‹deque›`, its back | Z4 | shipped |
 | `0xD7` | `\pop` | `⍅` | prelude: `v ⍅ -> v x` vector pop (empty throws `pop from empty`); on a `‹deque›`, its back | Z4 | shipped |
@@ -586,7 +586,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180960 used (shipped, W12-Z4): block · value · index/new block · count · deque head for `⍈ ⍆ ⍅ ‹first› ‹last› ‹pushf› ‹popf›`, see the prelude's W12-Z4 section; 5180968 … 5180984 free (O3's heap may take them) |
 | A2 scan / reduce | `0x4F0E40`–`0x4F0E7F` | 5180992 | 5180992 … 5181048 |
 | A3 each-indexed | `0x4F0E80`–`0x4F0EBF` | 5181056 | 5181056 … 5181112 |
-| A4 sort-by / grade | `0x4F0EC0`–`0x4F0EFF` | 5181120 | 5181120 … 5181176 |
+| A4 sort-by / grade | `0x4F0EC0`–`0x4F0EFF` | 5181120 | 5181120 … 5181128 used (shipped, W12-A4): the key list's element 0 · the merge step's take-right flag F, live only inside `‹grade›`'s sort loop (no user code runs there); 5181136 … 5181176 free |
 | A5 window | `0x4F0F00`–`0x4F0F3F` | 5181184 | 5181184 … 5181240 |
 | A6 fixpoint | `0x4F0F40`–`0x4F0F7F` | 5181248 | 5181248 … 5181304 |
 | A8 streams | `0x4F0F80`–`0x4F0FBF` | 5181312 | 5181312 … 5181368 |
