@@ -87,6 +87,9 @@ LIB = [
     (0xD5, "putat", "⍈", "store-at: list i v -> list; list[i] = v in place (bounds-checked)"),
     (0xD6, "push", "⍆", "push: v x -> v'; append x (vector or deque back); use the returned v'"),
     (0xD7, "pop",  "⍅", "pop: v -> v x; remove the last element (empty: pop from empty)"),
+    # --- W12-A5 / W12-A6 LIB rows (prelude sections W12-A5, W12-A6) ---
+    (0xD8, "win",  "⊟", "window reduce: l n ′f -> f-reduce of every length-n window (deque for ⌈ ⌊)"),
+    (0xD9, "fix",  "⍣", "fixpoint: x ′f -> y; apply f until the result ≣ the previous one"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

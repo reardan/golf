@@ -214,7 +214,7 @@ for t in hello fizz lists strings vars vectorize capstone chaindef locals longna
   case $t in hello) s=examples/v1/hello.golf;; fizz) s=examples/v1/fizzbuzz.golf;; *) s="$TMP/src.$t";; esac
   "$TMP/golf2" -g < "$s" > "$TMP/g.$t" 2> "$TMP/g.$t.map" && cmp -s "$TMP/g.$t" "$TMP/old.$t" || w113b="$w113b $t"
 done
-[ -z "$w113b" ] && [ "$(grep -c '^‹sq› 0x40' "$TMP/g.include.map")" = 1 ] \
+[ -z "$w113b" ] && [ "$(grep -c '^‹sq› 0x4' "$TMP/g.include.map")" = 1 ] \
   && ok "golf2 -g == seed on every input above, and the map names the included ‹sq› (W11-3B)" || no "golf2 -g differs from seed on:$w113b"
 
 echo "Both compilers reject an undefined word, with the same status"

@@ -3452,7 +3452,7 @@ for w12z4a in parens islands slidemax; do
   "$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/$w12z4a.golfj" "$TMP/z4lc/$w12z4a" > /dev/null 2>&1 || w12z4bad="$w12z4bad [compile $w12z4a]"
 done
 grep -q '⊛' bench/leetcode/golf/parens.golfj bench/leetcode/golf/islands.golfj bench/leetcode/golf/slidemax.golfj && w12z4bad="$w12z4bad [raw ⊛ left]"
-grep -q '⍆' bench/leetcode/golf/parens.golfj && grep -q '⍈' bench/leetcode/golf/islands.golfj && grep -q '‹popf›' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
+grep -q '⍆' bench/leetcode/golf/parens.golfj && grep -q '⍈' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
 for w12z4a in '([]{})' '([)]' '((' '())' '}' '{[()()]}'; do
   [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/parens")" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/parens.py)" ] || w12z4bad="$w12z4bad [parens $w12z4a]"
 done
@@ -3462,7 +3462,7 @@ done
 for w12z4a in '3 1 3 -1 -3 5 3 6 7' '1 4 2 9' '2 9 8 7 6 5' '4 1 2 3 4 5 6' '3 5 5 5 5'; do
   [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/slidemax" | sed 's/ *$//')" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/slidemax.py)" ] || w12z4bad="$w12z4bad [slidemax $w12z4a]"
 done
-[ -z "$w12z4bad" ] && ok "LeetCode parens (⍆ ⍅), islands (⍈ ⊇ ⍆ ⍅) and slidemax (deque) lost their raw stacks and still answer like the Python solutions" \
+[ -z "$w12z4bad" ] && ok "LeetCode parens (⍆ ⍅), islands (⍈ ⊇ ⍆ ⍅) and slidemax (deque, since W12-A5 one ⊟) lost their raw stacks and still answer like the Python solutions" \
   || no "W12-Z4 LeetCode rewrites:$w12z4bad"
 w12z4bad=""; w12z4n=0
 while IFS= read -r w12z4l; do
@@ -3711,6 +3711,103 @@ for w12a7n in 1 2 3 4 5 6 7 8; do
   [ "$(echo $w12a7n | "$TMP/a7q")" = "$(echo $w12a7n | python3 bench/leetcode/py/queens.py)" ] || w12a7q="$w12a7q [n=$w12a7n]"
 done
 [ -z "$w12a7q" ] && ok "the queens solution on {⇐v0≡⋄…} agrees with Python for n = 1…8" || no "queens with ⋄:$w12a7q"
+# === W12-A5 ===
+echo "W12-A5: ⊟ window reduce (a monotonic deque for ⌈ ⌊, f-reduce of each window otherwise)"
+w12a5bad=""; w12a5n=0
+while IFS= read -r w12a5l; do
+  w12a5p=${w12a5l%%  ->*}; w12a5p=${w12a5p%"${w12a5p##*[! ]}"}; w12a5w=${w12a5l##*->  }
+  w12a5n=$((w12a5n+1))
+  [ "$(printf '%s' "$w12a5p" | gc | sed 's/ *$//')" = "$w12a5w" ] || w12a5bad="$w12a5bad [$w12a5p]"
+  [ "$(printf '%s' "$w12a5p" | gref | sed 's/ *$//')" = "$w12a5w" ] || w12a5bad="$w12a5bad oracle[$w12a5p]"
+done < <(sed -n '/^### Windows and fixpoints/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12a5bad" ] && [ "$w12a5n" -ge 11 ] \
+  && ok "REFERENCE.md's ⊟ / ⍣ examples ($w12a5n) print what they say, golf2 and oracle" \
+  || no "W12-A5/A6 REFERENCE examples:$w12a5bad"
+# Every window size 0..len+1 over lengths 0..9 of signed data, for ⌈ ⌊ (the
+# deque), ⩌ and :m⌈; (recognised as max), + and - (- is not associative, so
+# it checks the fold order f(f(a,b),c)), against Python.
+python3 - "$TMP" <<'PYEOF'
+import sys, random
+T = sys.argv[1]; random.seed(125)
+prog, want = [":m⌈;:k⌊;"], []
+ops = [("′⌈", max), ("′⌊", min), ("′⩌", max), ("′m", max), ("′k", min), ("′+", lambda a, b: a + b), ("′-", lambda a, b: a - b)]
+for L in range(10):
+    a = [random.randint(-9, 9) for _ in range(L)]
+    lit = "".join(f"{v}⍆" if v >= 0 else f"0 {-v}-⍆" for v in a)
+    for n in range(1, L + 2):
+        for g, f in ops:
+            prog.append(f"0⍳{lit}{n}{g}⊟⍕␤")
+            out = []
+            for i in range(L - n + 1):
+                acc = a[i]
+                for x in a[i + 1:i + n]:
+                    acc = f(acc, x)
+                out.append(acc)
+            want.append(" ".join(map(str, out)))
+open(f"{T}/a5win.prog", "w", encoding="utf-8").write("".join(prog))
+open(f"{T}/a5win.want", "w").write("\n".join(want) + "\n")
+PYEOF
+[ "$(gc < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+  && [ "$(gref < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+  && ok "lengths 0..9, every n 1..len+1, ⌈ ⌊ ⩌ :m⌈; :k⌊; + - match Python (golf2 and the oracle)" \
+  || no "W12-A5 vs Python: $(diff <(gc < "$TMP/a5win.prog" | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
+# The deque is O(len): a window of 100,000 over a million elements would be
+# 10^11 calls of f on the general path.  Here it is two passes.
+printf '%s' ':m⌈;1000000⍳100000′⌈⊟∑Ṅ␤1000000⍳100000′⌊⊟∑Ṅ␤1000000⍳⌽100000′m⊟∑Ṅ␤1000000⍳100000′⩍⊟≢Ṅ' \
+  | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/a5big" 2>/dev/null && chmod +x "$TMP/a5big"
+[ "$(timeout 20 "$TMP/a5big")" \
+    = "$(python3 -c 'print(sum(range(99999,10**6)));print(sum(range(10**6-99999)));print(sum(range(99999,10**6)));print(10**6-99999)')" ] \
+  && ok "⌈ ⌊ :m⌈; ⩍ with n = 100,000 over 10^6 elements: the O(n) deque (the general path would never finish)" || no "W12-A5 deque speed"
+[ "$(printf '%s' '5⍳3′⌈⊟48>Ṅ␤5⍳3′+⊟48>Ṅ␤0⍳3′+⊟48>Ṅ␤5⍳"3′⌈⊟⌫∑Ṅ' | gc)" = "$(printf '32767\n32767\n32767\n10')" ] \
+  && ok "the result is a new tagged list (⌫ of it leaves l alone), on both paths and when empty" || no "W12-A5 tagged result"
+[ "$(w110 '7Ṅ5⍳0′+⊟')" = "rc=1 1 GOLF: window size < 1" ] && [ "$(w110 '5⍳0 4-′⌈⊟')" = "rc=1 0 GOLF: window size < 1" ] \
+  && [ "$(w110 '5⍳"⌫2′⌈⊟')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 '5⍳"⌫2′+⊟')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(w110 '0⍳"⌫9′+⊟')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "errors through ‹throw›: window size < 1 (n = 0 and n < 0; earlier output flushed), use after free (deque path, general path, empty list)" || no "W12-A5 errors"
+[ "$(w113 ':t"3≡1+[“three“⊃‹throw›]⌈;:g5⍳2′t⊟;′g‹catch›⊐␤5⍳2′⌈⊟⍕␤:h3⍳′⍳€2′⌈⊟⍕;′h‹catch›␤5177392@Ṅ')" \
+    = "$(printf 'three\n1 2 3 4 \n[] [0] \n0 rc=0')" ] \
+  && ok "a throw from f mid-window is caught, ⊟ runs again; spill stack back to 0; ⌈ on lists takes the general path (elementwise)" \
+  || no "W12-A5 catch: $(w113 ':t"3≡1+[“three“⊃‹throw›]⌈;:g5⍳2′t⊟;′g‹catch›⊐␤5177392@Ṅ')"
+# Re-entrancy: ⊟ inside ⊟'s f (on lists of lists), ⊟ inside € inside ⊟,
+# ⍣ inside ⊟'s f; and the A1 contract under nesting (the counter).
+w12a5r=':v3′⌈⊟∑;:w"≢1≻[^]2′+⊟;:c⧺\\⊕\\′w⍣;4⍳5+′⍳€2′⧺⊟′v€⍕␤3⍳4+′⍳€2′⧺⊟⍕␤0 3⍳3+′⍳€2′c⊟′∑€⍕Ṅ'
+[ "$(printf '%s' "$w12a5r" | gc | sed 's/ *$//')" = "$(printf '31 44 59\n[0 1 2 3 0 1 2 3 4] [0 1 2 3 4 0 1 2 3 4 5]\n66 372 2')" ] \
+  && [ "$(printf '%s' "$w12a5r" | gref)" = "$(printf '%s' "$w12a5r" | gc)" ] \
+  && ok "re-entrant: ⊟ in € after ⊟, ⍣ of ⊟ inside ⊟'s f, with a counter threaded under it (golf2 and the oracle)" || no "W12-A5 nesting: $(printf '%s' "$w12a5r" | gc)"
+[ "$(printf '%s' '‹heapstats›→b→n 1000⍳"10′⌈⊟⌫"10′⌊⊟⌫"10′+⊟⌫"1′+⊟⌫"2000′+⊟⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤"10′⌈⊟‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)" \
+    = "$(printf '8016 1\n16032 2')" ] \
+  && ok "‹heapstats›: ⊟ keeps only its result (the deque's block is given back), on both paths and when empty" || no "W12-A5 heapstats"
+# The leetcode rewrite: sliding-window maximum is one ⊟, checked against the
+# Python solution on a small random input.
+python3 -c 'import random;random.seed(7);print(5);print(*[random.randint(-99,99) for _ in range(300)])' > "$TMP/a5sm.in"
+cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < bench/leetcode/golf/slidemax.golfj) | "$TMP/golf2" > "$TMP/a5sm" 2>/dev/null && chmod +x "$TMP/a5sm"
+[ "$("$TMP/a5sm" < "$TMP/a5sm.in" | sed 's/ *$//')" = "$(python3 bench/leetcode/py/slidemax.py < "$TMP/a5sm.in")" ] \
+  && ok "bench/leetcode/golf/slidemax.golfj (‹ints›\"0⊇\\\\1↓\\\\′⌈⊟⍕) agrees with py/slidemax.py" || no "W12-A5 slidemax"
+
+# === W12-A6 ===
+echo "W12-A6: ⍣ fixpoint (apply f until the result ≣ the previous one)"
+[ "$(printf '%s' ':d2/;100′d⍣Ṅ␤:i;5⍳"′i⍣≡Ṅ␤:h"≢1≻[^]1↓;5⍳′h⍣⍕␤:u"≢1≻[^]1↓"⌽⌽\\⌫;9⍳′u⍣⍕␤:s_“ab“⊃;0′s⍣⊐␤:z_0;7′z⍣Ṅ' | gc)" \
+    = "$(printf '0\n-1\n4 \n8 \nab\n0')" ] \
+  && ok "ints, f returning its own input (same block back), shrinking lists, a fresh copy per step, a constant f (two calls)" || no "W12-A6 basics: $(printf '%s' ':d2/;100′d⍣Ṅ' | gc)"
+# Freeing.  1000⍳′h⍣ makes 999 intermediates and keeps only x and the
+# result; an f that returns a list HOLDING its argument keeps the argument
+# (the result's element is still readable); x itself is never freed.
+w12a6f=':h"≢1≻[^]1↓;:w"48>32767≡[⍳^]"0⊇48>32767≡1+[^]‹vec›\\⍆;‹heapstats›→b→n 1000⍳′h⍣⍕‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤3′w⍣⍕␤5⍳"′w⍣_⍕␤‹heapstats›→b→n 3′w⍣_‹heapstats›_←n-Ṅ'
+[ "$(printf '%s' "$w12a6f" | gc | sed 's/ *$//')" = "$(printf '999 8056 2\n[0 1 2]\n0 1 2 3 4\n2')" ] \
+  && [ "$(printf '%s' "$w12a6f" | gref)" = "$(printf '%s' "$w12a6f" | gc)" ] \
+  && ok "‹heapstats›: 999 intermediates freed (x and the result stay), an argument nested in the result is kept, x is never freed (golf2 and the oracle)" \
+  || no "W12-A6 freeing: $(printf '%s' "$w12a6f" | gc)"
+[ "$(w113 ':t"3≡1+[“three“⊃‹throw›]2/;:g7′t⍣;′g‹catch›⊐␤9′t⍣Ṅ␤:h"≢1≻[^]1↓;:k′h⍣;4⍳′⍳€1+′k€⍕␤5177392@Ṅ')" \
+    = "$(printf 'three\n0\n[] [1] [2] [3] \n0 rc=0')" ] \
+  && ok "a throw from f under ‹catch›, then ⍣ again; ⍣ nested in € nested in ⍣-free code; spill stack back to 0" || no "W12-A6 catch"
+[ "$(w110 ':h"≢1≻[^]1↓;5⍳"⌫′h⍣')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 ':u"⌫;5⍳′u⍣')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(printf '%s' ':h"≢1≻[^]1↓;5⍳′h⍣48>Ṅ␤:g;5⍳′g⍣48>Ṅ' | gc)" = "$(printf '32767\n32767')" ] \
+  && ok "use after free: a freed x, and an f that frees its argument (≣ finds it); the result keeps its tag" || no "W12-A6 uaf / tag"
+# Nested ⍣: f itself runs ⍣ (and ⊟), with a call counter threaded under it.
+w12a6n=':d2/;:e_3′d⍣⊕;:f\\⊕\\′e⍣;0 5⍳′⍳€′∑€′f€⍕Ṅ␤:r"≢1≻[^]2′+⊟;6⍳′r⍣⍕'
+[ "$(printf '%s' "$w12a6n" | gc | sed 's/ *$//')" = "$(printf '1 1 1 1 1 5\n80')" ] \
+  && [ "$(printf '%s' "$w12a6n" | gref)" = "$(printf '%s' "$w12a6n" | gc)" ] \
+  && ok "re-entrant: ⍣ inside ⍣'s f (counted under it), ⍣ of a ⊟ (golf2 and the oracle)" || no "W12-A6 nesting: $(printf '%s' "$w12a6n" | gc)"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
