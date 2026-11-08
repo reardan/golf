@@ -41,7 +41,8 @@ letter, usually), or a **long name** written `‹name›` (see "Long names" at t
 end of section 3). Writing `x` later calls it. A one-byte word must be
 **defined before it is used**: the compiler makes one pass and looks a name up
 when it meets it. A call to a name that was never defined stops the compile with
-`GOLF: undefined word x` on stderr and exit status 2. A long name may be used
+`GOLF: undefined word x at line 3` on stderr and exit status 2 (see "Compile
+errors" at the end of section 3). A long name may be used
 before its definition, which is how mutual recursion is written. A word may call
 itself, because its name is bound when its body starts. `^` returns early from
 the current word. `;` returns at the end.
@@ -329,8 +330,9 @@ definition. That is all mutual recursion needs:
 ```
 
 A name that is called but never defined stops the compile at end of input with
-`GOLF: undefined word ‹name›` (or `GOLF: undefined word q` for a one-byte name)
-and exit status 2, and no binary is written. Only a name not defined *yet*
+`GOLF: undefined word ‹name› at line N` (or `GOLF: undefined word q at line N`
+for a one-byte name), N being the line of its first use, and exit status 2,
+and no binary is written. Only a name not defined *yet*
 goes forward: a byte that is an atom is always its template, and once a word
 is defined a call binds to that definition, so redefining a word later
 changes only the calls after the redefinition (the forward calls made before
@@ -658,9 +660,73 @@ one word, which a program may call too:
 and every list word (`use after free`, see Memory above) go through
 `‹throw›`. The spill
 stack's `spill stack exhausted` and the divide-by-zero check of `/ % ÷ ∣` print
-the same way without it. Compile errors (`GOLF: undefined word x` …) exit 2.
+the same way without it. Compile errors (`GOLF: undefined word x at line 3`
+…, below) exit 2.
 So does a program whose binary would pass 192 KB (196608 bytes, the prelude's
 ~40 KB included): `GOLF: program too large`, and no binary.
+
+### Compile errors
+
+A compile error prints one line on stderr, exits with status 2, and writes no
+binary. Since W11-3B the line says where the error is:
+
+```
+GOLF: undefined word b at line 3          # in the program
+GOLF: undefined word ‹sq2› at geom.golfj line 7   # in an included file
+```
+
+The line is a line of **your** file. The compiler counts newlines as it reads,
+per file: an included file starts at its line 1, and the includer's count
+resumes after it. `tools/golfc` puts a form feed (byte 12) between the prelude
+and the program, and a form feed between tokens restarts the count at line 1,
+so the prelude's lines are not counted. (Feeding `golf2` by hand works the same
+way: put `\f` after the prelude.) An included `.golfj` is named as its `⎘`
+wrote it, not by the encoded copy `golfc` hands the compiler.
+
+| message | when |
+|---|---|
+| `undefined word x at …` | a name was called (or quoted with `′`, or used as a chain link) and never defined. Reported at end of input, at the line of the **first** use |
+| `bad long name ‹…› at …` | a byte that may not be in a long name, an empty `‹›`, a name over 60 bytes, or a missing `›` |
+| `too many long names ‹…› at …` | the 1025th long name |
+| `local out of range x at …` | `⇒`/`⇐` of a one-byte name outside `a`…`h`, or a long-named local outside a `⊡` word |
+| `too many locals ‹…› at …` | a 17th local in one `⊡` word |
+| `cannot include <path> at …` | a missing file, a path over 250 bytes, `⎘` without `“…“`, an unclosed path (the place is the `⎘`'s, in the includer) |
+| `includes nested too deeply <path> at …` · `too many includes <path> at …` | a 9th level of nesting · a 61st file |
+| `program too large` | the binary would pass 192 KB. No place: it is the size of the whole image |
+
+```
+1Ṅ
+5qṄ                  # stderr: GOLF: undefined word q at line 2   exit status 2
+```
+
+### Debugging
+
+`tools/golfc -g prog.golfj prog` (with `-j`, `-n` as usual) also writes
+**`prog.map`**, the symbol map: one line per defined word,
+
+```
+NAME 0xADDR
+```
+
+NAME is the word as source spells it: a glyph (`⌫`), an ASCII byte (`f`) or a
+long name with its brackets (`‹sq›`). ADDR is the runtime virtual address of
+the word's body in hex, where a `call` to the word lands. The program is one
+`PT_LOAD` at `0x400000`, so the body's file offset is ADDR - `0x400000`. Lines
+come in name-number order: one-byte names by byte value, then long names in
+order of first appearance. The prelude's words are listed too, and a word
+defined twice shows its last body. The binary is byte-identical with and
+without `-g`. The map comes from `golf2 -g`, which writes it to stderr after a
+successful compile, with one-byte names as raw bytes (`golfc` turns them into
+glyphs).
+
+```
+:‹sq›"*;:f‹sq›;5fṄ   # prog.map has, among the prelude's words:
+                     #   f 0x40…       (its address)
+                     #   ‹sq› 0x40…    (and ‹sq›'s, where f's call lands)
+```
+
+Every word body starts with the same prologue (`sub rbp,8; pop [rbp]`, bytes
+`48 83 ED 08 8F 45 00`), so a map line is easy to check against the binary.
 
 ## 4. Tutorial
 
