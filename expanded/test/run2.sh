@@ -2630,7 +2630,7 @@ open(f"{T}/w113c.nov", "w").write(str(n))
 PYEOF
 w113cbad=""
 for k in 0 1 2; do
-  cat "$TMP/pre.gb" "$TMP/w113c.ok$k.g2" | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.got" 2>&1
+  { python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w113c.ok$k.g2"; cat "$TMP/w113c.ok$k.g2"; } | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.got" 2>&1
   cmp -s "$TMP/w113c.got" "$TMP/w113c.ok$k.want" || w113cbad="$w113cbad [op $k: $(diff "$TMP/w113c.got" "$TMP/w113c.ok$k.want" | head -3 | tr '\n' ' ')]"
 done
 w113cn=$(cat "$TMP/w113c.nov")
@@ -3444,12 +3444,12 @@ w.append(len(d))
 open(f"{T}/z4deq.prog", "w", encoding="utf-8").write("".join(p))
 open(f"{T}/z4deq.want", "w").write("".join(f"{a}\n" for a in w))
 PYEOF
-[ "$(gc < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] && [ "$(gref < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] \
+[ "$(gcp < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] && [ "$(grefp < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] \
   && ok "900 random vector ops (⍆ ⍅ ⍈ ⊇ ‹first› ‹last› ≢ ∑) match a Python list, golf2 and oracle" \
-  || no "W12-Z4 vector model: $(diff <(gc < "$TMP/z4vec.prog") "$TMP/z4vec.want" | head -4 | tr '\n' ' ')"
-[ "$(gc < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] && [ "$(gref < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] \
+  || no "W12-Z4 vector model: $(diff <(gcp < "$TMP/z4vec.prog") "$TMP/z4vec.want" | head -4 | tr '\n' ' ')"
+[ "$(gcp < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] && [ "$(grefp < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] \
   && ok "1500 random deque ops at both ends (wrapping, growing) match collections.deque, golf2 and oracle" \
-  || no "W12-Z4 deque model: $(diff <(gc < "$TMP/z4deq.prog") "$TMP/z4deq.want" | head -4 | tr '\n' ' ')"
+  || no "W12-Z4 deque model: $(diff <(gcp < "$TMP/z4deq.prog") "$TMP/z4deq.want" | head -4 | tr '\n' ' ')"
 [ "$(printf '%s' '‹heapstats›→b→n‹deque›→d 1000→i{←d←i‹pushf›→d←i⊖"→i0≡}‹heapstats›←b-Ṅ“ “🗲←n-Ṅ“ “🗲←d≢Ṅ“ “🗲←d‹first›Ṅ“ “🗲←d‹last›Ṅ␤←d⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤‹deque›"T Ṅ"16≪16>"⊙Ṅ8﹢⊙Ṅ_' | gc)" \
     = "$(printf '8200 1 1000 1 1000\n0 0\n100')" ] \
   && ok "a deque grown to 1000 by ‹pushf› is one live block (cap 1024: 8200 bytes) and ⌫ gives it back; T calls a deque an int; a new one is [n=0, h=0, …]" \
@@ -5161,7 +5161,7 @@ for l in lists:
 open(f"{T}/p.golfj", "w", encoding="utf-8").write("".join(prog))
 open(f"{T}/want", "w").write("\n".join(want) + "\n")
 PY
-w13cgc=$(gc < "$TMP/w13c/p.golfj" | sed 's/ *$//'); w13cgr=$(gref < "$TMP/w13c/p.golfj" | sed 's/ *$//')
+w13cgc=$(gcp < "$TMP/w13c/p.golfj" | sed 's/ *$//'); w13cgr=$(grefp < "$TMP/w13c/p.golfj" | sed 's/ *$//')
 [ "$w13cgc" = "$(cat "$TMP/w13c/want")" ] && [ "$w13cgr" = "$w13cgc" ] \
   && ok "Ṁ Ṃ ⍘ ⍂ (= ⌽ ′f⍀ ⌽) ⍃ Ċ ⍖ (stable, descending) Ṕ ⍷ ℑ equal Python on $(grep -c '' "$TMP/w13c/want") results over 15 lists (empty, duplicates, random; Ṁ Ṃ on INT64_MAX/MIN too); the oracle agrees" \
   || no "W13-C vs Python: $(diff <(printf '%s\n' "$w13cgc") "$TMP/w13c/want" | head -6 | tr '\n' ' ')"
@@ -5505,9 +5505,9 @@ for t in range(6):
 open(f"{T}/p.golfj", "w", encoding="utf-8").write("".join(progs))
 open(f"{T}/want", "w").write("\n".join(want) + "\n")
 PYEOF
-[ "$(gc < "$TMP/w13e/p.golfj" | sed 's/ *$//')" = "$(cat "$TMP/w13e/want")" ] \
+[ "$(gcp < "$TMP/w13e/p.golfj" | sed 's/ *$//')" = "$(cat "$TMP/w13e/want")" ] \
   && ok "random graphs, sequences and grids: bfs comps dijkstra uunion toposort, the four monotonic stacks, nsmallest/nlargest and gcomps match Python" \
-  || no "W13-E vs Python: $(diff <(gc < "$TMP/w13e/p.golfj" | sed 's/ *$//') "$TMP/w13e/want" | head -4 | tr '\n' ' ')"
+  || no "W13-E vs Python: $(diff <(gcp < "$TMP/w13e/p.golfj" | sed 's/ *$//') "$TMP/w13e/want" | head -4 | tr '\n' ' ')"
 # The oracle agrees on a mixed program; every digraph alias calls its word.
 w13eo='5Ṿ0⍆1⍆1⍆2⍆3⍆4⍆‹adj›"0‹bfs›⍕‹comps›⍕:p49-;“110;010;001“⊃59‹split›′p‹gcomps›Ṅ3⍳‹perms›‹sshow›Ṿ2⍆1⍆5⍆3⍆‹nextgreater›⍕5‹uf›0 1‹uunion›_‹ucount›Ṅ'
 [ "$(printf '%s' "$w13eo" | gref)" = "$(printf '%s' "$w13eo" | gc)" ] && [ -n "$(printf '%s' "$w13eo" | gc)" ] \
