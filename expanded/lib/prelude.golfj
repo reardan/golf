@@ -2954,3 +2954,110 @@
 # ‹_13h_comp›  f g -> r  (∘)  ·  ‹_13h_bind›  x f -> r  (⊸): fill a record.
 ⊡‹_13h_comp›⇒g⇒f3A⇒r⇐f⇐r\store⇐g⇐r8\radd\store\ref‹_13h_cmp›⇐r16\radd\store⇐r;
 ⊡‹_13h_bind›⇒f⇒x3A⇒r⇐f⇐r\store⇐x⇐r8\radd\store\ref‹_13h_bnd›⇐r16\radd\store⇐r;
+
+# ===== W14-E =====
+# Filesystem words (REFERENCE "Filesystem (W14-E)"), on ⎈: stat=4 lstat=6
+# open=2 close=3 getdents64=217 mkdir=83 rmdir=84 unlink=87 rename=82
+# getcwd=79 chdir=80 getrandom=318.  Paths and names are CODE LISTS, as for
+# the W11-1B file words, and turn into C strings through ‹_1b_tobytes›.
+#   ‹stat›      path -> info   [size mode mtime_s dev ino nlink], following
+#                              symlinks; a failure throws
+#   ‹lstat›     path -> info   the same, of a final symlink itself
+#   ‹exists›    path -> f      0 when stat(2) succeeds, else 1 (zero-is-true)
+#   ‹isfile›    path -> f      0 for a regular file (after symlinks), else 1
+#   ‹isdir›     path -> f      0 for a directory (after symlinks), else 1;
+#                              the three never throw
+#   ‹samefile›  a b -> f       0 when both name the same dev and inode, else
+#                              1; a missing path throws (it is ‹stat›)
+#   ‹mkdir›     path ->        mode 0755 (less the umask); EEXIST throws
+#   ‹makedirs›  path ->        create every missing parent, then path; no
+#                              error when path is already a directory
+#                              (os.makedirs(path, exist_ok=True))
+#   ‹unlink›    path ->        ‹rmdir› path ->     ‹chdir› path ->
+#   ‹rename›    old new ->     rename(2): atomic replace of new
+#   ‹listdir›   path -> names  the entry names (code lists) sorted bytewise,
+#                              without . and .. (getdents64, 32 KB a call)
+#   ‹rmtree›    path ->        delete a tree.  lstat decides, so a symlink
+#                              (top level too) is unlinked and never
+#                              followed; trailing slashes are dropped first
+#                              so `link/` cannot reach the target.  A missing
+#                              path (ENOENT / ENOTDIR) is a no-op
+#   ‹mkdtemp›   prefix -> path a new directory <tmp>/<prefix>XXXXXX, mode
+#                              0700, <tmp> = $TMPDIR when set and non-empty,
+#                              else /tmp; the six characters come from
+#                              getrandom(2) over [a-z0-9_] (Python's set);
+#                              EEXIST retries, up to 100 times
+#   ‹getcwd›    -> path
+#   ‹pathjoin›  a b -> path    os.path.join: one '/' between, an absolute b
+#                              replaces a, an empty a gives b, an empty b a/
+#   ‹dirname› ‹basename›  path -> part   posixpath's: split after the last
+#                              '/'; dirname drops trailing slashes unless the
+#                              head is all slashes
+# Every word that returns a list returns a NEW one.  Failure: ‹throw› with
+# `cannot <verb> <path> (<ENAME>)`, verb stat, lstat, mkdir, unlink, rmdir,
+# rename (naming the old path), listdir, rmtree, mkdtemp or chdir, and
+# `cannot getcwd (<ENAME>)`.  As in W11-1B the positive errno goes to the cell
+# 5179712 first.  ENOTEMPTY EXDEV EBUSY ERANGE are named here, the rest by
+# ‹_1b_ename›.  Every word is a ⊡ word or calls only leaves and ⊡ words: no
+# fixed cells of its own (REGISTRY §3.4), so they nest (‹rmtree› recurses
+# through itself).  Helpers (‹_14e…›):
+#   ‹_14e_en›    e -> list           errno name
+#   ‹_14e_fail›  verb path r ->      verb a “…“ block, r the negative return
+#   ‹_14e_try›   path a2 num -> r    num(cstr(path), a2, 0), the raw return
+#   ‹_14e_sc›    path a2 num verb -> r   the same, throwing when r < 0
+#   ‹_14e_st›    path num verb -> info   stat / lstat into a 144-byte block
+#   ‹_14e_mode›  path num -> m       st_mode, or -1 when the call fails
+#   ‹_14e_ms›    p n t ->            stable merge sort of the n cells at p
+#                                    (code lists, by ‹lexcmp›); t: n cells
+#   ‹_14e_rs›    l -> i              the index just after the last '/', or 0
+#   ‹_14e_strip› l -> l'             a copy without trailing '/' (keeps one)
+#   ‹_14e_cl›    p -> list           the NUL-terminated bytes at p
+#   ‹_14e_tmp›   -> dir              $TMPDIR (from envp) or /tmp
+:‹_14e_en›"39≡1﹢[_“ENOTEMPTY“U^]"18≡1﹢[_“EXDEV“U^]"16≡1﹢[_“EBUSY“U^]"34≡1﹢[_“ERANGE“U^]‹_1b_ename›;
+⊡‹_14e_fail›⇒r⇒p⇒v⇐r±"5179712⊛‹_14e_en›⇒n⇐vU⇐p⧺“ (“U⧺⇐n⧺“)“U⧺‹throw›;
+⊡‹_14e_try›⇒n⇒b‹_1b_tobytes›"⇒c⇐b0⇐n⎈⇐c⌫;
+⊡‹_14e_sc›⇒v⇒n⇒b"⇒p⇐b⇐n‹_14e_try›"⇒r0≺1﹢[⇐v⇐p⇐r‹_14e_fail›]⇐r;
+⊡‹_14e_st›⇒v⇒n"⇒p18A"⇒s⇐n‹_14e_try›⇒r⇐r0≺1﹢[⇐s⌫⇐v⇐p⇐r‹_14e_fail›]
+ 6⍳0⇐s48﹢⊙⍈1⇐s24﹢@⍈2⇐s88﹢⊙⍈3⇐s⊙⍈4⇐s8﹢⊙⍈5⇐s16﹢⊙⍈⇐s⌫;
+⊡‹_14e_mode›⇒n18A"⇒s⇐n‹_14e_try›0≺1﹢[0 1﹣⋄⇐s24﹢@]⇐s⌫;
+:‹stat›4“cannot stat “‹_14e_st›;
+:‹lstat›6“cannot lstat “‹_14e_st›;
+:‹exists›4‹_14e_mode›0 1﹣≡±;
+:‹isfile›4‹_14e_mode›61440$32768≡1﹢;
+:‹isdir›4‹_14e_mode›61440$16384≡1﹢;
+⊡‹samefile›‹stat›⇒y‹stat›⇒x⇐x3⊇⇐y3⊇≡⇐x4⊇⇐y4⊇≡$1﹢⇐x⌫⇐y⌫;
+:‹mkdir›493 83“cannot mkdir “‹_14e_sc›_;
+:‹rmdir›0 84“cannot rmdir “‹_14e_sc›_;
+:‹unlink›0 87“cannot unlink “‹_14e_sc›_;
+:‹chdir›0 80“cannot chdir “‹_14e_sc›_;
+⊡‹rename›⇒q"⇒p‹_1b_tobytes›⇒c⇐q‹_1b_tobytes›⇒d⇐c⇐d0 82⎈⇒r⇐c⌫⇐d⌫⇐r0≺1﹢[“cannot rename “⇐p⇐r‹_14e_fail›];
+⊡‹getcwd›512A⇒b⇐b4096 0 79⎈⇒r⇐r0≺1﹢[⇐b⌫“cannot getcwd“0⍳⇐r‹_14e_fail›]⇐b⇐r1﹣‹_1b_tolist›⇐b⌫;
+⊡‹_14e_ms›⇒t⇒n⇒p⇐n2≺1﹢[^]⇐n1>⇒h⇐p⇐h⇐t‹_14e_ms›⇐h3≪⇐p﹢⇒q⇐n⇐h﹣⇒k⇐q⇐k⇐t‹_14e_ms›⇐k3≪⇐q﹢⇒e
+ ⇐p⇒i⇐q⇒j⇐t⇒o{⇐i⇐q≡⇐j⇐e≡|⋄⇐j⊙⇐i⊙‹lexcmp›0≺1﹢[⇐j⊙⇐o⊛⇐j8﹢⇒j⋄⇐i⊙⇐o⊛⇐i8﹢⇒i]⇐o8﹢⇒o}
+ {⇐i⇐q≡⋄⇐i⊙⇐o⊛⇐i8﹢⇒i⇐o8﹢⇒o}⇐t⇒i⇐p⇒j{⇐i⇐o≡⋄⇐i⊙⇐j⊛⇐i8﹢⇒i⇐j8﹢⇒j};
+⊡‹listdir›"⇒p589824 2“cannot listdir “‹_14e_sc›⇒f4096A⇒b‹vec›⇒v
+ {⇐f⇐b32768 217⎈"⇒r0≡⋄⇐r0≺1﹢[⇐f0 0 3⎈_⇐b⌫“cannot listdir “⇐p⇐r‹_14e_fail›]
+  0⇒o{⇐o⇐r≡⋄⇐b⇐o﹢⇒e⇐e19﹢⇒z0⇒n{⇐z⇐n﹢?0≡⋄⇡n}
+   ⇐n1≡⇐z?46≡$⇐n2≡⇐z?46≡$⇐z1﹢?46≡$|[⇐v⇐z⇐n‹_1b_tolist›⍆⇒v]
+   ⇐e16﹢@65535$⇐o﹢⇒o}}
+ ⇐f0 0 3⎈_⇐b⌫⇐v‹_2d_chk›"⊙⇒n8﹢⇒q⇐n1⊔A⇒t⇐q⇐n⇐t‹_14e_ms›⇐t⌫⇐v;
+⊡‹_14e_rs›⇒l⇐l≢⇒i{⇐i0≡[⇐l⇐i1﹣⊇47≡⋄1]⋄⇣i}⇐i;
+⊡‹_14e_strip›⇒l⇐l≢⇒j{⇐j1≻[1⋄⇐l⇐j1﹣⊇47≡1﹢]⋄⇣j}⇐l0⇐j‹slice›;
+⊡‹basename›"‹_14e_rs›⇒i"≢⇐i﹣⇒n⇐i⇐n‹slice›;
+⊡‹dirname›⇒l⇐l‹_14e_rs›"⇒i⇒j{⇐j0≡[⇐l⇐j1﹣⊇47≡1﹢⋄1]⋄⇣j}⇐l0⇐j0≡[⇐j⋄⇐i]‹slice›;
+⊡‹pathjoin›⇒b⇒a⇐b≢[⋄⇐b0⊇47≡1﹢[⇐b0↓^]]⇐a≢[⇐a⇐b⧺^]⇐a⇐a≢1﹣⊇47≡1﹢[⇐a⇐b⧺^]
+ ⇐a“/“U"⇒s⧺"⇒t⇐b⧺⇐s⌫⇐t⌫;
+⊡‹makedirs›⇒p⇐p‹isdir›[^]⇐p‹_14e_strip›"⇒s‹dirname›⇒d⇐s⌫⇐d≢[⋄⇐d‹exists›[⋄⇐d‹makedirs›]]⇐d⌫
+ ⇐p493 83‹_14e_try›⇒r⇐r0≺1﹢[⇐p‹isdir›[⋄“cannot mkdir “⇐p⇐r‹_14e_fail›]];
+⊡‹rmtree›‹_14e_strip›⇒p18A⇒s⇐p⇐s6‹_14e_try›⇒r⇐s24﹢@⇒m⇐s⌫
+ ⇐r0≺1﹢[⇐r2±≡⇐r20±≡|[“cannot rmtree “⇐p⇐r‹_14e_fail›]⇐p⌫^]
+ ⇐m61440$16384≡1﹢[⇐p‹listdir›"⇒l‹_13d_rng›⇒e⇒i{⇐i⇐e≡⋄⇐i⊙⇒n⇐p⇐n‹pathjoin›"⇒c‹rmtree›⇐c⌫⇐n⌫⇐i8﹢⇒i}
+  ⇐l⌫⇐p0 84“cannot rmdir “‹_14e_sc›_⋄⇐p0 87“cannot unlink “‹_14e_sc›_]⇐p⌫;
+⊡‹_14e_cl›"⇒p0⇒n{⇐p⇐n﹢?0≡⋄⇡n}⇐n‹_1b_tolist›;
+⊡‹_14e_tmp›5177408⊙"⊙3≪﹢16﹢⇒e
+ {⇐e⊙"⇒z0≡⋄“TMPDIR=“4﹢⇒t0⇒k{⇐k7≡[⇐z⇐k﹢?⇐t⇐k﹢?﹣⋄1]⋄⇡k}
+  ⇐k7≡1﹢[⇐z7﹢?[⋄⇐z7﹢‹_14e_cl›^]]⇐e8﹢⇒e}“/tmp“U;
+⊡‹mkdtemp›⇒x‹_14e_tmp›⇒d2A⇒g0⇒k
+ {⇐g6 0 318⎈_6⍳⇒s0⇒i{⇐i6≡⋄⇐s⇐i⇐g⇐i﹢?37%“abcdefghijklmnopqrstuvwxyz0123456789_“4﹢﹢?⍈_⇡i}
+  ⇐x⇐s⧺⇒y⇐d⇐y‹pathjoin›⇒p⇐y⌫⇐p448 83‹_14e_try›⇒r⇐r[⇐g⌫⇐s⌫⇐d⌫⇐p^]
+  ⇐r17±﹣⇐k100≺1﹢|[“cannot mkdtemp “⇐p⇐r‹_14e_fail›]⇐p⌫⇐s⌫⇡k0};
