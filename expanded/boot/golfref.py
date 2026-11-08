@@ -53,6 +53,8 @@ TEMPLATES.update({chr(b): list(tpl) for b, _mn, _gl, tpl, _d in mkblob2.ATOMS})
 # keeps the last write, while the blob's `f` returns the FIRST record for a key
 # and therefore emits the override instead of the original — same result, so the
 # oracle and the self-hosted compiler stay in agreement.
+# W12-O1's not-a-number check in front of ± ⊕ ⊖ ² ⊗ ⊘ (mkblob2._numchk) is an
+# override too, so it reaches the oracle through this same line.
 TEMPLATES.update({chr(b): list(tpl) for b, tpl in mkblob2.OVERRIDES.items()})
 
 # Compiler-logic ops (prefixes / delimiters, not templates).
@@ -68,6 +70,9 @@ LNAME_BYTE = mkblob2.LNAME_BYTE  # ‹  opens a long name (M2)
 RNAME_BYTE = mkblob2.RNAME_BYTE  # ›  closes it
 IMPORT_BYTE = mkblob2.IMPORT_BYTE  # ⎘  ⎘“path“ includes a file (W11-2A)
 REC_BYTE = mkblob2.REC_BYTE  # ⊜  ⊜‹point›‹x›‹y›; a record header (W11-4A)
+ELSE_BYTE = mkblob2.ELSE_BYTE  # ⋄  c[a⋄b] if-else, {c⋄body} top-tested while (W12-A7)
+VINC_BYTE = mkblob2.VINC_BYTE  # ⇡x  inc qword [x] (W12-Z2)
+VDEC_BYTE = mkblob2.VDEC_BYTE  # ⇣x  dec qword [x]
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -413,16 +418,23 @@ def compile_bytes(src: bytes) -> bytes:
             emit([0x58, 0x48, 0x85, 0xC0, 0x0F, 0x85]); patch = len(out); emit(b"\0\0\0\0")
             stack.append(('if', patch))
             continue
-        if ch == ']':                                # end if
+        if ch == ']':                                # end if (or its else)
             kind, patch = stack.pop()
-            assert kind == 'if', "] without ["
+            assert kind in ('if', 'else'), "] without ["
             patch32(patch, len(out))
             continue
         if ch == '{':                                # loop start (emits nothing)
             stack.append(('loop', len(out)))
             continue
         if ch == '}':                                # loop back while TOS==0
-            kind, target = stack.pop()
+            top_ = stack.pop()
+            if top_[0] == 'while':                   # W12-A7: {c⋄body} — back
+                _, target, exit_ = top_              # to the test always, then
+                emit([0xE9]); site = len(out); emit(b"\0\0\0\0")  # land the exit
+                patch32(site, target)
+                patch32(exit_, len(out))
+                continue
+            kind, target = top_
             assert kind == 'loop', "} without {"
             emit([0x58, 0x48, 0x85, 0xC0, 0x0F, 0x84]); site = len(out); emit(b"\0\0\0\0")
             patch32(site, target)                    # negative rel32
@@ -482,12 +494,12 @@ def compile_bytes(src: bytes) -> bytes:
             frame = True                             # which '^' and ';' release
             continue
         if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
-            name = take_name()                       # a..h, or a ‹long name›
-            if name < 256 and not 0 <= name - ord('a') < 8:
+            name = take_name()                       # a..z (W12-Z3), or a ‹long name›
+            if name < 256 and not 0 <= name - ord('a') < 26:
                 die(b"local out of range " + shown(name))
             if not frame:                            # outside ⊡: M-FRAME's fixed
-                if name >= 256:                      # a..h slot; a long name has
-                    die(b"local out of range " + shown(name))
+                if name >= 256 or name - ord('a') >= 8:  # a..h slot; a long name
+                    die(b"local out of range " + shown(name))  # (or i..z) has
                 slot = name - ord('a')               # nowhere to go
             else:                                    # M-FRAME2: first appearance
                 if name not in flocals:              # claims the next slot
@@ -501,6 +513,21 @@ def compile_bytes(src: bytes) -> bytes:
                 emit([0x48, 0x8B, 0x45, 8 * slot, 0x50])
             continue
 
+        if c in (VINC_BYTE, VDEC_BYTE):              # W12-Z2: ⇡x / ⇣x, in memory
+            glyph = "⇡" if c == VINC_BYTE else "⇣"
+            if i >= n:                               # golf2 reads 0 at the end
+                die((glyph + " needs a variable").encode())
+            name = take_name()                       # a letter, or a ‹long name›
+            if name < 256 and not (65 <= name < 91 or 97 <= name < 123):
+                die((glyph + " needs a variable").encode())
+            k = 0 if c == VINC_BYTE else 8           # /0 inc, /1 dec: modrm + 8
+            if frame and name in flocals:            # a local this ⊡ word has
+                emit([0x48, 0xFF, 0x45 + k, 8 * flocals.index(name)])  # named
+            else:                                    # inc/dec qword [rbp+d] ...
+                emit([0x48, 0xFF, 0x04 + k, 0x25])   # ... or qword [cell]
+                emit_u32(VARBANK + VARSTRIDE * name)
+            continue
+
         if c == IMPORT_BYTE:                         # W11-2A: ⎘“path“
             i, data = include()
             if data:
@@ -509,6 +536,22 @@ def compile_bytes(src: bytes) -> bytes:
                     seg["end"] += len(data)
                 segs.append({"start": i, "end": i + len(data), "reset": i,
                              "file": len(included), "holes": []})
+            continue
+        if c == ELSE_BYTE:                           # W12-A7: ⋄
+            kind = stack[-1][0] if stack else None
+            if kind == 'if':                         # c[a⋄b]: a ends with a jmp
+                _, patch = stack.pop()               # to ']', and '['s jnz
+                emit([0xE9]); site = len(out); emit(b"\0\0\0\0")  # lands on b
+                patch32(patch, len(out))
+                stack.append(('else', site))
+            elif kind == 'loop':                     # {c⋄body}: leave unless c==0
+                _, target = stack.pop()
+                emit([0x58, 0x48, 0x85, 0xC0, 0x0F, 0x85]); site = len(out); emit(b"\0\0\0\0")
+                stack.append(('while', target, site))
+            elif kind in ('else', 'while'):
+                die("⋄ twice in one block".encode())
+            else:
+                die("⋄ outside [ ] or { }".encode())
             continue
         if c == REC_BYTE:                            # W11-4A: ⊜‹point›‹x›‹y›;
             record()

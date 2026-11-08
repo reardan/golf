@@ -130,12 +130,12 @@ ATOMS = [
     (0x3D, "xor", "=", [0x58, 0x48, 0x31, 0x04, 0x24],        "bitwise XOR"),
     (0x3E, "shr", ">", [0x59, 0x48, 0xD3, 0x2C, 0x24],        "shift right (by TOS)"),
     # Code-page atoms — single-byte ops in the high half of the byte space
-    (0x80, "neg", "±", [0x58, 0x48, 0xF7, 0xD8, 0x50],   "negate TOS"),
-    (0x81, "inc", "⊕", [0x48, 0xFF, 0x04, 0x24],         "TOS + 1"),
-    (0x82, "dec", "⊖", [0x48, 0xFF, 0x0C, 0x24],         "TOS - 1"),
-    (0x83, "sqr", "²", [0x58, 0x48, 0x0F, 0xAF, 0xC0, 0x50], "TOS * TOS"),
-    (0x84, "dbl", "⊗", [0x48, 0xD1, 0x24, 0x24],         "TOS * 2"),
-    (0x85, "hlv", "⊘", [0x48, 0xD1, 0x2C, 0x24],         "TOS >> 1"),
+    (0x80, "neg", "±", [0x58, 0x48, 0xF7, 0xD8, 0x50],   "negate TOS (a list: not a number)"),
+    (0x81, "inc", "⊕", [0x48, 0xFF, 0x04, 0x24],         "TOS + 1 (a list: not a number)"),
+    (0x82, "dec", "⊖", [0x48, 0xFF, 0x0C, 0x24],         "TOS - 1 (a list: not a number)"),
+    (0x83, "sqr", "²", [0x58, 0x48, 0x0F, 0xAF, 0xC0, 0x50], "TOS * TOS (a list: not a number)"),
+    (0x84, "dbl", "⊗", [0x48, 0xD1, 0x24, 0x24],         "TOS * 2 (a list: not a number)"),
+    (0x85, "hlv", "⊘", [0x48, 0xD1, 0x2C, 0x24],         "TOS >> 1 (a list: not a number)"),
     # Comparison / selection / signed arithmetic (result -1/0 like '<')
     (0x86, "gt",  "»", [0x59, 0x58, 0x48, 0x39, 0xC1, 0x48, 0x19, 0xC0, 0x50],
                                                           "a b -> (a>b unsigned ? -1 : 0)"),
@@ -387,6 +387,48 @@ OVERRIDES.update({b: _udivchk(v1.TEMPLATES[chr(b)]) for b in map(ord, "/%")})
 OVERRIDES.update({b: _FLUSH_CALL + list(v1.TEMPLATES[chr(b)]) for b in map(ord, ".)(")})
 AUTOEXIT2 = bytes(_FLUSH_CALL) + v1.AUTOEXIT
 
+# W12-O1: the unary arithmetic atoms ± ⊕ ⊖ ² ⊗ ⊘ refuse a list.  Before W12
+# they computed on its tagged address (`5⍳⊕⍕` printed garbage).  They are the
+# hottest ops in a loop, so the int path pays one compare-and-branch and no
+# cell load:
+#
+#     80 7C 24 07 7F            cmp byte [rsp+7], 0x7F   ; TOS's top byte
+#     75 0F                     jne .scalar              ; not tag-shaped
+#     <_hook_call(NAN_HOOK)>    mov rax,[hook]; test; jz .scalar; call rax
+#   .scalar:  <the original atom template, byte for byte>
+#
+# The filter is the top BYTE, not the top 16 bits: `cmp byte` has no
+# length-changing 0x66 prefix, and it is 2 bytes shorter.  It is a superset
+# of the tag test (every list has top byte 0x7F), so it is never wrong, only
+# loose: ints in [0x7F<<56, 2^63) — INT64_MAX among them — also reach the
+# hook.  The hook is EXACT and cheap to leave: the prelude's ‹_12o1_nan›
+# returns at once unless the value is tagged (`v>>48 == 0x7FFF`) AND its
+# address lies in the list heap [base, base+span) (cells 0x4F0034/0x4F0038,
+# A's own), so it never throws on INT64_MAX, on any negative int, or on
+# anything the heap cannot hold.  When it does throw, ‹throw› takes it
+# (`GOLF: not a number`, catchable).  When it returns, the scalar body runs
+# exactly as before, so the hook is stack-neutral like the M-VEC ones.
+#
+# Off by default, like every hook: the cell is the W12 O1 runtime cell
+# 0x4F0DC0 (5180864, REGISTRY.md §3.2), BSS-zero, filled by the prelude's
+# init.  A program without the prelude (golfc -n, every compiler binary) never
+# calls anything and computes on the bits as it always did.  All six share the
+# one cell: they raise the same error.  The bitwise atoms ~ $ | = > ≪ ≫ stay
+# RAW (no check): bit operations on a tagged value are how the prelude builds
+# and strips the tag in the first place.  The raw arithmetic atoms ﹢ ﹣ ﹡ ⊓ ⊔ ﹤
+# are unaffected too.
+NAN_HOOK = 0x4F0DC0
+_NAN_CALL = _hook_call(NAN_HOOK)
+def _numchk(scalar):
+    """Prefix a unary atom with the W12-O1 not-a-number check (22 bytes)."""
+    tpl = ([0x80, 0x7C, 0x24, 0x07, 0x7F]         # cmp byte [rsp+7], 0x7F
+           + [0x75, len(_NAN_CALL)] + _NAN_CALL    # jne .scalar ; hook call
+           + list(scalar))
+    assert len(tpl) == 22 + len(scalar)
+    return tpl
+NUMCHK_BYTES = (0x80, 0x81, 0x82, 0x83, 0x84, 0x85)   # ± ⊕ ⊖ ² ⊗ ⊘
+OVERRIDES.update({b: _numchk(_ATOM_TPL[b]) for b in NUMCHK_BYTES})
+
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
 # emits a record.  They are bytes the COMPILER handles itself — prefixes that
@@ -429,6 +471,9 @@ REC_BYTE = 0xB7     # ⊜  ⊜‹point›‹x›‹y›; defines constructor/acc
 REC_FIELDS = 0x43C000     # field k's name number at REC_FIELDS + 4*k
 REC_MAX = 256             # fields one record may have
 VENDOR_PATH = 0x43F000    # the C string `vendor/path` the third include try opens
+ELSE_BYTE = 0xB8    # ⋄  the else of c[a⋄b] and the test of {c⋄body} (W12-A7); no memory
+VINC_BYTE = 0xB9    # ⇡x  increment variable x in memory, inc qword [cell] (W12-Z2); no memory
+VDEC_BYTE = 0xBA    # ⇣x  decrement it, dec qword [cell]; in a ⊡ word a named local wins
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).

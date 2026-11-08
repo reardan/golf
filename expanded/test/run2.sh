@@ -239,13 +239,13 @@ echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotati
 # compiled word.  d = ⊗ double, i = ⊕ increment; (d ∘ i)(5) = i(d 5) = 11.
 [ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\exec N E' | gc)" = "11" ] \
   && ok "compose (′d ∘ ′i applied to 5)" || no "compose"
-# The thunk must NOT come from the list heap (>= 0x500000, where it would be
-# indistinguishable from a list): the arena is 0x4D0000 = 5046272, an int.
-[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp N E' | gc)" = "5046272" ] \
-  && ok "a composed quotation is an int in the code arena at 0x4D0000" || no "compose arena address"
-# Two composes, second minus first (±negated because Ṅ prints unsigned).
-[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp\refi\refd\comp\rsub\neg N E' | gc)" = "39" ] \
-  && ok "composing twice bumps the arena by exactly one 39-byte thunk" || no "compose twice"
+# W12-O2: the thunk is an A block on the (RWX) list heap.  Its address is
+# UNTAGGED, so a composed quotation still classifies as an int (T = 1), never
+# as a list, and it lies inside [heap base, base+span).
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp T N E' | gc)" = "1" ] \
+  && ok "a composed quotation is an int (an untagged address)" || no "compose is an int"
+[ "$(printf '%s' ':d\dbl;:i\inc;\refd\refi\comp 5177396@\rsub 5177400@\rlt1\radd N E' | gc)" = "0" ] \
+  && ok "a composed quotation lies on the list heap (W12-O2)" || no "compose on the heap"
 [ "$(printf '%s' ':d\dbl;:i\inc;5\refd\refi\comp\refd\comp\exec N E' | gc)" = "22" ] \
   && ok "compose of a composed quotation: d(i(d 5))" || no "compose of compose"
 [ "$(printf '%s' ':d\dbl;:i\inc;:c\refd\refi\comp\exec;5R\refcMQE' | gc)" = "1 3 5 7 9 " ] \
@@ -266,33 +266,29 @@ echo "Tacit combinators (M-CHAIN): ∘ compose ⇉ pipeline ⑂ fork — quotati
   && ok "pipeline: 5 threaded through [′d, ′i]" || no "pipeline"
 [ "$(printf '%s' '5 1A 0&\store\pipe N E' | gc)" = "5" ] \
   && ok "pipeline over an empty quotation list is the identity" || no "empty pipeline"
-# The arena is BOUNDED, and the bound is enforced.  0x4D0000..0x4DFFFF is 65536
-# bytes = EXACTLY 1680 thunks at 39 bytes each; the 1681st would start at
-# 0x4E0017, which is inside the user variable bank at 0x4E0000 (REGISTRY.md §3).
-# Until this check existed, a program that composed in a loop overwrote its own
-# →x/←x cells with machine code and ran on to exit 0 — silent corruption of user
-# data.  Nothing can be freed (a thunk's address may have escaped anywhere), so
-# ∘ stops instead.  The canary below is a variable whose cell the overrun reaches.
+# Until W12-O2 the thunks lived in a fixed 64 KB arena at 0x4D0000 that held
+# exactly 1680 of them (the 1681st was "compose arena exhausted", exit 1, rather
+# than an overrun into the →x bank).  Now each thunk is an A block, so there is
+# no cap: 100000 live composes fit, and the canary variable is intact.
 arena(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" \
            > "$TMP/ar" 2>/dev/null; chmod +x "$TMP/ar"
          "$TMP/ar" >"$TMP/ar.out" 2>"$TMP/ar.err"; echo "$?"; }
 compose_n(){ printf ':d\\dbl;:i\\inc;1234\\setv 0{\\refd\\refi\\comp_ 1\\radd"%s\\rlt1\\radd}_ \\getv N E' "$1"; }
-[ "$(compose_n 1680 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
-  && ok "1680 composes fit the arena exactly, and the canary is intact" || no "arena 1680"
-[ "$(compose_n 1681 | arena)" = "1" ] \
-  && ok "the 1681st compose exits 1 instead of writing into the variable bank" || no "arena 1681 status"
-[ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] \
-  && ok "... and says so on fd 2, leaving fd 1 (the program's output) clean" || no "arena 1681 message"
-[ ! -s "$TMP/ar.out" ] && ok "... with nothing written to fd 1" || no "arena 1681 stdout"
-# Why the arena is not simply brk-grown, the way the list heap was at M-MEM:
-# brk memory is R+W but NOT executable, and a thunk is code.  (A bare 0xC3 is a
-# valid GOLF callee — ⍎ does `call rax` and `ret` pops that address right back —
-# so this distinguishes "cannot execute" from "bad address".)
+[ "$(compose_n 1681 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
+  && ok "1681 composes, the old cap plus one, run (W12-O2)" || no "compose 1681"
+[ "$(compose_n 100000 | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "1234" ] \
+  && ok "100000 live composes fit, and the canary is intact" || no "compose 100000"
+[ ! -s "$TMP/ar.err" ] && ok "... with nothing written to fd 2" || no "compose 100000 stderr"
+# brk memory is R+W but not executable by default.  W12-O2 mprotects the heap
+# RWX at startup and after every growth, which is what lets a thunk live there.
+# (A bare 0xC3 is a valid GOLF callee — ⍎ does `call rax` and `ret` pops that
+# address right back.)
 [ "$(printf '%s' '1\alloc\seth 195\geth, \geth?N E' | gc)" = "195" ] \
   && ok "a heap byte written through the allocator reads back" || no "heap rw"
-[ "$(printf '%s' '1\alloc\seth 195\geth, \geth\exec' | arena)" != "0" ] \
-  && ok "... but calling it dies: brk memory is not executable, so the arena cannot grow" \
-  || no "heap nx"
+[ "$(printf '%s' '1\alloc\seth 195\geth, \geth\exec 7N' | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "7" ] \
+  && ok "... and calling it returns: the heap is executable (W12-O2)" || no "heap x"
+[ "$(printf '%s' '3000000\range_ 1\alloc\seth 195\geth, \geth\exec 7N' | arena)" = "0" ] && [ "$(cat "$TMP/ar.out")" = "7" ] \
+  && ok "... and so is memory the heap grew into after startup" || no "heap x grown"
 tools/golfc -j examples/chain.golfj "$TMP/chain" 2>/dev/null
 [ "$("$TMP/chain" 2>/dev/null)" = "$(printf '11\n2\n11')" ] && ok "golfc examples/chain.golfj" || no "chain.golfj"
 [ "$(oracle chain)" = "$(printf '11\n2\n11')" ] \
@@ -1133,9 +1129,11 @@ echo "Per-call locals (M-FRAME): ⊡name … ; owns a frame, ⇒x / ⇐x reach i
   && ok "a plain : word is unchanged — 50,000 deep still works" || no "opt-in regression"
 # Unchecked, ⇒z is displacement 200 — a NEGATIVE disp8 (-56), landing in the
 # frame of a word not yet called — and ⇒A wraps to 0 and silently aliases slot a.
-[ "$(printf '%s' '\dlocf\lsetz;1fN' | und)" = "2" ] \
+# Since W12-Z3 a ⊡ word takes ⇒z (its table gives it a slot), so the fixed-slot
+# case is a : word's.
+[ "$(printf '%s' ':f\lsetz;1fN' | und)" = "2" ] \
   && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range z at line 1" ] \
-  && ok "a slot name past h is refused, not silently wrapped" || no "lset range"
+  && ok "a slot name past h is refused outside ⊡, not silently wrapped" || no "lset range"
 [ "$(printf '%s' '\dlocf\lgetA;1fN' | und)" = "2" ] \
   && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range A at line 1" ] \
   && ok "... and one before a, which would have aliased slot a" || no "lget range"
@@ -1959,15 +1957,15 @@ grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REG
 # directly under its own marker, never below the next one.
 # === W11-0 ===
 echo "W11-0: ‹throw›, the runtime's one error exit (msg code list -> 'GOLF: msg' on fd 2, exit 1)"
-# The stub every prelude error but X's goes through (index, compose arena, the
+# The stub every prelude error but X's goes through (index, the
 # two ⌫ guards); W11-3A makes it catchable.  stdout stays empty, stderr is
 # exactly the line, and the routed errors read as they always did.
 w110(){ printf '%s' "$1" | gc > "$TMP/w110.out" 2> "$TMP/w110.err"; echo "rc=$? $(wc -c < "$TMP/w110.out") $(cat "$TMP/w110.err")"; }
 [ "$(w110 '7Ṅ“boom“U‹throw›8Ṅ')" = "rc=1 1 GOLF: boom" ] && [ "$(w110 '0⍳‹throw›')" = "rc=1 0 GOLF: " ] \
   && [ "$(w110 '3⍳9⊇')" = "rc=1 0 GOLF: index out of range" ] && [ "$(w110 '3⍳"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
   && [ "$(w110 '5⌫')" = "rc=1 0 GOLF: free of a non-heap value" ] \
-  && [ "$(w110 '0→i{′⊕′⊖∘_←i1+"→i1700\rlt1+}')" = "rc=1 0 GOLF: compose arena exhausted" ] \
-  && ok "‹throw›: user message, empty message, and the four routed errors unchanged" || no "‹throw› stub / routed errors"
+  && [ "$(w110 '0→i{′⊕′⊖∘_←i1+"→i1700\rlt1+}')" = "rc=0 0 " ] \
+  && ok "‹throw›: user message, empty message, and the three routed errors unchanged (no arena error since W12-O2)" || no "‹throw› stub / routed errors"
 
 # === W11-1A ===
 echo "W11-1A: the list tag is 0x7FFF<<48; [2^48, 2^49) are ordinary integers again"
@@ -2128,11 +2126,14 @@ echo "W11-1E: the program-size cap is 192 KB (196608 bytes), checked; p_filesz i
 # W11-1C output buffer, the lowest runtime region; REGISTRY §3).
 w11e(){ cat "$TMP/pre.gb" - > "$TMP/e.src"; "$1" < "$TMP/e.src" > "$TMP/e.out" 2>"$TMP/e.err"; echo "$?"; }
 w11efsz(){ python3 -c 'import sys; b=open(sys.argv[1],"rb").read(); print(int.from_bytes(b[96:104],"little"), len(b))' "$1"; }
-# P(a,b) = `0 0`, a x ⊕ (4 bytes each), b x `&_` (5 bytes), `Ṅ`: any size from
-# P(0,0) up is reachable, so the test lands on the cap exactly.
+# P(a,b) = `0 0`, a x ⊕ (u bytes each: 4 until W12-O1 put its not-a-number
+# check in front, 26 since), b x `&_` (5 bytes), `Ṅ`: gcd(u,5) = 1, so any size
+# from P(0,0) up is reachable and the test lands on the cap exactly.
 w11eprog(){ python3 -c 'import sys; a,b=int(sys.argv[1]),int(sys.argv[2]); sys.stdout.write("0 0"+"⊕"*a+"&_"*b+"Ṅ")' "$1" "$2" | python3 tools/codepage.py encode; }
 [ "$(w11eprog 0 0 | w11e "$TMP/golf2")" = 0 ] && w11e0=$(stat -c%s "$TMP/e.out") || w11e0=0
-w11ed=$((196608 - w11e0)); w11eb=$((w11ed % 4)); w11ea=$(((w11ed - 5*w11eb) / 4))
+w11eu=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; print(len(mkblob2.OVERRIDES[0x81]))')
+w11ed=$((196608 - w11e0)); w11eb=0; while [ $(((w11ed - 5*w11eb) % w11eu)) -ne 0 ]; do w11eb=$((w11eb+1)); done
+w11ea=$(((w11ed - 5*w11eb) / w11eu))
 w11eprog "$w11ea" "$w11eb" > "$TMP/e.cap.g2"
 [ "$(w11e "$TMP/golf2" < "$TMP/e.cap.g2")" = 0 ] && [ "$(w11efsz "$TMP/e.out")" = "196608 196608" ] \
   && chmod +x "$TMP/e.out" && [ "$("$TMP/e.out")" = "$w11ea" ] \
@@ -2145,7 +2146,7 @@ cmp -s "$TMP/e.cap.bin" "$TMP/e.cap.ref" && ok "oracle: golfref emits the same 1
   && ok "... and so does seed" || no "seed at the cap"
 w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
 [ "$(w11e "$TMP/golf2" < "$TMP/e.over.g2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
-  && ok "4 bytes over the cap: GOLF: program too large on fd 2, exit 2, nothing on fd 1" || no "over the cap: $(cat "$TMP/e.err")"
+  && ok "$w11eu bytes (one ⊕) over the cap: GOLF: program too large on fd 2, exit 2, nothing on fd 1" || no "over the cap: $(cat "$TMP/e.err")"
 [ "$(w11e "$TMP/seed" < "$TMP/e.over.g2")" = 2 ] && [ ! -s "$TMP/e.out" ] && [ ! -s "$TMP/e.err" ] \
   && ok "... seed exits 2 silently, as for an undefined word" || no "seed over the cap"
 [ "$(python3 boot/golfref.py < "$TMP/e.src" 2>"$TMP/e.err" > "$TMP/e.out"; echo $?)" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] \
@@ -2353,24 +2354,17 @@ w112cc=':d⊗;3⍳10′+⊸′d∘€⍕ 3⍳′d10′+⊸∘€⍕ 5′⊗′�
 # ⊸ inside a map: a fresh thunk per element (X/Y frames nest), each its own x.
 [ "$(printf '%s' ':b′⍳⊸;3⍳′b€′⍎€⍕' | gc)" = "[] [0] [0 1] " ] \
   && ok "⊸ inside €: one thunk per element, each with its own x" || no "w11-2c in map"
-# A thunk is 38 bytes in ∘'s arena (∘'s is 39), on the same bump pointer.
-[ "$(printf '%s' '1′⊕⊸1′⊕⊸\rsub\negṄ ′⊕′⊕∘1′⊕⊸\rsub\negṄ' | gc)" = "3839" ] \
-  && ok "a bind thunk is 38 bytes, on the compose arena's bump pointer" || no "w11-2c thunk size"
-# The arena bound holds for ⊸ alone and for any mix of ⊸ and ∘.  1724 binds
-# (65512 bytes) fit, the 1725th would start past 65498; 851 ∘+⊸ pairs (77 bytes
-# each) end at 65527 and the 852nd ∘ would cross.  The canary v is a variable
-# the overrun would reach (the bank starts right after the arena).
+# W12-O2: a bind thunk is an A block — 38 bytes of code in a 5-cell request,
+# one 8-cell block, 72 bytes with its header in ‹heapstats›.
+[ "$(printf '%s' '‹heapstats›1′⊕⊸_‹heapstats›→d→c→b→a ←c←a-Ṅ ←d←b-Ṅ' | gc)" = "172" ] \
+  && ok "a bind thunk is one 72-byte A block in ‹heapstats›" || no "w11-2c thunk size"
+# No arena bound since W12-O2, for ⊸ alone or mixed with ∘.  The canary v is a
+# variable the old arena's overrun would have reached.
 w112c(){ printf '1234→v 0→i{%s←i1+"→i%s\\rlt1+}%s←vṄ' "$1" "$2" "${3-}" | arena; }
-w112cb='0→i{1′⊕⊸_←i1+"→i698\rlt1+}'
-[ "$(w112c '1′⊕⊸_' 1724)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
-  && [ "$(w112c '1′⊕⊸_' 1725)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
-  && ok "1724 binds fit the arena, the 1725th says compose arena exhausted (exit 1, stdout clean)" || no "w11-2c bind arena"
-[ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 851)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
-  && [ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 852)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
-  && ok "mixing ∘ and ⊸: 851 pairs fit with the canary intact, the next ∘ is diagnosed" || no "w11-2c mixed arena"
-[ "$(w112c '′⊕′⊖∘_' 1000 "$w112cb")" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
-  && [ "$(w112c '′⊕′⊖∘_' 1000 "${w112cb/698/699}")" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] \
-  && ok "1000 composes then 698 binds fit; the 699th bind is diagnosed" || no "w11-2c compose-then-bind arena"
+[ "$(w112c '1′⊕⊸_' 100000)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && ok "100000 live binds fit (the old cap was 1724), canary intact" || no "w11-2c bind arena"
+[ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 50000)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && ok "mixing ∘ and ⊸: 50000 pairs fit with the canary intact" || no "w11-2c mixed arena"
 # REFERENCE.md's Closures examples print what the doc says.
 w112cbad=""
 while IFS= read -r w112cl; do
@@ -2499,7 +2493,7 @@ w113b(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && $1 < s
 [ "$(printf '“a\nb“ # c\n`3 x\ny\n\n\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 7" ] \
   && ok "newlines inside a string, a comment's end and a raw blob all count" || no "newline counting: $(cat "$TMP/inc/err")"
 w113bp=$(python3 tools/codepage.py encode < lib/prelude.golfj | tr -cd '\n' | wc -c | tr -d ' ')
-[ "$(python3 tools/codepage.py encode < lib/prelude.golfj | cat - <(printf '5qṄ') | "$TMP/golf2" 2>&1 >/dev/null)" \
+[ "$(python3 tools/codepage.py encode < lib/prelude.golfj | cat - <(printf '5qN') | "$TMP/golf2" 2>&1 >/dev/null)" \
     = "GOLF: undefined word q at line $((w113bp + 1))" ] \
   && [ "$(printf '1\n2\n\f3\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 2" ] \
   && ok "without the form feed the prelude's $w113bp lines count; a form feed between tokens restarts at line 1" || no "form feed reset"
@@ -2516,7 +2510,7 @@ printf '%s' '⎘“d9.g2“' | w112enc > "$TMP/inc/d8.g2"     # W11-2A's chain, 
   && ok "the includer's count resumes after a (nested) include; a 9th level is reported inside d8.g2" || no "count across includes: $(cat "$TMP/inc/err")"
 w113bbad=""
 for w113bs in '1\n⎘“w113cube.g2“\n3‹cube›Ṅ\n' '1\n⎘“sq.g2“\n⎘“w113loc.g2“' '1\n⎘“w113cube.g2“\n\n:‹oops›;\n\n\n‹z›' \
-              '1\n⎘“sq.g2“\n\n⎘“nope.g2“' '\n\n‹a b›' '\n‹abc' '\n⊡f⇒a⇒z;' '1Ṅ\n\n5qṄ\n' '1\n2\n\f3\nq' '⎘“d1.g2“'; do
+              '1\n⎘“sq.g2“\n\n⎘“nope.g2“' '\n\n‹a b›' '\n‹abc' '\n:f⇒a⇒z;' '1Ṅ\n\n5qṄ\n' '1\n2\n\f3\nq' '⎘“d1.g2“'; do
   w113bg=$(printf "$w113bs" | w113b "$TMP/golf2")
   w113br=$(printf "$w113bs" | w113b "python3 $EXP/boot/golfref.py")
   [ "$w113bg" = "$w113br" ] || w113bbad="$w113bbad [$w113bs: $w113bg | $w113br]"
@@ -3041,6 +3035,1164 @@ sed 's/←l∑ 33/←l∑ 34/' "$w114x/main_test.golfj" > "$w114x/bad_test.golfj
   || no "golftest smoke: $(cat "$w114x/gt")"
 [ "$(printf '%s\n' '⊜‹point›‹x›‹y›;' '3 4‹point›' '"‹point-y›' | (cd "$w114x" && "$EXP/tools/golfi" 2>&1) | tail -3)" = "$(printf '<0>\n<1> [3 4]\n<2> [3 4] 4')" ] \
   && ok "golfi keeps a ⊜ record across lines (constructor and accessor in later entries)" || no "golfi records"
+
+# === W12-0 ===
+echo "W12-0: € ⇤ ⌿ ⊞ call their function with the caller's stack underneath (the A1 contract)"
+w120bad=""; w120n=0
+while IFS= read -r w120l; do
+  w120p=${w120l%%  ->*}; w120p=${w120p%"${w120p##*[! ]}"}; w120w=${w120l##*->  }
+  w120n=$((w120n+1))
+  [ "$(printf '%s' "$w120p" | gc | sed 's/ *$//')" = "$w120w" ] || w120bad="$w120bad [$w120p]"
+  [ "$(printf '%s' "$w120p" | gref | sed 's/ *$//')" = "$w120w" ] || w120bad="$w120bad oracle[$w120p]"
+done < <(sed -n '/^### Threading state through/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w120bad" ] && [ "$w120n" -ge 6 ] \
+  && ok "REFERENCE.md's threading examples (running sum/max, counter, ⌿ ⇤ ⊞) print what they say, golf2 and oracle" \
+  || no "REFERENCE threading examples:$w120bad"
+w120reg=$(sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -cE '\| (reserved|shipped) \|$')
+[ "$w120reg" -ge 13 ] && ok "REGISTRY.md §1.4 reserves the W12 bytes ($w120reg rows)" || no "W12 byte reservations: $w120reg"
+
+# === W12-P1 ===
+echo "W12-P1: ‹ints› scans the stdin buffer directly; ‹readbytes›; ‹words› ‹num› ‹readall› rewritten"
+# w12p1m FILE: the REFERENCE "Input" semantics of ‹ints› in Python (words split
+# on 9-13 and 32, one optional sign, digits up to a non-digit, mod 2^64), printed
+# the way ⍕ prints a flat list.
+w12p1m(){ python3 - "$1" <<'PY'
+import sys
+out = []
+for w in open(sys.argv[1], "rb").read().split():
+    i, neg, acc = 0, w[:1] == b"-", 0
+    if w[:1] in (b"-", b"+"): i = 1
+    while i < len(w) and 48 <= w[i] <= 57: acc = acc * 10 + w[i] - 48; i += 1
+    v = (-acc if neg else acc) % 2**64
+    out.append(v - 2**64 if v >= 2**63 else v)
+sys.stdout.write("".join("%d " % v for v in out))
+PY
+}
+# the oracle on stdin: golfref compiles prelude + $1, the binary reads our stdin
+w12p1o(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | python3 boot/golfref.py > "$TMP/w12p1o" 2>/dev/null \
+            && chmod +x "$TMP/w12p1o" && "$TMP/w12p1o"; }
+[ "$(printf '' | gin '‹ints›"≢Ṅ⍕')" = "0" ] && [ "$(printf ' \t\n\r\n  \x0b\x0c ' | gin '‹ints›≢Ṅ')" = "0" ] \
+  && ok "‹ints›: empty input and whitespace-only input give the empty list" || no "ints empty/blank"
+[ "$(printf -- '-1 +2 -30 +0 -0 7 +12 -9x' | gin '‹ints›⍕')" = "-1 2 -30 0 0 7 12 -9 " ] \
+  && ok "‹ints›: '-' negates, '+' is skipped, -0 is 0" || no "ints signs"
+[ "$(printf -- '12ab x -7z +x - + 5-3 -+5 +-5 --1 1x2' | gin '‹ints›⍕')" = "12 0 -7 0 0 0 5 0 0 0 1 " ] \
+  && ok "‹ints›: a word like 12ab is 12, x is 0; a lone sign, a second sign or a later '-' ends the number" || no "ints words"
+[ "$(printf '1\r\n-2\r\n\r\n3\r\n' | gin '‹ints›⍕')" = "1 -2 3 " ] && [ "$(printf '4\t5\x0b6\x0c7' | gin '‹ints›⍕')" = "4 5 6 7 " ] \
+  && ok "‹ints›: CRLF lines, and tab, \\v, \\f between numbers" || no "ints CRLF"
+[ "$(printf '99999999999999999999 9223372036854775808 18446744073709551616 18446744073709551617 -18446744073709551615' | gin '‹ints›⍕')" \
+     = "7766279631452241919 -9223372036854775808 0 1 1 " ] \
+  && [ "$(printf '9223372036854775807 -9223372036854775808' | gin '‹ints›→l←l0⊇Ṅ␤←l1⊇Ṅ')" = "$(printf '9223372036854775807\n-9223372036854775808')" ] \
+  && ok "‹ints›: overflow wraps mod 2^64 (INT64 max and min exactly, 2^64 is 0)" || no "ints wraparound"
+# Numbers, signs and non-number words straddling every 8192-byte refill: token
+# k starts j bytes before the boundary 8192k (j = 0..8), so its sign, its
+# digits or its tail land in the next read.
+python3 - > "$TMP/w12p1b.in" <<'PY'
+import sys
+toks = [b"-1234567", b"+987654", b"12ab34", b"x9", b"7", b"-", b"31415926535"]
+out = bytearray(); k = 1
+for j in range(9):
+    for t in toks:
+        pad = 8192 * k - j - len(out)
+        out += b" " * max(pad, 1) + t; k += 1
+out += b"\n"
+sys.stdout.buffer.write(bytes(out))
+PY
+[ "$(wc -c < "$TMP/w12p1b.in")" -gt 500000 ] && [ "$(gin '‹ints›⍕' < "$TMP/w12p1b.in")" = "$(w12p1m "$TMP/w12p1b.in")" ] \
+  && [ "$(gin '‹readall›‹words›′‹num›€⍕' < "$TMP/w12p1b.in")" = "$(w12p1m "$TMP/w12p1b.in")" ] \
+  && ok "‹ints› (and ‹readall›‹words›′‹num›€) on tokens split across the 8 KB buffer boundary, 63 placements, match Python" \
+  || no "ints across the buffer boundary"
+python3 -c 'import random; r=random.Random(5); a=[b"0",b"1",b"9",b"-",b"+",b" ",b"\n",b"\r",b"\t",b"x",b"\x00",b"\xff",b"/",b":"]; open("'"$TMP"'/w12p1r.in","wb").write(b"".join(r.choice(a) for _ in range(60000)))'
+[ "$(gin '‹ints›⍕' < "$TMP/w12p1r.in")" = "$(w12p1m "$TMP/w12p1r.in")" ] \
+  && [ "$(gin '‹readall›‹words›′‹num›€⍕' < "$TMP/w12p1r.in")" = "$(w12p1m "$TMP/w12p1r.in")" ] \
+  && ok "60 KB of random digits, signs, blanks, NUL and 0xFF: ‹ints› and the ‹words›/‹num› pipeline match Python" || no "ints random bytes"
+[ "$(printf '12 34\n' | gin '‹getc›Ṅ␤‹ints›⍕')" = "$(printf '49\n2 34 ')" ] \
+  && [ "$(printf 'n 2\n5 6\n' | gin '‹readline›_⊐␤‹ints›⍕‹getc›Ṅ')" = "$(printf 'n 2\n5 6 -1')" ] \
+  && ok "‹ints› picks up where ‹getc› / ‹readline› left the shared buffer, and leaves it at end of input" || no "ints after getc"
+# ‹ints› keeps ONE growing list: after it, the live heap holds that list and
+# the 8 KB buffer, not a code list (8 bytes/byte) or 200000 small lists.
+[ "$(gin '‹heapstats›→b_‹ints›≢Ṅ␤‹heapstats›←b-3145728<Ṅ_' < "$TMP/big.in")" = "$(printf '200000\n-1')" ] \
+  && ok "‹ints› of 200000 numbers grows the live heap by under 3 MB (one doubled result list and the buffer)" || no "ints heap growth"
+[ "$(printf '1 -2 x 3\r\n+4' | w12p1o '‹ints›⍕')" = "1 -2 0 3 4 " ] && [ "$(printf 'ab\ncd' | w12p1o '‹readbytes›"🗲⊃≢Ṅ')" = "$(printf 'ab\ncd5')" ] \
+  && ok "oracle: ‹ints› and ‹readbytes› behave identically" || no "oracle ints/readbytes"
+[ "$(printf 'hello\nworld\n' | gin '‹readbytes›🗲')" = "$(printf 'hello\nworld')" ] && [ "$(printf '' | gin '‹readbytes›"@Ṅ⊃≢Ṅ')" = "00" ] \
+  && [ "$(printf 'ab cd' | gin '‹getc›Ṅ‹readbytes›"🗲⊃≢Ṅ‹getc›Ṅ')" = "97b cd4-1" ] \
+  && ok "‹readbytes›: 🗲 prints it, ⊃ makes a code list, empty input is length 0; it takes the rest after ‹getc›, then end of input" \
+  || no "readbytes basics"
+python3 -c 'open("'"$TMP"'/w12p1y.in","wb").write(bytes(range(256))*300)'
+gin '‹readbytes›🗲' < "$TMP/w12p1y.in" > "$TMP/w12p1y.out"; gin '‹readall›⊐' < "$TMP/w12p1y.in" > "$TMP/w12p1z.out"
+cmp -s "$TMP/w12p1y.in" "$TMP/w12p1y.out" && cmp -s "$TMP/w12p1y.in" "$TMP/w12p1z.out" \
+  && [ "$(gin '‹readbytes›⊃"≢Ṅ␤∑Ṅ' < "$TMP/big.in")" = "$(python3 -c 'd=open("'"$TMP"'/big.in","rb").read(); print(len(d)); print(sum(d))')" ] \
+  && ok "‹readbytes›🗲 and ‹readall›⊐ copy 76800 bytes of every value 0-255 exactly; ‹readbytes›⊃ of the 1 MB input: length and byte sum" \
+  || no "readbytes binary / big"
+[ "$(printf 'abc' | gin '‹heapstats›_→n‹readbytes›⌫‹heapstats›_←n-Ṅ')" = "0" ] \
+  && ok "‹readbytes› is an ordinary A block: ⌫ gives it back" || no "readbytes free"
+# === W12-O1 ===
+echo "W12-O1: ± ⊕ ⊖ ² ⊗ ⊘ on a list throw 'not a number' (catchable); on ints, and in bare programs, unchanged"
+# The six templates test TOS's top byte (0x7F) and, only then, call the hook
+# cell 5180864 the prelude fills with ‹_12o1_nan› (exact: tagged AND in the
+# list heap).  w110 (W11-0, above) prints rc, the stdout byte count and stderr.
+w12o1bad=""
+for w12o1a in '±' '⊕' '⊖' '²' '⊗' '⊘'; do
+  [ "$(w110 "7Ṅ5⍳$w12o1a⍕")" = "rc=1 1 GOLF: not a number" ] || w12o1bad="$w12o1bad [$w12o1a: $(w110 "7Ṅ5⍳$w12o1a⍕")]"
+  [ "$(w110 "0⍳$w12o1a")" = "rc=1 0 GOLF: not a number" ] || w12o1bad="$w12o1bad [empty $w12o1a]"
+  [ "$(printf '%s' ":‹f›3⍳$w12o1a;1 2′‹f›‹catch›⊐␤Ṅ␤Ṅ" | gc)" = "$(printf 'not a number\n2\n1')" ] || w12o1bad="$w12o1bad [catch $w12o1a]"
+  [ "$(printf '%s' "7Ṅ5⍳$w12o1a⍕" | gref; echo " rc=$?")" = "7 rc=1" ] || w12o1bad="$w12o1bad [oracle $w12o1a]"
+done
+[ -z "$w12o1bad" ] && ok "each of ± ⊕ ⊖ ² ⊗ ⊘ on a list (empty too): GOLF: not a number on fd 2, exit 1, earlier output flushed; ′f‹catch› gets the message with the stack restored; the oracle agrees" \
+  || no "W12-O1 atoms on lists:$w12o1bad"
+[ "$(printf '%s' '2⍳′⍳€′⊕€⍕' | gc 2>&1)" = "GOLF: not a number" ] && [ "$(printf '%s' '3⍳"⌫⊖' | gc 2>&1)" = "GOLF: not a number" ] \
+  && [ "$(printf '%s' '3⍳′⊕€⍕␤3⍳′²€⍕␤3⍳′±€⍕' | gc)" = "$(printf '1 2 3 \n0 1 4 \n0 -1 -2 ')" ] \
+  && ok "an inner list (′⊕€ over a list of lists) and a freed list throw too; ′⊕ ′² ′± over a list of ints map as before" || no "W12-O1 inner/freed/map"
+# Ints, edge values included: INT64_MAX and every int in [0x7F<<56, 2^63)
+# reach the hook (top byte 0x7F) and must come back untouched, as must the old
+# M-TAG band [2^48, 2^49), INT64_MIN, -1 and a tag-band int pointing below the
+# heap.  Expected values from Python's 64-bit wrap; ⊘ is a LOGICAL shift.
+python3 - "$TMP" <<'PYEOF'
+import sys
+T = sys.argv[1]
+vals = [("9223372036854775807", 2**63 - 1), ("9223372036854775806", 2**63 - 2), ("1 63≪", -2**63),
+        ("281474976710661", 2**48 + 5), ("562949953421311", 2**49 - 1), ("32767 48≪ 4096|", (32767 << 48) | 4096),
+        ("35747322042253312", 0x7F << 48), ("1 63≪±⊖", 2**63 - 1), ("0", 0), ("7", 7), ("1\\neg", -1)]
+ops = {"±": lambda v: -v, "⊕": lambda v: v + 1, "⊖": lambda v: v - 1, "²": lambda v: v * v,
+       "⊗": lambda v: v * 2, "⊘": lambda v: (v % 2**64) >> 1}
+# The raw spellings of the same six, for the bare (no-prelude) program, which cannot print.
+raw = {"±": "~1﹢", "⊕": " 1﹢", "⊖": " 1﹣", "²": "\"﹡", "⊗": "\"﹢", "⊘": " 1>"}
+s = lambda v: (v + 2**63) % 2**64 - 2**63
+prog, want, bare = [], [], []
+for src, v in vals:
+    for g, f in ops.items():
+        prog.append(f"{src}{g}Ṅ␤"); want.append(str(s(f(v))))
+        bare.append(f"{src}{g} {src}{raw[g]}≡1+[89)]")
+open(f"{T}/o1.prog", "w", encoding="utf-8").write("".join(prog))
+open(f"{T}/o1.want", "w").write("\n".join(want) + "\n")
+open(f"{T}/o1.bare", "w", encoding="utf-8").write("".join(bare))
+open(f"{T}/o1.n", "w").write(str(len(bare)))
+PYEOF
+[ "$(gc < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] && [ "$(gref < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] \
+  && ok "on $(cat "$TMP/o1.n") int cases (INT64_MAX/MIN, MAX-1, the old [2^48,2^49) band, 0x7F<<48, a tag-band int below the heap, -1 0 7) the six give Python's 64-bit result, golf2 and oracle" \
+  || no "W12-O1 ints: $(diff <(gc < "$TMP/o1.prog") "$TMP/o1.want" | head -5 | tr '\n' ' ')"
+w12o1y=$(printf '%*s' "$(cat "$TMP/o1.n")" '' | tr ' ' Y)
+mkdir -p "$TMP/o1"; cp "$TMP/o1.bare" "$TMP/o1/b.golfj"
+(cd "$TMP/o1" && "$EXP/tools/golfc" -n -j b.golfj b > /dev/null 2>&1 && ./b > b.out 2>&1; echo $? > b.rc)
+[ "$(cat "$TMP/o1/b.out")" = "$w12o1y" ] && [ "$(cat "$TMP/o1/b.rc")" = 0 ] \
+  && [ "$(cd "$TMP/o1" && "$EXP/tools/golfc" -j b.golfj p > /dev/null 2>&1 && ./p)" = "$w12o1y" ] \
+  && ok "golfc -n (no prelude, the hook cell stays 0): each atom equals its raw spelling on all $(cat "$TMP/o1.n") cases; with the prelude too" \
+  || no "W12-O1 bare: $(cat "$TMP/o1/b.out") rc=$(cat "$TMP/o1/b.rc")"
+w12o1t=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2 as m
+print(all(m.OVERRIDES[b][:7] == [0x80,0x7C,0x24,0x07,0x7F,0x75,15] and m.OVERRIDES[b][22:] == m._ATOM_TPL[b] for b in m.NUMCHK_BYTES),
+      m.NAN_HOOK == 5180864, all(b not in m.OVERRIDES for b in (0x7E,0x24,0x7C,0x3D,0x3E,0xA2,0xA3,0x91,0x92,0x93)))')
+[ "$w12o1t" = "True True True" ] && grep -q '^:‹_12o1_init›\\ref‹_12o1_nan›5180864\\store;$' lib/prelude.golfj \
+  && ok "templates: cmp byte [rsp+7],0x7F; jne over the 15-byte hook call; then the atom byte for byte; hook cell 5180864 (slot O1); ~ \$ | = > ≪ ≫ and the raw atoms stay unchecked" \
+  || no "W12-O1 template shape: $w12o1t"
+w12o1bad=""; w12o1n=0
+while IFS= read -r w12o1l; do
+  w12o1p=${w12o1l%%  ->*}; w12o1p=${w12o1p%"${w12o1p##*[! ]}"}; w12o1w=${w12o1l##*->  }; w12o1n=$((w12o1n+1))
+  [ "$(printf '%s' "$w12o1p" | gc 2>&1 | sed 's/ *$//')" = "$w12o1w" ] || w12o1bad="$w12o1bad [$w12o1p]"
+done < <(sed -n '/^The unary arithmetic atoms/,/^### Atoms$/p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12o1bad" ] && [ "$w12o1n" -ge 4 ] && ok "REFERENCE.md §2's atoms-on-lists examples print what they say" || no "REFERENCE W12-O1 examples:$w12o1bad"
+# === W12-Z3 ===
+echo "W12-Z3: one-letter locals a–z inside a ⊡ word (M-FRAME2's slot table, still ≤ 16)"
+# Inside ⊡ any lowercase letter takes the next slot at its first appearance,
+# exactly as a..h and ‹long› names did; outside ⊡ only M-FRAME's fixed a..h
+# slots exist, so ⇒q there is refused as before.
+w12z3e(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/z3.src"
+          "$TMP/golf2" < "$TMP/z3.src" > /dev/null 2>"$TMP/z3.err"; w12z3g=$?
+          python3 boot/golfref.py < "$TMP/z3.src" > /dev/null 2>"$TMP/z3.rerr"; w12z3r=$?
+          echo "$w12z3g $w12z3r $(cat "$TMP/z3.err") | $(cat "$TMP/z3.rerr")"; }
+w12z3p='⊡‹t›⇒r⇐r[0^]⇐r⇒s⇐s2*⇒a⇐a⇒‹acc›⇐r1-‹t›⇒z⇐z⇐‹acc›+⇐s-;20000‹t›Ṅ'
+[ "$(printf '%s' "$w12z3p" | gc)" = "200010000" ] && [ "$(printf '%s' "$w12z3p" | gref)" = "200010000" ] \
+  && ok "⇒r ⇒s ⇒z mixed with a and ‹acc›, 20,000 deep: each call keeps its own (golf2 and the oracle)" \
+  || no "i–z locals in recursion: $(printf '%s' "$w12z3p" | gc)"
+w94dbin "${w12z3p%%;*};"
+[ "$(w94dhas 4881ed28000000)" = 1 ] && [ "$(w94dhas 4881c528000000)" = 2 ] \
+  && ok "five locals r s a ‹acc› z: sub rbp,40 once, add rbp,40 at the ^ and at ;" \
+  || no "i–z frame size: sub×$(w94dhas 4881ed28000000) add×$(w94dhas 4881c528000000)"
+w94dbin '⊡f⇒z⇒a⇐a⇐z-;'
+[ "$(w94dhas 5848894500)" = 1 ] && [ "$(w94dhas 5848894508)" = 1 ] && [ "$(printf '%s' '⊡f⇒z⇒a⇐a⇐z-;5 3fṄ' | gc)" = "2" ] \
+  && ok "slots go by first appearance, not by letter: ⇒z is [rbp+0], ⇒a [rbp+8]" || no "z/a slot order"
+w12z3k='⇒k⇒l⇒m⇒n⇒o⇒p⇒q⇒r⇒s⇒t⇒u⇒v⇒w⇒x⇒y⇒z'
+[ "$(printf '%s' "⊡f$w12z3k⇐k⇐z-⇐q+;1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16fṄ" | gc)" = "25" ] \
+  && ok "all 16 slots as one-letter locals k…z (⇐k⇐z-⇐q+ = 16-1+10)" || no "16 one-letter locals"
+[ "$(printf '%s' "⊡f$w12z3k⇐k⇒j;" | w12z3e)" = "2 2 GOLF: too many locals j at line 1 | GOLF: too many locals j at line 1" ] \
+  && ok "the 17th distinct one-letter name is GOLF: too many locals j, exit 2 (both)" || no "17th one-letter local: $(printf '%s' "⊡f$w12z3k⇐k⇒j;" | w12z3e)"
+[ "$(printf '%s' "⊡f⇒a⇒b⇒c⇒d⇒e⇒f⇒g⇒h⇒i⇒‹v1›⇒‹v2›⇒‹v3›⇒‹v4›⇒‹v5›⇒‹v6›⇒‹v7›⇒‹v8›;" | w12z3e)" = "2 2 GOLF: too many locals ‹v8› at line 1 | GOLF: too many locals ‹v8› at line 1" ] \
+  && ok "the cap counts one-letter and long names together: a…i + 7 long = 16, the 8th long is the 17th" || no "mixed 17th local"
+[ "$(printf '%s' ':g⇒q;' | w12z3e)" = "2 2 GOLF: local out of range q at line 1 | GOLF: local out of range q at line 1" ] \
+  && [ "$(printf '%s' ':g1⇐z;' | w12z3e)" = "2 2 GOLF: local out of range z at line 1 | GOLF: local out of range z at line 1" ] \
+  && [ "$(printf '%s' '5⇒i' | w12z3e)" = "2 2 GOLF: local out of range i at line 1 | GOLF: local out of range i at line 1" ] \
+  && ok "outside a ⊡ word ⇒q / ⇐z / top-level ⇒i are still local out of range (both)" || no "i–z outside ⊡: $(printf '%s' ':g⇒q;' | w12z3e)"
+[ "$(printf '%s' '⊡f⇒A;' | w12z3e)" = "2 2 GOLF: local out of range A at line 1 | GOLF: local out of range A at line 1" ] \
+  && [ "$(printf '%s' '⊡f⇒{;' | w12z3e)" = "2 2 GOLF: local out of range { at line 1 | GOLF: local out of range { at line 1" ] \
+  && ok "inside ⊡ a one-letter local must still be lowercase: ⇒A and ⇒{ (just past z) are refused" || no "non-lowercase local in ⊡"
+w94dbin '⊡f⇒h⇒a⇐h⇐a-;'
+[ "$(w94dhas 5848894500)" = 1 ] && [ "$(w94dhas 5848894508)" = 1 ] && [ "$(w94dhas 4881ed10000000)" = 1 ] \
+  && [ "$(printf '%s' '⊡f⇒h⇒a⇐h⇐a-;5 3fṄ' | gc)" = "-2" ] \
+  && [ "$(printf '%s' ':g⇒a⇒h;' | w12z3e)" = "0 0  | " ] \
+  && ok "a–h unchanged: same slots and frame inside ⊡, and outside ⊡ ⇒a…⇒h still compile" || no "a–h behaviour"
+# === W12-P2 ===
+echo "W12-P2: dicts that hash once — ‹getor› ‹bump› ‹upd›, the int-key probe, growth"
+# One ‹_2b_find› per call.  An int key has its own hash (8 consecutive ints
+# share a group of index slots) and is compared raw with ≡; a list key keeps
+# ‹hash› and ≣.  ‹hash›'s own values are pinned by the W11-2B block above.
+w12p2a='‹dict›"1 10‹put›_"1 0‹getor›Ṅ32)"2 7‹getor›Ṅ32)"“ab“⊃5‹put›_"“ab“⊃0‹getor›Ṅ32)"3⍳′⍳€9‹getor›Ṅ32)"1‹del›_"1 8‹getor›Ṅ32)‹keys›≢Ṅ'
+[ "$(printf '%s' "$w12p2a" | gc)" = "10 7 5 9 8 1" ] \
+  && ok "‹getor›: present / missing int keys, a list key, a missing nested key, after ‹del›; nothing is inserted" || no "w12-p2 getor"
+w12p2b='‹dict›"5‹bump›_"5‹bump›_"6‹bump›_"5‹get›Ṅ32)"6‹get›Ṅ32)"5‹del›_"5‹bump›_"5‹get›Ṅ32)"‹keys›⍕"‹vals›⍕'
+[ "$(printf '%s' "$w12p2b" | gc)" = "2 1 1 6 5 1 1 " ] \
+  && ok "‹bump›: a missing key starts at 1, a present one counts up; after ‹del› it restarts at 1 and goes last" || no "w12-p2 bump"
+[ "$(printf '%s' '‹dict›"“ab“⊃‹bump›_"“ab“⊃‹bump›_"3⍳′⍳€‹bump›_"3⍳′⍳€‹bump›_"3⍳′⍳€‹bump›_"1⍳5+‹bump›_"5‹bump›_"0⍳‹bump›_"“ab“⊃‹get›Ṅ"3⍳′⍳€‹get›Ṅ"1⍳5+‹get›Ṅ"5‹get›Ṅ"0⍳‹get›Ṅ‹keys›⍕' | gc)" = "23111[97 98] [[] [0] [0 1]] [5] 5 [] " ] \
+  && ok "‹bump› on list keys: code lists made apart, a nested key, [5] vs 5, the empty list" || no "w12-p2 bump list keys"
+# Int keys of every shape: negative, >= 2^62, and 0 after a ‹del› (the deleted
+# entry's key becomes the tagged null, so the raw ≡ can never match it).
+[ "$(printf '%s' '‹dict›"0 1-‹bump›_"0 1-‹bump›_"1 62≪‹bump›_"0‹bump›_"0‹del›_"0 1-‹get›Ṅ"1 62≪‹get›Ṅ"0‹has›Ṅ"0 4‹getor›Ṅ‹keys›≢Ṅ' | gc)" = "21142" ] \
+  && ok "int keys: -1, 2^62, and a deleted 0 is not found by the int probe" || no "w12-p2 int keys"
+w12p2u='‹dict›"4′⊕‹upd›_"4′⊕‹upd›_"4‹get›Ṅ32)"9′⊗‹upd›_"9‹has›Ṅ"9‹get›Ṅ32)"3⍳′⍳€′⊕‹upd›_"3⍳′⍳€′⊕‹upd›_"3⍳′⍳€‹get›Ṅ32)"4‹del›_"4′⊕‹upd›_"‹keys›⍕‹vals›⍕'
+[ "$(printf '%s' "$w12p2u" | gc)" = "2 00 2 9 [[] [0] [0 1]] 4 0 2 1 " ] \
+  && ok "‹upd›: a missing key gets 0 first, then f; present keys, a nested list key, after ‹del›" || no "w12-p2 upd"
+# f runs with the caller's stack under v, and may use the dict itself: bump
+# another key (the entry stays put: written in place), grow the table past
+# several doublings (the entry moved: a second probe stores it), or delete
+# k (stored again).  An f that throws leaves k at 0 and unwinds to ‹catch›.
+[ "$(printf '%s' ':f&+;‹dict›→d 7←d 3′f‹upd›_←d 3′f‹upd›_←d 3‹get›ṄṄ' | gc)" = "147" ] \
+  && [ "$(printf '%s' ':g←d 1‹bump›_10+;‹dict›→d ←d 2′g‹upd›_←d 2′g‹upd›_←d‹keys›⍕←d‹vals›⍕' | gc)" = "2 1 20 2 " ] \
+  && ok "‹upd› threads the caller's stack to f; f may ‹bump› the same dict" || no "w12-p2 upd threading"
+w12p2g=':h0→i{←d←i1000+‹bump›_←i⊕"→i100≡}5+;‹dict›→d ←d 7′h‹upd›_←d 7‹get›Ṅ32)←d‹keys›≢Ṅ32)←d1⊇Ṅ32)←d‹keys›0⊇Ṅ'
+[ "$(printf '%s' "$w12p2g" | gc)" = "5 101 256 7" ] \
+  && [ "$(printf '%s' ':q←d 7‹del›_1+;‹dict›→d ←d 7 5‹put›_←d 7′q‹upd›_←d 7‹get›Ṅ←d‹keys›≢Ṅ' | gc)" = "61" ] \
+  && [ "$(printf '%s' ':t“boom“⊃‹throw›;:u←d 3′t‹upd›;‹dict›→d ′u‹catch›⊐32)←d 3‹get›Ṅ' | gc)" = "boom 0" ] \
+  && ok "‹upd›: f that grows the table (8 -> 256) or deletes k still lands; a throwing f is caught" || no "w12-p2 upd reentry"
+# Growth: 100,000 keys on a power-of-two stride (the shape a plain
+# multiplicative hash piles up on), bumped twice each: cap 8 doubles to
+# 65536, then quadruples to 262144; keys stay in order.
+w12p2s='‹dict›→‹d›0→‹i›{←‹d›←‹i›65536*‹bump›_←‹i›⊕"→‹i›100000≡}0→‹i›{←‹d›←‹i›65536*‹bump›_←‹i›⊕"→‹i›100000≡}←‹d›‹vals›∑Ṅ32)←‹d›‹keys›≢Ṅ32)←‹d›‹keys›100000⍳65536*≣Ṅ32)←‹d›1⊇Ṅ'
+printf '%s' "$w12p2s" | gc > /dev/null; cp "$TMP/p" "$TMP/w12p2s"
+w12p2t0=$(date +%s%N); w12p2so=$("$TMP/w12p2s"); w12p2t1=$(date +%s%N); w12p2ms=$(( (w12p2t1 - w12p2t0) / 1000000 ))
+[ "$w12p2so" = "200000 100000 -1 262144" ] && [ "$w12p2ms" -lt 1000 ] \
+  && ok "growth: 100k stride-65536 keys bumped twice, cap 262144, order and counts intact, ${w12p2ms} ms (< 1000)" || no "w12-p2 growth ($w12p2so, ${w12p2ms} ms)"
+# A million ‹bump›s (500,000 distinct keys): about 0.1 s here, the bound is
+# generous for slow machines.
+printf '%s' ':f2/←d\\‹bump›_0;‹dict›→d 1000000⍳′f€_ ←d‹keys›≢Ṅ32)←d‹vals›∑Ṅ' | gc > /dev/null; cp "$TMP/p" "$TMP/w12p2m"
+w12p2t0=$(date +%s%N); w12p2mo=$("$TMP/w12p2m"); w12p2t1=$(date +%s%N); w12p2ms=$(( (w12p2t1 - w12p2t0) / 1000000 ))
+[ "$w12p2mo" = "500000 1000000" ] && [ "$w12p2ms" -lt 1000 ] \
+  && ok "1M ‹bump› (500k distinct): right counts, ${w12p2ms} ms (< 1000)" || no "w12-p2 1M bump ($w12p2mo, ${w12p2ms} ms)"
+# The word count again, with ‹bump›: the same output as W11-2B's.
+printf '%s' ':‹tally›←‹d›\\‹bump›;:‹show›→‹k›←‹d›←‹k›‹get›Ṅ“ “🗲←‹k›⊐␤0;‹dict›→‹d›‹readall›‹words›′‹tally›€_←‹d›‹keys›′‹show›€_' | gc > /dev/null
+"$TMP/p" < "$TMP/w112b.in" > "$TMP/w12p2wc.got"
+[ -s "$TMP/w12p2wc.got" ] && cmp -s "$TMP/w12p2wc.got" <("$TMP/w112bwc" < "$TMP/w112b.in") \
+  && ok "word count with ‹bump› prints exactly what the W11-2B has/get/put version does" || no "w12-p2 word count"
+# The oracle runs the new words identically.
+w12p2bad=""
+for w12p2p in "$w12p2a" "$w12p2b" "$w12p2u" "$w12p2g"; do
+  [ "$(printf '%s' "$w12p2p" | gref)" = "$(printf '%s' "$w12p2p" | gc)" ] || w12p2bad="$w12p2bad [$w12p2p]"
+done
+[ -z "$w12p2bad" ] && ok "oracle: boot/golfref.py runs ‹getor› ‹bump› ‹upd› (and a grow inside f) identically" || no "w12-p2 oracle:$w12p2bad"
+# REFERENCE.md's examples of the three words print what they say, golf2 and
+# oracle (the W11-2B block checks the whole section on golf2 too).
+w12p2bad=""; w12p2n=0
+while IFS= read -r w12p2l; do
+  w12p2p=${w12p2l%%  ->*}; w12p2p=${w12p2p%"${w12p2p##*[! ]}"}; w12p2w=${w12p2l##*->  }
+  w12p2n=$((w12p2n+1))
+  [ "$(printf '%s' "$w12p2p" | gc | sed 's/ *$//')" = "$w12p2w" ] || w12p2bad="$w12p2bad [$w12p2p]"
+  [ "$(printf '%s' "$w12p2p" | gref | sed 's/ *$//')" = "$w12p2w" ] || w12p2bad="$w12p2bad oracle[$w12p2p]"
+done < <(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ' | grep -- '‹getor›\|‹bump›\|‹upd›')
+[ -z "$w12p2bad" ] && [ "$w12p2n" -ge 6 ] \
+  && ok "REFERENCE.md's ‹getor› ‹bump› ‹upd› examples ($w12p2n) print what they say, golf2 and oracle" || no "REFERENCE W12-P2 examples:$w12p2bad"
+
+# === W12-Z4 ===
+echo "W12-Z4: ⍈ store-at, the growable vector (⍆ ⍅ ‹vec› ‹last› ‹first›) and the deque (‹deque› ‹pushf› ‹popf›)"
+# ⍈ is ⊇'s twin; a vector is a list whose spare capacity (A's header cell)
+# ⍆ fills before it doubles into a new block; a deque is a ring in one block
+# tagged 0x7FFD.  w110 (W11-0, above) prints rc, the stdout byte count and stderr.
+[ "$(printf '%s' '5⍳2 9⍈⍕␤5⍳"2 9⍈≡Ṅ␤5⍳→l ←l4 0 9-⍈_ ←l∑Ṅ␤3⍳′⍳€1 5⍳⍈⍕␤5⍳0 7⍈4 8⍈⍕' | gc)" \
+    = "$(printf '0 1 9 3 4 \n-1\n-3\n[] [0 1 2 3 4] [0 1] \n7 1 2 3 8 ')" ] \
+  && ok "⍈ stores in place and leaves the same l (≡ -1), negative values and list values too" || no "⍈ basics: $(printf '%s' '5⍳2 9⍈⍕' | gc)"
+w12z4bad=""
+for w12z4a in '5⍳5 9⍈' '5⍳0 1-9⍈' '0⍳0 9⍈' '5⍳9 1 63≪|9⍈' '‹vec›‹last›' '‹vec›‹first›' '‹deque›‹first›' '‹deque›‹last›'; do
+  [ "$(w110 "$w12z4a")" = "rc=1 0 GOLF: index out of range" ] || w12z4bad="$w12z4bad [$w12z4a: $(w110 "$w12z4a")]"
+done
+[ "$(w110 '7Ṅ‹vec›⍅')" = "rc=1 1 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [vec pop]"
+[ "$(w110 '‹vec›1⍆⍅_⍅')" = "rc=1 0 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [vec pop 2]"
+[ "$(w110 '‹deque›⍅')" = "rc=1 0 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [deque pop]"
+[ "$(w110 '‹deque›1‹pushf›‹popf›_‹popf›')" = "rc=1 0 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [deque popf]"
+[ "$(w110 '5⍳1‹pushf›')" = "rc=1 0 GOLF: not a deque" ] && [ "$(w110 '‹vec›‹popf›')" = "rc=1 0 GOLF: not a deque" ] || w12z4bad="$w12z4bad [not a deque]"
+[ -z "$w12z4bad" ] && ok "errors through ‹throw›: index out of range (⍈ past the end, negative, on empty; ‹first›/‹last› of an empty vector or deque), pop from empty (both ends), not a deque; earlier output flushed" \
+  || no "W12-Z4 errors:$w12z4bad"
+w12z4bad=""
+for w12z4a in '0 9⍈' '1⍆' '⍅' '‹first›' '‹last›'; do
+  [ "$(w110 "5⍳\"⌫$w12z4a")" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [list $w12z4a]"
+  [ "$(w110 "300⍳\"⌫$w12z4a")" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [class-7 list $w12z4a]"
+done
+for w12z4a in '1⍆' '⍅' '1‹pushf›' '‹popf›' '‹first›' '‹last›' '≢'; do
+  [ "$(w110 "‹deque›1⍆\"⌫$w12z4a")" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [deque $w12z4a]"
+done
+[ "$(w110 '‹vec›→v←v1⍆2⍆3⍆_←v≢Ṅ←v4⍆_←v≢')" = "rc=1 1 GOLF: use after free" ] && [ "$(w110 '‹vec›→v←v1⍆2⍆3⍆4⍆_←v≢')" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [stale after growth]"
+[ "$(w110 '‹vec›→v←v1⍆2⍆3⍆4⍆_ ←v⌫')" = "rc=1 0 GOLF: double free" ] || w12z4bad="$w12z4bad [stale ⌫]"
+[ -z "$w12z4bad" ] && ok "use after free: ⍈ ⍆ ⍅ ‹first› ‹last› on a freed list (small and class 7), every deque word on a freed deque, and the value a growth left behind (⌫ of it: double free)" \
+  || no "W12-Z4 use after free:$w12z4bad"
+[ "$(printf '%s' ':‹f›‹vec›⍅;1 2′‹f›‹catch›⊐␤Ṅ␤Ṅ␤:‹g›5⍳7 0⍈;′‹g›‹catch›⊐␤:‹h›‹deque›‹popf›;′‹h›‹catch›⊐' | gc)" \
+    = "$(printf 'pop from empty\n2\n1\nindex out of range\npop from empty')" ] \
+  && ok "′f‹catch› gets pop from empty / index out of range, with the caller's stack restored" || no "W12-Z4 catch"
+# Capacity: ‹vec› is A(1) = class 4, (4+1)*8 = 40 bytes; each growth doubles
+# the block (past 256 cells class 7 gives exactly the request) and gives the
+# old one back, so the live block count stays +1 and the bytes are (cap+1)*8.
+python3 - "$TMP" <<'PYEOF'
+import sys
+T = sys.argv[1]
+marks = [0, 3, 4, 7, 8, 15, 16, 100, 255, 256, 511, 512, 1023, 1024, 5000]
+prog = [":‹p›←‹v›\\\\⍆→‹v›0;‹heapstats›→b→n‹vec›→‹v›"]
+want, done, model = [], 0, []
+for m in marks:
+    if m > done:
+        prog.append(f"{m - done}⍳\"′‹p›€⌫⌫")
+        model += range(m - done)
+        done = m
+    prog.append("‹heapstats›←b-Ṅ“ “🗲←n-Ṅ“ “🗲←‹v›≢Ṅ“ “🗲←‹v›∑Ṅ␤")
+    cap = 4
+    while m + 1 > cap:
+        cap *= 2
+    want.append(f"{(cap + 1) * 8} 1 {m} {sum(model)}")
+prog.append("←‹v›⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤")
+want.append("0 0")
+open(f"{T}/z4cap.prog", "w", encoding="utf-8").write("".join(prog))
+open(f"{T}/z4cap.want", "w").write("\n".join(want) + "\n")
+PYEOF
+[ "$(gc < "$TMP/z4cap.prog")" = "$(cat "$TMP/z4cap.want")" ] \
+  && ok "‹heapstats› through 11 doublings (3 → 8191 elements): one live block of (cap+1)*8 bytes, ≢ and ∑ right at every step; ⌫ of the grown vector gives back exactly that block" \
+  || no "W12-Z4 capacity: $(diff <(gc < "$TMP/z4cap.prog") "$TMP/z4cap.want" | head -4 | tr '\n' ' ')"
+[ "$(printf '%s' '5⍳→l ←l7⍆_ ←l≢Ṅ␤←l8⍆_ ←l"≢Ṅ⍕␤←l9⍆≡Ṅ␤3‹vecn›→v‹heapstats›_→n←v1⍆2⍆3⍆_‹heapstats›_←n-Ṅ' | gc)" \
+    = "$(printf '6\n70 1 2 3 4 7 8 \n0\n0')" ] \
+  && ok "⍆ on a ⍳ list appends in place into its spare room (5⍳ holds 7, so the 8th push moves it: ≡ 0); 3‹vecn› takes 3 pushes without a growth" || no "W12-Z4 in-place / vecn"
+# Random workloads against a Python model, through golf2 AND the oracle: a
+# vector (⍆ ⍅ ⍈ ⊇ ‹first› ‹last› ≢ ∑) and a deque (both ends, peeks, ≢),
+# with push-heavy and pop-heavy phases so the deque's ring wraps and doubles
+# several times.
+python3 - "$TMP" <<'PYEOF'
+import random, sys
+from collections import deque
+T = sys.argv[1]
+r = random.Random(1204)
+p, w, v = ["‹vec›→v"], [], []
+for step in range(900):
+    bias = 0.8 if (step // 150) % 2 == 0 else 0.3
+    x = r.randrange(0, 10**6)
+    op = r.random()
+    if op < bias or not v:
+        p.append(f"←v{x}⍆→v"); v.append(x)
+    else:
+        k = r.randrange(6)
+        if k == 0:
+            p.append("←v⍅Ṅ␤_"); w.append(v.pop())
+        elif k == 1:
+            i = r.randrange(len(v)); p.append(f"←v{i} {x}⍈_"); v[i] = x
+        elif k == 2:
+            i = r.randrange(len(v)); p.append(f"←v{i}⊇Ṅ␤"); w.append(v[i])
+        elif k == 3:
+            p.append("←v‹first›Ṅ␤←v‹last›Ṅ␤"); w += [v[0], v[-1]]
+        else:
+            p.append("←v≢Ṅ␤←v∑Ṅ␤"); w += [len(v), sum(v)]
+open(f"{T}/z4vec.prog", "w", encoding="utf-8").write("".join(p))
+open(f"{T}/z4vec.want", "w").write("".join(f"{a}\n" for a in w))
+p, w, d = ["‹deque›→d"], [], deque()
+for step in range(1500):
+    bias = 0.75 if (step // 250) % 2 == 0 else 0.35
+    x = r.randrange(0, 10**6)
+    if r.random() < bias or not d:
+        if r.random() < 0.5:
+            p.append(f"←d{x}⍆→d"); d.append(x)
+        else:
+            p.append(f"←d{x}‹pushf›→d"); d.appendleft(x)
+    else:
+        k = r.randrange(5)
+        if k == 0:
+            p.append("←d⍅Ṅ␤_"); w.append(d.pop())
+        elif k == 1:
+            p.append("←d‹popf›Ṅ␤_"); w.append(d.popleft())
+        elif k == 2:
+            p.append("←d‹first›Ṅ␤"); w.append(d[0])
+        elif k == 3:
+            p.append("←d‹last›Ṅ␤"); w.append(d[-1])
+        else:
+            p.append("←d≢Ṅ␤"); w.append(len(d))
+p.append("←d≢Ṅ␤")
+w.append(len(d))
+open(f"{T}/z4deq.prog", "w", encoding="utf-8").write("".join(p))
+open(f"{T}/z4deq.want", "w").write("".join(f"{a}\n" for a in w))
+PYEOF
+[ "$(gc < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] && [ "$(gref < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] \
+  && ok "900 random vector ops (⍆ ⍅ ⍈ ⊇ ‹first› ‹last› ≢ ∑) match a Python list, golf2 and oracle" \
+  || no "W12-Z4 vector model: $(diff <(gc < "$TMP/z4vec.prog") "$TMP/z4vec.want" | head -4 | tr '\n' ' ')"
+[ "$(gc < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] && [ "$(gref < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] \
+  && ok "1500 random deque ops at both ends (wrapping, growing) match collections.deque, golf2 and oracle" \
+  || no "W12-Z4 deque model: $(diff <(gc < "$TMP/z4deq.prog") "$TMP/z4deq.want" | head -4 | tr '\n' ' ')"
+[ "$(printf '%s' '‹heapstats›→b→n‹deque›→d 1000→i{←d←i‹pushf›→d←i⊖"→i0≡}‹heapstats›←b-Ṅ“ “🗲←n-Ṅ“ “🗲←d≢Ṅ“ “🗲←d‹first›Ṅ“ “🗲←d‹last›Ṅ␤←d⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤‹deque›"T Ṅ"16≪16>"⊙Ṅ8﹢⊙Ṅ' | gc)" \
+    = "$(printf '8200 1 1000 1 1000\n0 0\n100')" ] \
+  && ok "a deque grown to 1000 by ‹pushf› is one live block (cap 1024: 8200 bytes) and ⌫ gives it back; T calls a deque an int; a new one is [n=0, h=0, …]" \
+  || no "W12-Z4 deque heap: $(printf '%s' '‹heapstats›→b→n‹deque›→d 1000→i{←d←i‹pushf›→d←i⊖"→i0≡}‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)"
+[ "$(printf '%s' '⍈⍆⍅\putat\push\pop' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "d5d6d7d5d6d7" ] \
+  && grep -qE '^\| `0xD5` \| `\\putat` \| `⍈` .*\| Z4 \| shipped \|$' REGISTRY.md \
+  && grep -qE '^\| `0xD6` \| `\\push` \| `⍆` .*\| Z4 \| shipped \|$' REGISTRY.md \
+  && grep -qE '^\| `0xD7` \| `\\pop` \| `⍅` .*\| Z4 \| shipped \|$' REGISTRY.md \
+  && ok "⍈ ⍆ ⍅ and \\putat \\push \\pop encode to 0xD5–0xD7; REGISTRY §1.4 marks the three shipped" || no "W12-Z4 codepage / registry rows"
+# The three LeetCode rewrites (bench/leetcode/golf) use the new words and no
+# raw-memory stack any more; small inputs, answers from the Python solutions.
+w12z4bad=""
+mkdir -p "$TMP/z4lc"
+for w12z4a in parens islands slidemax; do
+  "$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/$w12z4a.golfj" "$TMP/z4lc/$w12z4a" > /dev/null 2>&1 || w12z4bad="$w12z4bad [compile $w12z4a]"
+done
+grep -q '⊛' bench/leetcode/golf/parens.golfj bench/leetcode/golf/islands.golfj bench/leetcode/golf/slidemax.golfj && w12z4bad="$w12z4bad [raw ⊛ left]"
+grep -q '⍆' bench/leetcode/golf/parens.golfj && grep -q '⍈' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
+for w12z4a in '([]{})' '([)]' '((' '())' '}' '{[()()]}'; do
+  [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/parens")" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/parens.py)" ] || w12z4bad="$w12z4bad [parens $w12z4a]"
+done
+for w12z4a in '11000 11000 00100 00011' '1 0 1' '111 101 111' '0000 0000' '10101 01010 10101'; do
+  [ "$(printf '%s\n' $w12z4a | "$TMP/z4lc/islands")" = "$(printf '%s\n' $w12z4a | python3 bench/leetcode/py/islands.py)" ] || w12z4bad="$w12z4bad [islands $w12z4a]"
+done
+for w12z4a in '3 1 3 -1 -3 5 3 6 7' '1 4 2 9' '2 9 8 7 6 5' '4 1 2 3 4 5 6' '3 5 5 5 5'; do
+  [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/slidemax" | sed 's/ *$//')" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/slidemax.py)" ] || w12z4bad="$w12z4bad [slidemax $w12z4a]"
+done
+[ -z "$w12z4bad" ] && ok "LeetCode parens (⍆ ⍅), islands (⍈ ⊇ ⍆ ⍅) and slidemax (deque, since W12-A5 one ⊟) lost their raw stacks and still answer like the Python solutions" \
+  || no "W12-Z4 LeetCode rewrites:$w12z4bad"
+w12z4bad=""; w12z4n=0
+while IFS= read -r w12z4l; do
+  w12z4p=${w12z4l%%  ->*}; w12z4p=${w12z4p%"${w12z4p##*[! ]}"}; w12z4w=${w12z4l##*->  }; w12z4n=$((w12z4n+1))
+  [ "$(printf '%s' "$w12z4p" | gc 2>&1 | sed 's/ *$//')" = "$w12z4w" ] || w12z4bad="$w12z4bad [$w12z4p]"
+  case "$w12z4w" in GOLF:*) ;; *) [ "$(printf '%s' "$w12z4p" | gref | sed 's/ *$//')" = "$w12z4w" ] || w12z4bad="$w12z4bad oracle[$w12z4p]";; esac
+done < <(sed -n '/^### Vectors and deques$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12z4bad" ] && [ "$w12z4n" -ge 8 ] && ok "REFERENCE.md's Vectors and deques examples print what they say (golf2; the oracle too, but for the stderr ones)" \
+  || no "REFERENCE W12-Z4 examples:$w12z4bad"
+
+# === W12-P3 ===
+echo "W12-P3: tight loops in ⍳ ∑ ∏ ⌽ € ⇤ ⌿ ⊞ and the elementwise + - * ⌈ ⌊"
+# ⍳ ∑ ∏ run a one-at-a-time head loop until the rest is a multiple of four,
+# then a four-wide body, so every length 0..9 takes a different split; the
+# other words walk one pointer against an end.  Checked against Python.
+w12p3a=""
+for n in 0 1 2 3 4 5 6 7 8 9; do
+  w12p3p=":f2∣;$n⍳⍕␤$n⍳∑Ṅ␤$n⍳1+∏Ṅ␤$n⍳⌽⍕␤$n⍳′²€⍕␤$n⍳7′+⇤Ṅ␤$n⍳′f⌿⍕␤$n⍳$n 2+⍳′*⊞⍕␤$n⍳\"+⍕␤$n⍳3-⍕␤10 $n⍳-⍕␤$n⍳4⍳+⍕␤$n⍳2⌈⍕␤$n⍳0 2-⌊⍕"
+  w12p3w=$(python3 - "$n" <<'PY'
+import sys, math
+n = int(sys.argv[1]); l = list(range(n)); j = lambda v: " ".join(map(str, v))
+print("\n".join([j(l), str(sum(l)), str(math.factorial(n)), j(l[::-1]), j(x*x for x in l),
+                 str(7 + sum(l)), j(x for x in l if x % 2 == 0), j(x*x for x in l), j(2*x for x in l),
+                 j(x-3 for x in l), j(10-x for x in l), j(2*x for x in l[:4]), j(max(x, 2) for x in l),
+                 j(min(x, -2) for x in l)]))
+PY
+)
+  [ "$(printf '%s' "$w12p3p" | gc | sed 's/ *$//')" = "$w12p3w" ] || w12p3a="$w12p3a $n"
+done
+[ -z "$w12p3a" ] && ok "lengths 0..9: ⍳ ∑ ∏ ⌽ € ⇤ ⌿ ⊞ and list+list, list-scalar, scalar-list, ⌈ ⌊ match Python" \
+  || no "W12-P3 lengths:$w12p3a"
+# Nesting: a map inside a map inside a map, ∑ of each inner list, and the
+# elementwise ops on a list that mixes ints and lists (each int element takes
+# the inline op, each list element recurses).
+w12p3n=':m′²€;:s⍳′⍳€;:n′m€;:u′∑€;4⍳′⍳€′m€⍕␤4⍳′s€′n€⍕␤4⍳′s€′u€⍕␤4⍳′s€′u€′∑€⍕'
+[ "$(printf '%s' "$w12p3n" | gc | sed 's/ *$//')" = "$(printf '[] [0] [0 1] [0 1 4]\n[] [[]] [[] [0]] [[] [0] [0 1]]\n[] [0] [0 0] [0 0 1]\n0 0 0 1')" ] \
+  && [ "$(printf '%s' "$w12p3n" | gref)" = "$(printf '%s' "$w12p3n" | gc)" ] \
+  && ok "map inside map inside map, ∑ inside two maps (golf2 and the oracle)" || no "W12-P3 nesting: $(printf '%s' "$w12p3n" | gc)"
+w12p3m='3⍳2⍳′⍳€⧺"10+⍕␤"10\\-⍕␤""+⍕␤"∑⍕␤""*⍕␤"3⌈⍕␤"1⌊⍕␤∏⍕'
+[ "$(printf '%s' "$w12p3m" | gc | sed 's/ *$//')" = "$(printf '10 11 12 [] [10]\n10 9 8 [] [10]\n0 2 4 [] [0]\n\n0 1 4 [] [0]\n3 3 3 [] [3]\n0 1 1 [] [0]\n')" ] \
+  && ok "0 1 2 [] [0] with + - * ⌈ ⌊ ∑ ∏: ints inline, lists recurse, ∑ through a list accumulator" || no "W12-P3 mixed: $(printf '%s' "$w12p3m" | gc)"
+# A throw from inside the user's function mid-loop is caught; the spill
+# stack is back to 0 and the same word works again (its loop cells are
+# re-initialised on entry).  Then a use-after-free met mid-loop inside the
+# elementwise recursion and inside ∑'s accumulator +.
+[ "$(w113 ':t"2≡1+[“two“⊃‹throw›];:g5⍳′t€;′g‹catch›⊐␤7⍳′²€⍕␤:h9⍳′g€;′h‹catch›⊐␤3⍳′⍳€′∑€⍕␤5177392@Ṅ')" \
+    = "$(printf 'two\n0 1 4 9 16 25 36 \ntwo\n0 0 1 \n0 rc=0')" ] \
+  && [ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:g5⍳0′t⇤;′g‹catch›⊐␤7⍳0′+⇤Ṅ␤5177392@Ṅ')" = "$(printf 'two\n21\n0 rc=0')" ] \
+  && [ "$(w113 ':t"2≡1+[“two“⊃‹throw›]2∣;:g5⍳′t⌿;′g‹catch›⊐␤:f2∣;7⍳′f⌿⍕␤5177392@Ṅ')" = "$(printf 'two\n0 2 4 6 \n0 rc=0')" ] \
+  && [ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:g5⍳5⍳′t⊞;′g‹catch›⊐␤7⍳5⍳′+⊞⍕␤5177392@Ṅ')" = "$(printf 'two\n0 2 4 6 8 \n0 rc=0')" ] \
+  && ok "a throw from € (also nested in €), ⇤, ⌿, ⊞ mid-loop is caught, then the word runs again; spill stack back to 0" \
+  || no "W12-P3 throw mid-loop"
+[ "$(w113 ':g9⍳′⍳€"4⊇⌫"+;′g‹catch›⊐␤9⍳′⍳€"+⍕␤:h9⍳′⍳€"4⊇⌫∑;′h‹catch›⊐␤5⍳∑Ṅ␤5177392@Ṅ')" \
+    = "$(printf 'use after free\n[] [0] [0 2] [0 2 4] [0 2 4 6] [0 2 4 6 8] [0 2 4 6 8 10] [0 2 4 6 8 10 12] [0 2 4 6 8 10 12 14] \nuse after free\n10\n0 rc=0')" ] \
+  && ok "use after free met mid-loop inside + and inside ∑'s accumulator: caught, then + and ∑ work again" || no "W12-P3 uaf mid-loop"
+# ⍳ ∑ ∏ ⌽ take no spill frame and never touch s0..s7: their state is the
+# data stack plus slot P3's cells (REGISTRY §3.2), which nothing they call
+# re-enters.  The elementwise path takes one frame per nesting level (it was
+# two, D and Z/K/G), so + now goes 3000 deep, and past the 4096 frames it
+# still stops with the W10-C message, catchable as W11-3A made it.
+[ "$(printf '%s' '12345 5177440⊛ 9⍳∑_ 9⍳1+∏_ 9⍳⌽_ 9⍳"+_ 5177440⊙Ṅ' | gc)" = "12345" ] \
+  && [ "$(sed -n '/^:[RSPV]/,/;$/p' lib/prelude.golfj | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5180800 5180808 5180816 " ] \
+  && ok "⍳ ∑ ∏ ⌽ leave s0..s7 alone and name only P3's cells 5180800 5180808 5180816" || no "W12-P3 cells"
+[ "$( { printf '%s' "$W10CW"; w10cn 3000 3; printf '"+⍤N E'; } | gc)" = "3001" ] \
+  && ok "+ of a list nested 3000 deep with itself (one spill frame per level)" || no "W12-P3 + 3000 deep"
+w12p3x=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '"+⍤N E'; } | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+           && chmod +x "$TMP/p" && { "$TMP/p" > "$TMP/w12p3.out" 2>&1; echo "rc=$?"; } 2>/dev/null)
+[ "$w12p3x" = "rc=1" ] && [ "$(cat "$TMP/w12p3.out")" = "GOLF: spill stack exhausted" ] \
+  && [ "$( { printf '%s:‹d›"+⍤;' "$W10CW"; w10cn 100000 3; printf '′‹d›‹catch›⊐␤5⍳"+⍕'; } | gc)" = "$(printf 'spill stack exhausted\n0 2 4 6 8 ')" ] \
+  && ok "+ 100,000 deep: GOLF: spill stack exhausted, exit 1; under ‹catch› the message, then + works" || no "W12-P3 + spill exhaustion: $w12p3x"
+
+# === W12-A2 ===
+echo "W12-A2: ⍀ inclusive scan and ⍁ seedless reduce"
+# REFERENCE.md's examples for ⍀ ⍁ ⍸ (A2 and A3 share the section), on golf2
+# and, for those that print on stdout, the oracle.
+w12a2bad=""; w12a2n=0
+while IFS= read -r w12a2l; do
+  w12a2p=${w12a2l%%  ->*}; w12a2p=${w12a2p%"${w12a2p##*[! ]}"}; w12a2w=${w12a2l##*->  }
+  w12a2n=$((w12a2n+1))
+  [ "$(printf '%s' "$w12a2p" | gc 2>&1 | sed 's/ *$//')" = "$w12a2w" ] || w12a2bad="$w12a2bad [$w12a2p]"
+  case "$w12a2w" in GOLF:*) ;; *) [ "$(printf '%s' "$w12a2p" | gref | sed 's/ *$//')" = "$w12a2w" ] || w12a2bad="$w12a2bad oracle[$w12a2p]";; esac
+done < <(sed -n '/^### Scan, reduce and each-indexed/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12a2bad" ] && [ "$w12a2n" -ge 15 ] \
+  && ok "REFERENCE.md's ⍀ ⍁ ⍸ examples ($w12a2n) print what they say, golf2 and oracle" || no "W12-A2 REFERENCE examples:$w12a2bad"
+# Every length 0..9 (and 100000), scan of + and of ⌈ over a shuffled list,
+# reduce of + and ⌊, checked against Python.
+w12a2a=""
+for n in 0 1 2 3 4 5 6 7 8 9; do
+  w12a2p=":g7*11∣3-;$n⍳′g€\"′+⍀⍕␤\"′⌈⍀⍕␤\"≢0≡[\"′+⍁Ṅ␤\"′⌊⍁Ṅ]␤_"
+  w12a2w=$(python3 - "$n" <<'PY'
+import sys, itertools
+n = int(sys.argv[1]); l = [(x*7) % 11 - 3 for x in range(n)]; j = lambda v: " ".join(map(str, v))
+out = [j(itertools.accumulate(l)), j(itertools.accumulate(l, max))]
+if n: out += [str(sum(l)), str(min(l))]
+print("\n".join(out + [""]))
+PY
+)
+  [ "$(printf '%s' "$w12a2p" | gc | sed 's/ *$//')" = "$w12a2w" ] || w12a2a="$w12a2a $n"
+done
+[ -z "$w12a2a" ] && [ "$(printf '%s' '100000⍳"′+⍀"≢Ṅ␤99999⊇Ṅ␤"′+⍁Ṅ␤∑Ṅ' | gc)" = "$(printf '100000\n4999950000\n4999950000\n4999950000')" ] \
+  && ok "lengths 0..9 and 100000: ⍀ (+, ⌈) and ⍁ (+, ⌊) match Python's accumulate / sum / min" || no "W12-A2 lengths:$w12a2a"
+# A scan inside a scan's function inside a reduce's, a reduce inside a
+# reduce's, and the input is never written; the result is a new tagged list,
+# the empty one too.
+[ "$(printf '%s' ':a⍳′+⍀∑;:b⍳′a€′+⍀∑+;:r⍳1+′*⍁+;6⍳′b⍀⍕␤4⍳1+′r⍁Ṅ␤5⍳"′+⍀_⍕␤5⍳′+⍀48>Ṅ␤0⍳′+⍀48>Ṅ␤3⍳′⍳€′⧺⍁⍤Ṅ' | gc)" \
+    = "$(printf '0 0 0 1 7 28 \n33\n0 1 2 3 4 \n32767\n32767\n1')" ] \
+  && [ "$(printf '%s' ':a⍳′+⍀∑;:b⍳′a€′+⍀∑+;6⍳′b⍀⍕' | gref)" = "0 0 0 1 7 28 " ] \
+  && ok "⍀ inside ⍀ inside € inside ⍀, ⍁ inside ⍁ (and the oracle); input unchanged; results tagged" || no "W12-A2 nesting: $(printf '%s' ':a⍳′+⍀∑;:b⍳′a€′+⍀∑+;6⍳′b⍀⍕' | gc)"
+# A throw from f mid-scan / mid-reduce is caught, the word runs again and the
+# spill stack is back to 0; empty reduce is catchable; errors exit 1 with the
+# output so far flushed.
+[ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:g5⍳′t⍀;′g‹catch›⊐␤7⍳′+⍀⍕␤:h5⍳′t⍁;′h‹catch›⊐␤7⍳′+⍁Ṅ␤:e0⍳′+⍁;′e‹catch›⊐␤:k3⍳′g€;′k‹catch›⊐␤5177392@Ṅ')" \
+    = "$(printf 'two\n0 1 3 6 10 15 21 \ntwo\n21\nempty reduce\ntwo\n0 rc=0')" ] \
+  && [ "$(w110 '7Ṅ0⍳′+⍁')" = "rc=1 1 GOLF: empty reduce" ] && [ "$(w110 '5⍳"⌫′+⍀')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(w110 '5⍳"⌫′+⍁')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "a throw mid-⍀ / mid-⍁ (also under €) is caught and the word works again; empty reduce, use after free" || no "W12-A2 errors: $(w110 '7Ṅ0⍳′+⍁')"
+[ "$(sed -n '/^# === W12-A2 scan and reduce ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 " ] \
+  && ok "⍀ ⍁ keep their state in s0..s4 under one spill frame (A2's slot 5180992… stays free)" || no "W12-A2 cells"
+
+# === W12-A3 ===
+echo "W12-A3: ⍸ each-indexed (f gets x i)"
+w12a3a=""
+for n in 0 1 2 3 4 5 6 7 8 9; do
+  w12a3w=$(python3 -c "import sys; n=int(sys.argv[1]); print(' '.join(str((x+5)*i-(x+5)) for i,x in enumerate(range(n))))" "$n")
+  [ "$(printf '%s' ":f&*\\\\-;$n⍳5+′f⍸⍕" | gc | sed 's/ *$//')" = "$w12a3w" ] || w12a3a="$w12a3a $n"
+done
+[ -z "$w12a3a" ] && [ "$(printf '%s' ':f\\_;100000⍳′f⍸"99999⊇Ṅ∑Ṅ' | gc)" = "999994999950000" ] \
+  && ok "lengths 0..9 and 100000: ⍸ calls f with x i, i from 0 (f = x*i - x)" || no "W12-A3 lengths:$w12a3a"
+# ⍸ inside €, € inside ⍸, ⍸ inside ⍸ (and the oracle); threading; tagged.
+w12a3n=':h′+⍸;:m⍳′²€∑+;:q⍳′+⍸∑+;3⍳′⍳€′h€⍕␤4⍳′m⍸⍕␤5⍳′q⍸⍕␤5⍳′+⍸48>Ṅ␤0⍳′+⍸"48>Ṅ≢Ṅ'
+[ "$(printf '%s' "$w12a3n" | gc | sed 's/ *$//')" = "$(printf '[] [0] [0 2]\n0 1 3 8\n0 1 4 9 16\n32767\n327670')" ] \
+  && [ "$(printf '%s' "$w12a3n" | gref)" = "$(printf '%s' "$w12a3n" | gc)" ] \
+  && ok "⍸ inside €, € inside ⍸, ⍸ inside ⍸ (golf2 and the oracle); results tagged, empty too" || no "W12-A3 nesting: $(printf '%s' "$w12a3n" | gc)"
+[ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:k5⍳′t⍸;′k‹catch›⊐␤4⍳′+⍸⍕␤:j3⍳′k€;′j‹catch›⊐␤5177392@Ṅ')" = "$(printf 'two\n0 2 4 6 \ntwo\n0 rc=0')" ] \
+  && [ "$(w110 '5⍳"⌫′+⍸')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "a throw mid-⍸ (also under €) is caught and ⍸ works again; use after free" || no "W12-A3 errors"
+[ "$(sed -n '/^# === W12-A3 each-indexed ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 5177488 " ] \
+  && ok "⍸ keeps its state in s0..s4 and s6 under one spill frame (A3's slot 5181056… stays free)" || no "W12-A3 cells"
+# === W12-A4 ===
+echo "W12-A4: ⍒ sort by key and ‹grade› (the sorting permutation)"
+# ⍒ is € for the keys, then ‹grade› of them, then a gather in place; ‹grade›
+# is ⍋'s merge sort on indices, comparing K[a] >s K[b].  Checked against
+# Python's sorted (stable) and the oracle.
+w12a4p=':f7919*1000%;:g10%;:h500-;37⍳′f€"′g⍒⍕␤′h€"‹grade›⍕␤′±⍒⍕␤:q7%3-;12⍳′q⍒⍕'
+w12a4w=$(python3 -c '
+l=[i*7919%1000 for i in range(37)]; m=[x-500 for x in l]; j=lambda v:" ".join(map(str,v))
+print(j(sorted(l,key=lambda x:x%10))); print(j(sorted(range(37),key=lambda i:m[i])))
+print(j(sorted(m,key=lambda x:-x))); print(j(sorted(range(12),key=lambda i:i%7-3)))')
+[ "$(printf '%s' "$w12a4p" | gc | sed 's/ *$//')" = "$w12a4w" ] \
+  && [ "$(printf '%s' "$w12a4p" | gref)" = "$(printf '%s' "$w12a4p" | gc)" ] \
+  && ok "⍒ is stable (keys with duplicates), descending by ′±, negative keys; ‹grade› gives the sorting permutation: Python's sorted, and the oracle agrees" \
+  || no "W12-A4 basics: $(printf '%s' "$w12a4p" | gc | head -2 | tr '\n' '|')"
+[ "$(printf '%s' '0⍳′±⍒≢Ṅ0⍳‹grade›≢Ṅ␤1⍳5+′±⍒⍕1⍳5+‹grade›⍕␤5⍳′±⍒TṄ5⍳‹grade›TṄ0⍳′±⍒TṄ0⍳‹grade›TṄ␤5⍳→a ←a′±⍒_ ←a‹grade›_ ←a⍕' | gc)" \
+    = "$(printf '00\n5 0 \n0000\n0 1 2 3 4 ')" ] \
+  && ok "⍒ and ‹grade› on empty and one-element lists; tagged results (T 0); the input is never written" || no "W12-A4 edges"
+[ "$(printf '%s' ':k←t\\⊇;1⍳32767 48≪1\rsub+ 1⍳1 63≪+⧺ 1⍳0 1-+⧺ 1⍳5+⧺→t 4⍳′k⍒⍕␤←t‹grade›⍕␤←t′±⍒⍕' | gc)" \
+    = "$(printf '1 2 3 0 \n1 2 3 0 \n-9223372036854775808 9223090561878065151 5 -1 ')" ] \
+  && ok "keys over the full signed range -2^63 .. 0x7FFF<<48 - 1 compare signed, as ⍋ (± of -2^63 is itself)" || no "W12-A4 extremes"
+# The A1 contract: k is called once per element, in order, with the caller's
+# stack under x.  A counter below the list ends at 5; a printing key prints
+# each element once.  k may run ⍒ itself (nested frames).
+[ "$(printf '%s' ':k\\⊕\\±;0 5⍳′k⍒⍕Ṅ␤:p"Ṅ;5⍳⌽′p⍒⍕␤:i±;:m′i⍒0⊇;3⍳1+′⍳€⌽"′m⍒⍕␤⍕␤:n5⍳′±⍒≢;3⍳′n⍒⍕' | gc)" \
+    = "$(printf '4 3 2 1 0 5\n432100 1 2 3 4 \n[0] [0 1] [0 1 2] \n[0 1 2] [0 1] [0] \n0 1 2 ')" ] \
+  && ok "k is called exactly n times, in order, with the caller's stack under x (A1); ⍒ nested inside k" || no "W12-A4 threading"
+[ "$(w113 ':k“bad“⊃‹throw›;:f5⍳′k⍒;1 2′f‹catch›⊐␤Ṅ␤Ṅ␤:j"3-[“three“⊃‹throw›];:g9⍳′j⍒;′g‹catch›⊐␤5⍳′±⍒⍕␤5177392@Ṅ')" \
+    = "$(printf 'bad\n2\n1\nthree\n4 3 2 1 0 \n0 rc=0')" ] \
+  && ok "a throw inside k (first call, and mid-way) is caught with the caller's stack restored; ⍒ works again; spill stack back to 0" || no "W12-A4 catch"
+w12a4bad=""
+for w12a4a in '5⍳"⌫′±⍒' '5⍳"⌫‹grade›' '300⍳"⌫′±⍒' '300⍳"⌫‹grade›'; do
+  [ "$(w110 "$w12a4a")" = "rc=1 0 GOLF: use after free" ] || w12a4bad="$w12a4bad [$w12a4a: $(w110 "$w12a4a")]"
+done
+[ -z "$w12a4bad" ] && ok "⍒ and ‹grade› on a freed list (small and class 7): use after free" || no "W12-A4 use after free:$w12a4bad"
+[ "$(printf '%s' '1000⍳→l ‹heapstats›→b→n ←l′±⍒⌫ ←l‹grade›⌫ :k5⍳"′±⍒⌫⌫;←l′k⍒⌫ ‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)" = "0 0" ] \
+  && ok "⍒ and ‹grade› give their scratch blocks (keys, the other merge buffer) back: ‹heapstats› unchanged" || no "W12-A4 heap"
+# 1M elements, 1000 distinct keys (so stability matters everywhere): output
+# against Python, and the cost against ⍋ on the same list (reported, not
+# asserted: the machine is shared).
+printf '%s' ':f7919*1000003%;:k1000%±;1000000⍳′f€′k⍒⍕' > "$TMP/a4big.golfj"
+printf '%s' ':f7919*1000003%;1000000⍳′f€⍋_' > "$TMP/a4sort.golfj"
+printf '%s' ':f7919*1000003%;:k;1000000⍳′f€′k⍒_' > "$TMP/a4ks.golfj"
+for w12a4f in a4big a4sort a4ks; do python3 tools/codepage.py encode < "$TMP/$w12a4f.golfj" | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/$w12a4f" 2>/dev/null; chmod +x "$TMP/$w12a4f"; done
+w12a4t0=$(date +%s%N); "$TMP/a4sort"; w12a4t1=$(date +%s%N); "$TMP/a4ks"; w12a4t2=$(date +%s%N)
+[ "$("$TMP/a4big" | md5sum)" = "$(python3 -c '
+l=[i*7919%1000003 for i in range(1000000)]
+print(" ".join(map(str,sorted(l,key=lambda x:-(x%1000)))),end=" ")' | md5sum)" ] \
+  && ok "1M elements by a key with 1000 values match Python's sorted; ⍋ $(( (w12a4t1-w12a4t0)/1000000 )) ns/element, ⍒ $(( (w12a4t2-w12a4t1)/1000000 )) ns/element" \
+  || no "W12-A4 1M"
+# === W12-A7 ===
+echo "W12-A7: ⋄ — if-else c[a⋄b] and the top-tested while {c⋄body} (compiler syntax)"
+# Zero is true, as for [ and }: c[a⋄b] runs a when c is 0, b otherwise;
+# {c⋄body} computes c before every pass and runs body while c is 0.  Both are
+# the jumps [ ] { } already emit (one more jmp each), so no run-time machinery.
+w12a7b(){ [ "$(printf '%s' "$1" | gc)" = "$2" ] && [ "$(printf '%s' "$1" | gref)" = "$2" ]; }
+w12a7b '0[1Ṅ⋄2Ṅ]5[1Ṅ⋄2Ṅ]' "12" \
+  && ok "0[1Ṅ⋄2Ṅ] prints 1, 5[1Ṅ⋄2Ṅ] prints 2 (golf2 and the oracle)" || no "if-else basic: $(printf '%s' '0[1Ṅ⋄2Ṅ]5[1Ṅ⋄2Ṅ]' | gc)"
+w12a7b ':s"[_“zero“⋄0≺1+[“neg“⋄“pos“]]🗲;0s 7s 0 3-s' "zeroposneg" \
+  && ok "nested if-else in a word: zero / pos / neg" || no "nested if-else"
+w12a7b '0→i{←i5<1+⋄←iṄ←i1+→i}␤0→j{1⋄99Ṅ}←jṄ␤{1}7Ṅ' "$(printf '01234\n0\n7')" \
+  && ok "{←i5<1+⋄…} runs 5 passes; {1⋄99Ṅ} runs none; a plain { } is unchanged" || no "while basic"
+w12a7b '0→i{←i6<1+⋄←i[0Ṅ⋄←i2%[“e“🗲⋄“o“🗲]]←i1+→i}␤0→i{←i2<1+⋄0→k{←k3<1+⋄←i←k+Ṅ←k1+→k}←i1+→i}' "$(printf '0oeoeo\n012123')" \
+  && ok "if-else nested in a while, and a while nested in a while" || no "while nesting"
+w12a7b '0→i{←i3<1+"[_0⋄_1]⋄←iṄ←i1+→i}␤0[{1⋄}7Ṅ⋄8Ṅ]␤1[{1}9Ṅ⋄{1⋄}8Ṅ]' "$(printf '012\n7\n8')" \
+  && ok "a whole [a⋄b] inside a while's condition; a while inside each branch of an if-else" || no "mixed nesting"
+w12a7b ':g0{"10<1+⋄"7-[^⋄1+]}99;gṄ' "7" \
+  && ok "^ from inside a while's body returns from the word" || no "^ in while"
+w12a7d=$(python3 -c 'print("0[" * 40 + "7Ṅ" + "⋄9Ṅ]" * 40 + "␤" + "1[" + "0[" * 39 + "7Ṅ" + "⋄9Ṅ]" * 40)')
+w12a7b "$w12a7d" "$(printf '7\n9')" && ok "if-else nested 40 deep" || no "40-deep if-else"
+w12a7b '“a⋄b“🗲 # ⋄ in a comment
+' "a⋄b" && ok "⋄ inside “…“ and in a comment is left alone" || no "⋄ in string/comment"
+w94dbin '0[1⋄2]'
+[ "$(w94dhas 6800000000584885c00f850a0000006801000000e9050000006802000000)" = 1 ] \
+  && ok "0[1⋄2] is push 0; pop/test/jnz +10; push 1; jmp +5; push 2" || no "if-else bytes"
+w94dbin '{0⋄}'
+[ "$(w94dhas 6800000000584885c00f8505000000e9ecffffff)" = 1 ] \
+  && ok "{0⋄} is push 0; pop/test/jnz +5 (out); jmp -20 (to the test)" || no "while bytes"
+w12a7e(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/a7.src"
+          "$TMP/golf2" < "$TMP/a7.src" > "$TMP/a7.bin" 2>"$TMP/a7.err"; w12a7g=$?
+          python3 boot/golfref.py < "$TMP/a7.src" > /dev/null 2>"$TMP/a7.rerr"; w12a7r=$?
+          "$TMP/seed" < "$TMP/a7.src" > "$TMP/a7.sbin" 2>/dev/null; w12a7s=$?
+          [ -s "$TMP/a7.bin" ] || [ -s "$TMP/a7.sbin" ] && w12a7s="$w12a7s+binary"
+          echo "$w12a7g $w12a7r $w12a7s $(cat "$TMP/a7.err") | $(cat "$TMP/a7.rerr")"; }
+w12a7bad=""
+for w12a7c in '1⋄|GOLF: ⋄ outside [ ] or { } at line 1' \
+              '1Ṅ\n:f⋄;|GOLF: ⋄ outside [ ] or { } at line 2' \
+              '0[1⋄]⋄|GOLF: ⋄ outside [ ] or { } at line 1' \
+              '0[1⋄2⋄3]|GOLF: ⋄ twice in one block at line 1' \
+              '\n\n{0⋄1⋄}|GOLF: ⋄ twice in one block at line 3'; do
+  w12a7o=$(printf "${w12a7c%%|*}" | w12a7e)
+  [ "$w12a7o" = "2 2 2 ${w12a7c#*|} | ${w12a7c#*|}" ] || w12a7bad="$w12a7bad [$w12a7o]"
+done
+[ -z "$w12a7bad" ] \
+  && ok "⋄ outside [ ] / { } (top level, in a bare word, after the ]) or twice in one block: GOLF: … at line N, exit 2, no binary (golf2, golfref; the seed exits 2)" \
+  || no "⋄ errors:$w12a7bad"
+w12a7p='0→i{←i4<1+⋄←i2%[“e“⋄“o“]🗲←i1+→i}:s"[_0⋄0≺1+[1⋄2]]Ṅ;0s3s0 3-s'
+printf '%s' "$w12a7p" | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/a7.src"
+"$TMP/seed" < "$TMP/a7.src" > "$TMP/a7.sbin" 2>/dev/null; "$TMP/golf2" < "$TMP/a7.src" > "$TMP/a7.bin" 2>/dev/null
+python3 boot/golfref.py < "$TMP/a7.src" > "$TMP/a7.rbin" 2>/dev/null
+cmp -s "$TMP/a7.sbin" "$TMP/a7.bin" && cmp -s "$TMP/a7.rbin" "$TMP/a7.bin" && [ "$(printf '%s' "$w12a7p" | gc)" = "eoeo021" ] \
+  && ok "seed, golf2 and golfref emit the same bytes for an if-else / while program" || no "⋄ three-way byte parity"
+[ "$(python3 tools/codepage.py decode < <(printf '%s' '\else' | python3 tools/codepage.py encode))" = "⋄" ] \
+  && ok "\\else encodes to 0xB8 and decodes as ⋄" || no "⋄ code page"
+# bench/leetcode/golf/queens.golfj's column loop is a {c⋄body} since W12-A7.
+w12a7q=""; grep -q '⋄' bench/leetcode/golf/queens.golfj || w12a7q=" [no ⋄]"
+"$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/queens.golfj" "$TMP/a7q" > /dev/null 2>&1 || w12a7q="$w12a7q [compile]"
+for w12a7n in 1 2 3 4 5 6 7 8; do
+  [ "$(echo $w12a7n | "$TMP/a7q")" = "$(echo $w12a7n | python3 bench/leetcode/py/queens.py)" ] || w12a7q="$w12a7q [n=$w12a7n]"
+done
+[ -z "$w12a7q" ] && ok "the queens solution on {⇐v0≡⋄…} agrees with Python for n = 1…8" || no "queens with ⋄:$w12a7q"
+# === W12-A5 ===
+echo "W12-A5: ⊟ window reduce (a monotonic deque for ⌈ ⌊, f-reduce of each window otherwise)"
+w12a5bad=""; w12a5n=0
+while IFS= read -r w12a5l; do
+  w12a5p=${w12a5l%%  ->*}; w12a5p=${w12a5p%"${w12a5p##*[! ]}"}; w12a5w=${w12a5l##*->  }
+  w12a5n=$((w12a5n+1))
+  [ "$(printf '%s' "$w12a5p" | gc | sed 's/ *$//')" = "$w12a5w" ] || w12a5bad="$w12a5bad [$w12a5p]"
+  [ "$(printf '%s' "$w12a5p" | gref | sed 's/ *$//')" = "$w12a5w" ] || w12a5bad="$w12a5bad oracle[$w12a5p]"
+done < <(sed -n '/^### Windows and fixpoints/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12a5bad" ] && [ "$w12a5n" -ge 11 ] \
+  && ok "REFERENCE.md's ⊟ / ⍣ examples ($w12a5n) print what they say, golf2 and oracle" \
+  || no "W12-A5/A6 REFERENCE examples:$w12a5bad"
+# Every window size 0..len+1 over lengths 0..9 of signed data, for ⌈ ⌊ (the
+# deque), ⩌ and :m⌈; (recognised as max), + and - (- is not associative, so
+# it checks the fold order f(f(a,b),c)), against Python.
+python3 - "$TMP" <<'PYEOF'
+import sys, random
+T = sys.argv[1]; random.seed(125)
+prog, want = [":m⌈;:k⌊;"], []
+ops = [("′⌈", max), ("′⌊", min), ("′⩌", max), ("′m", max), ("′k", min), ("′+", lambda a, b: a + b), ("′-", lambda a, b: a - b)]
+for L in range(10):
+    a = [random.randint(-9, 9) for _ in range(L)]
+    lit = "".join(f"{v}⍆" if v >= 0 else f"0 {-v}-⍆" for v in a)
+    for n in range(1, L + 2):
+        for g, f in ops:
+            prog.append(f"0⍳{lit}{n}{g}⊟⍕␤")
+            out = []
+            for i in range(L - n + 1):
+                acc = a[i]
+                for x in a[i + 1:i + n]:
+                    acc = f(acc, x)
+                out.append(acc)
+            want.append(" ".join(map(str, out)))
+open(f"{T}/a5win.prog", "w", encoding="utf-8").write("".join(prog))
+open(f"{T}/a5win.want", "w").write("\n".join(want) + "\n")
+PYEOF
+[ "$(gc < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+  && [ "$(gref < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+  && ok "lengths 0..9, every n 1..len+1, ⌈ ⌊ ⩌ :m⌈; :k⌊; + - match Python (golf2 and the oracle)" \
+  || no "W12-A5 vs Python: $(diff <(gc < "$TMP/a5win.prog" | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
+# The deque is O(len): a window of 100,000 over a million elements would be
+# 10^11 calls of f on the general path.  Here it is two passes.
+printf '%s' ':m⌈;1000000⍳100000′⌈⊟∑Ṅ␤1000000⍳100000′⌊⊟∑Ṅ␤1000000⍳⌽100000′m⊟∑Ṅ␤1000000⍳100000′⩍⊟≢Ṅ' \
+  | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/a5big" 2>/dev/null && chmod +x "$TMP/a5big"
+[ "$(timeout 20 "$TMP/a5big")" \
+    = "$(python3 -c 'print(sum(range(99999,10**6)));print(sum(range(10**6-99999)));print(sum(range(99999,10**6)));print(10**6-99999)')" ] \
+  && ok "⌈ ⌊ :m⌈; ⩍ with n = 100,000 over 10^6 elements: the O(n) deque (the general path would never finish)" || no "W12-A5 deque speed"
+[ "$(printf '%s' '5⍳3′⌈⊟48>Ṅ␤5⍳3′+⊟48>Ṅ␤0⍳3′+⊟48>Ṅ␤5⍳"3′⌈⊟⌫∑Ṅ' | gc)" = "$(printf '32767\n32767\n32767\n10')" ] \
+  && ok "the result is a new tagged list (⌫ of it leaves l alone), on both paths and when empty" || no "W12-A5 tagged result"
+[ "$(w110 '7Ṅ5⍳0′+⊟')" = "rc=1 1 GOLF: window size < 1" ] && [ "$(w110 '5⍳0 4-′⌈⊟')" = "rc=1 0 GOLF: window size < 1" ] \
+  && [ "$(w110 '5⍳"⌫2′⌈⊟')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 '5⍳"⌫2′+⊟')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(w110 '0⍳"⌫9′+⊟')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "errors through ‹throw›: window size < 1 (n = 0 and n < 0; earlier output flushed), use after free (deque path, general path, empty list)" || no "W12-A5 errors"
+[ "$(w113 ':t"3≡1+[“three“⊃‹throw›]⌈;:g5⍳2′t⊟;′g‹catch›⊐␤5⍳2′⌈⊟⍕␤:h3⍳′⍳€2′⌈⊟⍕;′h‹catch›␤5177392@Ṅ')" \
+    = "$(printf 'three\n1 2 3 4 \n[] [0] \n0 rc=0')" ] \
+  && ok "a throw from f mid-window is caught, ⊟ runs again; spill stack back to 0; ⌈ on lists takes the general path (elementwise)" \
+  || no "W12-A5 catch: $(w113 ':t"3≡1+[“three“⊃‹throw›]⌈;:g5⍳2′t⊟;′g‹catch›⊐␤5177392@Ṅ')"
+# Re-entrancy: ⊟ inside ⊟'s f (on lists of lists), ⊟ inside € inside ⊟,
+# ⍣ inside ⊟'s f; and the A1 contract under nesting (the counter).
+w12a5r=':v3′⌈⊟∑;:w"≢1≻[^]2′+⊟;:c⧺\\⊕\\′w⍣;4⍳5+′⍳€2′⧺⊟′v€⍕␤3⍳4+′⍳€2′⧺⊟⍕␤0 3⍳3+′⍳€2′c⊟′∑€⍕Ṅ'
+[ "$(printf '%s' "$w12a5r" | gc | sed 's/ *$//')" = "$(printf '31 44 59\n[0 1 2 3 0 1 2 3 4] [0 1 2 3 4 0 1 2 3 4 5]\n66 372 2')" ] \
+  && [ "$(printf '%s' "$w12a5r" | gref)" = "$(printf '%s' "$w12a5r" | gc)" ] \
+  && ok "re-entrant: ⊟ in € after ⊟, ⍣ of ⊟ inside ⊟'s f, with a counter threaded under it (golf2 and the oracle)" || no "W12-A5 nesting: $(printf '%s' "$w12a5r" | gc)"
+[ "$(printf '%s' '‹heapstats›→b→n 1000⍳"10′⌈⊟⌫"10′⌊⊟⌫"10′+⊟⌫"1′+⊟⌫"2000′+⊟⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤"10′⌈⊟‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)" \
+    = "$(printf '8016 1\n16032 2')" ] \
+  && ok "‹heapstats›: ⊟ keeps only its result (the deque's block is given back), on both paths and when empty" || no "W12-A5 heapstats"
+# The leetcode rewrite: sliding-window maximum is one ⊟, checked against the
+# Python solution on a small random input.
+python3 -c 'import random;random.seed(7);print(5);print(*[random.randint(-99,99) for _ in range(300)])' > "$TMP/a5sm.in"
+cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < bench/leetcode/golf/slidemax.golfj) | "$TMP/golf2" > "$TMP/a5sm" 2>/dev/null && chmod +x "$TMP/a5sm"
+[ "$("$TMP/a5sm" < "$TMP/a5sm.in" | sed 's/ *$//')" = "$(python3 bench/leetcode/py/slidemax.py < "$TMP/a5sm.in")" ] \
+  && ok "bench/leetcode/golf/slidemax.golfj (ℤ\"1↓\\\\0⊇′⌈⊟⍕) agrees with py/slidemax.py" || no "W12-A5 slidemax"
+
+# === W12-A6 ===
+echo "W12-A6: ⍣ fixpoint (apply f until the result ≣ the previous one)"
+[ "$(printf '%s' ':d2/;100′d⍣Ṅ␤:i;5⍳"′i⍣≡Ṅ␤:h"≢1≻[^]1↓;5⍳′h⍣⍕␤:u"≢1≻[^]1↓"⌽⌽\\⌫;9⍳′u⍣⍕␤:s_“ab“⊃;0′s⍣⊐␤:z_0;7′z⍣Ṅ' | gc)" \
+    = "$(printf '0\n-1\n4 \n8 \nab\n0')" ] \
+  && ok "ints, f returning its own input (same block back), shrinking lists, a fresh copy per step, a constant f (two calls)" || no "W12-A6 basics: $(printf '%s' ':d2/;100′d⍣Ṅ' | gc)"
+# Freeing.  1000⍳′h⍣ makes 999 intermediates and keeps only x and the
+# result; an f that returns a list HOLDING its argument keeps the argument
+# (the result's element is still readable); x itself is never freed.
+w12a6f=':h"≢1≻[^]1↓;:w"48>32767≡[⍳^]"0⊇48>32767≡1+[^]‹vec›\\⍆;‹heapstats›→b→n 1000⍳′h⍣⍕‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤3′w⍣⍕␤5⍳"′w⍣_⍕␤‹heapstats›→b→n 3′w⍣_‹heapstats›_←n-Ṅ'
+[ "$(printf '%s' "$w12a6f" | gc | sed 's/ *$//')" = "$(printf '999 8056 2\n[0 1 2]\n0 1 2 3 4\n2')" ] \
+  && [ "$(printf '%s' "$w12a6f" | gref)" = "$(printf '%s' "$w12a6f" | gc)" ] \
+  && ok "‹heapstats›: 999 intermediates freed (x and the result stay), an argument nested in the result is kept, x is never freed (golf2 and the oracle)" \
+  || no "W12-A6 freeing: $(printf '%s' "$w12a6f" | gc)"
+[ "$(w113 ':t"3≡1+[“three“⊃‹throw›]2/;:g7′t⍣;′g‹catch›⊐␤9′t⍣Ṅ␤:h"≢1≻[^]1↓;:k′h⍣;4⍳′⍳€1+′k€⍕␤5177392@Ṅ')" \
+    = "$(printf 'three\n0\n[] [1] [2] [3] \n0 rc=0')" ] \
+  && ok "a throw from f under ‹catch›, then ⍣ again; ⍣ nested in € nested in ⍣-free code; spill stack back to 0" || no "W12-A6 catch"
+[ "$(w110 ':h"≢1≻[^]1↓;5⍳"⌫′h⍣')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 ':u"⌫;5⍳′u⍣')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(printf '%s' ':h"≢1≻[^]1↓;5⍳′h⍣48>Ṅ␤:g;5⍳′g⍣48>Ṅ' | gc)" = "$(printf '32767\n32767')" ] \
+  && ok "use after free: a freed x, and an f that frees its argument (≣ finds it); the result keeps its tag" || no "W12-A6 uaf / tag"
+# Nested ⍣: f itself runs ⍣ (and ⊟), with a call counter threaded under it.
+w12a6n=':d2/;:e_3′d⍣⊕;:f\\⊕\\′e⍣;0 5⍳′⍳€′∑€′f€⍕Ṅ␤:r"≢1≻[^]2′+⊟;6⍳′r⍣⍕'
+[ "$(printf '%s' "$w12a6n" | gc | sed 's/ *$//')" = "$(printf '1 1 1 1 1 5\n80')" ] \
+  && [ "$(printf '%s' "$w12a6n" | gref)" = "$(printf '%s' "$w12a6n" | gc)" ] \
+  && ok "re-entrant: ⍣ inside ⍣'s f (counted under it), ⍣ of a ⊟ (golf2 and the oracle)" || no "W12-A6 nesting: $(printf '%s' "$w12a6n" | gc)"
+
+# === W12-Z2 ===
+echo "W12-Z2: ⇡x / ⇣x — increment / decrement a variable in place (compiler ops)"
+# ⇡x is ←x⊕→x and ⇣x is ←x⊖→x, as one inc/dec qword on the variable's cell:
+# 2 bytes of source instead of 5, 8 bytes of code instead of 20, and the data
+# stack is never touched.  Inside a ⊡ word, a local the word has already named
+# is the one bumped.  No not-a-number check: a variable holding a list is
+# bumped as a raw cell, like ⇒/⇐ copy one.
+w12z2b(){ [ "$(printf '%s' "$1" | gc)" = "$2" ] && [ "$(printf '%s' "$1" | gref)" = "$2" ]; }
+w12z2b '5→x⇡x⇡x←xṄ⇣x⇣x⇣x←xṄ' "74" \
+  && ok "5→x⇡x⇡x is 7, then ⇣x⇣x⇣x is 4 (golf2 and the oracle)" || no "⇡⇣ basic: $(printf '%s' '5→x⇡x⇡x←xṄ⇣x⇣x⇣x←xṄ' | gc)"
+w12z2b '⇡q←qṄ 0→z⇣z←zṄ 0 1-→m⇡m←mṄ 1 63≪1-→w⇡w←w1 63≪≡Ṅ' "1-10-1" \
+  && ok "an unset variable starts at 0; 0 decrements to -1; -1 to 0; 2^63-1 wraps to -2^63" || no "⇡⇣ edges"
+w12z2b '0→‹count›⇡‹count›⇡‹count›⇡‹count›⇣‹count›←‹count›Ṅ' "2" \
+  && ok "⇡‹count› / ⇣‹count› on a long-name variable" || no "⇡ long name"
+w12z2b '0→i{←i5<1+⋄←iṄ⇡i}␤3→n{⇣n←n1<}←nṄ' "$(printf '01234\n0')" \
+  && ok "⇡i counts a while loop up, ⇣n counts a } loop down" || no "⇡⇣ loops"
+w12z2b '⊡f⇒a⇡a⇡a⇐a;10fṄ 50→a⇡a←aṄ' "1251" \
+  && ok "in a ⊡ word, ⇡a after ⇒a bumps the local; the variable a is untouched" || no "⇡ local"
+w12z2b '⊡g⇡a←aṄ⇒a⇡a⇐aṄ;100→a 7g←aṄ' "1018101" \
+  && ok "in a ⊡ word, ⇡a before any ⇒a/⇐a is the variable; after ⇒a, the local" || no "⇡ local vs variable"
+w12z2b '⊡h⇒‹acc›⇒b⇣b⇡‹acc›⇡‹acc›⇐‹acc›⇐b;1 9hṄṄ' "011" \
+  && ok "long-name and second-slot locals: ⇣b ⇡‹acc›" || no "⇡ long local"
+w12z2b ':k⇡x⇡x;0→x kk←xṄ' "4" \
+  && ok "⇡x in a plain : word is the variable (no frame)" || no "⇡ in : word"
+w12z2b '3→x⇡x“x⇡x“🗲 # ⇡x in a comment
+←xṄ' "x⇡x4" && ok "⇡ inside “…“ and in a comment is left alone" || no "⇡ in string/comment"
+w94dbin '⇡x⇣x'
+[ "$(w94dhas 48ff0425c0034e0048ff0c25c0034e00)" = 1 ] \
+  && ok "⇡x⇣x is inc qword [0x4E03C0]; dec qword [0x4E03C0] (48 FF 04/0C 25 imm32)" || no "⇡⇣ variable bytes"
+w94dbin '⇡‹n›'
+[ "$(w94dhas 48ff042500084e00)" = 1 ] \
+  && ok "⇡‹n› is inc qword [0x4E0800], the first long name's cell" || no "⇡ long-name bytes"
+w94dbin '⊡f⇒a⇒b⇡a⇣b⇡c;'
+[ "$(w94dhas 48ff450048ff4d0848ff042518034e00)" = 1 ] \
+  && ok "⊡f⇒a⇒b⇡a⇣b⇡c: inc [rbp+0]; dec [rbp+8]; inc qword [c] (48 FF 45/4D disp8)" || no "⇡⇣ local bytes"
+w12z2bad=""
+for w12z2c in '⇡1|GOLF: ⇡ needs a variable at line 1' \
+              '1Ṅ\n⇣ x|GOLF: ⇣ needs a variable at line 2' \
+              '1⇡|GOLF: ⇡ needs a variable at line 1' \
+              ':f⇡“a“;|GOLF: ⇡ needs a variable at line 1' \
+              '\n⇡⇣x|GOLF: ⇡ needs a variable at line 2' \
+              '⇣‹a b›|GOLF: bad long name ‹a› at line 1'; do
+  w12z2o=$(printf "${w12z2c%%|*}" | w12a7e)
+  [ "$w12z2o" = "2 2 2 ${w12z2c#*|} | ${w12z2c#*|}" ] || w12z2bad="$w12z2bad [$w12z2o]"
+done
+[ -z "$w12z2bad" ] \
+  && ok "⇡ / ⇣ not followed by a letter or ‹long name› (a digit, a space, end of input, a string, another ⇡): GOLF: … at line N, exit 2, no binary (golf2, golfref; the seed exits 2)" \
+  || no "⇡⇣ errors:$w12z2bad"
+w12z2p='5→x⇡x⇡x⇣x←xṄ0→‹n›⇡‹n›←‹n›Ṅ⊡f⇒a⇡a⇣‹n›⇐a⇡a;3fṄ←‹n›Ṅ⊡g⇡a←aṄ;9→a g'
+printf '%s' "$w12z2p" | cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/z2.src"
+"$TMP/seed" < "$TMP/z2.src" > "$TMP/z2.sbin" 2>/dev/null; "$TMP/golf2" < "$TMP/z2.src" > "$TMP/z2.bin" 2>/dev/null
+python3 boot/golfref.py < "$TMP/z2.src" > "$TMP/z2.rbin" 2>/dev/null
+cmp -s "$TMP/z2.sbin" "$TMP/z2.bin" && cmp -s "$TMP/z2.rbin" "$TMP/z2.bin" && [ "$(printf '%s' "$w12z2p" | gc)" = "614010" ] \
+  && ok "seed, golf2 and golfref emit the same bytes for a ⇡ / ⇣ program" || no "⇡⇣ three-way byte parity"
+[ "$(python3 tools/codepage.py decode < <(printf '%s' '\vinc\vdec' | python3 tools/codepage.py encode))" = "⇡⇣" ] \
+  && [ "$(printf '%s' '⇡⇣' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "b9ba" ] \
+  && ok "\\vinc / \\vdec encode to 0xB9 / 0xBA and decode as ⇡ / ⇣" || no "⇡⇣ code page"
+# === W12-O2 ===
+echo "W12-O2: freeable thunks — ∘ and ⊸ allocate from the (RWX) heap; ⌫ releases them; no cap"
+# Each thunk is a `5A` block (class 1, 72 bytes with its header), so ⌫ takes it
+# like any raw block and ‹heapstats› counts it.  1M composes and 1M binds, each
+# freed at once, leave ‹heapstats› exactly where it was (golf2 and the oracle).
+w12o2p='‹heapstats›→b→n 0→j{′⊗′⊕∘⌫ 5′+⊸⌫ ←j1+"→j1000000<1+}‹heapstats›←b-Ṅ32)←n-Ṅ'
+printf '%s' "$w12o2p" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/o2loop" 2>/dev/null; chmod +x "$TMP/o2loop"
+w12o2t0=$(date +%s%N); w12o2o=$("$TMP/o2loop"); w12o2t1=$(date +%s%N)
+[ "$w12o2o" = "0 0" ] && [ "$(printf '%s' "$w12o2p" | gref)" = "0 0" ] \
+  && ok "1M ∘ and 1M ⊸ thunks made and freed in a loop: ‹heapstats› flat (oracle too); $(( (w12o2t1-w12o2t0)/2000000 )) ns per make+free" \
+  || no "W12-O2 1M loop: $w12o2o"
+[ "$(printf '%s' '‹heapstats›→b→n ′⊗′⊕∘‹heapstats›←b-Ṅ32)←n-Ṅ32)"TṄ32)⌫‹heapstats›←b-Ṅ32)←n-Ṅ' | gc)" = "72 1 1 0 0" ] \
+  && ok "one ∘ thunk is one live 72-byte block, an int to T; ⌫ gives it back" || no "W12-O2 one thunk"
+# A freed thunk's block is the next one A hands out, and the new thunk works.
+[ "$(printf '%s' ':d⊗;:i⊕;′d′i∘"→f⌫ ′i′d∘→g ←g←f-Ṅ32)5←g⍎Ṅ' | gc)" = "0 12" ] \
+  && ok "the freed block is reused by the next ∘, which runs correctly" || no "W12-O2 reuse"
+# Nested: compose of a composed, bind of a bound, binds made inside € and
+# freed through ⇤, a compose over one of them; all freed, ‹heapstats› flat.
+w12o2n=':d⊗;:i⊕;:m′+⊸;‹heapstats›→b→n ′d′i∘→a ←a′d∘→c 5←c⍎Ṅ32) 4′+⊸→p 3←p⊸→e ←e⍎Ṅ32) 10⍳"′m€→l⌫ 7←l3⊇⍎Ṅ32) ←l3⊇′d∘→k 5←k⍎Ṅ32) ←k⌫ ←l0′⌫⇤_ ←l⌫ ←c⌫←a⌫ ←e⌫←p⌫ ‹heapstats›←b-Ṅ32)←n-Ṅ'
+[ "$(printf '%s' "$w12o2n" | gc)" = "22 7 10 16 0 0" ] && [ "$(printf '%s' "$w12o2n" | gref)" = "22 7 10 16 0 0" ] \
+  && ok "nested ∘/⊸ (compose of compose, bind of bind, binds from €, freed via ⇤): right answers, ‹heapstats› flat (oracle too)" \
+  || no "W12-O2 nested: $(printf '%s' "$w12o2n" | gc)"
+[ "$(w110 '′⊕′⊖∘"⌫⌫')" = "rc=1 0 GOLF: double free" ] && [ "$(w110 '5′+⊸"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
+  && [ "$(printf '%s' ':f′⊕′⊖∘"⌫⌫;′f‹catch›⊐ 5′⊕′⊗∘⍎Ṅ' | gc)" = "double free12" ] \
+  && ok "freeing a ∘ or ⊸ thunk twice: GOLF: double free (catchable, and ∘ works after)" || no "W12-O2 double free"
+# Calling a freed thunk is not a GOLF: error (⍎ is a bare call): ⌫'s poison
+# over its first bytes is a privileged instruction, so it dies loudly.
+[ "$(printf '%s' ':d⊗;:i⊕;′d′i∘"⌫5\\⍎Ṅ' | arena)" -gt 128 ] && [ ! -s "$TMP/ar.out" ] \
+  && ok "calling a freed thunk dies with a signal (not silently)" || no "W12-O2 call after free"
+# Old behaviour: ∘ ⊸ ⇉ ⑂ results unchanged; a thunk in a ‹catch› that throws.
+[ "$(printf '%s' ':d⊗;:i⊕;5′d′i∘⍎Ṅ32)5⍳′d′i∘€⍕10→n ←n′+⊸→k 99→n 3⍳←k€⍕:t′d′i∘_“x“⊃‹throw›;′t‹catch›⊐' | gc)" = "11 1 3 5 7 9 10 11 12 x" ] \
+  && ok "∘ and ⊸ results unchanged (map, closures, a thunk made inside a caught throw)" || no "W12-O2 old behaviour"
+# The mprotect cost is paid on growth only: a 3M-cell list then a thunk in the
+# grown heap, and 100000 binds live at once.
+[ "$(printf '%s' ':d⊗;:i⊕;3000000⍳_ 5′d′i∘⍎Ṅ32)0→j 0→s{←j′+⊸→f ←s←f⍎→s ←j1+"→j100000<1+}←sṄ' | gc)" = "11 4999950000" ] \
+  && ok "thunks in memory the heap grew into; 100000 live binds" || no "W12-O2 growth"
+grep -q 'Since W12-O2 there is no' REFERENCE.md && grep -q 'W12-O2' DESIGN.md && ! grep -q 'compose arena exhausted' REFERENCE.md \
+  && ok "REFERENCE.md and DESIGN.md describe freeable thunks" || no "W12-O2 docs"
+# === W12-O3 ===
+echo "W12-O3: priority queue — ‹pq› ‹pqpush› ‹pqpop› ‹pqtop›, a binary min-heap over a ‹vec›"
+# Random op sequences (pushes of small duplicates, ±2^62 values and packed
+# priority<<32|payload values; pops ~45% of the time; then drain) against
+# Python's heapq, on golf2 and the oracle.
+w12o3bad=""
+for w12o3s in 1 2 3; do
+  python3 -c '
+import heapq, random, sys
+r = random.Random(int(sys.argv[1])); h, prog, out = [], ["‹pq›"], []
+lit = lambda v: str(v) if v >= 0 else str(-v) + "±"
+for _ in range(2000):
+    if h and r.random() < 0.45:
+        out.append(heapq.heappop(h)); prog.append("‹pqpop›Ṅ32)")
+    else:
+        k = r.random()
+        v = (r.randint(-20, 20) if k < 0.5 else r.randint(-2**62, 2**62) if k < 0.7
+             else (r.randint(-1000, 1000) << 32) | r.randint(0, 2**32 - 1))
+        heapq.heappush(h, v); prog.append(lit(v) + "‹pqpush›")
+while h:
+    out.append(heapq.heappop(h)); prog.append("‹pqpop›Ṅ32)")
+print("".join(prog) + "≢Ṅ"); print(" ".join(map(str, out)) + " 0")' "$w12o3s" > "$TMP/o3r.txt"
+  w12o3e=$(sed -n 2p "$TMP/o3r.txt")
+  [ "$(sed -n 1p "$TMP/o3r.txt" | gc)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s golf2]"
+  [ "$(sed -n 1p "$TMP/o3r.txt" | gref)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s oracle]"
+done
+[ -z "$w12o3bad" ] && ok "3 random sequences of 2000 ops match Python heapq (golf2 and the oracle)" || no "W12-O3 random:$w12o3bad"
+[ "$(printf '%s' '‹pq›5‹pqpush›1‹pqpush›4‹pqpush›"‹pqtop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ≢Ṅ32)‹pq›3±‹pqpush›2‹pqpush›7±‹pqpush›"TṄ32)⍕' | gc)" = "11450 0 -7 2 -3 " ] \
+  && ok "push/top/pop/size; a queue is a tagged list (T 0) shown in heap order" || no "W12-O3 basics"
+[ "$(printf '%s' '‹pq›2 32≪9|‹pqpush›1±32≪5|‹pqpush›0 32≪7|‹pqpush›{‹pqpop›"32≫Ṅ32)4294967295$Ṅ32)"≢0≡}_' | gc)" = "-1 5 0 7 2 9 " ] \
+  && ok "the priority<<32|payload idiom orders by signed priority and unpacks" || no "W12-O3 packing"
+[ "$(w110 '‹pq›‹pqpop›')" = "rc=1 0 GOLF: pop from empty" ] && [ "$(w110 '‹pq›3‹pqpush›‹pqpop›_‹pqpop›')" = "rc=1 0 GOLF: pop from empty" ] \
+  && [ "$(w110 '‹pq›‹pqtop›')" = "rc=1 0 GOLF: index out of range" ] \
+  && [ "$(printf '%s' ':‹f›‹pq›‹pqpop›;′‹f›‹catch›⊐7Ṅ' | gc)" = "pop from empty7" ] \
+  && ok "pop from empty (fresh and drained) through ‹throw›, catchable; ‹pqtop› on empty: index out of range" || no "W12-O3 empty"
+[ "$(w110 '‹pq›"⌫‹pqpop›')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 '‹pq›5‹pqpush›"⌫3‹pqpush›')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(w110 '‹pq›5‹pqpush›"⌫‹pqtop›')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "a freed queue: ‹pqpop› ‹pqpush› ‹pqtop› say use after free" || no "W12-O3 use after free"
+[ "$(printf '%s' '‹heapstats›→b→n‹pq›0→i{←i37*101%‹pqpush›←i1+"→i1000<1+}{‹pqpop›_"≢0≡}⌫‹heapstats›←b-Ṅ32)←n-Ṅ' | gc)" = "0 0" ] \
+  && ok "1000 pushes (eight growths), drained and freed: ‹heapstats› flat" || no "W12-O3 heapstats"
+# The A1 contract: a queue word inside € / ⇤ sees the caller's stack (no user
+# data-stack state), and runs inside a word another queue word's caller uses.
+[ "$(printf '%s' ':p←q\\‹pqpush›→q0;‹pq›→q 9 8⍳⌽′p€_ Ṅ ←q≢Ṅ32)←q0′+⇤Ṅ32)←q‹pqpop›Ṅ' | gc)" = "98 28 0" ] \
+  && ok "‹pqpush› inside €, with the caller's 9 under it untouched; the queue sums and pops" || no "W12-O3 threading"
+# 1M pushes then 1M pops: sorted output (checked by a running signed compare),
+# timed; Python's C heapq on the same data for reference (reported only).
+printf '%s' '‹pq›0→i{←i7919*1000003%‹pqpush›←i1+"→i1000000<1+}1 63≪→p0→v{‹pqpop›"←p≺←v+→v→p"≢0≡}←vṄ32)←pṄ' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/o3big" 2>/dev/null; chmod +x "$TMP/o3big"
+printf '%s' '‹pq›0→i{←i7919*1000003%‹pqpush›←i1+"→i1000000<1+}' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/o3push" 2>/dev/null; chmod +x "$TMP/o3push"
+w12o3t0=$(date +%s%N); w12o3o=$("$TMP/o3big"); w12o3t1=$(date +%s%N); "$TMP/o3push"; w12o3t2=$(date +%s%N)
+w12o3pu=$(( (w12o3t2-w12o3t1)/1000000 )); w12o3po=$(( (w12o3t1-w12o3t0-(w12o3t2-w12o3t1))/1000000 ))
+[ "$w12o3o" = "0 $(python3 -c 'print(max(i*7919%1000003 for i in range(1000000)))')" ] \
+  && ok "1M pushes then 1M pops come out in order; push ≈ $w12o3pu ns, pop ≈ $w12o3po ns" || no "W12-O3 1M: $w12o3o"
+w12o3bad=""
+while IFS= read -r w12o3l; do
+  w12o3p=${w12o3l%%  ->*}; w12o3p=${w12o3p%"${w12o3p##*[! ]}"}; w12o3w=${w12o3l##*->  }
+  [ "$(printf '%s' "$w12o3p" | gc 2>&1 | sed 's/ *$//')" = "$w12o3w" ] || w12o3bad="$w12o3bad [$w12o3p]"
+done < <(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12o3bad" ] && [ "$(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 6 ] \
+  && ok "REFERENCE.md's Priority queues examples print what they say" || no "REFERENCE Priority queues examples:$w12o3bad"
+# === W12-A8 ===
+echo "W12-A8: streams — ⍞ (0xDA) and the ‹s…› sources, transformers and sinks"
+# REFERENCE.md's Streams examples (no stdin), on golf2 and, for those that
+# print on stdout, the oracle.
+w12a8bad=""; w12a8n=0
+while IFS= read -r w12a8l; do
+  w12a8p=${w12a8l%%  ->*}; w12a8p=${w12a8p%"${w12a8p##*[! ]}"}; w12a8w=${w12a8l##*->  }
+  w12a8n=$((w12a8n+1))
+  [ "$(printf '%s' "$w12a8p" | gc 2>&1 | sed 's/ *$//')" = "$w12a8w" ] || w12a8bad="$w12a8bad [$w12a8p]"
+  case "$w12a8w" in GOLF:*) ;; *) [ "$(printf '%s' "$w12a8p" | gref | sed 's/ *$//')" = "$w12a8w" ] || w12a8bad="$w12a8bad oracle[$w12a8p]";; esac
+done < <(sed -n '/^### Streams/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12a8bad" ] && [ "$w12a8n" -ge 18 ] \
+  && ok "REFERENCE.md's stream examples ($w12a8n) print what they say, golf2 and oracle" || no "W12-A8 REFERENCE examples:$w12a8bad"
+# ‹sints› reads exactly what ‹ints› reads: the P1 block's inputs (tokens split
+# across every 8 KB refill, random bytes, 200000 numbers), the edge cases, and
+# the oracle on stdin.
+w12a8i=""
+for w12a8f in "$TMP/w12p1b.in" "$TMP/w12p1r.in" "$TMP/big.in"; do
+  [ "$(gin '‹sints›‹sshow›' < "$w12a8f")" = "$(gin '‹ints›⍕' < "$w12a8f")" ] || w12a8i="$w12a8i [$w12a8f]"
+done
+[ -z "$w12a8i" ] && [ "$(gin '‹sints›‹collect›≢Ṅ' < "$TMP/big.in")" = "200000" ] \
+  && ok "‹sints› matches ‹ints› on numbers split across the buffer refills, 60 KB of random bytes and 200000 numbers" || no "W12-A8 sints parity:$w12a8i"
+[ "$(printf '' | gin '‹sints›⍞Ṅ⍞Ṅ‹sfree›')" = "11" ] && [ "$(printf ' \t\n\r\n  \x0b\x0c ' | gin '‹sints›‹collect›≢Ṅ')" = "0" ] \
+  && [ "$(printf -- '-1 +2 -30 +0 -0 12ab x - --1 +-5 1x2\r\n-9223372036854775808 18446744073709551617' | gin '‹sints›‹sshow›')" \
+       = "-1 2 -30 0 0 12 0 0 0 0 1 -9223372036854775808 1 " ] \
+  && [ "$(printf '9223372036854775807 9223372036854775808' | gin '‹sints›⍞_Ṅ␤⍞_Ṅ␤⍞Ṅ_')" = "$(printf '9223372036854775807\n-9223372036854775808\n1')" ] \
+  && [ "$(printf '1 -2 x 3\r\n+4' | w12p1o '‹sints›‹sshow›')" = "1 -2 0 3 4 " ] \
+  && ok "‹sints›: empty and blank input end at once (and stay ended); signs, words, CRLF and wraparound as ‹ints›; the oracle agrees" || no "W12-A8 sints edges"
+# The buffer is left just past the last number pulled: ‹readline› / ‹ints›
+# carry on from there, and a sink that stops early reads nothing more — on an
+# endless pipe too.
+gin '‹sints›′⊕‹smap›3‹stake›‹sshow›' < /dev/null > /dev/null; w12a8y=$(yes 5 | timeout 10 "$TMP/pin")
+gin ':p7≡1+;‹sints›′p‹sfind›ṄṄ' < /dev/null > /dev/null; w12a8z=$(yes 7 | timeout 10 "$TMP/pin")
+[ "$(printf '1 2 3\nrest\n' | gin '‹sints›3‹stake›‹sshow›‹readline›_≢Ṅ‹readline›_⊐')" = "1 2 3 0rest" ] \
+  && [ "$(printf '1 2 7 8 9' | gin ':p7≡1+;‹sints›′p‹sfind›ṄṄ␤‹ints›⍕')" = "$(printf '07\n8 9 ')" ] \
+  && [ "$w12a8y" = "6 6 6 " ] && [ "$w12a8z" = "07" ] \
+  && ok "‹sints› stops right after the number it returns: ‹readline› and ‹ints› see the rest, ‹sfind› / ‹stake› end on an endless pipe" || no "W12-A8 sints laziness"
+[ "$(printf 'ab\ncde\n\nf' | gin '‹slines›′≢‹smap›‹sshow›')" = "2 3 0 1 " ] && [ "$(printf 'ab\ncd' | gin '‹slines›‹sshow›')" = "[97 98] [99 100] " ] \
+  && [ "$(printf 'a\nb\n' | gin '‹sbytes›‹collect›⍕')" = "97 10 98 10 " ] && [ "$(printf '' | gin '‹sbytes›⍞Ṅ‹sfree›‹slines›⍞Ṅ‹sfree›')" = "11" ] \
+  && python3 -c 'open("'"$TMP"'/w12a8y.in","wb").write(bytes(range(256))*40)' && [ "$(gin '‹sbytes›‹collect›∑Ṅ' < "$TMP/w12a8y.in")" = "1305600" ] \
+  && ok "‹slines› (each line a code list, empty lines too, a last line without \\n) and ‹sbytes› (0-255); empty input ends both" || no "W12-A8 slines/sbytes"
+# Every transformer against Python, lengths 0..6, from ‹upto› and from ‹stream›.
+w12a8t=""
+for n in 0 1 2 3 4 5 6; do
+  w12a8p=":f7*11∣3-;:p2∣;:q4≺1+;$n‹upto›′f‹smap›‹sshow›␤$n⍳‹stream›′p‹sfilter›‹sshow›␤$n‹upto›′f‹smap›′+‹sscan›‹sshow›␤$n‹upto›2‹stake›‹sshow›␤$n‹upto›2‹sdrop›‹sshow›␤$n‹upto›′q‹swhile›‹sshow›␤$n‹upto›′f‹smap›′*‹senum›‹sshow›␤$n‹upto›‹nat›′f‹smap›′-‹szip›‹sshow›␤$n‹upto›3‹swin›′∑‹smap›‹sshow›␤$n‹upto›′f‹smap›0′+‹sfold›Ṅ␤$n‹upto›‹collect›≢Ṅ"
+  w12a8w=$(python3 - "$n" <<'PY'
+import sys, itertools
+n = int(sys.argv[1]); r = list(range(n)); f = lambda x: (x*7) % 11 - 3; j = lambda v: "".join("%d " % x for x in v)
+m = [f(x) for x in r]
+print("\n".join([j(m), j(x for x in r if x % 2 == 0), j(itertools.accumulate(m)), j(r[:2]), j(r[2:]),
+  j(itertools.takewhile(lambda x: x < 4, r)), j(x*i for i, x in enumerate(m)), j(i - f(i) for i in r),
+  j(sum(r[i:i+3]) for i in range(n - 2)), str(sum(m)), str(n)]))
+PY
+)
+  [ "$(printf '%s' "$w12a8p" | gc)" = "$w12a8w" ] || w12a8t="$w12a8t $n"
+done
+[ -z "$w12a8t" ] && ok "‹smap› ‹sfilter› ‹sscan› ‹stake› ‹sdrop› ‹swhile› ‹senum› ‹szip› ‹swin› ‹sfold› ‹collect› on lengths 0..6 match Python" || no "W12-A8 transformers:$w12a8t"
+w12a8o=':f7*11∣3-;:p2∣;9‹upto›′f‹smap›′p‹sfilter›′+‹sscan›‹sshow›␤‹nat›5‹sdrop›′f‹smap›4‹swin›′∑‹smap›6‹stake›‹sshow›␤“hello“⊃‹stream›′+‹senum›‹nat›′*‹szip›0′+‹sfold›Ṅ'
+[ "$(printf '%s' "$w12a8o" | gref)" = "$(printf '%s' "$w12a8o" | gc)" ] && [ -n "$(printf '%s' "$w12a8o" | gc)" ] \
+  && ok "oracle: a pipeline through every transformer prints what golf2 prints" || no "W12-A8 oracle pipeline"
+# ‹stake› on ‹nat› ends (and never pulls past n); ‹swhile› / ‹sfind› stop at the
+# first miss / hit; an ended stream keeps answering 1.
+[ "$(printf '%s' ':c\\⊕\\;0‹nat›′c‹smap›3‹stake›‹sshow›Ṅ␤0‹nat›′c‹smap›0‹stake›‹sshow›Ṅ␤:p3≺1+;0‹nat›′c‹smap›′p‹swhile›‹sshow›Ṅ␤:q3≡1+;0‹nat›′c‹smap›′q‹sfind›ṄṄṄ␤2‹upto›⍞_Ṅ⍞_Ṅ⍞Ṅ⍞Ṅ⍞Ṅ‹sfree›' | gc)" \
+    = "$(printf '0 1 2 3\n0\n0 1 2 4\n034\n01111')" ] \
+  && ok "‹stake› on ‹nat› ends after exactly n pulls (0 too); ‹swhile› and ‹sfind› pull one past / up to the hit; an ended stream stays ended" || no "W12-A8 laziness"
+# The A1 contract: every function sees the caller's stack under its
+# arguments (a counter below the pipeline), streams nest inside a stream's
+# function, inside €, and € inside them.
+[ "$(printf '%s' ':c\\⊕\\;:p\\⊕\\2∣;:s+\\⊕\\;:z+\\⊕\\;0 5‹upto›′c‹smap›′p‹sfilter›′s‹sscan›‹sshow›Ṅ␤0 3‹upto›4‹upto›′z‹szip›‹sshow›Ṅ␤:e+\\⊕\\;0 3‹upto›′e‹senum›‹sshow›Ṅ' | gc)" \
+    = "$(printf '0 2 6 12\n0 2 4 3\n0 2 4 3')" ] \
+  && [ "$(printf '%s' ':m⊕‹upto›′²‹smap›0′+‹sfold›;:n‹stream›‹collect›∑;4‹upto›′m‹smap›‹sshow›␤3⍳′⍳€′n€⍕␤:k4⍳′m€∑;3‹upto›′k‹smap›‹sshow›' | gc)" \
+    = "$(printf '0 1 5 14 \n0 0 1 \n20 20 20 ')" ] \
+  && ok "functions see the caller's stack under x (counters under ‹smap› ‹sfilter› ‹sscan› ‹szip› ‹senum›); streams inside a stream's function, inside € and around €" || no "W12-A8 threading"
+# Errors: a throw inside f (‹smap› ‹sfilter› ‹sfold› ‹szip›, also under €) is
+# caught, the spill stack is back to 0 and streams work again; a freed stream
+# is use after free for ⍞, ‹sfree›, the sinks, and for a transformer whose
+# upstream went with it.
+w12a8c=':t"2≡1+[“two“⊃‹throw›];:u"2≡1+[“two“⊃‹throw›]+;:a5‹upto›′t‹smap›‹collect›;′a‹catch›⊐␤:b5‹upto›′t‹sfilter›‹sshow›;′b‹catch›⊐␤:c5‹upto›0′u‹sfold›;′c‹catch›⊐␤:d5‹upto›‹nat›′u‹szip›‹sshow›;′d‹catch›⊐␤:e3⍳′a€;′e‹catch›⊐␤:f5‹upto›′u‹sscan›‹sshow›;′f‹catch›⊐␤4‹upto›‹sshow›5177392@Ṅ'
+[ "$(w113 "$w12a8c")" = "$(printf 'two\n0 two\ntwo\n0 2 two\ntwo\n0 1 two\n0 1 2 3 0 rc=0')" ] \
+  && ok "a throw inside a stream's function is caught (‹smap› ‹sfilter› ‹sfold› ‹szip› ‹sscan›, under €); the spill stack is back to 0" || no "W12-A8 catch: $(w113 "$w12a8c" | tr '\n' '|')"
+w12a8u=""
+for w12a8a in '5‹upto›"‹sfree›⍞' '5‹upto›"‹sfree›‹sfree›' '5‹upto›"‹sfree›‹collect›' '5‹upto›"‹sfree›0′+‹sfold›' '5‹upto›"⌫‹sshow›' \
+              '5‹upto›"′⊕‹smap›‹sfree›⍞' '3‹upto›4‹upto›"→a′+‹szip›‹sfree›←a⍞' '5‹upto›"‹collect›_⍞' '5⍳"‹stream›\\⌫⍞'; do
+  [ "$(w110 "$w12a8a")" = "rc=1 0 GOLF: use after free" ] || w12a8u="$w12a8u [$w12a8a: $(w110 "$w12a8a")]"
+done
+[ -z "$w12a8u" ] && [ "$(w110 '3‹upto›0‹swin›')" = "rc=1 0 GOLF: window size" ] \
+  && ok "use after free: ⍞ / ‹sfree› / a sink on a freed stream, an upstream freed by its transformer or its sink, a freed ‹stream› list; ‹swin› 0 is window size" || no "W12-A8 use after free:$w12a8u"
+# Ownership: ‹sfree› of a transformer gives back the whole chain (‹szip›'s two
+# upstreams, ‹swin›'s window), and so does every sink.
+[ "$(printf '%s' '‹heapstats›→b→n 5‹upto›′⊕‹smap›3‹swin›′∑‹smap›‹nat›2‹sdrop›′+‹szip›"⍞__⍞__‹sfree› 9‹upto›‹collect›⌫ 9‹upto›‹sshow› 9‹upto›0′+‹sfold›_ :p5≡1+;‹nat›′p‹sfind›__ 7⍳"‹stream›‹sfree›⌫ ‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)" \
+    = "0 1 2 3 4 5 6 7 8 0 0" ] \
+  && ok "‹sfree› frees a transformer chain (‹szip›'s two upstreams, ‹swin›'s window); the four sinks free what they consume: ‹heapstats› unchanged" || no "W12-A8 ownership"
+# Constant memory and speed: Stock as a stream over 2M ints from a pipe keeps
+# ‹heapstats› within 64 KB of the start (the sampled peak); 1M ints through
+# ‹sints›…‹sfold› timed (reported, not asserted: the machine is shared).
+printf '%s' ':h‹heapstats›→z_←z←m⌈→m;‹heapstats›→b_←b→m‹sints›′h‹smap›′⌊‹sscan›0′﹢‹sfold›Ṅ␤←m←b-65536<Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/a8flat" 2>/dev/null; chmod +x "$TMP/a8flat"
+gin '‹heapstats›→b_‹sints›‹collect›≢Ṅ␤‹heapstats›←b-65536<Ṅ_' < /dev/null > /dev/null
+[ "$(seq 2000000 | "$TMP/a8flat")" = "$(printf '2000000\n-1')" ] && [ "$(seq 2000000 | "$TMP/pin")" = "$(printf '2000000\n0')" ] \
+  && ok "‹sints›′⌊‹sscan›0′﹢‹sfold› over 2M piped ints keeps ‹heapstats› within 64 KB of the start (‹collect› of them does not, for contrast)" || no "W12-A8 constant memory"
+"$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/stock_stream.golfj" "$TMP/a8ss" > /dev/null 2>&1
+python3 -c 'import random; r=random.Random(3); print(" ".join(str(r.randint(0, 10**4)) for _ in range(1000000)))' > "$TMP/a8stock.in"
+printf '%s' '‹sints›0′+‹sfold›Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/a8sum" 2>/dev/null; chmod +x "$TMP/a8sum"
+w12a8t0=$(date +%s%N); w12a8s=$("$TMP/a8sum" < "$TMP/a8stock.in"); w12a8t1=$(date +%s%N)
+[ "$w12a8s" = "$(python3 -c 'import sys; print(sum(map(int, open(sys.argv[1]).read().split())))' "$TMP/a8stock.in")" ] \
+  && [ "$("$TMP/a8ss" < "$TMP/a8stock.in")" = "$(python3 bench/leetcode/py/stock.py < "$TMP/a8stock.in")" ] \
+  && [ "$(printf '7 1 5 3 6 4' | "$TMP/a8ss")" = "5" ] && [ "$(printf '7 6 4 3 1' | "$TMP/a8ss")" = "0" ] \
+  && ok "1M ints: ‹sints›0′+‹sfold› sums them in $(( (w12a8t1-w12a8t0)/1000000 )) ms; bench/leetcode/golf/stock_stream.golfj agrees with py/stock.py" || no "W12-A8 1M ints / stock_stream"
+# Code page, cells, no swap byte.
+[ "$(python3 tools/codepage.py decode < <(printf '%s' '\next' | python3 tools/codepage.py encode))" = "⍞" ] \
+  && [ "$(printf '%s' '\next' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "da" ] \
+  && ok "\\next encodes to 0xDA and decodes as ⍞" || no "⍞ code page"
+[ "$(sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177392 5177424 5181312 5181320 5181336 5181344 5181352 5181360 5181368 " ] \
+  && ! sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -q '\\\\' \
+  && ok "the streams use only A8's cells (5181312…5181368), the spill pointer and the input buffer cell — no s0..s7, no swap byte" || no "W12-A8 cells"
+# === W12-O6 ===
+echo "W12-O6: booleans for output — ‹tf› (0 -> “true“, else “false“, as a code list)"
+w12o6p='0‹tf›⊐32)1‹tf›⊐32)5±‹tf›⊐32)3 3≡‹tf›⊐32)3 3≡1+‹tf›⊐32)3 4≡1+‹tf›⊐32)0‹tf›"TṄ32)≢Ṅ32)1‹tf›≢Ṅ'
+[ "$(printf '%s' "$w12o6p" | gc)" = "true false false false true false 0 4 5" ] \
+  && [ "$(printf '%s' "$w12o6p" | gref)" = "true false false false true false 0 4 5" ] \
+  && ok "‹tf›: 0 true, 1 / -5 / -1 false, a tagged list of 4 or 5 codes; 1+ flips a ≡ result (oracle too)" \
+  || no "W12-O6 ‹tf›: $(printf '%s' "$w12o6p" | gc)"
+# Fresh list each call, freeable; and it leaves the caller's stack alone.
+[ "$(printf '%s' '‹heapstats›→b→n 0→j{←j2%‹tf›⌫←j1+"→j1000<1+}‹heapstats›←b-Ṅ32)←n-Ṅ32)9 0‹tf›⌫Ṅ' | gc)" = "0 0 9" ] \
+  && ok "1000 ‹tf› lists made and freed: ‹heapstats› flat; the stack under f is untouched" || no "W12-O6 heapstats"
+w12o6bad=""
+while IFS= read -r w12o6l; do
+  w12o6x=${w12o6l%%  ->*}; w12o6x=${w12o6x%"${w12o6x##*[! ]}"}; w12o6w=${w12o6l##*->  }
+  [ "$(printf '%s' "$w12o6x" | gc 2>&1 | sed 's/ *$//')" = "$w12o6w" ] || w12o6bad="$w12o6bad [$w12o6x]"
+done < <(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w12o6bad" ] && [ "$(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && grep -q '‹tf›⊐' bench/leetcode/golf/parens.golfj \
+  && ok "REFERENCE.md's ‹tf› examples print what they say; Valid Parentheses prints through ‹tf›" || no "W12-O6 examples:$w12o6bad"
+# === W12-O4 ===
+echo "W12-O4: bench/leetcode/golf/* — answers match Python on gen.py 0.001 inputs; bytes never grow past README.md"
+# The ten problems and their ceilings are bench/leetcode/README.md's "Byte
+# ceilings" table; bytes are counted as bytes.sh counts them (code-page bytes,
+# newlines dropped).  gen.py seeds random.Random(42), so its inputs are the
+# same every run; parens gets two extra unbalanced inputs (gen.py's are all
+# balanced).  Python's own solution (bench/leetcode/py/) is the reference.
+w12o4L=bench/leetcode; w12o4D="$TMP/lc"; w12o4bad=""; w12o4n=0
+python3 "$w12o4L/gen.py" 0.001 "$w12o4D"
+printf '([)]\n' > "$w12o4D/parens2.txt"; printf '((\n' > "$w12o4D/parens3.txt"
+while read -r w12o4p w12o4c; do
+  w12o4n=$((w12o4n+1))
+  python3 tools/codepage.py encode < "$w12o4L/golf/$w12o4p.golfj" > "$TMP/lc.gb"
+  w12o4b=$(tr -d '\n' < "$TMP/lc.gb" | wc -c)
+  [ "$w12o4b" -le "$w12o4c" ] || w12o4bad="$w12o4bad [$w12o4p: $w12o4b bytes > $w12o4c]"
+  cat "$TMP/pre.gb" "$TMP/lc.gb" | "$TMP/golf2" > "$TMP/lcbin" 2>/dev/null; chmod +x "$TMP/lcbin"
+  for w12o4i in "$w12o4D/$w12o4p".txt "$w12o4D/$w12o4p"[0-9].txt; do
+    [ -f "$w12o4i" ] || continue
+    [ "$("$TMP/lcbin" < "$w12o4i" 2>&1 | tr -s ' \n' '  ' | sed 's/ *$//')" \
+      = "$(python3 "$w12o4L/py/$w12o4p.py" < "$w12o4i" | tr -s ' \n' '  ' | sed 's/ *$//')" ] \
+      || w12o4bad="$w12o4bad [$w12o4p: wrong answer on $(basename "$w12o4i")]"
+  done
+done < <(sed -n '/^### Byte ceilings$/,/^### /p' "$w12o4L/README.md" | sed -n 's/^| \([a-z]*\) | \([0-9]*\) |$/\1 \2/p')
+[ "$w12o4n" = 10 ] && [ -z "$w12o4bad" ] \
+  && ok "the 10 LeetCode solutions give Python's answers on tiny inputs, each within its README byte ceiling" \
+  || no "W12-O4 leetcode ($w12o4n problems):$w12o4bad"
+# === W12-Z1 ===
+echo "W12-Z1: one-byte aliases ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ (0xDB-0xE3) of the hottest long names"
+# Each alias is a prelude word whose whole body is a call of its long name.
+w12z1bad=""
+while read -r w12z1m w12z1h w12z1g w12z1n; do
+  [ "$(printf '%s' "\\$w12z1m" | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "$w12z1h" ] \
+    && [ "$(printf '%s' "$w12z1g" | python3 tools/codepage.py encode | python3 tools/codepage.py decode)" = "$w12z1g" ] \
+    && [ "$(printf '%s' "$w12z1g" | python3 tools/codepage.py encode | python3 tools/codepage.py decode -m)" = "\\$w12z1m" ] \
+    || w12z1bad="$w12z1bad [code page \\$w12z1m]"
+  grep -qxF ":\\$w12z1m‹$w12z1n›;" lib/prelude.golfj || w12z1bad="$w12z1bad [prelude \\$w12z1m]"
+  grep -qF "| \`0x$(printf '%s' "$w12z1h" | tr a-f A-F)\` | \`\\$w12z1m\` | \`$w12z1g\` | prelude: one-byte alias of \`‹$w12z1n›\`" REGISTRY.md \
+    && sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -F "\`\\$w12z1m\`" | grep -q '| shipped |$' \
+    || w12z1bad="$w12z1bad [REGISTRY \\$w12z1m]"
+done <<'W12Z1'
+ints db ℤ ints
+readall dc ⎕ readall
+readline dd ⏎ readline
+dict de Ḋ dict
+dget df Ġ get
+dput e0 Ṗ put
+keys e1 Ḳ keys
+bump e2 Ḃ bump
+vec e3 Ṿ vec
+W12Z1
+[ -z "$w12z1bad" ] && ! sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -q '| reserved |$' \
+  && ok "\\ints \\readall \\readline \\dict \\dget \\dput \\keys \\bump \\vec: 0xDB-0xE3 round-trip through the code page; each prelude body is just its long name; REGISTRY §1.4 shipped, nothing left reserved" \
+  || no "W12-Z1 code page / prelude / REGISTRY:$w12z1bad"
+# Same results as the long names, on stdin and off it (golf2; the oracle too).
+[ "$(printf '3 -4\n 5x 6' | gin 'ℤ⍕')" = "$(printf '3 -4\n 5x 6' | gin '‹ints›⍕')" ] && [ "$(printf '3 -4\n 5x 6' | gin 'ℤ⍕')" = "3 -4 5 6 " ] \
+  && [ "$(printf 'ab\ncd\nxyz' | gin '⏎_⊐␤⎕⊐⏎Ṅ≢Ṅ')" = "$(printf 'ab\ncd\nxyz10')" ] \
+  && [ "$(printf 'ab\ncd\nxyz' | gin '‹readline›_⊐␤‹readall›⊐‹readline›Ṅ≢Ṅ')" = "$(printf 'ab\ncd\nxyz10')" ] \
+  && [ "$(printf '' | gin 'ℤ≢Ṅ⎕≢Ṅ⏎Ṅ≢Ṅ')" = "0010" ] \
+  && ok "ℤ ⎕ ⏎ read stdin exactly as ‹ints› ‹readall› ‹readline› do (mixed in one program, and at end of input)" || no "W12-Z1 input aliases"
+w12z1p='Ḋ"1 10Ṗ"2 20Ṗ"1ĠṄ"7Ḃ"7Ḃ"7ĠṄ"1 5Ṗ_Ḳ⍕"‹vals›⍕␤Ṿ3⍆1⍆4⍆⍕Ṿ"≢Ṅ⌫␤5⍳"⧺Ḋ′Ḃ⇤‹vals›⍕'
+w12z1q='‹dict›"1 10‹put›"2 20‹put›"1‹get›Ṅ"7‹bump›"7‹bump›"7‹get›Ṅ"1 5‹put›_‹keys›⍕"‹vals›⍕␤‹vec›3⍆1⍆4⍆⍕‹vec›"≢Ṅ⌫␤5⍳"⧺‹dict›′‹bump›⇤‹vals›⍕'
+w12z1w=$(printf '1021 2 7 5 20 2 \n3 1 4 0\n2 2 2 2 2 ')
+[ "$(printf '%s' "$w12z1p" | gc)" = "$w12z1w" ] && [ "$(printf '%s' "$w12z1q" | gc)" = "$w12z1w" ] \
+  && [ "$(printf '%s' "$w12z1p" | gref)" = "$w12z1w" ] && [ "$(printf '%s' 'ℤ≢Ṅ⎕≢Ṅ⏎Ṅ≢Ṅ' | gref)" = "0010" ] \
+  && ok "Ḋ Ġ Ṗ Ḳ Ḃ Ṿ give what ‹dict› ‹get› ‹put› ‹keys› ‹bump› ‹vec› give (Ḃ as a ⇤ step); the oracle agrees, input aliases included" \
+  || no "W12-Z1 dict/vec aliases: $(printf '%s' "$w12z1p" | gc | tr '\n' '|')"
+[ "$(w110 'Ḋ9Ġ')" = "rc=1 0 GOLF: key not found" ] && [ "$(printf '%s' ':‹f›Ḋ9Ġ;′‹f›‹catch›⊐' | gc)" = "key not found" ] \
+  && [ "$(printf '%s' '1 2Ḋ3ḂḲ⍕ṄṄ' | gc)" = "3 21" ] && [ "$(printf '%s' ':‹f›Ṿ⍅;′‹f›‹catch›⊐' | gc)" = "pop from empty" ] \
+  && ok "errors come from the long name (key not found, through ‹catch› too); the stack under an alias is untouched" || no "W12-Z1 errors"
+w12z1bad=""
+while IFS= read -r w12z1l; do
+  w12z1x=${w12z1l%%  ->*}; w12z1x=${w12z1x%"${w12z1x##*[! ]}"}; w12z1e=${w12z1l##*->  }
+  [ "$(printf '%s' "$w12z1x" | gc 2>&1 | sed 's/ *$//')" = "$w12z1e" ] || w12z1bad="$w12z1bad [$w12z1x]"
+done < <(sed -n '/^### One-byte aliases$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w12z1bad" ] && [ "$(sed -n '/^### One-byte aliases$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && [ "$(printf '1 2 3' | gin 'ℤ∑Ṅ')" = 6 ] && [ "$(printf 'ab\n' | gin '⎕≢Ṅ')" = 3 ] && [ "$(printf 'a\nbc\n' | gin '{⏎"[_⊐␤0]}')" = "$(printf 'a\nbc')" ] \
+  && ok "REFERENCE.md's One-byte aliases examples print what they say (the three stdin ones too)" || no "W12-Z1 examples:$w12z1bad"
+# === W12-O5 ===
+echo "W12-O5: REFERENCE.md §4 \"LeetCode in Golf\" — Stock, Trap, Sliding Window as the benchmark runs them"
+# Each **…, `name.golfj`, N bytes.** paragraph is followed by its ```golfj
+# program, a ```stdin sample and the ```text output: the program must be the
+# file's text, N its code-page size, and the output golf2's and Python's.
+rm -rf "$TMP/w12o5"; mkdir -p "$TMP/w12o5"
+w12o5n=$(python3 - "$TMP/w12o5" <<'PY'
+import re, sys
+t = open("REFERENCE.md", encoding="utf-8").read()
+a, z = t.find("<!-- LEETCODE BEGIN -->"), t.find("<!-- LEETCODE END -->")
+ex = re.findall(r"`(\w+)\.golfj`, (\d+) bytes\.\*\*.*?```golfj\n(.*?)```\s*```stdin\n(.*?)```\s*```text\n(.*?)```", t[a:z], re.S) if 0 <= a < z else []
+for name, n, src, inp, out in ex:
+    for ext, s in (("golfj", src), ("in", inp), ("out", out), ("n", n)):
+        open(f"{sys.argv[1]}/{name}.{ext}", "w", encoding="utf-8").write(s)
+print(" ".join(e[0] for e in ex))
+PY
+)
+w12o5bad=""
+for w12o5p in $w12o5n; do
+  w12o5f="$TMP/w12o5/$w12o5p"
+  [ "$(cat "$w12o5f.golfj")" = "$(cat "bench/leetcode/golf/$w12o5p.golfj")" ] || w12o5bad="$w12o5bad [$w12o5p: not the file's text]"
+  [ "$(python3 tools/codepage.py encode < "$w12o5f.golfj" | tr -d '\n' | wc -c)" = "$(cat "$w12o5f.n")" ] || w12o5bad="$w12o5bad [$w12o5p: byte count]"
+  w12o5g=$(gin "$(cat "$w12o5f.golfj")" < "$w12o5f.in" | sed 's/[[:space:]]*$//')
+  [ "$w12o5g" = "$(sed 's/[[:space:]]*$//' "$w12o5f.out")" ] || w12o5bad="$w12o5bad [$w12o5p: prints '$w12o5g']"
+  [ "$(python3 "bench/leetcode/py/$w12o5p.py" < "$w12o5f.in" | tr -s ' \n' '  ' | sed 's/ *$//')" = "$(tr -s ' \n' '  ' < "$w12o5f.out" | sed 's/ *$//')" ] \
+    || w12o5bad="$w12o5bad [$w12o5p: Python disagrees]"
+done
+[ "$w12o5n" = "stock trap slidemax" ] && [ -z "$w12o5bad" ] \
+  && ok "the LeetCode tutorial's Stock, Trap and Sliding Window are bench/leetcode/golf/'s text, their stated sizes, and print their documented (and Python's) output" \
+  || no "W12-O5 LeetCode tutorial ($w12o5n):$w12o5bad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

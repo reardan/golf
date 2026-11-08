@@ -152,6 +152,14 @@
 # It borrows ‹entry› ‹len› ‹ch› ‹idx› ‹other› ‹left› from M2 to build and
 # intern the names it invents, and ‹left› from W11-2A for ‹vendor›'s copy.
 #
+# W12-A7 (`⋄`, if-else and the top-tested while) adds one, live only inside
+# the `⋄` and `}` cases:
+#
+#   ‹else›    a jmp site held while the one below it is patched
+#
+# W12-Z2 (`⇡x` / `⇣x`) adds no state: ‹step› keeps the name in b, as ⇒/⇐ do,
+# and ‹named› walks M-FRAME2's slot table with M2's ‹idx›, idle between tokens.
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -164,7 +172,7 @@
 # ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹forward› ‹resolve›
 # ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
 # g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
-# ‹recstore› ‹recfields› ‹defrecord› t H.  The M2 words have long names for the same reason their state
+# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹step› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -1320,7 +1328,7 @@ w
 # Locals (M-FRAME, sized per definition since M-FRAME2)
 # ---------------------------------------------------------------------------
 #
-# A ⊡ word's locals are NAMES — `a`…`h` or any ‹long name› — and each gets the
+# A ⊡ word's locals are NAMES — `a`…`z` or any ‹long name› — and each gets the
 # next slot at its first appearance in the definition, so a word that names k
 # locals has a frame of exactly k cells: slot i at [rbp+8*i], the return address
 # at [rbp+8*k].  The slot is known the moment the name is read, so ⇒/⇐ stay
@@ -1345,10 +1353,10 @@ V
 ←b
 256<
 1﹢
-[           # a one-byte local is a..h, as it always was.  ⇒z or ⇒A is
-←b          #   refused rather than quietly given a slot: a one-letter local
-97﹣         #   is still a deliberate, small namespace
-8<
+[           # a one-byte local is a lowercase letter, a..z (W12-Z3; a..h
+←b          #   before).  ⇒A or ⇒{ is refused rather than quietly given a
+97﹣         #   slot: a one-letter local is still a small namespace
+26<
 [
 “GOLF: local out of range “
 ‹badlocal›
@@ -1359,6 +1367,13 @@ V
 ←b          #   name - 'a', exactly as M-FRAME compiled it
 256<
 [           #   and a long name has nowhere to go at all
+“GOLF: local out of range “
+‹badlocal›
+]
+←b          #   nor has i..z: the fixed slots stop at h
+97﹣
+8<
+[
 “GOLF: local out of range “
 ‹badlocal›
 ]
@@ -1696,6 +1711,144 @@ k
 # which each consume one.  The main loop is stack-neutral, so those pending
 # addresses stack up harmlessly below and are consumed in LIFO order: the data
 # stack *is* the compile-time backpatch stack.
+#
+# W12-A7: `[` and `{` also push a TAG above their address, so `⋄` and `}` can
+# tell what the innermost open block is.  The tags are numbers no address and
+# no argc can be (every address here is past 0x494000):
+#
+#   1000001  `[`           above the jnz site
+#   1000002  `{`           above the loop target
+#   1000003  `[ … ⋄`       above the else-jmp site      (`]` treats it as 1000001)
+#   1000004  `{ c ⋄`       above the exit site, which sits above the target
+#
+# `]` drops the tag and patches; `}` jumps back conditionally after a 1000002
+# and unconditionally after a 1000004 (then lands the exit).  `⋄` is legal only
+# on a 1000001 or a 1000002.  The seed pushes the same tags.
+
+:‹badelse›  # ‹badelse› : `GOLF: ⋄<tail> at line N`, exit 2 (W12-A7)  [ tail -> !!! ]
+“GOLF: “
+‹say›
+8686562     # 0x848BE2: the three UTF-8 bytes of ⋄, staged in m+52 (as in
+4259892!    # ‹showname›: a glyph in a string here would be a high byte the
+2           # seed-compilability check refuses)
+4259892
+3
+1⎈
+_
+‹say›       # the tail
+‹where›
+2.
+;
+
+# W12-Z2: `⇡x` and `⇣x` (0xB9 / 0xBA) are `←x⊕→x` and `←x⊖→x` in one
+# instruction that never touches the data stack:
+#
+#   48 FF 04 25 imm32   inc qword [0x4E0000+8*x]     (⇣: 48 FF 0C 25, dec)
+#   48 FF 45 disp8      inc qword [rbp+disp]          (⇣: 48 FF 4D, dec)
+#
+# The second form is for a ⊡ word that has already named x as a local (with ⇒x
+# or ⇐x earlier in its body): there the local wins.  ⇡ never claims a slot, so
+# a name the word has not named yet is the variable.  x is a letter or a ‹long
+# name›; anything else, end of input included, is `GOLF: ⇡ needs a variable`.
+
+:‹badstep›  # ‹badstep› : `GOLF: ⇡ needs a variable at line N`, exit 2  [ glyph -> !!! ]
+“GOLF: “
+‹say›
+4259892!    # the glyph's three UTF-8 bytes, staged in m+52 as ‹badelse› does
+2
+4259892
+3
+1⎈
+_
+“ needs a variable“
+‹say›
+‹where›
+2.
+;
+
+:‹named›    # ‹named› : slot+1 if this ⊡ word has named local b, else 0  [ -> s ]
+←J
+[           # outside a ⊡ word nothing is a local
+0
+^
+]
+0
+→‹idx›
+{
+←‹idx›
+←‹locals›
+-
+[           # past the last one named: b is not a local (yet)
+0
+^
+]
+←‹idx›
+4*
+4259936+
+@
+←b
+-
+[
+←‹idx›
+1+
+^
+]
+←‹idx›
+1+
+→‹idx›
+0
+}
+;
+
+:‹step›     # ‹step› : compile ⇡x (k = 0) or ⇣x (k = 8)            [ k -> ]
+‹getname›
+→b
+←b
+256<
+1+
+[           # a one-byte name must be a letter
+←b
+65-
+26<
+←b
+97-
+26<
++
+[
+"
+[
+10586082    # 0xA187E2: ⇡
+‹badstep›
+]
+10717154    # 0xA387E2: ⇣
+‹badstep›
+]
+]
+‹named›
+"
+[           # not a local: the variable bank
+_
+72o         #   0x48 0xFF 0x04|0x0C 0x25 imm32  inc|dec qword [cell]
+255o
+4+
+o
+37o
+←b
+8*
+5111808+
+w
+^
+]
+1-          # a local: its slot's displacement
+8*
+→b
+72o         #   0x48 0xFF 0x45|0x4D disp8  inc|dec qword [rbp+disp]
+255o
+69+
+o
+←b
+o
+;
 
 :t
 "
@@ -1834,6 +1987,7 @@ _
 ←p
 0
 w           #   the placeholder site stays on the stack for ']'
+1000001     #   under the `[` tag (W12-A7)
 ^
 ]
 
@@ -1841,6 +1995,7 @@ w           #   the placeholder site stays on the stack for ']'
 93-
 [           # ']' : close a conditional
 _
+_           #   the tag: `[`'s or `⋄`'s, patched alike (W12-A7)
 k
 ^
 ]
@@ -1850,6 +2005,7 @@ k
 [           # '{' : loop start — emits nothing, just marks the target
 _
 ←p
+1000002     #   under the `{` tag (W12-A7)
 ^
 ]
 
@@ -1857,6 +2013,21 @@ _
 125-
 [           # '}' : loop back to the target while TOS == 0
 _
+"
+1000004-
+[           #   a top-tested `{c⋄body}` (W12-A7): back to the test always,
+_           #   then land `⋄`'s exit here
+→‹else›
+233o        #   0xE9 jmp rel32
+←p
+4+
+-
+w
+←‹else›
+k
+^
+]
+_           #   the `{` tag
 2E
 132o        #   0x84 -> JZ rel32
 ←p
@@ -2034,6 +2205,24 @@ o
 ]
 
 "
+185-
+[           # 0xB9 ⇡ : increment a variable in place (W12-Z2)
+_
+0
+‹step›
+^
+]
+
+"
+186-
+[           # 0xBA ⇣ : decrement it
+_
+8
+‹step›
+^
+]
+
+"
 94-
 [           # '^' : return early.  A plain template until M-FRAME; it is a case
 _           #   now only so that it can ask whether there is a frame to release.
@@ -2072,6 +2261,52 @@ w           #   ... emitted as a placeholder, and left on the stack for ';'
 1→u         #   in a chain from here to the matching ';'
 0→K         #   with no links yet
 ^
+]
+
+"
+184-
+[           # 0xB8 ⋄ : the else of `c[a⋄b]`, or the test of `{c⋄body}` (W12-A7)
+_
+"
+1000001-
+[           #   in a `[`: end the then-branch with a jmp to `]`, and send the
+_           #   `[`'s jnz here, to the else-branch
+233o        #   0xE9 jmp rel32, its site patched by `]`
+←p
+→‹else›
+0
+w
+k           #   the `[`'s site, under its tag
+←‹else›
+1000003
+^
+]
+"
+1000002-
+[           #   in a `{`: c is computed — leave the loop unless it is 0
+_
+2E          #   blob record 2: pop rax; test rax,rax; 0F
+133o        #   0x85 -> JNZ rel32 to past `}`
+←p
+0
+w           #   the exit site, above the loop target
+1000004
+^
+]
+"
+1000003-
+[
+“ twice in one block“
+‹badelse›
+]
+"
+1000004-
+[
+“ twice in one block“
+‹badelse›
+]
+“ outside [ ] or { }“
+‹badelse›
 ]
 
 "

@@ -77,6 +77,34 @@ LIB = [
     (0xCF, "memb", "∊", "member: list x -> 0 if x is an element, else 1"),
     # --- W11-2C LIB row: closures by value (prelude anchor W11-2C bind) ---
     (0xD0, "bind", "⊸", "bind: x ′f -> ′g; g pushes the captured x, then calls f"),
+    # --- W12-A2 / W12-A3 LIB rows (prelude sections W12-A2, W12-A3) ---
+    (0xD1, "scan", "⍀", "scan: l ′f -> l'; inclusive, l'[0] = l[0], l'[i] = f(l'[i-1], l[i])"),
+    (0xD2, "reduce", "⍁", "reduce: l ′f -> x; fold seeded by l[0] (empty: empty reduce)"),
+    (0xD3, "eachi", "⍸", "each-indexed: l ′f -> l'; l'[i] = f(l[i], i)"),
+    # --- W12-A4 LIB row: sort by key (prelude section W12-A4) ---
+    (0xD4, "ksort", "⍒", "sort by key: l ′k -> l'; stable, ascending by k x (k once per element)"),
+    # --- W12-Z4 LIB rows: store-at, vector push/pop (prelude section W12-Z4) ---
+    (0xD5, "putat", "⍈", "store-at: list i v -> list; list[i] = v in place (bounds-checked)"),
+    (0xD6, "push", "⍆", "push: v x -> v'; append x (vector or deque back); use the returned v'"),
+    (0xD7, "pop",  "⍅", "pop: v -> v x; remove the last element (empty: pop from empty)"),
+    # --- W12-A5 / W12-A6 LIB rows (prelude sections W12-A5, W12-A6) ---
+    (0xD8, "win",  "⊟", "window reduce: l n ′f -> f-reduce of every length-n window (deque for ⌈ ⌊)"),
+    (0xD9, "fix",  "⍣", "fixpoint: x ′f -> y; apply f until the result ≣ the previous one"),
+    # --- W12-A8 LIB row: the stream protocol (prelude section W12-A8) ---
+    (0xDA, "next", "⍞", "stream next: s -> s x 0 | s 1 (zero-is-true, like ‹readline›)"),
+    # --- W12-Z1 LIB rows: one-byte aliases of the hottest long names (prelude
+    # section W12-Z1).  Each byte is a one-call word that runs the long name,
+    # which stays.  Mnemonics are letters only and prefix-free: \dget \dput
+    # because \get (←) is a compiler op and \puts / \putat exist.
+    (0xDB, "ints", "ℤ", "alias of ‹ints›: -> list, all of stdin as integers"),
+    (0xDC, "readall", "⎕", "alias of ‹readall›: -> list, the rest of stdin as a code list"),
+    (0xDD, "readline", "⏎", "alias of ‹readline›: -> list flag, the next line without its \\n (flag 0), 1 at end"),
+    (0xDE, "dict", "Ḋ", "alias of ‹dict›: -> d, a new empty dict"),
+    (0xDF, "dget", "Ġ", "alias of ‹get›: d k -> v (missing: key not found)"),
+    (0xE0, "dput", "Ṗ", "alias of ‹put›: d k v -> d"),
+    (0xE1, "keys", "Ḳ", "alias of ‹keys›: d -> list, the keys in insertion order"),
+    (0xE2, "bump", "Ḃ", "alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1)"),
+    (0xE3, "vec", "Ṿ", "alias of ‹vec›: -> v, a new empty vector"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
@@ -90,8 +118,8 @@ COMPILER = [
      "prefix: ⊚name f g h; defines a tacit chain (a train of links)"),
     (mkblob2.FRAME_BYTE, "dloc", "⊡",
      "prefix: ⊡name ... ; defines a word with a frame of per-call locals, one cell each"),
-    (mkblob2.LSET_BYTE, "lset", "⇒", "prefix: ⇒x pops TOS into local x (a..h or ‹name›)"),
-    (mkblob2.LGET_BYTE, "lget", "⇐", "prefix: ⇐x pushes local x (a..h or ‹name›)"),
+    (mkblob2.LSET_BYTE, "lset", "⇒", "prefix: ⇒x pops TOS into local x (a..z or ‹name›)"),
+    (mkblob2.LGET_BYTE, "lget", "⇐", "prefix: ⇐x pushes local x (a..z or ‹name›)"),
     (mkblob2.LNAME_BYTE, "lname", "‹",
      "opens a long name: ‹name› stands wherever a one-byte name can"),
     (mkblob2.RNAME_BYTE, "rname", "›", "closes a long name"),
@@ -99,6 +127,12 @@ COMPILER = [
      "prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/)"),
     (mkblob2.REC_BYTE, "rec", "⊜",
      "prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec)"),
+    (mkblob2.ELSE_BYTE, "else", "⋄",
+     "separator: c[a⋄b] runs a when c is 0, else b; {c⋄body} tests c before each pass, runs body while it is 0"),
+    (mkblob2.VINC_BYTE, "vinc", "⇡",
+     "prefix: ⇡x adds 1 to variable x in place (←x⊕→x; in a ⊡ word, a local already named there)"),
+    (mkblob2.VDEC_BYTE, "vdec", "⇣",
+     "prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there)"),
 ]
 
 def lib_byte(key) -> int:

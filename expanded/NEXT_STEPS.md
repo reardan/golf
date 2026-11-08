@@ -27,6 +27,13 @@ program, prelude included (an empty program is about 43 KB), must fit in
 192 KB, below the 1C buffer at `0x430000`. The next
 candidates are still M7 (codegen) and M9 (C backend / arm64) under "As needed".
 
+**Proposed next: W12** — [`PLAN_W12.md`](PLAN_W12.md). It comes from a
+LeetCode benchmark against Python, C++ and Jelly
+([`bench/leetcode/`](bench/leetcode/README.md)). It covers buffer-direct
+input, faster dicts and list loops, scan and other adverbs, a constant-memory
+stream protocol, store-at and vectors, and one-byte aliases. M7 is planned to
+follow it.
+
 Before W11:
 
 **W9 — the gap-fix waves — closed the queue below.** Every numbered item
@@ -196,7 +203,7 @@ linked list through their own unpatched immediates and walked at `;`. That is a
 well-understood assembler technique and costs one compiler variable (definitions
 do not nest), but it is real work and M-FRAME already removed the wrong answer.
 
-*Also still open.* Eight slots means eight *names*, `a`–`h`; M2's name table
+*Also still open* (closed since: M-FRAME2 took long names, W12-Z3 all of `a`–`z`). Eight slots means eight *names*, `a`–`h`; M2's name table
 (item 4, shipped) could let a `⊡` word name its locals anything and let the count fall
 out of the name arena. The return stack's missing guard, which M-FRAME's
 ~15k-frame ceiling made easier to reach, is fixed: W9-2C's guard page turns an
