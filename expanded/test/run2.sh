@@ -3954,6 +3954,120 @@ while IFS= read -r w12o3l; do
 done < <(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
 [ -z "$w12o3bad" ] && [ "$(sed -n '/^### Priority queues$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 6 ] \
   && ok "REFERENCE.md's Priority queues examples print what they say" || no "REFERENCE Priority queues examples:$w12o3bad"
+# === W12-A8 ===
+echo "W12-A8: streams — ⍞ (0xDA) and the ‹s…› sources, transformers and sinks"
+# REFERENCE.md's Streams examples (no stdin), on golf2 and, for those that
+# print on stdout, the oracle.
+w12a8bad=""; w12a8n=0
+while IFS= read -r w12a8l; do
+  w12a8p=${w12a8l%%  ->*}; w12a8p=${w12a8p%"${w12a8p##*[! ]}"}; w12a8w=${w12a8l##*->  }
+  w12a8n=$((w12a8n+1))
+  [ "$(printf '%s' "$w12a8p" | gc 2>&1 | sed 's/ *$//')" = "$w12a8w" ] || w12a8bad="$w12a8bad [$w12a8p]"
+  case "$w12a8w" in GOLF:*) ;; *) [ "$(printf '%s' "$w12a8p" | gref | sed 's/ *$//')" = "$w12a8w" ] || w12a8bad="$w12a8bad oracle[$w12a8p]";; esac
+done < <(sed -n '/^### Streams/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12a8bad" ] && [ "$w12a8n" -ge 18 ] \
+  && ok "REFERENCE.md's stream examples ($w12a8n) print what they say, golf2 and oracle" || no "W12-A8 REFERENCE examples:$w12a8bad"
+# ‹sints› reads exactly what ‹ints› reads: the P1 block's inputs (tokens split
+# across every 8 KB refill, random bytes, 200000 numbers), the edge cases, and
+# the oracle on stdin.
+w12a8i=""
+for w12a8f in "$TMP/w12p1b.in" "$TMP/w12p1r.in" "$TMP/big.in"; do
+  [ "$(gin '‹sints›‹sshow›' < "$w12a8f")" = "$(gin '‹ints›⍕' < "$w12a8f")" ] || w12a8i="$w12a8i [$w12a8f]"
+done
+[ -z "$w12a8i" ] && [ "$(gin '‹sints›‹collect›≢Ṅ' < "$TMP/big.in")" = "200000" ] \
+  && ok "‹sints› matches ‹ints› on numbers split across the buffer refills, 60 KB of random bytes and 200000 numbers" || no "W12-A8 sints parity:$w12a8i"
+[ "$(printf '' | gin '‹sints›⍞Ṅ⍞Ṅ‹sfree›')" = "11" ] && [ "$(printf ' \t\n\r\n  \x0b\x0c ' | gin '‹sints›‹collect›≢Ṅ')" = "0" ] \
+  && [ "$(printf -- '-1 +2 -30 +0 -0 12ab x - --1 +-5 1x2\r\n-9223372036854775808 18446744073709551617' | gin '‹sints›‹sshow›')" \
+       = "-1 2 -30 0 0 12 0 0 0 0 1 -9223372036854775808 1 " ] \
+  && [ "$(printf '9223372036854775807 9223372036854775808' | gin '‹sints›⍞_Ṅ␤⍞_Ṅ␤⍞Ṅ_')" = "$(printf '9223372036854775807\n-9223372036854775808\n1')" ] \
+  && [ "$(printf '1 -2 x 3\r\n+4' | w12p1o '‹sints›‹sshow›')" = "1 -2 0 3 4 " ] \
+  && ok "‹sints›: empty and blank input end at once (and stay ended); signs, words, CRLF and wraparound as ‹ints›; the oracle agrees" || no "W12-A8 sints edges"
+# The buffer is left just past the last number pulled: ‹readline› / ‹ints›
+# carry on from there, and a sink that stops early reads nothing more — on an
+# endless pipe too.
+gin '‹sints›′⊕‹smap›3‹stake›‹sshow›' < /dev/null > /dev/null; w12a8y=$(yes 5 | timeout 10 "$TMP/pin")
+gin ':p7≡1+;‹sints›′p‹sfind›ṄṄ' < /dev/null > /dev/null; w12a8z=$(yes 7 | timeout 10 "$TMP/pin")
+[ "$(printf '1 2 3\nrest\n' | gin '‹sints›3‹stake›‹sshow›‹readline›_≢Ṅ‹readline›_⊐')" = "1 2 3 0rest" ] \
+  && [ "$(printf '1 2 7 8 9' | gin ':p7≡1+;‹sints›′p‹sfind›ṄṄ␤‹ints›⍕')" = "$(printf '07\n8 9 ')" ] \
+  && [ "$w12a8y" = "6 6 6 " ] && [ "$w12a8z" = "07" ] \
+  && ok "‹sints› stops right after the number it returns: ‹readline› and ‹ints› see the rest, ‹sfind› / ‹stake› end on an endless pipe" || no "W12-A8 sints laziness"
+[ "$(printf 'ab\ncde\n\nf' | gin '‹slines›′≢‹smap›‹sshow›')" = "2 3 0 1 " ] && [ "$(printf 'ab\ncd' | gin '‹slines›‹sshow›')" = "[97 98] [99 100] " ] \
+  && [ "$(printf 'a\nb\n' | gin '‹sbytes›‹collect›⍕')" = "97 10 98 10 " ] && [ "$(printf '' | gin '‹sbytes›⍞Ṅ‹sfree›‹slines›⍞Ṅ‹sfree›')" = "11" ] \
+  && python3 -c 'open("'"$TMP"'/w12a8y.in","wb").write(bytes(range(256))*40)' && [ "$(gin '‹sbytes›‹collect›∑Ṅ' < "$TMP/w12a8y.in")" = "1305600" ] \
+  && ok "‹slines› (each line a code list, empty lines too, a last line without \\n) and ‹sbytes› (0-255); empty input ends both" || no "W12-A8 slines/sbytes"
+# Every transformer against Python, lengths 0..6, from ‹upto› and from ‹stream›.
+w12a8t=""
+for n in 0 1 2 3 4 5 6; do
+  w12a8p=":f7*11∣3-;:p2∣;:q4≺1+;$n‹upto›′f‹smap›‹sshow›␤$n⍳‹stream›′p‹sfilter›‹sshow›␤$n‹upto›′f‹smap›′+‹sscan›‹sshow›␤$n‹upto›2‹stake›‹sshow›␤$n‹upto›2‹sdrop›‹sshow›␤$n‹upto›′q‹swhile›‹sshow›␤$n‹upto›′f‹smap›′*‹senum›‹sshow›␤$n‹upto›‹nat›′f‹smap›′-‹szip›‹sshow›␤$n‹upto›3‹swin›′∑‹smap›‹sshow›␤$n‹upto›′f‹smap›0′+‹sfold›Ṅ␤$n‹upto›‹collect›≢Ṅ"
+  w12a8w=$(python3 - "$n" <<'PY'
+import sys, itertools
+n = int(sys.argv[1]); r = list(range(n)); f = lambda x: (x*7) % 11 - 3; j = lambda v: "".join("%d " % x for x in v)
+m = [f(x) for x in r]
+print("\n".join([j(m), j(x for x in r if x % 2 == 0), j(itertools.accumulate(m)), j(r[:2]), j(r[2:]),
+  j(itertools.takewhile(lambda x: x < 4, r)), j(x*i for i, x in enumerate(m)), j(i - f(i) for i in r),
+  j(sum(r[i:i+3]) for i in range(n - 2)), str(sum(m)), str(n)]))
+PY
+)
+  [ "$(printf '%s' "$w12a8p" | gc)" = "$w12a8w" ] || w12a8t="$w12a8t $n"
+done
+[ -z "$w12a8t" ] && ok "‹smap› ‹sfilter› ‹sscan› ‹stake› ‹sdrop› ‹swhile› ‹senum› ‹szip› ‹swin› ‹sfold› ‹collect› on lengths 0..6 match Python" || no "W12-A8 transformers:$w12a8t"
+w12a8o=':f7*11∣3-;:p2∣;9‹upto›′f‹smap›′p‹sfilter›′+‹sscan›‹sshow›␤‹nat›5‹sdrop›′f‹smap›4‹swin›′∑‹smap›6‹stake›‹sshow›␤“hello“⊃‹stream›′+‹senum›‹nat›′*‹szip›0′+‹sfold›Ṅ'
+[ "$(printf '%s' "$w12a8o" | gref)" = "$(printf '%s' "$w12a8o" | gc)" ] && [ -n "$(printf '%s' "$w12a8o" | gc)" ] \
+  && ok "oracle: a pipeline through every transformer prints what golf2 prints" || no "W12-A8 oracle pipeline"
+# ‹stake› on ‹nat› ends (and never pulls past n); ‹swhile› / ‹sfind› stop at the
+# first miss / hit; an ended stream keeps answering 1.
+[ "$(printf '%s' ':c\\⊕\\;0‹nat›′c‹smap›3‹stake›‹sshow›Ṅ␤0‹nat›′c‹smap›0‹stake›‹sshow›Ṅ␤:p3≺1+;0‹nat›′c‹smap›′p‹swhile›‹sshow›Ṅ␤:q3≡1+;0‹nat›′c‹smap›′q‹sfind›ṄṄṄ␤2‹upto›⍞_Ṅ⍞_Ṅ⍞Ṅ⍞Ṅ⍞Ṅ‹sfree›' | gc)" \
+    = "$(printf '0 1 2 3\n0\n0 1 2 4\n034\n01111')" ] \
+  && ok "‹stake› on ‹nat› ends after exactly n pulls (0 too); ‹swhile› and ‹sfind› pull one past / up to the hit; an ended stream stays ended" || no "W12-A8 laziness"
+# The A1 contract: every function sees the caller's stack under its
+# arguments (a counter below the pipeline), streams nest inside a stream's
+# function, inside €, and € inside them.
+[ "$(printf '%s' ':c\\⊕\\;:p\\⊕\\2∣;:s+\\⊕\\;:z+\\⊕\\;0 5‹upto›′c‹smap›′p‹sfilter›′s‹sscan›‹sshow›Ṅ␤0 3‹upto›4‹upto›′z‹szip›‹sshow›Ṅ␤:e+\\⊕\\;0 3‹upto›′e‹senum›‹sshow›Ṅ' | gc)" \
+    = "$(printf '0 2 6 12\n0 2 4 3\n0 2 4 3')" ] \
+  && [ "$(printf '%s' ':m⊕‹upto›′²‹smap›0′+‹sfold›;:n‹stream›‹collect›∑;4‹upto›′m‹smap›‹sshow›␤3⍳′⍳€′n€⍕␤:k4⍳′m€∑;3‹upto›′k‹smap›‹sshow›' | gc)" \
+    = "$(printf '0 1 5 14 \n0 0 1 \n20 20 20 ')" ] \
+  && ok "functions see the caller's stack under x (counters under ‹smap› ‹sfilter› ‹sscan› ‹szip› ‹senum›); streams inside a stream's function, inside € and around €" || no "W12-A8 threading"
+# Errors: a throw inside f (‹smap› ‹sfilter› ‹sfold› ‹szip›, also under €) is
+# caught, the spill stack is back to 0 and streams work again; a freed stream
+# is use after free for ⍞, ‹sfree›, the sinks, and for a transformer whose
+# upstream went with it.
+w12a8c=':t"2≡1+[“two“⊃‹throw›];:u"2≡1+[“two“⊃‹throw›]+;:a5‹upto›′t‹smap›‹collect›;′a‹catch›⊐␤:b5‹upto›′t‹sfilter›‹sshow›;′b‹catch›⊐␤:c5‹upto›0′u‹sfold›;′c‹catch›⊐␤:d5‹upto›‹nat›′u‹szip›‹sshow›;′d‹catch›⊐␤:e3⍳′a€;′e‹catch›⊐␤:f5‹upto›′u‹sscan›‹sshow›;′f‹catch›⊐␤4‹upto›‹sshow›5177392@Ṅ'
+[ "$(w113 "$w12a8c")" = "$(printf 'two\n0 two\ntwo\n0 2 two\ntwo\n0 1 two\n0 1 2 3 0 rc=0')" ] \
+  && ok "a throw inside a stream's function is caught (‹smap› ‹sfilter› ‹sfold› ‹szip› ‹sscan›, under €); the spill stack is back to 0" || no "W12-A8 catch: $(w113 "$w12a8c" | tr '\n' '|')"
+w12a8u=""
+for w12a8a in '5‹upto›"‹sfree›⍞' '5‹upto›"‹sfree›‹sfree›' '5‹upto›"‹sfree›‹collect›' '5‹upto›"‹sfree›0′+‹sfold›' '5‹upto›"⌫‹sshow›' \
+              '5‹upto›"′⊕‹smap›‹sfree›⍞' '3‹upto›4‹upto›"→a′+‹szip›‹sfree›←a⍞' '5‹upto›"‹collect›_⍞' '5⍳"‹stream›\\⌫⍞'; do
+  [ "$(w110 "$w12a8a")" = "rc=1 0 GOLF: use after free" ] || w12a8u="$w12a8u [$w12a8a: $(w110 "$w12a8a")]"
+done
+[ -z "$w12a8u" ] && [ "$(w110 '3‹upto›0‹swin›')" = "rc=1 0 GOLF: window size" ] \
+  && ok "use after free: ⍞ / ‹sfree› / a sink on a freed stream, an upstream freed by its transformer or its sink, a freed ‹stream› list; ‹swin› 0 is window size" || no "W12-A8 use after free:$w12a8u"
+# Ownership: ‹sfree› of a transformer gives back the whole chain (‹szip›'s two
+# upstreams, ‹swin›'s window), and so does every sink.
+[ "$(printf '%s' '‹heapstats›→b→n 5‹upto›′⊕‹smap›3‹swin›′∑‹smap›‹nat›2‹sdrop›′+‹szip›"⍞__⍞__‹sfree› 9‹upto›‹collect›⌫ 9‹upto›‹sshow› 9‹upto›0′+‹sfold›_ :p5≡1+;‹nat›′p‹sfind›__ 7⍳"‹stream›‹sfree›⌫ ‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)" \
+    = "0 1 2 3 4 5 6 7 8 0 0" ] \
+  && ok "‹sfree› frees a transformer chain (‹szip›'s two upstreams, ‹swin›'s window); the four sinks free what they consume: ‹heapstats› unchanged" || no "W12-A8 ownership"
+# Constant memory and speed: Stock as a stream over 2M ints from a pipe keeps
+# ‹heapstats› within 64 KB of the start (the sampled peak); 1M ints through
+# ‹sints›…‹sfold› timed (reported, not asserted: the machine is shared).
+printf '%s' ':h‹heapstats›→z_←z←m⌈→m;‹heapstats›→b_←b→m‹sints›′h‹smap›′⌊‹sscan›0′﹢‹sfold›Ṅ␤←m←b-65536<Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/a8flat" 2>/dev/null; chmod +x "$TMP/a8flat"
+gin '‹heapstats›→b_‹sints›‹collect›≢Ṅ␤‹heapstats›←b-65536<Ṅ_' < /dev/null > /dev/null
+[ "$(seq 2000000 | "$TMP/a8flat")" = "$(printf '2000000\n-1')" ] && [ "$(seq 2000000 | "$TMP/pin")" = "$(printf '2000000\n0')" ] \
+  && ok "‹sints›′⌊‹sscan›0′﹢‹sfold› over 2M piped ints keeps ‹heapstats› within 64 KB of the start (‹collect› of them does not, for contrast)" || no "W12-A8 constant memory"
+"$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/stock_stream.golfj" "$TMP/a8ss" > /dev/null 2>&1
+python3 -c 'import random; r=random.Random(3); print(" ".join(str(r.randint(0, 10**4)) for _ in range(1000000)))' > "$TMP/a8stock.in"
+printf '%s' '‹sints›0′+‹sfold›Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/a8sum" 2>/dev/null; chmod +x "$TMP/a8sum"
+w12a8t0=$(date +%s%N); w12a8s=$("$TMP/a8sum" < "$TMP/a8stock.in"); w12a8t1=$(date +%s%N)
+[ "$w12a8s" = "$(python3 -c 'import sys; print(sum(map(int, open(sys.argv[1]).read().split())))' "$TMP/a8stock.in")" ] \
+  && [ "$("$TMP/a8ss" < "$TMP/a8stock.in")" = "$(python3 bench/leetcode/py/stock.py < "$TMP/a8stock.in")" ] \
+  && [ "$(printf '7 1 5 3 6 4' | "$TMP/a8ss")" = "5" ] && [ "$(printf '7 6 4 3 1' | "$TMP/a8ss")" = "0" ] \
+  && ok "1M ints: ‹sints›0′+‹sfold› sums them in $(( (w12a8t1-w12a8t0)/1000000 )) ms; bench/leetcode/golf/stock_stream.golfj agrees with py/stock.py" || no "W12-A8 1M ints / stock_stream"
+# Code page, cells, no swap byte.
+[ "$(python3 tools/codepage.py decode < <(printf '%s' '\next' | python3 tools/codepage.py encode))" = "⍞" ] \
+  && [ "$(printf '%s' '\next' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "da" ] \
+  && ok "\\next encodes to 0xDA and decodes as ⍞" || no "⍞ code page"
+[ "$(sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177392 5177424 5181312 5181320 5181336 5181344 5181352 5181360 5181368 " ] \
+  && ! sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -q '\\\\' \
+  && ok "the streams use only A8's cells (5181312…5181368), the spill pointer and the input buffer cell — no s0..s7, no swap byte" || no "W12-A8 cells"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

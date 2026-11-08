@@ -1968,3 +1968,146 @@
   \fetch"5180984\fetch\slt5181384\fetch5181376\fetch\rlt$1\radd"[
    _5180976\fetch\store5181384\fetch5180976\store0]}_
  5180984\fetch5180976\fetch\store;
+# === W12-A8 streams ===
+# A STREAM is a tagged list [step, free, state...] on the heap (the length cell
+# counts those cells).  ⍞ (0xDA, \next)  s -> s x 0 | s 1  pulls one value; the
+# flag is zero-is-true, like ‹readline›, and an ended stream keeps answering 1.
+# Nothing here needs thunks or the compiler: a stream is a record plus the
+# address of its step word.
+#
+# THE STEP CALL.  ⍞ parks s on the spill stack (‹_12a8_put›, ONE 8-byte cell,
+# not an X frame) and calls step with the caller's stack untouched; step
+# finds its own record as the top parked cell (‹_12a8_me›, raw) and returns
+# x 0 or 1; ⍞ unparks s and slides it under x.  ‹_12a8_pull›  s -> x 0 | 1 is
+# the same call for the prelude's own use (s is dropped, not handed back).
+# So a stream's function — smap's f, sfilter's p, … — runs with exactly the
+# stack of whoever called the outermost ⍞ or sink, under its arguments: the
+# A1 threading contract of € (REFERENCE "Threading state").  No loop state is
+# ever on the data stack while a function runs: a value a word must keep
+# across a call is parked too, and the sinks park their accumulator.  Parked
+# cells are LIFO with X/Y frames and ‹catch› records on the same stack, and a
+# throw unwinds them with the rest (‹catch› resets the spill offset).  A park
+# with the stack full calls X, which reports `spill stack exhausted`.  ⍞ and
+# ‹_12a8_pull› (the hot path) spell the park and unpark out inline.
+#
+# Cells (REGISTRY §3.2, slot A8 5181312 … 5181368), each live only across a
+# stretch that calls no user code and no other stream: 5181312 the record a
+# constructor is filling (‹_12a8_mk› ‹_12a8_set›) · 5181320 ⍞'s x while s is
+# unparked · 5181328 free · 5181336 ‹sints›'s end-of-bytes e, ‹swin›'s shift
+# end, ‹sscan›'s record and ‹_12a8_t2›'s u · 5181344 ‹sints›'s accumulator, a
+# constructor argument, and x while an accumulator is fetched under it
+# (‹sscan› ‹sfold› ‹collect›) · 5181352 ‹sints›'s sign, ‹_12a8_t2›'s step ·
+# 5181360 ‹sints›'s byte, ‹_12a8_t2›'s size · 5181368 ‹szip›'s f.  This
+# section never uses s0..s7.
+#
+# FREEING.  ⌫ of a stream gives back its record only.  ‹sfree›  s ->  frees the
+# whole chain: it calls the record's free word (cell 1), and a TRANSFORMER
+# OWNS ITS UPSTREAM — freeing it frees the upstream (‹szip›: both), and
+# ‹swin› frees its window too.  A source made by ‹stream› does NOT own
+# its list.  The four sinks ‹sfold› ‹collect› ‹sshow› ‹sfind› consume their
+# stream: they ‹sfree› the chain when they finish.  ⍞, ‹sfree› and the sinks
+# check the record with ‹_2d_chk›, so a freed stream is `use after free`.
+#
+# Records (offset from the raw address; +8 step, +16 free word):
+#   ‹upto› ‹nat›   +24 i · +32 n            ‹stream›  +24 list · +32 i
+#   ‹sints› ‹sbytes› ‹slines›  nothing more (the state is the stdin buffer)
+#   transformers  +24 upstream · +32 f / p / n, then: ‹sscan› +40 started
+#            +48 acc · ‹swhile› +40 done · ‹senum› +40 i · ‹szip› +32 the
+#            second upstream, +40 f · ‹swin› +32 n, +40 count, +48 window
+:‹_12a8_put›5177392@"262144\rlt[X]8\radd"5177392!4456440\radd\store;
+:‹_12a8_get›5177392@"8\rsub5177392!4456440\radd\fetch;
+:‹_12a8_me›5177392@4456440\radd\fetch16\shl16>;
+:‹_12a8_me2›5177392@4456432\radd\fetch16\shl16>;
+:‹_12a8_pull›"5177392@"262144\rlt[X]8\radd"5177392!4456440\radd\store‹_2d_chk›8\radd\fetch\exec5177392@8\rsub5177392!;
+:\next"5177392@"262144\rlt[X]8\radd"5177392!4456440\radd\store‹_2d_chk›8\radd\fetch\exec
+ [5181320\store5177392@"8\rsub5177392!4456440\radd\fetch5181320\fetch0^]5177392@"8\rsub5177392!4456440\radd\fetch1;
+:‹sfree›"‹_2d_chk›16\radd\fetch\exec;
+# ‹_12a8_mk›  free step n -> s   a new record of n cells (step, free, n-2
+# state cells to fill), its raw address left in 5181312 for ‹_12a8_set›
+# (v off ->, stores v at record+off).
+:‹_12a8_mk›"1\radd A"5181312\store\store5181312\fetch8\radd\store5181312\fetch16\radd\store5181312\fetch32767 48\shl|;
+:‹_12a8_set›5181312\fetch\radd\store;
+:‹_12a8_free1›"16\shl16>24\radd\fetch‹sfree›\free;
+:‹_12a8_free2›"16\shl16>32\radd\fetch‹sfree›‹_12a8_free1›;
+# ‹_12a8_t2›  u x step n -> s   a transformer record: free1, u at +24, x at +32.
+:‹_12a8_t2›5181360\store5181352\store5181344\store5181336\store\ref‹_12a8_free1›5181352\fetch5181360\fetch‹_12a8_mk›5181336\fetch24‹_12a8_set›5181344\fetch32‹_12a8_set›;
+# --- sources ---
+:‹_12a8_ust›‹_12a8_me›"24\radd\fetch&32\radd\fetch\slt1\radd[24\radd"\fetch1\radd&\store\fetch1\rsub0^]_1;
+:‹upto›5181344\store\ref\free\ref‹_12a8_ust›4‹_12a8_mk›5181344\fetch32‹_12a8_set›0 24‹_12a8_set›;
+:‹nat›1 63\shl1\rsub‹upto›;
+:‹_12a8_lst›‹_12a8_me›"24\radd\fetch‹_2d_chk›\fetch&32\radd\fetch\sgt1\radd[32\radd"\fetch1\radd&\store\fetch8\rmul‹_12a8_me›24\radd\fetch\radd\fetch0^]_1;
+:‹stream›‹_2d_chk›5181344\store\ref\free\ref‹_12a8_lst›4‹_12a8_mk›5181344\fetch24‹_12a8_set›0 32‹_12a8_set›;
+:‹_12a8_bst›‹getc›"0\slt[0^]_1;
+:‹sbytes›\ref\free\ref‹_12a8_bst›2‹_12a8_mk›;
+:‹_12a8_nst›‹readline›"[^]_\free1;
+:‹slines›\ref\free\ref‹_12a8_nst›2‹_12a8_mk›;
+# ‹sints›: one int per pull, parsed straight out of the W9-4C / W12-P1 stdin
+# buffer with P1's tests (the swap-free blank test u = c + ((c==32)&-23) - 9,
+# u <=u 4; one optional sign; digits; the rest of the word skipped) and its
+# refill (‹_12p1_avail›).  Each loop stops on a SENTINEL byte at the end e of
+# the unread bytes (cell 5181336), as P1's chunk scanner does — 0 while
+# skipping blanks, 32 in a word — so the hot loops test no bound; reaching e
+# refills (‹_12a8_rf›) and carries on, so a number split by a refill is read
+# whole.  pos is written back after every number, so the buffer is left just
+# past it: ‹readline› ‹getc› ‹ints› … may run between pulls and see the rest,
+# and a pipeline that stops pulling reads nothing more.  The record is just
+# [step, free]; acc 5181344, sign 5181352 (0 for '-'), the byte 5181360.
+# ‹_12a8_rf›  p -> p'   p reached e: mark the buffer read, refill, return the
+# new start; at end of input, p' = e with a 32 there and e moved past it, so
+# every loop stops and the word ends.
+:‹_12a8_rf›_5177424\fetch"8\radd\fetch&\store_
+ ‹_12p1_avail›[5177424\fetch"8\radd\fetch\radd16\radd"5181336\store32&,_5177424\fetch"\fetch\radd16\radd^]
+ 5181336\fetch32&,"1\radd5181336\store;
+:‹_12a8_ist›0 5181344\store1 5181352\store
+ {‹_12p1_avail›1\rsub[1^]
+  5177424\fetch"8\radd\fetch\radd16\radd"5181336\store0&,_
+  5177424\fetch"\fetch\radd16\radd{"?"32\eq23\neg$\radd9\rsub"4\gt[_\inc0]}
+  5177424\fetch\rsub16\rsub5177424\fetch\store
+  5177424\fetch\fetch5177424\fetch8\radd\fetch\rlt}
+ 5177424\fetch"\fetch\radd16\radd
+ "?45\gt["?5181360\store5181360\fetch45\eq"\inc5181352\store5181360\fetch43\eq|\neg\radd]
+ {"?48\rsub"9\gt[5181344\fetch10\rmul\radd5181344\store\inc0]}
+ {"5181336\fetch\eq1\radd\else‹_12a8_rf›{"?48\rsub"9\gt[5181344\fetch10\rmul\radd5181344\store\inc0]}}
+ 32 5181336\fetch,
+ {"?"32\eq23\neg$\radd9\rsub5\rlt"[_\inc0]}
+ {"5181336\fetch\eq1\radd\else‹_12a8_rf›{"?"32\eq23\neg$\radd9\rsub5\rlt"[_\inc0]}}
+ 5177424\fetch\rsub16\rsub5177424\fetch\store
+ 5181344\fetch5181352\fetch[\neg]0;
+:‹sints›\ref\free\ref‹_12a8_ist›2‹_12a8_mk›;
+# --- transformers (each owns its upstream) ---
+:‹_12a8_mst›5177392@4456440\radd\fetch16\shl16>24\radd\fetch‹_12a8_pull›"[_5177392@4456440\radd\fetch16\shl16>32\radd\fetch\exec0];
+:‹smap›\ref‹_12a8_mst›4‹_12a8_t2›;
+:‹_12a8_fst›{‹_12a8_me›24\radd\fetch‹_12a8_pull›"[_"‹_12a8_put›‹_12a8_me2›32\radd\fetch\exec[‹_12a8_get›0^]‹_12a8_get›_0]}1;
+:‹sfilter›\ref‹_12a8_fst›4‹_12a8_t2›;
+:‹_12a8_sst›5177392@4456440\radd\fetch16\shl16>24\radd\fetch‹_12a8_pull›"[_5177392@4456440\radd\fetch16\shl16>"40\radd\fetch[1&40\radd\store\else
+ 5181336\store5181344\store5181336\fetch48\radd\fetch5181344\fetch5181336\fetch32\radd\fetch\exec5177392@4456440\radd\fetch16\shl16>]48\radd&&\store_0];
+:‹sscan›\ref‹_12a8_sst›6‹_12a8_t2›0 40‹_12a8_set›;
+:‹_12a8_tst›‹_12a8_me›32\radd"\fetch0\sgt1\radd["\fetch1\rsub&\store_‹_12a8_me›24\radd\fetch‹_12a8_pull›^]_1;
+:‹stake›\ref‹_12a8_tst›4‹_12a8_t2›;
+:‹_12a8_dst›{‹_12a8_me›32\radd\fetch0\sgt1\radd\else‹_12a8_me›24\radd\fetch‹_12a8_pull›[_\else1^]‹_12a8_me›32\radd"\fetch1\rsub&\store_}‹_12a8_me›24\radd\fetch‹_12a8_pull›;
+:‹sdrop›\ref‹_12a8_dst›4‹_12a8_t2›;
+:‹_12a8_wst›‹_12a8_me›40\radd\fetch0\eq[1^]‹_12a8_me›24\radd\fetch‹_12a8_pull›"[_"‹_12a8_put›‹_12a8_me2›32\radd\fetch\exec[‹_12a8_get›0^]‹_12a8_get›_1‹_12a8_me›40\radd\store1];
+:‹swhile›\ref‹_12a8_wst›5‹_12a8_t2›0 40‹_12a8_set›;
+:‹_12a8_est›‹_12a8_me›24\radd\fetch‹_12a8_pull›"[_‹_12a8_me›40\radd"\fetch1\radd&\store\fetch1\rsub‹_12a8_me›32\radd\fetch\exec0];
+:‹senum›\ref‹_12a8_est›5‹_12a8_t2›0 40‹_12a8_set›;
+:‹_12a8_zst›‹_12a8_me›24\radd\fetch‹_12a8_pull›"[_‹_12a8_put›‹_12a8_me2›32\radd\fetch‹_12a8_pull›"[_‹_12a8_put›5177392@4456432\radd\fetch5177392@4456440\radd\fetch5177392@4456424\radd\fetch16\shl16>40\radd\fetch\exec‹_12a8_get›_‹_12a8_get›_0^]‹_12a8_get›_];
+:‹szip›5181368\store\ref‹_12a8_zst›5‹_12a8_t2›5181368\fetch40‹_12a8_set›\ref‹_12a8_free2›16‹_12a8_set›;
+# ‹swin›: the window is the stream's own list, shifted left by one cell per
+# value once it is full, so each pull costs O(n) and hands out the SAME list
+# (valid until the next pull; copy it to keep it, do not ⌫ it).
+:‹_12a8_vout›‹_12a8_me›48\radd\fetch32767 48\shl|0;
+:‹_12a8_vst›{‹_12a8_me›24\radd\fetch‹_12a8_pull›1\rsub[1^]
+ ‹_12a8_me›"40\radd\fetch&32\radd\fetch\slt1\radd[
+  _‹_12a8_me›40\radd\fetch8\rmul‹_12a8_me›48\radd\fetch\radd8\radd\store‹_12a8_me›40\radd"\fetch1\radd&\store_
+  ‹_12a8_me›40\radd\fetch‹_12a8_me›32\radd\fetch\eq[0\else‹_12a8_vout›^]
+ \else
+  _‹_12a8_me›"32\radd\fetch8\rmul&48\radd\fetch\radd5181336\store48\radd\fetch8\radd"5181336\fetch\eq[{"8\radd\fetch&\store8\radd"5181336\fetch\eq}]\store‹_12a8_vout›^]};
+:‹_12a8_vfree›"16\shl16>48\radd\fetch\free‹_12a8_free1›;
+:‹swin›"1\slt1\radd[“window size“U‹throw›]\ref‹_12a8_vst›6‹_12a8_t2›0 40‹_12a8_set›5181312\fetch32\radd\fetch"1\radd A"48‹_12a8_set›\store\ref‹_12a8_vfree›16‹_12a8_set›;
+# --- sinks (each consumes its stream: ‹sfree› when done) ---
+# ‹sfold› parks f, the accumulator and s (top); x waits in 5181344 while the
+# accumulator is fetched under it, so f sees the caller's stack, then acc x.
+:‹sfold›‹_12a8_put›‹_12a8_put›‹_12a8_put›{5177392@4456440\radd\fetch‹_12a8_pull›1\rsub[‹_12a8_get›‹sfree›‹_12a8_get›‹_12a8_get›_^]5181344\store5177392@4456432\radd\fetch5181344\fetch5177392@4456424\radd\fetch\exec5177392@4456432\radd\store0};
+:‹collect›‹vec›‹_12a8_put›‹_12a8_put›{5177392@4456440\radd\fetch‹_12a8_pull›1\rsub[‹_12a8_get›‹sfree›‹_12a8_get›^]5181344\store5177392@4456432\radd\fetch5181344\fetch\push5177392@4456432\radd\store0};
+:‹sshow›‹_12a8_put›{5177392@4456440\radd\fetch‹_12a8_pull›1\rsub[‹_12a8_get›‹sfree›^]"T[1 48\shl\rsub Q\else N]32‹_1c_put›0};
+:‹sfind›‹_12a8_put›‹_12a8_put›{5177392@4456440\radd\fetch‹_12a8_pull›1\rsub[‹_12a8_get›‹sfree›‹_12a8_get›_1^]"‹_12a8_put›5177392@4456424\radd\fetch\exec[‹_12a8_get›‹_12a8_get›‹sfree›‹_12a8_get›_0^]‹_12a8_get›_0};

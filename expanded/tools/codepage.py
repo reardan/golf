@@ -90,6 +90,8 @@ LIB = [
     # --- W12-A5 / W12-A6 LIB rows (prelude sections W12-A5, W12-A6) ---
     (0xD8, "win",  "⊟", "window reduce: l n ′f -> f-reduce of every length-n window (deque for ⌈ ⌊)"),
     (0xD9, "fix",  "⍣", "fixpoint: x ′f -> y; apply f until the result ≣ the previous one"),
+    # --- W12-A8 LIB row: the stream protocol (prelude section W12-A8) ---
+    (0xDA, "next", "⍞", "stream next: s -> s x 0 | s 1 (zero-is-true, like ‹readline›)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
