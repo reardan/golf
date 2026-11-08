@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1278** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **4344** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **14030** bytes |
-| assertions in the run2 suite | **728** |
+| assertions in the run2 suite | **736** |
 | assertions in the selfcheck suite | **60** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -811,12 +811,14 @@ unbuilt, and three defects this list does not yet cover — see
   9223090561878065151. Non-polymorphic atoms (`⊕`, `Ṅ`, `\radd`) still take
   `INT64_MAX` as a plain word.
 - **Nesting depth is bounded by the spill stack, now generously (W10-C).**
-  Every looping word frames its scratch with `X`/`Y`; recursive `⍕`, `≣` and
-  `⍤` take one frame per level, deep `+ - * ⌈ ⌊` two (`D` and `Z`/`K`/`G`).
+  Every scratch-using looping word frames its scratch with `X`/`Y` (`⍳ ∑ ∏ ⌽`
+  use none since W12-P3); recursive `⍕`, `≣` and `⍤` take one frame per level,
+  and so, since W12-P3, does deep `+ - * ⌈ ⌊` (it took two, `D` and
+  `Z`/`K`/`G`, before).
   The stack was 28 frames at `0x4F0900` (about 13 levels of nested arithmetic,
   27 of printing, then a bare SIGSEGV in the guard page); W10-C moved it to
   free BSS at `0x440000`–`0x47FFFF` (REGISTRY §3), 4096 frames = 256 KB, so
-  about 2,000 levels of nested arithmetic and 4,000 of `⍕`/`≣`/`⍤`. Untouched
+  about 4,000 levels of nested arithmetic, `⍕`, `≣` or `⍤` (2,000 of arithmetic before W12-P3). Untouched
   BSS pages cost no RAM. `X` checks the bound with one compare-and-branch and,
   past it, writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like the
   compose arena); `Y` needs no check.
