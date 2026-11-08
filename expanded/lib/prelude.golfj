@@ -723,7 +723,7 @@
 # ‹_1b_dec›'s n · 5179752 / 5179760 ‹_1b_dec›'s buffer and cursor.  No word
 # here calls user code, so one global set of cells is enough.  Looping words
 # frame with X/Y and never hold s5 (A's) across a call.  Names ‹_1b…› are the
-# helpers.  Results are tagged with `1 48\shl|` like every prelude list (1A).
+# helpers.  Results are tagged with `32767 48\shl|` like every prelude list (1A: 0x7FFF<<48).
 # ‹_1b_tobytes›  list -> buf   a raw A block holding each element's low byte,
 # then a NUL (a path for open(2)).  s0 list · s1 i · s4 buf.
 :‹_1b_tobytes›X16\shl16>5177440\store5177440\fetch\fetch3>1\radd A5177472\store0 5177448\store
@@ -733,7 +733,7 @@
 # s2 n · s3 buf · s4 result · s1 i.
 :‹_1b_tolist›X5177456\store5177464\store5177456\fetch1\radd A5177472\store5177456\fetch5177472\fetch\store0 5177448\store
  5177456\fetch0\eq[{5177464\fetch5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
- 5177472\fetch1 48\shl| Y;
+ 5177472\fetch32767 48\shl| Y;
 # ‹_1b_dec›  n -> list   unsigned decimal digits as a code list (for messages):
 # written backwards into a 24-byte block, copied out, the block freed.
 :‹_1b_dec›5179744\store3 A5179752\store24 5179760\store
@@ -764,7 +764,9 @@
  5177456\fetch0\eq[{5177440\fetch5177448\fetch5177456\fetch1\sys"1\slt1\radd[“cannot write “&‹_1b_fail›]
   "5177448\fetch\radd5177448\store5177456\fetch&\rsub5177456\store_5177456\fetch0\eq}]
  5177472\fetch\free Y;
-:‹fwrite›"5179736\store0 5179728\store‹_1b_wr›;
+# ‹fwrite› drains the 1C output buffer first, so bytes written to fd 1 here
+# never overtake what Ṅ ⍕ ␤ 🗲 ⊐ have buffered.
+:‹fwrite›‹flush›"5179736\store0 5179728\store‹_1b_wr›;
 # ‹readfile›  path -> list.  Slurp into a doubling byte block, then one copy
 # into a list.  s0 fd · s1 buf · s2 len · s3 capacity (bytes) · s6 the new
 # block and s7 the copy index while growing.  A read error names the path.

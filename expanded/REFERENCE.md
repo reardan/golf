@@ -401,7 +401,7 @@ one element per byte, `0`–`255`. Writing stores each element's low byte.
 | `‹create›` | `path -> fd` | open a file for writing: create it (mode `0644`) or truncate it |
 | `‹close›` | `fd ->` | close a file descriptor |
 | `‹fread›` | `fd n -> list` | one `read(2)` of up to `n` bytes. It may return fewer. The empty list means end of file. A negative `n` counts as `0` |
-| `‹fwrite›` | `list fd ->` | write every byte of `list` to `fd`, retrying short writes. Writes to one fd follow each other |
+| `‹fwrite›` | `list fd ->` | write every byte of `list` to `fd`, retrying short writes. Writes to one fd follow each other; the output buffer (`‹flush›`) is drained first, so `7Ṅ“ab“⊃1‹fwrite›8Ṅ` prints `7ab8` |
 | `‹readfile›` | `path -> list` | the whole file as a code list. An empty file gives the empty list |
 | `‹writefile›` | `list path ->` | create or truncate `path`, write `list` to it, close it |
 

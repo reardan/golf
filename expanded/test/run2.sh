@@ -2011,6 +2011,8 @@ ile
 [ "$(w111b ':‹m›255$;300000⍳′‹m›€“b.txt“⊃‹writefile›“b.txt“⊃‹readfile›"≢Ṅ␤∑Ṅ')" = "rc=0 300000
 38246416|" ] && [ "$(wc -c < "$TMP/w111b/b.txt")" = 300000 ] \
   && ok "a 300000-byte file (past the 64 KB first block) round-trips byte for byte" || no "big file"
+[ "$(w111b '7Ṅ“ab“⊃1‹fwrite›8Ṅ')" = "rc=0 7ab8|" ] \
+  && ok "‹fwrite› to fd 1 drains the 1C buffer first: buffered and direct bytes stay in order" || no "fwrite/buffer order"
 
 # === W11-1C ===
 echo "W11-1C: buffered output — Ṅ ⍕ ␤ 🗲 ⊐ through an 8 KB buffer, ‹flush›, flush at every exit"
