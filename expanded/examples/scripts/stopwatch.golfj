@@ -1,0 +1,13 @@
+#!/usr/bin/env golfrun
+# stopwatch — sleep for MS milliseconds (default 100), then report the time
+# that really passed on the monotonic clock and what the process used:
+#   ./stopwatch.golfj 250
+#   slept 250 ms (asked 250)
+#   user 0 us, system 512 us, maxrss 1080 KB
+‹args›"≢[_100⋄0⊇‹num›]→‹ms›
+‹now›→‹t0›
+←‹ms›‹sleep›
+‹now›←‹t0›-1000000/→‹el›
+“slept “🗲←‹el›Ṅ“ ms (asked “🗲←‹ms›Ṅ“)“🗲␤
+0‹rusage›→‹ru›
+“user “🗲←‹ru›0⊇Ṅ“ us, system “🗲←‹ru›1⊇Ṅ“ us, maxrss “🗲←‹ru›2⊇Ṅ“ KB“🗲␤

@@ -4367,6 +4367,104 @@ w14a='1“hi“4+2 0 0 0 1⌁_0 4096 3 34 0 1- 0 9⌁"42\\⊛⊙Ṅ'
   && [ "$(printf '%s' '\scall' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "ae" ] \
   && ok "⌁: write(2) and an anonymous mmap(2) (flags in r10, fd in r8) through six registers; oracle agrees; \\scall encodes to AE" || no "W14-A ⌁ six-argument syscall"
 
+# === W14-D ===
+echo "W14-D: ‹getenv› ‹environ› ‹isatty› ‹getpid› ‹exit› ‹eputs› ‹now› ‹walltime› ‹sleep› ‹rusage›; tools/golfrun"
+# w14dc SRC: compile SRC (full prelude) to $TMP/w14d without running it, so a
+# case can run it under env -i, in the background, under a pty or strace.
+w14dc(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14d" 2>/dev/null \
+           && chmod +x "$TMP/w14d"; }
+w14dc '“A“⊃‹getenv›Ṅ⊐␤“B“⊃‹getenv›Ṅ≢Ṅ␤“C“⊃‹getenv›Ṅ≢Ṅ␤“AB“⊃‹getenv›Ṅ⊐␤“A“⊃‹getenv›Ṅ⊐␤““⊃‹getenv›Ṅ≢Ṅ␤“ABC“⊃‹getenv›Ṅ≢Ṅ␤“X“⊃‹getenv›Ṅ⊐'
+[ "$(env -i A=1 B= AB=x=y X=$'caf\xc3\xa9' "$TMP/w14d")" = "$(printf '01\n00\n10\n0x=y\n01\n10\n10\n0caf\xc3\xa9')" ] \
+  && ok "‹getenv›: set (0 value), empty value (0, empty), unset/prefix/longer/empty name (1, empty), a value holding = and UTF-8 bytes" || no "W14-D getenv"
+w14dc '‹args›0⊇‹getenv›Ṅ⊐'
+[ "$("$TMP/w14d" HOME)" = "0$(python3 -c 'import os; print(os.environ["HOME"])')" ] \
+  && [ "$(env -i "$TMP/w14d" PATH)" = 1 ] \
+  && ok "‹getenv› HOME agrees with Python's os.environ; an empty environment has nothing" || no "W14-D getenv oracle"
+w14dc ':‹l›⊐␤0;‹environ›"≢Ṅ␤′‹l›€_'
+[ "$(env -i Z=1 A=2 EMPTY= "$TMP/w14d" | tr '\n' ' ')" = "3 Z=1 A=2 EMPTY= " ] && [ "$(env -i "$TMP/w14d")" = 0 ] \
+  && ok "‹environ›: every entry as KEY=VALUE in envp order (not sorted); an empty environment gives the empty list" || no "W14-D environ"
+w14dc ':‹l›⊐␤0;‹environ›′‹l›€_'
+[ "$("$TMP/w14d" | grep -v '^_=' | sort)" = "$(env | grep -v '^_=' | sort)" ] \
+  && ok "‹environ› holds what env(1) prints (the whole inherited environment)" || no "W14-D environ oracle"
+w14dc '0‹isatty›Ṅ1‹isatty›Ṅ2‹isatty›Ṅ99‹isatty›Ṅ0 1-‹isatty›Ṅ'
+[ "$("$TMP/w14d" < /dev/null 2>/dev/null | cat)" = "11111" ] \
+  && [ "$(python3 -c 'import pty,sys; pty.spawn(sys.argv[1:])' "$TMP/w14d" < /dev/null 2>/dev/null | tr -d '\r')" = "00011" ] \
+  && ok "‹isatty›: 1 for /dev/null and a pipe, 0 for a pty (python3 pty.spawn), 1 for a closed or negative fd" || no "W14-D isatty"
+w14dc '‹getpid›Ṅ'
+"$TMP/w14d" > "$TMP/w14dpid" & w14dp=$!; wait "$w14dp"
+[ "$(cat "$TMP/w14dpid")" = "$w14dp" ] && ok "‹getpid› is the pid the shell started (\$!)" || no "W14-D getpid"
+[ "$(printf '%s' '7Ṅ3‹exit›8Ṅ' | gc; echo " rc=$?")" = "7 rc=3" ] \
+  && [ "$(printf '%s' '5 0‹exit›' | gc; echo "rc=$?")" = "rc=0" ] \
+  && [ "$(printf '%s' ':‹q›9‹exit›;1 2‹q›' | gc; echo "rc=$?")" = "rc=9" ] \
+  && [ "$(printf '%s' '1“m“⊃‹assert›0‹exit›' | gc; echo "rc=$?")" = "$(printf 'FAIL: m\nrc=1')" ] \
+  && [ "$(printf '%s' '1“m“⊃‹assert›4‹exit›' | gc; echo "rc=$?")" = "$(printf 'FAIL: m\nrc=4')" ] \
+  && ok "‹exit›: buffered output first, the status kept, no implicit output, from inside a word; a failed ‹assert› turns 0 into 1" || no "W14-D exit"
+[ "$(printf '%s' '1Ṅ“err“⊃‹eputs›2Ṅ' | gc 2>&1)" = "1err2" ] && [ "$(printf '%s' '1Ṅ“err“⊃‹eputs›2Ṅ' | gc 2>/dev/null)" = "12" ] \
+  && [ "$(printf '%s' '““⊃‹eputs›0⍳‹eputs›5Ṅ' | gc 2>&1)" = "5" ] \
+  && ok "‹eputs›: the list goes to fd 2 only, after what stdout had buffered (order kept); an empty list writes nothing" || no "W14-D eputs"
+w14dc '‹now›Ṅ␤‹walltime›Ṅ'
+w14da=$(python3 -c 'import time; print(time.clock_gettime_ns(time.CLOCK_MONOTONIC), time.time_ns())')
+w14do=$("$TMP/w14d" | tr '\n' ' ')
+w14db=$(python3 -c 'import time; print(time.clock_gettime_ns(time.CLOCK_MONOTONIC), time.time_ns())')
+python3 - "$w14da" "$w14do" "$w14db" <<'PY' && ok "‹now› and ‹walltime› fall between Python's CLOCK_MONOTONIC / time_ns read before and after the run" || no "W14-D now/walltime: $w14da | $w14do | $w14db"
+import sys
+a, o, b = (list(map(int, s.split())) for s in sys.argv[1:])
+assert a[0] <= o[0] <= b[0] and a[1] <= o[1] <= b[1], (a, o, b)
+PY
+[ "$(printf '%s' '‹now›‹now›≻Ṅ‹now›‹now›-0≻Ṅ' | gc)" = "00" ] && ok "‹now› never goes backwards" || no "W14-D now monotonic"
+w14dc '‹args›0⊇‹num›‹now›&‹sleep›‹now›\\-1000000/\\-Ṅ'
+w14ds=$("$TMP/w14d" 250); w14dz=$("$TMP/w14d" 0); w14dn=$("$TMP/w14d" -40)
+[ "$w14ds" -ge 0 ] && [ "$w14ds" -lt 2000 ] && [ "$w14dz" -ge 0 ] && [ "$w14dz" -lt 500 ] && [ "$w14dn" -ge 40 ] && [ "$w14dn" -lt 540 ] \
+  && ok "‹sleep› 250 lasts at least 250 ms on ‹now› (and not seconds more); 0 and a negative ms return at once" || no "W14-D sleep: $w14ds $w14dz $w14dn"
+if command -v strace > /dev/null && strace -o /dev/null true 2>/dev/null; then
+  w14de=$(strace -o "$TMP/w14dst" -e trace=clock_nanosleep -e inject=clock_nanosleep:error=EINTR:when=1 "$TMP/w14d" 120)
+  [ "$w14de" -ge 0 ] && [ "$(grep -c 'tv_sec=0, tv_nsec=120000000' "$TMP/w14dst")" = 2 ] && grep -q 'EINTR.*INJECTED' "$TMP/w14dst" \
+    && ok "‹sleep› restarts after EINTR (strace injects one) with the time left" || no "W14-D sleep EINTR: $w14de $(cat "$TMP/w14dst")"
+else
+  ok "‹sleep› EINTR restart (skipped: strace cannot run here)"
+fi
+w14dc '0‹rusage›"≢Ṅ“ “🗲⍕0 1-‹rusage›⍕“/proc/self/status“⊃‹readfile›10‹split›′‹h›⌿0⊇6↓‹num›Ṅ:‹h›“VmHWM:“⊃‹startswith›;'
+python3 - "$("$TMP/w14d")" <<'PY' && ok "‹rusage›: [user µs, system µs, maxrss KB] for self, maxrss at least /proc/self/status VmHWM, children all 0 before any child" || no "W14-D rusage: $("$TMP/w14d")"
+import sys
+v = list(map(int, sys.argv[1].split()))
+assert v[0] == 3 and v[1] >= 0 and v[2] >= 0 and v[3] > 0 and v[4:7] == [0, 0, 0], v
+assert v[3] >= v[7] > 0, v      # maxrss survives exec (the shell's RSS), so >= VmHWM, in KB
+PY
+[ "$(printf '%s' '0→‹i›{⇡‹i›←‹i›30000000≡}0‹rusage›0⊇0≻Ṅ1‹rusage›≢Ṅ' | gc)" = "-13" ] \
+  && ok "‹rusage›: user time grows with a busy loop; who 1 (this thread) works too" || no "W14-D rusage busy"
+[ "$(printf '%s' ':‹b›5‹rusage›;′‹b›‹catch›⊐“ “🗲5179712⊙Ṅ' | gc)" = "cannot getrusage (EINVAL) 22" ] \
+  && [ "$(printf '%s' '7‹rusage›' | gc 2>&1; echo "rc=$?")" = "$(printf 'GOLF: cannot getrusage (EINVAL)\nrc=1')" ] \
+  && ok "‹rusage› with a bad who: 'cannot getrusage (EINVAL)' (catchable; errno 22 in 5179712), exit 1 uncaught" || no "W14-D rusage EINVAL"
+[ "$(printf '%s' '“HOME“⊃‹getenv›__‹now›_‹walltime›_‹getpid›_‹environ›_0‹isatty›_0‹rusage›_0‹sleep›““⊃‹eputs›“x“⊃⊐' | gcp)" = x ] \
+  && [ "$(printf '%s' '“HOME“⊃‹getenv›__‹now›_‹walltime›_‹getpid›_‹environ›_0‹isatty›_0‹rusage›_0‹sleep›““⊃‹eputs›“x“⊃⊐' | grefp)" = x ] \
+  && ok "pruned golfc keeps what the W14-D words reach; the oracle (boot/golfref.py) compiles them the same" || no "W14-D pruned / oracle"
+# tools/golfrun: compile into build/golfrun/<key>, then exec with the args.
+w14dg="$TMP/w14dg"; mkdir -p "$w14dg"
+printf '#!%s\n⎘“%s/i1.golfj“ ‹args›′⊐€_ ‹readall›≢Ṅ 3‹f›Ṅ 5‹exit›\n' "$EXP/tools/golfrun" "$w14dg" > "$w14dg/s.golfj"
+printf '\\import\\str%s/i2.golfj\\str :‹f›‹g›;\n' "$w14dg" > "$w14dg/i1.golfj"
+printf ':‹g›10*;\n' > "$w14dg/i2.golfj"; chmod +x "$w14dg/s.golfj"
+w14dn0=$(ls build/golfrun 2>/dev/null | wc -l)
+w14d1=$(printf 'abc' | "$w14dg/s.golfj" x y; echo " rc=$?")
+w14dn1=$(ls build/golfrun | wc -l)
+w14d2=$(printf 'abc' | "$w14dg/s.golfj" x y; echo " rc=$?")
+w14dn2=$(ls build/golfrun | wc -l)
+[ "$w14d1" = "xy330 rc=5" ] && [ "$w14d2" = "$w14d1" ] && [ "$w14dn1" -le $((w14dn0+1)) ] && [ "$w14dn2" = "$w14dn1" ] \
+  && ok "golfrun: a #! script runs with its args and stdin, keeps its exit status; the second run hits the cache" || no "W14-D golfrun: $w14d1 | $w14d2 | $w14dn0 $w14dn1 $w14dn2"
+printf ':‹g›100*;\n' > "$w14dg/i2.golfj"
+[ "$(tools/golfrun "$w14dg/s.golfj" < /dev/null; echo " rc=$?")" = "0300 rc=5" ] \
+  && ok "golfrun: editing a nested include (\\import\\str…, recursively) recompiles" || no "W14-D golfrun include key"
+printf '5N' > "$w14dg/r.g2"; printf '3‹nope›' > "$w14dg/bad.golfj"
+[ "$(tools/golfrun "$w14dg/r.g2"; echo " rc=$?")" = "5 rc=0" ] \
+  && [ "$(tools/golfrun "$w14dg/bad.golfj" 2>&1; echo "rc=$?")" = "$(printf 'GOLF: undefined word ‹nope› at line 1\nrc=2')" ] \
+  && [ "$(tools/golfrun "$w14dg/none.golfj" 2>&1 >/dev/null | head -c 22; tools/golfrun "$w14dg/none.golfj" 2>/dev/null; echo " rc=$?")" = "golfrun: no such progr rc=2" ] \
+  && [ -z "$(ls -A build/golfrun | grep '^\.tmp')" ] \
+  && ok "golfrun: a raw program; a compile error is golfc's (exit 2, nothing cached); a missing file is exit 2" || no "W14-D golfrun raw/errors"
+[ "$(env -i Z=1 A=2 PATH="$EXP/tools:/usr/bin:/bin" examples/scripts/printenv.golfj | grep -v '^_=\|^PWD=\|^SHLVL=' | tr '\n' ' ')" = "Z=1 A=2 PATH=$EXP/tools:/usr/bin:/bin " ] \
+  && [ "$(env -i Z=1 PATH="$EXP/tools:/usr/bin:/bin" examples/scripts/printenv.golfj Z NO; echo "rc=$?")" = "$(printf '1\nrc=1')" ] \
+  && [ "$(PATH="$EXP/tools:$PATH" examples/scripts/stopwatch.golfj 30 | sed 's/[0-9][0-9]*/N/g' | tr '\n' ' ')" = "slept N ms (asked N) user N us, system N us, maxrss N KB " ] \
+  && [ "$(env -u HOME PATH="$EXP/tools:$PATH" examples/scripts/procinfo.golfj 2>&1 >/dev/null; echo "rc=$?")" = "$(printf 'procinfo: HOME is not set\nrc=1')" ] \
+  && ok "examples/scripts: printenv (all, or named, status 1 if unset), stopwatch, procinfo run through #!/usr/bin/env golfrun" || no "W14-D example scripts"
+
 # === W13-C ===
 echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"
 # The code page: each mnemonic encodes to its byte, each glyph round-trips
