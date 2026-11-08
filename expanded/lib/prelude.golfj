@@ -277,11 +277,11 @@
 # M map, F fold (and W Z below) — W12-P3: one spill frame per call, s0 the
 # element pointer, s1 its end, s4 the delta to the result's cell; the user's
 # function runs with the caller's stack directly under its argument (A1).
-:M X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
+:M 1‹_13g_map›[^]X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
  5177456\fetch5177440\fetch\rsub5177472\store5177440\fetch"\fetch8\rmul\radd8\radd5177448\store
  5177440\fetch8\radd"5177440\store5177448\fetch\eq[{5177440\fetch\fetch5177464\fetch\exec5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
  5177456\fetch32767 48\shl| Y;
-:F X5177464\store5177472\store‹_2d_chk›"\fetch8\rmul&\radd8\radd5177448\store8\radd"5177440\store
+:F 1‹_13g_fold›[^]X5177464\store5177472\store‹_2d_chk›"\fetch8\rmul&\radd8\radd5177448\store8\radd"5177440\store
  5177448\fetch\eq[{5177472\fetch5177440\fetch\fetch5177464\fetch\exec5177472\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
  5177472\fetch Y;
 # Q show(list) is defined under the W9-3B-NESTED anchor below: it is recursive
@@ -298,7 +298,7 @@
 :V‹_2d_chk›"5180808\store"\fetch"1\radd A&&\store"5180800\store&8\rmul\radd5180808\fetch\radd8\radd~5180816\store
  8\rmul&\radd8\radd&8\radd&&\eq[{"\fetch&5180816\fetch\radd~\store8\radd&&\eq}]
  ___5180800\fetch32767 48\shl|;
-:W X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177472\store"5177488\store__
+:W 1‹_13g_filt›[^]X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177472\store"5177488\store__
  5177440\fetch"\fetch8\rmul\radd8\radd5177448\store5177440\fetch8\radd"5177440\store
  5177448\fetch\eq[{5177440\fetch\fetch"5177456\store5177464\fetch\exec[5177456\fetch5177488\fetch8\radd"5177488\store\store]5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
  5177488\fetch5177472\fetch\rsub3>5177472\fetch\store5177472\fetch32767 48\shl| Y;
@@ -314,7 +314,7 @@
 # Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
 # shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved in s7, the common length
 # min(≢l1, ≢l2) in s2.
-:Z X5177464\store‹_2d_chk›5177496\store‹_2d_chk›5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"1\radd A"5177456\store\store
+:Z 1‹_13g_zip›[^]X5177464\store‹_2d_chk›5177496\store‹_2d_chk›5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"1\radd A"5177456\store\store
  5177496\fetch5177440\fetch\rsub5177496\store5177456\fetch5177440\fetch\rsub5177472\store
  5177456\fetch\fetch8\rmul5177440\fetch\radd8\radd5177448\store5177440\fetch8\radd"5177440\store
  5177448\fetch\eq[{5177440\fetch\fetch5177440\fetch5177496\fetch\radd\fetch5177464\fetch\exec5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
@@ -1708,12 +1708,12 @@
 # result stays below.  The entry ‹_2d_chk› catches a freed list (`use after
 # free`); a throw from f mid-loop unwinds the frame through ‹catch› as in €.
 # No A2 cells are needed (slot 5180992 … 5181048 stays free).
-:\scan X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
+:\scan 1‹_13g_scan›[^]X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
  5177456\fetch5177440\fetch\rsub5177472\store5177440\fetch"\fetch8\rmul\radd8\radd5177448\store
  5177440\fetch\fetch0\eq[5177440\fetch8\radd"5177440\store\fetch"5177456\fetch8\radd\store
  5177440\fetch8\radd"5177440\store5177448\fetch\eq[{5177440\fetch\fetch5177464\fetch\exec"5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]_]
  5177456\fetch32767 48\shl| Y;
-:\reduce&‹_2d_chk›\fetch"[_“empty reduce“U‹throw›]_X5177464\store‹_2d_chk›"\fetch8\rmul&\radd8\radd5177448\store8\radd"5177440\store\fetch
+:\reduce 1‹_13g_red›[^]&‹_2d_chk›\fetch"[_“empty reduce“U‹throw›]_X5177464\store‹_2d_chk›"\fetch8\rmul&\radd8\radd5177448\store8\radd"5177440\store\fetch
  5177440\fetch8\radd"5177440\store5177448\fetch\eq[{5177440\fetch\fetch5177464\fetch\exec5177440\fetch8\radd"5177440\store5177448\fetch\eq}] Y;
 # === W12-A3 each-indexed ===
 # ⍸ (0xD3)  l ′f ⍸ -> l'   map with the index: l'[i] = f(l[i], i), i from 0.
@@ -1722,7 +1722,7 @@
 # then `x i` (the A1 contract).  One X/Y frame per call; ‹_2d_chk› on entry;
 # the result is a new tagged list.  No A3 cells are needed (slot 5181056 …
 # 5181112 stays free).
-:\eachi X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
+:\eachi 1‹_13g_eachi›[^]X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177456\store\store
  5177456\fetch5177440\fetch\rsub5177472\store5177440\fetch"\fetch8\rmul\radd8\radd5177448\store
  5177440\fetch8\radd"5177440\store"5177488\store5177448\fetch\eq[{5177440\fetch\fetch5177440\fetch5177488\fetch\rsub3>5177464\fetch\exec5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
  5177456\fetch32767 48\shl| Y;
@@ -2138,3 +2138,152 @@
 :\keys‹keys›;
 :\bump‹bump›;
 :\vec‹vec›;
+
+# ===== W13-G =====
+# Fast paths for atoms handed to the higher-order words.  `′⊕€`, `0′+⇤`,
+# `′⌈⍀` … (and S1's `⊕€ +⇤ ⌈⍀`, which push the same thunk) used to call the
+# atom's thunk once per element through \exec.  Now € ⌿ ⇤ ⍁ ⍀ ⍸ ⊞ first ask
+# ‹_13g_kind› what f is, and when it is a plain atom run a loop with the atom
+# itself inline and no call per element:
+#   binary (⇤ ⍁ ⍀ ⍸ ⊞)   1 + ∔   2 - ∸   3 * ⨰   4 ⌈ ⩌   5 ⌊ ⩍
+#   unary  (€ ⌿)          6 ⊕   7 ⊖   8 ±   9 ²   10 ⊗   11 ⊘
+# (∔ ∸ ⨰ ⩌ ⩍ are what + - * ⌈ ⌊ hook to, so they run as those atoms.)
+#
+# Recognising f (‹_13g_class›).  ⩌ ⩍ ∔ ∸ ⨰ are prelude words: ′ gives their
+# address, compared directly.  An atom has no address of its own: every ′+
+# compiles a fresh thunk [PROLOGUE 7 bytes][template][EPILOGUE], jumped over,
+# whose bytes are fixed and position independent (W12-A5's ⊟ uses the same
+# fact).  So f is compared byte for byte (‹_13g_same›, ⊟'s ‹_12a5_same› on
+# cells of its own) with the prelude's own thunk of each atom — compiled by
+# the same compiler, so it stays right if a template changes.  A pre-filter
+# keeps a miss to a few compares: the qword at f+7 (the first template bytes;
+# for + - * ⌈ ⌊ the M-VEC preamble with that op's hook address, so it names
+# the op) must equal the candidate's; the six unary atoms share their W12-O1
+# check prefix, so for them the qword at f+29 (7 + 22: the scalar op) decides.
+# A user word `:f+;` compiles to ′+'s bytes and is recognised too (it means
+# the same).  ‹_13g_kind› puts a direct-mapped 8-entry cache in front, entry
+# (f & 7): only an f in the program image (below 0x430000) is cached, because
+# image code never changes while a heap thunk (∘ ⊸) can be freed and its block
+# reused.  A hot `+⇤` site so costs one masked compare per call.
+#
+# Exactness.  The loop runs the very atom f's thunk would — the polymorphic
+# template (+ - * ⌈ ⌊, with its M-VEC hook) or the checked unary one (± ⊕ ⊖
+# ² ⊗ ⊘, with its W12-O1 hook) — on the same operands in the same order, so
+# every element gets exactly the general path's answer: an int computes in
+# place, a list (or an int in the tag band) goes to ∔ … / ‹_12o1_nan› as it
+# would from the thunk (`not a number`, S5's deep map, ∔ on lists, all the
+# same).  What is skipped is only the call, and an atom never looks beneath
+# its operands, so the A1 threading contract cannot tell.  The rest matches
+# the general path step for step:
+#   * the spill stack: X's bound check, then ONE FRAME RESERVED (the offset
+#     bumped, nothing copied — no s0..s7 are used) where the general path
+#     pushes its X frame, and dropped where it pops it, so a hook's ∔ / ⩌
+#     inside the loop meets the same depth (and `spill stack exhausted` at the
+#     same place); a ‹throw› unwinds the offset as it does over a real frame;
+#   * ‹_2d_chk› (use after free) on the list(s) in the same order, the result
+#     block allocated at the same point (so ‹heapstats› matches, and a throw
+#     mid-loop leaks the same block); ⍁ on an empty list takes the general
+#     path, which throws `empty reduce`.
+# Re-entrancy.  The loops keep [end p …] on the data stack and the rest in
+# this section's cells, which a nested fast path would overwrite.  Nothing
+# nests today (a hook reaches only ∔ ∸ ⨰ ⩌ ⩍ / ‹_12o1_nan›, whose list paths
+# recurse on the operator itself), but to stay safe whatever a hook does
+# later, cell G holds the spill offset INSIDE the reserved frame while a loop
+# runs (0 when none does): a driver called while the offset is >= G is nested
+# and takes the general path.  A ‹throw› out of a loop leaves G behind, but
+# it unwinds the offset below G, so the next call at that depth sees a stale
+# G and goes fast again.
+#
+# Hooking in.  Each word starts `1‹_13g_…›[^]`: the driver takes the word's
+# arguments and the 1, and leaves either `result 0` (done: `[^]` returns it)
+# or the arguments and the 1 untouched (`[` drops the 1, the general path
+# runs).  It decides before it changes anything.  run2's pre-M1 prelude cuts
+# every long-name call, which leaves `1[^]`: a no-op.
+# Words changed in place (W13-G): M € · F ⇤ · W ⌿ · Z ⊞ · \scan ⍀ ·
+# \reduce ⍁ · \eachi ⍸ — each got the one `1‹_13g_…›[^]` in front.  The new
+# long names are ‹_13g_same› ‹_13g_try› ‹_13g_try2› ‹_13g_class›
+# ‹_13g_kind› ‹_13g_map› ‹_13g_filt› ‹_13g_floop› ‹_13g_fold› ‹_13g_red›
+# ‹_13g_scan› ‹_13g_eachi› ‹_13g_zip› (13).
+#
+# Cells (REGISTRY §3, W13-G: 0x437E00 … 0x437FFF = 4423168 … 4423679, in the
+# free BSS headroom above the W11-1C output buffer):
+#   4423168 … 4423295  the kind cache, 8 × [f, kind]
+#   4423296 4423304 4423312  ‹_13g_same›'s two pointers and countdown ·
+#   4423320 ‹_13g_try›'s candidate · 4423368 the running value (⇤ ⍁ ⍀) or
+#   ⌿'s write pointer · 4423328 the kind · 4423336 the cache entry · 4423344 R the result block ·
+#   4423352 P the list (raw) · 4423360 f, for handing back · 4423400 ⊞'s l2 ·
+#   4423408 the pre-filter qword · 4423520 the end of P's elements ·
+#   4423528 G (see Re-entrancy) · 4423424 … 4423448 R-P, +8, +16, +24
+#   (where an element's result goes) · 4423456 … 4423480 ⊞'s l2-l1, +8 … ·
+#   4423488 … 4423512 ⍸'s &l[0], -8 … (index base); the rest is spare.
+# The loops are generated from one table (one per word and atom; ⇤ and ⍁
+# share ‹_13g_floop›).  € ⇤ ⍁ ⍀ ⊞ take two elements per pass; when the count
+# is odd, the first element goes through f itself (\exec, the general path's
+# very call: one call per word, not one copy of the loop per atom, which
+# keeps the section at ~15 KB of code).  ⌿ and ⍸ take one per pass.  The data
+# stack holds [p], the element pointer (an element's result goes to p + R-P);
+# ⇤ ⍁ and ⌿ carry the running value / write pointer above it for a pass ([p
+# acc], f's first operand right above p); ⍀ walks the RESULT instead ([q]:
+# the running value is the cell it just wrote, q-8, the element q + P-R).
+# Swap-free, like the rest of the prelude (the swap byte's `decode -m` form
+# does not re-encode).
+:‹_13g_same›"4\rsub@4423312\store4423304\store4423296\store0
+ {4423296\fetch?4423304\fetch?=|4423296\fetch1\radd4423296\store4423304\fetch1\radd4423304\store4423312\fetch1\rsub"4423312\store0\eq&|};
+:‹_13g_try›"4423320\store7\radd\fetch4423408\fetch\eq1\radd["4423320\fetch‹_13g_same›^]1;
+:‹_13g_try2›"4423320\store29\radd\fetch4423408\fetch\eq1\radd["4423320\fetch‹_13g_same›^]1;
+:‹_13g_class›"\ref\vadd\eq1\radd[1^]"\ref\vsub\eq1\radd[2^]"\ref\vmul\eq1\radd[3^]"\ref\vmax\eq1\radd[4^]"\ref\vmin\eq1\radd[5^]
+ "7\radd\fetch4423408\store\ref+‹_13g_try›[1^]\ref-‹_13g_try›[2^]\ref*‹_13g_try›[3^]\ref\max‹_13g_try›[4^]\ref\min‹_13g_try›[5^]
+ 4423408\fetch\ref\inc7\radd\fetch\eq[0^]"29\radd\fetch4423408\store
+ \ref\inc‹_13g_try2›[6^]\ref\dec‹_13g_try2›[7^]\ref\neg‹_13g_try2›[8^]\ref\sqr‹_13g_try2›[9^]\ref\dbl‹_13g_try2›[10^]\ref\hlv‹_13g_try2›[11^]0;
+:‹_13g_kind›"7$4\shl4423168\radd"4423336\store\fetch&\eq[‹_13g_class›&4390912\rlt1\radd["4423336\fetch8\radd\store&4423336\fetch\store]⋄4423336\fetch8\radd\fetch];
+:‹_13g_map›_‹_13g_kind›"6\rlt1\radd[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423352\fetch8\radd
+ "4423520\fetch\rsub8$[⋄"\fetch4423360\fetch\exec&4423424\fetch\radd\store8\radd]
+ 4423328\fetch6\rsub["4423520\fetch\eq[{"\fetch\inc&4423424\fetch\radd\store"8\radd\fetch\inc&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch7\rsub["4423520\fetch\eq[{"\fetch\dec&4423424\fetch\radd\store"8\radd\fetch\dec&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch8\rsub["4423520\fetch\eq[{"\fetch\neg&4423424\fetch\radd\store"8\radd\fetch\neg&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch9\rsub["4423520\fetch\eq[{"\fetch\sqr&4423424\fetch\radd\store"8\radd\fetch\sqr&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch10\rsub["4423520\fetch\eq[{"\fetch\dbl&4423424\fetch\radd\store"8\radd\fetch\dbl&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch11\rsub["4423520\fetch\eq[{"\fetch\hlv&4423424\fetch\radd\store"8\radd\fetch\hlv&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ __5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;
+:‹_13g_filt›_‹_13g_kind›"6\rlt1\radd[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch1\radd A"4423344\store8\radd4423368\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423352\fetch8\radd
+ 4423328\fetch6\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\inc[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch7\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\dec[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch8\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\neg[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch9\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\sqr[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch10\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\dbl[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch11\rsub["4423520\fetch\eq[{4423368\fetch&\fetch"\hlv[&\store8\radd⋄_]4423368\store8\radd"4423520\fetch\eq}]]
+ __4423368\fetch4423344\fetch\rsub8\rsub3>4423344\fetch\store5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;
+:‹_13g_floop›"4423520\fetch\rsub8$[⋄4423368\fetch&\fetch4423360\fetch\exec4423368\store8\radd]
+ 4423328\fetch1\rsub["4423520\fetch\eq[{4423368\fetch&\fetch+&8\radd\fetch+4423368\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch2\rsub["4423520\fetch\eq[{4423368\fetch&\fetch-&8\radd\fetch-4423368\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch3\rsub["4423520\fetch\eq[{4423368\fetch&\fetch*&8\radd\fetch*4423368\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch4\rsub["4423520\fetch\eq[{4423368\fetch&\fetch\max&8\radd\fetch\max4423368\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch5\rsub["4423520\fetch\eq[{4423368\fetch&\fetch\min&8\radd\fetch\min4423368\store16\radd"4423520\fetch\eq}]]
+ _;
+:‹_13g_fold›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store&‹_2d_chk›"\fetch8\rmul&\radd8\radd4423520\store8\radd&4423368\store‹_13g_floop›__5177392@64\rsub5177392!0 4423528\store4423368\fetch0;
+:‹_13g_red›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store"‹_2d_chk›"\fetch[_4423360\fetch1^]5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"8\radd\fetch4423368\store"\fetch8\rmul&\radd8\radd4423520\store16\radd‹_13g_floop›_5177392@64\rsub5177392!0 4423528\store4423368\fetch0;
+:‹_13g_scan›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch\fetch[_5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0^]4423344\fetch"\fetch8\rmul\radd8\radd4423520\store
+ 4423352\fetch4423344\fetch\rsub"4423456\store8\radd4423464\store4423352\fetch8\radd\fetch4423344\fetch8\radd\store4423344\fetch16\radd
+ "4423520\fetch\rsub8$[⋄"8\rsub\fetch&4423456\fetch\radd\fetch4423360\fetch\exec&\store8\radd]
+ 4423328\fetch1\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch+&\store"\fetch&4423464\fetch\radd\fetch+&8\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch2\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch-&\store"\fetch&4423464\fetch\radd\fetch-&8\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch3\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch*&\store"\fetch&4423464\fetch\radd\fetch*&8\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch4\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch\max&\store"\fetch&4423464\fetch\radd\fetch\max&8\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch5\rsub["4423520\fetch\eq[{"8\rsub\fetch&4423456\fetch\radd\fetch\min&\store"\fetch&4423464\fetch\radd\fetch\min&8\radd\store16\radd"4423520\fetch\eq}]]
+ __5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;
+:‹_13g_eachi›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›"4423352\store\fetch"1\radd A"4423344\store\store4423352\fetch"\fetch8\rmul\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423352\fetch8\radd"4423488\store8\rsub4423496\store4423352\fetch8\radd
+ 4423328\fetch1\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>+&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch2\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>-&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch3\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>*&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch4\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>\max&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
+ 4423328\fetch5\rsub["4423520\fetch\eq[{"\fetch&4423488\fetch\rsub3>\min&4423424\fetch\radd\store8\radd"4423520\fetch\eq}]]
+ __5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;
+:‹_13g_zip›_‹_13g_kind›"1\rsub5\rlt[_1^]4423528\fetch"[_⋄5177392@\gt[_1^]]4423328\store4423360\store5177392@262144\rlt[X]5177392@64\radd"5177392!4423528\store"‹_2d_chk›4423400\store&‹_2d_chk›4423352\store4423352\fetch\fetch4423400\fetch\fetch\rmin"1\radd A"4423344\store\store
+ 4423344\fetch\fetch8\rmul4423352\fetch\radd8\radd4423520\store4423344\fetch4423352\fetch\rsub"4423424\store8\radd4423432\store4423400\fetch4423352\fetch\rsub"4423456\store8\radd4423464\store4423352\fetch8\radd
+ "4423520\fetch\rsub8$[⋄"\fetch&4423456\fetch\radd\fetch4423360\fetch\exec&4423424\fetch\radd\store8\radd]
+ 4423328\fetch1\rsub["4423520\fetch\eq[{"\fetch&4423456\fetch\radd\fetch+&4423424\fetch\radd\store"8\radd\fetch&4423464\fetch\radd\fetch+&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch2\rsub["4423520\fetch\eq[{"\fetch&4423456\fetch\radd\fetch-&4423424\fetch\radd\store"8\radd\fetch&4423464\fetch\radd\fetch-&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch3\rsub["4423520\fetch\eq[{"\fetch&4423456\fetch\radd\fetch*&4423424\fetch\radd\store"8\radd\fetch&4423464\fetch\radd\fetch*&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch4\rsub["4423520\fetch\eq[{"\fetch&4423456\fetch\radd\fetch\max&4423424\fetch\radd\store"8\radd\fetch&4423464\fetch\radd\fetch\max&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ 4423328\fetch5\rsub["4423520\fetch\eq[{"\fetch&4423456\fetch\radd\fetch\min&4423424\fetch\radd\store"8\radd\fetch&4423464\fetch\radd\fetch\min&4423432\fetch\radd\store16\radd"4423520\fetch\eq}]]
+ ___5177392@64\rsub5177392!0 4423528\store4423344\fetch32767 48\shl|0;

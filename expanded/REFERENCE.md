@@ -637,7 +637,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 186 in all after W12-O6, helpers included), so a program has 838 for itself.
+has 198 in all after W13-G's twelve helpers, helpers included), so a program has 826 for itself.
 
 ### Sorting by key
 
@@ -1077,8 +1077,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`), the prelude has 186 long
-names, which leaves 838 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-G's twelve helpers), the prelude has 198 long
+names, which leaves 826 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1155,6 +1155,41 @@ The last one prints on stderr and exits 1; under `‹catch›` it gives back
 caller left under `acc x` (or under `x i`), so the count `4` is the number of
 calls: `⍀` and `⍁` do not call `f` on the seed. `g` runs a scan inside the
 scan's function, and `h` runs `⍸` inside `€`'s.
+
+### Atoms as the function: fast paths (W13-G)
+
+When the function given to `€ ⌿ ⇤ ⍁ ⍀ ⍸ ⊞` is one of these atoms, the word
+runs the atom inline in its own loop, with no call per element:
+
+| words | atoms |
+|---|---|
+| `⇤ ⍁ ⍀ ⍸ ⊞` (two operands) | `+ - * ⌈ ⌊`, and `∔ ∸ ⨰ ⩌ ⩍`, which they hook to |
+| `€ ⌿` (one operand) | `⊕ ⊖ ± ² ⊗ ⊘` |
+
+This changes nothing you can see except the time. The loop runs the same
+atom on the same operands in the same order, so a list element still goes to
+`∔` (or raises `not a number`) exactly as before, errors are the same and come
+in the same order (`use after free`, `empty reduce`, `spill stack
+exhausted`), and `‹heapstats›` is the same. An atom never touches the stack
+under its operands, so threading is not affected either. The function is
+recognised by its code: `′+`, S1's `+⇤`, and a word `:f+;`, whose body is
+`′+`'s bytes, all count. Anything else, such as `:f1+;` or a `∘` or `⊸`
+thunk, gets the ordinary call per element. Per element, on a list that stays
+in cache: `0′+⇤` about 1.8 ns (4.1 before), `′⊕€` 2.1 (4.5), `′⌈⍀` 2.8
+(4.9), `"′+⊞` 3.1 (5.6), `′±⌿` 1.5 (4.0). bench/RESULTS.md has the details
+(W13-G).
+
+```
+5⍳′⊕€⍕                      ->  1 2 3 4 5
+5⍳0′+⇤Ṅ                     ->  10
+“31415“⊃48-′⌈⍀⍕             ->  3 3 4 4 5
+5⍳"′*⊞⍕                     ->  0 1 4 9 16
+6⍳′⊖⌿⍕                      ->  1
+3⍳′⍳€"′+⊞⍕                  ->  [] [0] [0 2]
+```
+
+The last line takes the fast path too. Its elements are lists, so each `+`
+hands them to `∔`, as the function call would have.
 ### Windows and fixpoints
 
 W12-A5 and W12-A6 add two higher-order words. Both keep the threading
