@@ -241,7 +241,7 @@ Prelude long names in use (all **shipped**):
 | `‹throw›` | W11-0 (the stub; W11-3A rewrites it in place) | `W11-0` — defined right after `H`, ahead of `X` |
 | `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›` | W11-1B (reserved) | `W11-1B Files` |
 | `‹flush›` | W11-1C (reserved) | `W11-1C buffered output` |
-| `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›` | W11-1D (reserved) | `W11-1D Text` |
+| `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›`, and the helpers `‹_1d_utoa›` `‹_1d_sub›` `‹_1d_put›` | W11-1D (shipped) | `W11-1D Text` |
 | `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›` | W11-2B (reserved) | `W11-2B dict and set` |
 | `‹heapstats›` | W11-2D (reserved) | `W11-2D use after free` |
 | `‹catch›` | W11-3A (reserved; `‹throw›` above is 3A's too) | `W11-3A catch` |

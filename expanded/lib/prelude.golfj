@@ -697,6 +697,126 @@
 # === W11-1C buffered output ===
 
 # === W11-1D Text ===
+# Text words on CODE LISTS (one byte code per cell, what ⊃ and ‹readall› make).
+# Every word that returns a list returns a NEW one and never writes its input.
+# None of them writes a tag itself: each result is allocated with R (n R is a
+# tagged list of length n, header already set) and then overwritten through
+# the masked address, so the tag value lives only in R (W11-1A moves it).
+# Flags follow ∊ and T: zero-is-true, so `‹startswith›[…]` runs on a match.
+#   ‹fmt›        n -> list       signed decimal, `-` first when n < 0; INT64_MIN
+#                                works (its \neg is itself and / % are unsigned)
+#   ‹hex›        n -> list       lowercase hex, no prefix; n is taken as UNSIGNED
+#                                64-bit (two's complement): -1 -> 16 f's, like
+#                                Rust's {:x}; 0 -> "0"
+#   ‹parsehex›   list -> n       skip leading whitespace, one optional + or -,
+#                                then 0-9 a-f A-F up to the first other byte (no
+#                                0x prefix: "0x1f" stops at x and is 0); no digits
+#                                -> 0; wraps at 64 bits, so ‹hex›‹parsehex› is
+#                                the identity on every int.  Like ‹num›, bad
+#                                input never errors
+#   ‹split›      list sep -> ll  split on every cell equal to sep (one element,
+#                                ≡ equality), keeping empty fields: k seps give
+#                                k+1 fields, the empty list gives one empty field
+#                                (Python's str.split(sep))
+#   ‹trim›       list -> list    drop ASCII whitespace (9-13, 32) at both ends
+#   ‹startswith› list p -> f     0 if p is a prefix of list (the empty p always
+#                                is), else 1; cells compared with ≡
+#   ‹joinwith›   ll sep -> list  the inner lists with sep between each pair; sep
+#                                is a list, or an int taken as a one-element
+#                                list; an empty ll gives the empty list.  Every
+#                                element of ll must be a list
+#   ‹pad›        list w -> list  left-pad with spaces (32) to length w, i.e.
+#                                right-justify; never truncates, so len >= w
+#                                gives a copy
+# Helpers (‹_1d…›, internal, unchecked):
+#   ‹_1d_utoa›  u base lead -> list  digits of UNSIGNED u in base (<= 16, 10/16
+#               used), with `lead` (0 or 1) extra leading cell set to '-'.
+#               s0 u · s6 base · s2 lead · s3 count · s1 k · s4 result (masked);
+#               the tagged result stays on the data stack.
+#   ‹_1d_sub›   list i n -> list     a NEW list of cells i..i+n-1 (in range by
+#               the caller's construction).  s0 list · s1 i · s2 n · s3 j · s4.
+#   ‹_1d_put›   dst k src -> k'      copy src's cells into the raw block dst at
+#               cells k.., return k + len src.  s4 dst · s3 k · s0 src · s1 j.
+:‹_1d_utoa›X5177456\store5177488\store5177440\store
+ 5177456\fetch5177464\store
+ 5177440\fetch{5177464\fetch1\radd5177464\store5177488\fetch/"0\eq}_
+ 5177464\fetch R"16\shl16>5177472\store
+ 5177464\fetch5177448\store
+ 5177440\fetch{5177448\fetch1\rsub5177448\store"5177488\fetch%"9\gt39$\radd48\radd5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177488\fetch/"0\eq}_
+ 5177456\fetch1\rsub[45 5177472\fetch8\radd\store]
+ Y;
+:‹fmt›"0\slt1\radd[\neg10 1‹_1d_utoa›^]10 0‹_1d_utoa›;
+:‹hex›16 0‹_1d_utoa›;
+:‹_1d_sub›X5177456\store5177448\store16\shl16>5177440\store
+ 5177456\fetch R"16\shl16>5177472\store
+ 0 5177464\store5177456\fetch0\eq[{5177440\fetch5177448\fetch5177464\fetch\radd8\rmul\radd8\radd\fetch5177472\fetch5177464\fetch8\rmul\radd8\radd\store5177464\fetch1\radd"5177464\store5177456\fetch\rlt1\radd}]
+ Y;
+:‹_1d_put›X16\shl16>5177440\store5177464\store5177472\store
+ 0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177464\fetch5177448\fetch\radd8\rmul\radd8\radd\store5177448\fetch1\radd"5177448\store5177440\fetch\fetch\rlt1\radd}]
+ 5177464\fetch5177440\fetch\fetch\radd Y;
+# ‹parsehex›: ‹num›'s three phases (s0 list · s2 len · s1 i · s7 sign · s4
+# acc), with a branch-free digit value in s3 from the byte c in s6:
+#   v1 = (c-48) | (~((c-48) <u 10) & 99)     v2 = ((c|32)-87) likewise for 10..15
+#   v = v1 \rmin v2, a digit iff v <u 16 (99|x is >= 96, so a miss never fits)
+:‹parsehex›X16\shl16>"5177440\store\fetch5177456\store0 5177448\store0 5177496\store0 5177472\store
+ {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt~]"[5177448\fetch1\radd5177448\store]}
+ 5177448\fetch5177456\fetch\rlt1\radd[5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch45\eq"5177496\store
+  5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch43\eq|\neg5177448\fetch\radd5177448\store]
+ {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177488\store
+   5177488\fetch48\rsub"10\rlt~99$|5177488\fetch32|87\rsub"10\rsub6\rlt~99$|\rmin"5177464\store16\rlt~]"[
+  5177472\fetch4\shl5177464\fetch\radd5177472\store5177448\fetch1\radd5177448\store]}
+ 5177472\fetch5177496\fetch1\radd[\neg]Y;
+# ‹split›: pass 1 counts the seps (s6), R(count+1) is the result (s4 masked,
+# tagged copy on the data stack); pass 2 runs i over 0..len INCLUSIVE, i == len
+# counting as a sep (never read), and at each sep stores ‹_1d_sub›(start, i -
+# start) into result[k].  s0 list · s2 len · s7 sep · s1 i · s3 start · s6 k.
+:‹split›X5177496\store16\shl16>"5177440\store\fetch5177456\store
+ 0 5177488\store0 5177448\store
+ 5177456\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177496\fetch\eq\neg5177488\fetch\radd5177488\store5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
+ 5177488\fetch1\radd R"16\shl16>5177472\store
+ 0 5177488\store0 5177464\store0 5177448\store
+ {5177448\fetch5177456\fetch\eq"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177496\fetch\eq]
+  1\radd[5177440\fetch5177464\fetch5177448\fetch5177464\fetch\rsub‹_1d_sub›5177472\fetch5177488\fetch8\rmul\radd8\radd\store
+   5177488\fetch1\radd5177488\store5177448\fetch1\radd5177464\store]
+  5177448\fetch1\radd"5177448\store5177456\fetch1\radd\rlt1\radd}
+ Y;
+# ‹trim›: s1 a moves right past leading whitespace (‹num›'s skip phase), s3 b
+# moves left from len while b > a and l[b-1] is whitespace; then ‹_1d_sub›.
+:‹trim›X16\shl16>"5177440\store\fetch"5177456\store5177464\store0 5177448\store
+ {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt~]"[5177448\fetch1\radd5177448\store]}
+ {5177448\fetch5177464\fetch\rlt~"[_5177440\fetch5177464\fetch8\rmul\radd\fetch"32\eq23\neg$\radd9\rsub5\rlt~]"[5177464\fetch1\rsub5177464\store]}
+ 5177440\fetch5177448\fetch5177464\fetch5177448\fetch\rsub‹_1d_sub› Y;
+# ‹startswith›: ≣'s loop.  s0 list · s7 prefix · s2 plen · s1 i · s4 the
+# running flag, -1 while equal, which starts as len >= plen.
+:‹startswith›X16\shl16>5177496\store16\shl16>5177440\store
+ 5177496\fetch\fetch5177456\store0 5177448\store
+ 5177440\fetch\fetch5177456\fetch\rlt~5177472\store
+ 5177456\fetch0\eq5177472\fetch~|[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177496\fetch5177448\fetch8\rmul\radd8\radd\fetch\eq5177472\fetch$5177472\store5177448\fetch1\radd"5177448\store5177456\fetch\rlt5177472\fetch$1\radd}]
+ 5177472\fetch1\radd Y;
+# ‹joinwith›: T(sep) (1 = an int) stays on the data stack; an int sep becomes
+# the one-element list `sep 1R\vadd` (given back by ⌫ at the end).  The total
+# length sum(len) + (n-1)·len(sep) sizes R; ‹_1d_put› then appends sep (for
+# i > 0) and each inner list.  s0 ll · s7 sep (masked) · s2 n · s1 i · s6 the
+# total, then the output cursor · s4 result (masked).
+:‹joinwith›X5177496\store16\shl16>5177440\store
+ 5177496\fetch T
+ 5177496\fetch"T1\rsub[1R\vadd]16\shl16>5177496\store
+ 5177440\fetch\fetch5177456\store0 5177488\store0 5177448\store
+ 5177456\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch16\shl16>\fetch5177488\fetch\radd5177488\store5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}
+  5177456\fetch1\rsub5177496\fetch\fetch\rmul5177488\fetch\radd5177488\store]
+ 5177488\fetch R"16\shl16>5177472\store
+ 0 5177488\store0 5177448\store
+ 5177456\fetch0\eq[{5177448\fetch0\eq[5177472\fetch5177488\fetch5177496\fetch‹_1d_put›5177488\store]
+  5177472\fetch5177488\fetch5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch‹_1d_put›5177488\store
+  5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
+ &1\rsub[5177496\fetch\free]5177472\store_5177472\fetch Y;
+# ‹pad›: p = max(w - len, 0) spaces into R(len + p), then the list after them.
+# s0 list · s2 w · s3 p · s1 i · s4 result (masked).
+:‹pad›X5177456\store16\shl16>5177440\store
+ 5177456\fetch5177440\fetch\fetch\rsub"0\slt1\radd[_0]5177464\store
+ 5177440\fetch\fetch5177464\fetch\radd R"16\shl16>5177472\store
+ 0 5177448\store5177464\fetch0\eq[{32 5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd"5177448\store5177464\fetch\rlt1\radd}]
+ 5177472\fetch5177464\fetch5177440\fetch‹_1d_put›_ Y;
 
 # === W11-2B dict and set ===
 

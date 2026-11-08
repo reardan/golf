@@ -128,6 +128,17 @@ seeded with the first element, `"0⊇′⌈⇤` (`′⌊` for the min):
 3⍳3⍳≡Ṅ   ->  0          # ≡ compares the two ADDRESSES, not the contents
 ```
 
+**String ops and base conversion — CLOSED (W11-1D).** Text is still a code
+list, but the everyday string kit now exists as prelude words: `‹fmt›` (int to
+decimal text), `‹hex›` / `‹parsehex›` (base 16 both ways), `‹split›` (keeps
+empty fields, like Python's `str.split(sep)`), `‹joinwith›`, `‹trim›`,
+`‹startswith›` (zero-is-true, like `∊`) and `‹pad›` (see REFERENCE.md, Text):
+
+```
+“a, b,c“⊃44‹split›′‹trim›€124‹joinwith›⊐   ->  a|b|c
+255‹hex›⊐                                  ->  ff
+```
+
 The blocker is named in [`REGISTRY.md`](REGISTRY.md) §2 and it is real: the
 prelude's uppercase pool is down to `B` and `C`. Two letters, ten-plus wanted
 words. Everything else has to come from `0xC8`–`0xCF` (eight bytes) or wait for
