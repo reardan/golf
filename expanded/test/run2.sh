@@ -3771,7 +3771,7 @@ w12a5r=':v3′⌈⊟∑;:w"≢1≻[^]2′+⊟;:c⧺\\⊕\\′w⍣;4⍳5+′⍳�
 python3 -c 'import random;random.seed(7);print(5);print(*[random.randint(-99,99) for _ in range(300)])' > "$TMP/a5sm.in"
 cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < bench/leetcode/golf/slidemax.golfj) | "$TMP/golf2" > "$TMP/a5sm" 2>/dev/null && chmod +x "$TMP/a5sm"
 [ "$("$TMP/a5sm" < "$TMP/a5sm.in" | sed 's/ *$//')" = "$(python3 bench/leetcode/py/slidemax.py < "$TMP/a5sm.in")" ] \
-  && ok "bench/leetcode/golf/slidemax.golfj (‹ints›\"0⊇\\\\1↓\\\\′⌈⊟⍕) agrees with py/slidemax.py" || no "W12-A5 slidemax"
+  && ok "bench/leetcode/golf/slidemax.golfj (ℤ\"1↓\\\\0⊇′⌈⊟⍕) agrees with py/slidemax.py" || no "W12-A5 slidemax"
 
 # === W12-A6 ===
 echo "W12-A6: ⍣ fixpoint (apply f until the result ≣ the previous one)"
@@ -4112,6 +4112,87 @@ done < <(sed -n '/^### Byte ceilings$/,/^### /p' "$w12o4L/README.md" | sed -n 's
 [ "$w12o4n" = 10 ] && [ -z "$w12o4bad" ] \
   && ok "the 10 LeetCode solutions give Python's answers on tiny inputs, each within its README byte ceiling" \
   || no "W12-O4 leetcode ($w12o4n problems):$w12o4bad"
+# === W12-Z1 ===
+echo "W12-Z1: one-byte aliases ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ (0xDB-0xE3) of the hottest long names"
+# Each alias is a prelude word whose whole body is a call of its long name.
+w12z1bad=""
+while read -r w12z1m w12z1h w12z1g w12z1n; do
+  [ "$(printf '%s' "\\$w12z1m" | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "$w12z1h" ] \
+    && [ "$(printf '%s' "$w12z1g" | python3 tools/codepage.py encode | python3 tools/codepage.py decode)" = "$w12z1g" ] \
+    && [ "$(printf '%s' "$w12z1g" | python3 tools/codepage.py encode | python3 tools/codepage.py decode -m)" = "\\$w12z1m" ] \
+    || w12z1bad="$w12z1bad [code page \\$w12z1m]"
+  grep -qxF ":\\$w12z1m‹$w12z1n›;" lib/prelude.golfj || w12z1bad="$w12z1bad [prelude \\$w12z1m]"
+  grep -qF "| \`0x$(printf '%s' "$w12z1h" | tr a-f A-F)\` | \`\\$w12z1m\` | \`$w12z1g\` | prelude: one-byte alias of \`‹$w12z1n›\`" REGISTRY.md \
+    && sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -F "\`\\$w12z1m\`" | grep -q '| shipped |$' \
+    || w12z1bad="$w12z1bad [REGISTRY \\$w12z1m]"
+done <<'W12Z1'
+ints db ℤ ints
+readall dc ⎕ readall
+readline dd ⏎ readline
+dict de Ḋ dict
+dget df Ġ get
+dput e0 Ṗ put
+keys e1 Ḳ keys
+bump e2 Ḃ bump
+vec e3 Ṿ vec
+W12Z1
+[ -z "$w12z1bad" ] && ! sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -q '| reserved |$' \
+  && ok "\\ints \\readall \\readline \\dict \\dget \\dput \\keys \\bump \\vec: 0xDB-0xE3 round-trip through the code page; each prelude body is just its long name; REGISTRY §1.4 shipped, nothing left reserved" \
+  || no "W12-Z1 code page / prelude / REGISTRY:$w12z1bad"
+# Same results as the long names, on stdin and off it (golf2; the oracle too).
+[ "$(printf '3 -4\n 5x 6' | gin 'ℤ⍕')" = "$(printf '3 -4\n 5x 6' | gin '‹ints›⍕')" ] && [ "$(printf '3 -4\n 5x 6' | gin 'ℤ⍕')" = "3 -4 5 6 " ] \
+  && [ "$(printf 'ab\ncd\nxyz' | gin '⏎_⊐␤⎕⊐⏎Ṅ≢Ṅ')" = "$(printf 'ab\ncd\nxyz10')" ] \
+  && [ "$(printf 'ab\ncd\nxyz' | gin '‹readline›_⊐␤‹readall›⊐‹readline›Ṅ≢Ṅ')" = "$(printf 'ab\ncd\nxyz10')" ] \
+  && [ "$(printf '' | gin 'ℤ≢Ṅ⎕≢Ṅ⏎Ṅ≢Ṅ')" = "0010" ] \
+  && ok "ℤ ⎕ ⏎ read stdin exactly as ‹ints› ‹readall› ‹readline› do (mixed in one program, and at end of input)" || no "W12-Z1 input aliases"
+w12z1p='Ḋ"1 10Ṗ"2 20Ṗ"1ĠṄ"7Ḃ"7Ḃ"7ĠṄ"1 5Ṗ_Ḳ⍕"‹vals›⍕␤Ṿ3⍆1⍆4⍆⍕Ṿ"≢Ṅ⌫␤5⍳"⧺Ḋ′Ḃ⇤‹vals›⍕'
+w12z1q='‹dict›"1 10‹put›"2 20‹put›"1‹get›Ṅ"7‹bump›"7‹bump›"7‹get›Ṅ"1 5‹put›_‹keys›⍕"‹vals›⍕␤‹vec›3⍆1⍆4⍆⍕‹vec›"≢Ṅ⌫␤5⍳"⧺‹dict›′‹bump›⇤‹vals›⍕'
+w12z1w=$(printf '1021 2 7 5 20 2 \n3 1 4 0\n2 2 2 2 2 ')
+[ "$(printf '%s' "$w12z1p" | gc)" = "$w12z1w" ] && [ "$(printf '%s' "$w12z1q" | gc)" = "$w12z1w" ] \
+  && [ "$(printf '%s' "$w12z1p" | gref)" = "$w12z1w" ] && [ "$(printf '%s' 'ℤ≢Ṅ⎕≢Ṅ⏎Ṅ≢Ṅ' | gref)" = "0010" ] \
+  && ok "Ḋ Ġ Ṗ Ḳ Ḃ Ṿ give what ‹dict› ‹get› ‹put› ‹keys› ‹bump› ‹vec› give (Ḃ as a ⇤ step); the oracle agrees, input aliases included" \
+  || no "W12-Z1 dict/vec aliases: $(printf '%s' "$w12z1p" | gc | tr '\n' '|')"
+[ "$(w110 'Ḋ9Ġ')" = "rc=1 0 GOLF: key not found" ] && [ "$(printf '%s' ':‹f›Ḋ9Ġ;′‹f›‹catch›⊐' | gc)" = "key not found" ] \
+  && [ "$(printf '%s' '1 2Ḋ3ḂḲ⍕ṄṄ' | gc)" = "3 21" ] && [ "$(printf '%s' ':‹f›Ṿ⍅;′‹f›‹catch›⊐' | gc)" = "pop from empty" ] \
+  && ok "errors come from the long name (key not found, through ‹catch› too); the stack under an alias is untouched" || no "W12-Z1 errors"
+w12z1bad=""
+while IFS= read -r w12z1l; do
+  w12z1x=${w12z1l%%  ->*}; w12z1x=${w12z1x%"${w12z1x##*[! ]}"}; w12z1e=${w12z1l##*->  }
+  [ "$(printf '%s' "$w12z1x" | gc 2>&1 | sed 's/ *$//')" = "$w12z1e" ] || w12z1bad="$w12z1bad [$w12z1x]"
+done < <(sed -n '/^### One-byte aliases$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w12z1bad" ] && [ "$(sed -n '/^### One-byte aliases$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && [ "$(printf '1 2 3' | gin 'ℤ∑Ṅ')" = 6 ] && [ "$(printf 'ab\n' | gin '⎕≢Ṅ')" = 3 ] && [ "$(printf 'a\nbc\n' | gin '{⏎"[_⊐␤0]}')" = "$(printf 'a\nbc')" ] \
+  && ok "REFERENCE.md's One-byte aliases examples print what they say (the three stdin ones too)" || no "W12-Z1 examples:$w12z1bad"
+# === W12-O5 ===
+echo "W12-O5: REFERENCE.md §4 \"LeetCode in Golf\" — Stock, Trap, Sliding Window as the benchmark runs them"
+# Each **…, `name.golfj`, N bytes.** paragraph is followed by its ```golfj
+# program, a ```stdin sample and the ```text output: the program must be the
+# file's text, N its code-page size, and the output golf2's and Python's.
+rm -rf "$TMP/w12o5"; mkdir -p "$TMP/w12o5"
+w12o5n=$(python3 - "$TMP/w12o5" <<'PY'
+import re, sys
+t = open("REFERENCE.md", encoding="utf-8").read()
+a, z = t.find("<!-- LEETCODE BEGIN -->"), t.find("<!-- LEETCODE END -->")
+ex = re.findall(r"`(\w+)\.golfj`, (\d+) bytes\.\*\*.*?```golfj\n(.*?)```\s*```stdin\n(.*?)```\s*```text\n(.*?)```", t[a:z], re.S) if 0 <= a < z else []
+for name, n, src, inp, out in ex:
+    for ext, s in (("golfj", src), ("in", inp), ("out", out), ("n", n)):
+        open(f"{sys.argv[1]}/{name}.{ext}", "w", encoding="utf-8").write(s)
+print(" ".join(e[0] for e in ex))
+PY
+)
+w12o5bad=""
+for w12o5p in $w12o5n; do
+  w12o5f="$TMP/w12o5/$w12o5p"
+  [ "$(cat "$w12o5f.golfj")" = "$(cat "bench/leetcode/golf/$w12o5p.golfj")" ] || w12o5bad="$w12o5bad [$w12o5p: not the file's text]"
+  [ "$(python3 tools/codepage.py encode < "$w12o5f.golfj" | tr -d '\n' | wc -c)" = "$(cat "$w12o5f.n")" ] || w12o5bad="$w12o5bad [$w12o5p: byte count]"
+  w12o5g=$(gin "$(cat "$w12o5f.golfj")" < "$w12o5f.in" | sed 's/[[:space:]]*$//')
+  [ "$w12o5g" = "$(sed 's/[[:space:]]*$//' "$w12o5f.out")" ] || w12o5bad="$w12o5bad [$w12o5p: prints '$w12o5g']"
+  [ "$(python3 "bench/leetcode/py/$w12o5p.py" < "$w12o5f.in" | tr -s ' \n' '  ' | sed 's/ *$//')" = "$(tr -s ' \n' '  ' < "$w12o5f.out" | sed 's/ *$//')" ] \
+    || w12o5bad="$w12o5bad [$w12o5p: Python disagrees]"
+done
+[ "$w12o5n" = "stock trap slidemax" ] && [ -z "$w12o5bad" ] \
+  && ok "the LeetCode tutorial's Stock, Trap and Sliding Window are bench/leetcode/golf/'s text, their stated sizes, and print their documented (and Python's) output" \
+  || no "W12-O5 LeetCode tutorial ($w12o5n):$w12o5bad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

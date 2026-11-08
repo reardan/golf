@@ -363,6 +363,15 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xD8` | `⊟` | `\win` | — | window reduce: l n ′f -> f-reduce of every length-n window (deque for ⌈ ⌊) |
 | `0xD9` | `⍣` | `\fix` | — | fixpoint: x ′f -> y; apply f until the result ≣ the previous one |
 | `0xDA` | `⍞` | `\next` | — | stream next: s -> s x 0 \| s 1 (zero-is-true, like ‹readline›) |
+| `0xDB` | `ℤ` | `\ints` | — | alias of ‹ints›: -> list, all of stdin as integers |
+| `0xDC` | `⎕` | `\readall` | — | alias of ‹readall›: -> list, the rest of stdin as a code list |
+| `0xDD` | `⏎` | `\readline` | — | alias of ‹readline›: -> list flag, the next line without its \n (flag 0), 1 at end |
+| `0xDE` | `Ḋ` | `\dict` | — | alias of ‹dict›: -> d, a new empty dict |
+| `0xDF` | `Ġ` | `\dget` | — | alias of ‹get›: d k -> v (missing: key not found) |
+| `0xE0` | `Ṗ` | `\dput` | — | alias of ‹put›: d k v -> d |
+| `0xE1` | `Ḳ` | `\keys` | — | alias of ‹keys›: d -> list, the keys in insertion order |
+| `0xE2` | `Ḃ` | `\bump` | — | alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1) |
+| `0xE3` | `Ṿ` | `\vec` | — | alias of ‹vec›: -> v, a new empty vector |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -457,6 +466,49 @@ missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 102
 name with `GOLF: too many long names ‹…›`, both exit status 2. Locals take long
 names inside a `⊡` word (M-FRAME2), up to 16 per word.
 
+### One-byte aliases
+
+W12-Z1 gives the nine most used prelude long names a byte each, `0xDB`–`0xE3`.
+They were picked by counting uses in `examples/`, `bench/leetcode/golf/`,
+`gtools/`, `lib/` and this reference. Each alias is a prelude word that calls
+its long name, so the two spellings mean the same thing: same stack effect,
+same errors, same speed apart from one extra call and return. The long names
+stay, and the rest of this reference keeps using them. A long name costs its
+length plus 2 bytes, so `ℤ` saves 5 bytes over `‹ints›` and `⏎` saves 9 over
+`‹readline›`.
+
+| glyph | mnemonic | long name | stack effect | meaning |
+|---|---|---|---|---|
+| `ℤ` | `\ints` | `‹ints›` | `-> list` | all of stdin as integers (see Input) |
+| `⎕` | `\readall` | `‹readall›` | `-> list` | the rest of stdin as a code list |
+| `⏎` | `\readline` | `‹readline›` | `-> list flag` | the next line without its `\n`; `flag` is `0`, or `1` at end of input |
+| `Ḋ` | `\dict` | `‹dict›` | `-> d` | a new, empty dict (see Dicts and sets) |
+| `Ġ` | `\dget` | `‹get›` | `d k -> v` | the value of `k`; a missing key is `GOLF: key not found` |
+| `Ṗ` | `\dput` | `‹put›` | `d k v -> d` | set `k` to `v` |
+| `Ḳ` | `\keys` | `‹keys›` | `d -> list` | the keys, in insertion order |
+| `Ḃ` | `\bump` | `‹bump›` | `d k -> d` | add 1 to the value of `k` (a missing key gets 1) |
+| `Ṿ` | `\vec` | `‹vec›` | `-> v` | a new, empty vector (see Vectors and deques) |
+
+The dict mnemonics are `\dget` and `\dput` because `\get` is `←` and
+`\puts` and `\putat` already exist: the encoder reads the longest mnemonic
+that matches, so no mnemonic may be a prefix of another.
+
+```
+Ḋ"1 10Ṗ"2 20Ṗ"1ĠṄ                ->  10
+Ḋ"7Ḃ"7Ḃ"9Ḃ‹vals›⍕                ->  2 1
+Ḋ"5 1Ṗ"6 2Ṗ"5‹del›"5 3ṖḲ⍕        ->  6 5
+Ṿ3⍆1⍆4⍆⍕                         ->  3 1 4
+Ḋ9Ġ                              ->  GOLF: key not found
+```
+
+```
+ℤ∑Ṅ                      # printf '1 2 3' | ./sum     prints 6
+⎕≢Ṅ                      # printf 'ab\n' | ./len      prints 3
+{⏎"[_⊐␤0]}               # echo stdin line by line, until end of input
+```
+
+The last `->` example prints on stderr and exits 1, as `‹get›` does.
+
 ### Output
 
 The prelude's printers `Ṅ ⍕ ␤ 🗲 ⊐` write through one 8 KB output buffer
@@ -517,6 +569,9 @@ from your program. Text arrives as a **code list**, one byte per element, which
 ‹readbytes›🗲             # cat, at one byte per byte of input
 ‹readbytes›⊃≢Ṅ           # printf 'ab\n' | ./len   prints 3
 ```
+
+`ℤ`, `⎕` and `⏎` are one-byte aliases of `‹ints›`, `‹readall›` and
+`‹readline›` (see "One-byte aliases").
 
 The stdin words share one 8 KB buffer, so `‹readline›`, `‹getc›`,
 `‹readall›`, `‹readbytes›` and `‹ints›` may be mixed freely (`‹readall›`,
@@ -891,6 +946,8 @@ amortized O(1), and `⍆` and `‹pushf›` return the possibly new `d`.
 :‹f›‹vec›⍅;′‹f›‹catch›⊐                           ->  pop from empty
 ```
 
+`Ṿ` is a one-byte alias of `‹vec›` (see "One-byte aliases").
+
 In the third example `⍅` pops the `5` and leaves `3 1`. In the seventh,
 the vector grows from 3 elements to 1023 over nine doublings and is still
 one live block. The two `GOLF:` lines go to stderr with exit status 1, and
@@ -971,6 +1028,9 @@ uses the same words.
 3⍳′⍳€‹hash›3⍳′⍳€‹hash›≡Ṅ                          ->  -1
 ‹dict›9‹get›Ṅ                                     ->  GOLF: key not found
 ```
+
+`Ḋ Ġ Ṗ Ḳ Ḃ` are one-byte aliases of `‹dict› ‹get› ‹put› ‹keys› ‹bump›` (see
+"One-byte aliases").
 
 The last example prints its message on stderr, not stdout, and exits with
 status 1.
@@ -1123,7 +1183,7 @@ contract above: their function runs with the caller's stack underneath.
   `′⩌`, `′⩍`, or a word whose code is exactly that of `⌈` / `⌊` (`:m⌈;`),
   and no element of `l` is a list, `⊟` runs a monotonic deque instead of
   calling `f`. Any other `f` is called `n-1` times per window, so it costs
-  O(≢l·n). Sliding-window maximum is `‹ints›"0⊇\\1↓\\′⌈⊟⍕` (17 bytes).
+  O(≢l·n). Sliding-window maximum is `ℤ"1↓\\0⊇′⌈⊟⍕` (11 bytes; see "LeetCode in Golf" in section 4).
 - **Threading.** `⊟`'s `f` gets `acc x`, as `⇤`'s does. The counter `f`
   above leaves `c+1` under the running sum, so the `4` printed last is the
   number of calls, `(n-1)·(≢l-n+1)`. `⍣`'s `f` gets just the value, and
@@ -1794,3 +1854,74 @@ Ifmmp
 ```
 
 <!-- TUTORIAL END -->
+
+### LeetCode in Golf
+
+Here are three of the ten problems in `bench/leetcode/`, in the form the
+benchmark runs (its README has all ten and the timings). Each one reads its
+input from stdin: `tools/golfc -j ex.golfj ex && ./ex < input`. The `stdin`
+block is a sample input and the `text` block is the exact output.
+`test/run2.sh` (block W12-O5) checks both. It also checks that each program
+here is the same text as its file in `bench/leetcode/golf/`.
+
+<!-- LEETCODE BEGIN -->
+
+**Best Time to Buy and Sell Stock (121), `stock.golfj`, 10 bytes.** Buy on one
+day and sell on a later one, for the largest profit, or 0. `ℤ` reads the
+prices. `"′⌊⍀` keeps them and makes the running minimum, the cheapest buy up
+to each day. `-` subtracts it from every price, which gives the profit of
+selling on that day, and `′⌈⍁` takes the largest. The first difference is
+always `0`, so a falling market prints `0`.
+
+```golfj
+ℤ"′⌊⍀-′⌈⍁Ṅ
+```
+
+```stdin
+7 1 5 3 6 4
+```
+
+```text
+5
+```
+
+**Trapping Rain Water (42), `trap.golfj`, 16 bytes.** The water over a bar is
+the lower of the highest bar to its left and the highest bar to its right,
+less its own height. `"′⌈⍀` is the running maximum from the left. `&⌽′⌈⍀⌽`
+reverses the heights, scans them and reverses back, which gives the running
+maximum from the right. `⌊` takes the smaller of the two at each bar, `\\-`
+subtracts the heights, and `∑` adds up the water. Both maxima include the bar
+itself, so no term is negative.
+
+```golfj
+ℤ"′⌈⍀&⌽′⌈⍀⌽⌊\\-∑Ṅ
+```
+
+```stdin
+0 1 0 2 1 0 1 3 2 1 2 1
+```
+
+```text
+6
+```
+
+**Sliding Window Maximum (239), `slidemax.golfj`, 11 bytes.** The input is
+the window size `k`, then the numbers. `"1↓` copies the list without its
+first element, and `\\0⊇` takes `k` from the original. `′⌈⊟` is the window
+reduce, the maximum of every window of `k` numbers. With `⌈` (or `⌊`), `⊟`
+runs a monotonic deque, so it is O(n) for any `k`.
+
+```golfj
+ℤ"1↓\\0⊇′⌈⊟⍕
+```
+
+```stdin
+3
+1 3 -1 -3 5 3 6 7
+```
+
+```text
+3 3 5 5 6 7
+```
+
+<!-- LEETCODE END -->

@@ -2118,3 +2118,23 @@
 #                       result (-1 for true) prints “false“; flip it with 1+
 #                       (-1 -> 0, 0 -> 1).  A fresh list each call (⌫ frees it).
 :‹tf›[“true“U⋄“false“U];
+
+# === W12-Z1 one-byte aliases ===
+# The nine hottest long names, measured over examples/ bench/leetcode/golf/
+# gtools/ lib/ and REFERENCE.md (PLAN_W12 Z1), get a byte of their own in the
+# reserved 0xDB..0xE3.  Each is a one-call word that runs the long name, so
+# the long name stays the definition and nothing is duplicated: same stack
+# effect, same errors, the same scratch cells (none of its own).  It costs one
+# call and one return over the long name (a few ns at most).
+#   ℤ \ints ‹ints›   ⎕ \readall ‹readall›   ⏎ \readline ‹readline›
+#   Ḋ \dict ‹dict›   Ġ \dget ‹get›   Ṗ \dput ‹put›   Ḳ \keys ‹keys›
+#   Ḃ \bump ‹bump›   Ṿ \vec ‹vec›
+:\ints‹ints›;
+:\readall‹readall›;
+:\readline‹readline›;
+:\dict‹dict›;
+:\dget‹get›;
+:\dput‹put›;
+:\keys‹keys›;
+:\bump‹bump›;
+:\vec‹vec›;
