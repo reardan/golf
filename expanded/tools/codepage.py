@@ -92,6 +92,19 @@ LIB = [
     (0xD9, "fix",  "⍣", "fixpoint: x ′f -> y; apply f until the result ≣ the previous one"),
     # --- W12-A8 LIB row: the stream protocol (prelude section W12-A8) ---
     (0xDA, "next", "⍞", "stream next: s -> s x 0 | s 1 (zero-is-true, like ‹readline›)"),
+    # --- W12-Z1 LIB rows: one-byte aliases of the hottest long names (prelude
+    # section W12-Z1).  Each byte is a one-call word that runs the long name,
+    # which stays.  Mnemonics are letters only and prefix-free: \dget \dput
+    # because \get (←) is a compiler op and \puts / \putat exist.
+    (0xDB, "ints", "ℤ", "alias of ‹ints›: -> list, all of stdin as integers"),
+    (0xDC, "readall", "⎕", "alias of ‹readall›: -> list, the rest of stdin as a code list"),
+    (0xDD, "readline", "⏎", "alias of ‹readline›: -> list flag, the next line without its \\n (flag 0), 1 at end"),
+    (0xDE, "dict", "Ḋ", "alias of ‹dict›: -> d, a new empty dict"),
+    (0xDF, "dget", "Ġ", "alias of ‹get›: d k -> v (missing: key not found)"),
+    (0xE0, "dput", "Ṗ", "alias of ‹put›: d k v -> d"),
+    (0xE1, "keys", "Ḳ", "alias of ‹keys›: d -> list, the keys in insertion order"),
+    (0xE2, "bump", "Ḃ", "alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1)"),
+    (0xE3, "vec", "Ṿ", "alias of ‹vec›: -> v, a new empty vector"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

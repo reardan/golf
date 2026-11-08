@@ -53,20 +53,32 @@ number.
 
 | problem | bytes |
 |---|---|
-| twosum | 87 |
-| parens | 99 |
-| stock | 26 |
-| longsub | 60 |
-| prodself | 32 |
-| topk | 67 |
-| islands | 128 |
-| trap | 33 |
-| slidemax | 17 |
-| queens | 106 |
+| twosum | 54 |
+| parens | 41 |
+| stock | 10 |
+| longsub | 42 |
+| prodself | 27 |
+| topk | 31 |
+| islands | 101 |
+| trap | 16 |
+| slidemax | 11 |
+| queens | 78 |
 
-Total 655 (898 at the baseline above).
+Total 411 (655 before W12-6's rewrite, 898 at the baseline above).
 
 ### Notes
+W12-6 rewrote all ten with the W12 words and the one-byte aliases
+`ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ` (655 → 411 bytes; timings in `../RESULTS.md`, "W12
+final"). Stock, Trap and Sliding Window are explained in REFERENCE.md §4,
+"LeetCode in Golf". Two of them use details worth knowing. `islands` marks
+land as visited (`48⍈`) while `⍸` is still walking the grid, and its word
+tests the element `⍸` hands it, so it relies on `⍸` reading each element
+when it reaches it, as it does. `parens` starts its stack as `1⍳` (a
+sentinel `0`) and pushes two more `0`s on a mismatch, so a pop never finds it
+empty and the answer is just "is one element left". `prodself` stays general
+(prefix and suffix products) rather than use the input's ±1 values, where
+`ℤ"∏*⍕` would do in 5 bytes.
+
 `golf/stock_stream.golfj` (W12-A8) is Stock as a stream, `‹sints›′p‹smap›0′⌈‹sfold›`
 with the running minimum threaded under the pipeline: 40 bytes, about 0.09 s
 and 13 MB peak on the `stock` input, against `stock.golfj`'s 0.07 s and 32 MB

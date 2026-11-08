@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **54** are now spent, leaving **57** free. It is partitioned as follows
+space; **63** are now spent, leaving **48** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -234,7 +234,21 @@ no glyph is in use.
 | `0xD8` | `\win` | `⊟` | prelude: `l n ′f ⊟ -> l'` reduce of every length-`n` window (monotonic deque for `⌈`/`⌊`) | A5 | shipped |
 | `0xD9` | `\fix` | `⍣` | prelude: `x ′f ⍣ -> y` apply `f` until the result `≣` the previous one | A6 | shipped |
 | `0xDA` | `\next` | `⍞` | prelude: `s ⍞ -> s x 0 \| s 1` pull the next value of a stream (W12-A8; the stream words are long names, see REFERENCE "Streams") | A8 | shipped |
-| `0xDB`–`0xE3` | — | — | one-byte aliases of the hottest long names, picked from measured usage | Z1 (W12-6) | reserved |
+| `0xDB` | `\ints` | `ℤ` | prelude: one-byte alias of `‹ints›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xDC` | `\readall` | `⎕` | prelude: one-byte alias of `‹readall›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xDD` | `\readline` | `⏎` | prelude: one-byte alias of `‹readline›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xDE` | `\dict` | `Ḋ` | prelude: one-byte alias of `‹dict›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xDF` | `\dget` | `Ġ` | prelude: one-byte alias of `‹get›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xE0` | `\dput` | `Ṗ` | prelude: one-byte alias of `‹put›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xE1` | `\keys` | `Ḳ` | prelude: one-byte alias of `‹keys›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xE2` | `\bump` | `Ḃ` | prelude: one-byte alias of `‹bump›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+| `0xE3` | `\vec` | `Ṿ` | prelude: one-byte alias of `‹vec›` (a one-call word; the long name stays), picked from measured usage (W12-6) | Z1 | shipped |
+
+W12-6 used all nine Z1 bytes, so none goes back to free. `0xE4`–`0xEF`
+(twelve bytes of the W12-0-released range) are still free. The Z1
+mnemonics are letters only and prefix-free against the shipped ones:
+`\dget` and `\dput` because `\get` (`←`) is a compiler op and `\puts` and
+`\putat` exist.
 
 ## 2. Prelude word letters
 

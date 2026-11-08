@@ -166,6 +166,13 @@ Four tracks. Item ids are what the waves (section 4) schedule.
   - Budget: at most 7 bytes from `0xD1`–`0xD7`, plus whatever of
     `0xD8`–`0xEF` W12-0 releases (that range is "reserved: chain syntax";
     chain syntax shipped at `0xB0`, so the reservation is stale).
+  - **Shipped (W12-6)** at `0xDB`–`0xE3`, all nine bytes: `ℤ` ints, `⎕`
+    readall, `⏎` readline, `Ḋ` dict, `Ġ` get (`\dget`), `Ṗ` put (`\dput`),
+    `Ḳ` keys, `Ḃ` bump, `Ṿ` vec. On the measured counts `‹has›` lost to
+    `‹bump›` and `‹readline›`. Each alias is `:\x‹x›;` in the prelude. The
+    docs keep the long names and offer the aliases alongside them (open
+    question 3). The LeetCode solutions use them. REFERENCE.md, "One-byte
+    aliases".
 - **Z2. Variable increment and decrement prefixes.**
   - `⇡x` and `⇣x` (compiler ops, `0xB9`/`0xBA`) for `←x⊕→x` and `←x⊖→x`.
   - 5 bytes become 2 at every counter. Every loop in the benchmark has one.
@@ -292,6 +299,9 @@ Four tracks. Item ids are what the waves (section 4) schedule.
   - REFERENCE.md §4 gets three of the solutions (Stock, Trap, Sliding
     Window) in their post-W12 form, output-checked like the other tutorial
     examples.
+  - **Shipped (W12-6)**: REFERENCE.md §4, "LeetCode in Golf". Run2 block
+    W12-O5 checks each program's output and size, and that it is the
+    file's text. All ten solutions were rewritten: 655 → 411 bytes.
 - **O6. Booleans for output.**
   - `‹tf›` (`f -> “true“/“false“` as a code list), using the comparison
     convention.

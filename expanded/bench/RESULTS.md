@@ -39,6 +39,22 @@ twosum `←i⊕"→i` → `⇡i←i` (89 → 87), longsub the same (62 → 60), 
 Outputs match the old binaries and Python. Old and new on the same inputs,
 best of 7, same session: twosum 71 → 71 ms, longsub 70 → 80, islands 108 →
 89, slidemax 228 → 236, i.e. noise either way.
+| W12-6 before (base 072cdca), 2026-11-08 | 0.075 | 0.125 | 0.108 | 0.081 | 0.141 | 0.092 | 0.103 | 0.130 | 0.185 | 0.032 | 655 |
+| **W12 final** (W12-6), 2026-11-08 | 0.072 | 0.115 | 0.080 | 0.085 | 0.136 | 0.091 | 0.111 | 0.116 | 0.175 | 0.025 | 411 |
+| Python, same runs as W12 final | 0.121 | 0.142 | 0.253 | 0.340 | 1.202 | 0.108 | 0.560 | 0.301 | 1.221 | 0.209 | 2,571 |
+
+W12-6 rewrote all ten with the W12 vocabulary and Z1's one-byte aliases
+(`ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ`): 655 → 411 bytes. Stock is `ℤ"′⌊⍀-′⌈⍁Ṅ` and Trap
+`ℤ"′⌈⍀&⌽′⌈⍀⌽⌊\\-∑Ṅ` (scan and reduce in place of threaded `€`/`⇤` words),
+topk folds `′Ḃ` over the input with `⇤` and keys the sort by the dict
+left under the keys, twosum is a `⍸` word, parens a sentinel stack threaded
+under `€` (no early-exit, no empty check), queens keeps its count and its
+low bit on the stack, islands counts under `⍸`. The W12 final row is the
+better of two `bench.sh in` runs (each best of 3); the before row is one
+run at the start of the same session. Every problem beats Python, and
+interleaved A/B runs of old and new binaries (best of 7 and 11) put every
+difference within the ±15% noise (islands 86 → 90–106 ms, from copying the
+grid once with `⧺`, is the largest).
 
 ## Micro, ns per element
 
@@ -48,6 +64,11 @@ best of 7, same session: twosum 71 → 71 ms, longsub 70 → 80, islands 108 →
 | W12-O1, 2026-11-08 | 1.12 | 9.24 | 19.77 | 24.08 | 21.54 | 25.18 | 41.15 | 552.18 |
 | W12-P3 before (base 7a867ca), 2026-11-08 | 1.05 | 8.70 | 19.77 | 25.12 | 21.31 | 26.64 | 40.53 | — |
 | W12-P3, 2026-11-08 | 1.01 | 6.96 | 10.52 | 15.59 | 11.61 | 15.00 | 17.97 | — |
+| **W12 final** (W12-6), 2026-11-08 | 1.09 | 7.10 | 11.19 | 15.83 | 15.60 | 17.27 | 18.68 | 164.08 |
+
+The W12 final run's other `cases.txt` rows, in ns per element: inc2 1.78,
+dictbump 128.44, scan 17.60, reduce 13.70, eachi 18.94, sort 708.46, ksort
+604.48, grade 739.22.
 
 W12-O1 put a not-a-number check in front of `± ⊕ ⊖ ² ⊗ ⊘`, and `loop` uses
 `⊖`, so its row above is noise-level against W12-0. The A/B below is the
