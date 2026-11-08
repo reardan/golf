@@ -3005,6 +3005,8 @@
 #   ‹_14j_blk›   H W K p ->      compress the 64 byte-cells at p into the state H
 # SHA-256 keeps 32-bit words in 64-bit cells; a rotate is a shift of the word
 # doubled (x | x<<32), and a sum is masked with `32≪32>`.
+# No swap anywhere (decode -m writes a lone backslash that encode rejects
+# before a digit): temporaries go through locals instead.
 ⊡‹_14j_rec›"48>32767﹣[⋄“not a random generator“U‹throw›]‹_2d_chk›⇒p⇐p8﹢⊙⇒k
  ⇐k1>⇐p⊙⇐k621﹡5﹢﹣|[⋄“not a random generator“U‹throw›]⇐p;
 ⊡‹_14j_mtgen›24﹢⇒q39176 16≪45279|⇒g0⇒k
@@ -3012,15 +3014,15 @@
   ⇐k397﹢"624<[624﹣]3≪⇐q﹢⊙⇐y1>=⇐y1$⇐g﹡=⇐q⇐k3≪﹢⊛⇐k1﹢⇒k};
 ⊡‹_14j_mt32›⇒p⇐p16﹢⊙"624≡1﹢[_⇐p‹_14j_mtgen›0]"1﹢⇐p16﹢⊛3≪⇐p24﹢﹢⊙
  "11>="7≪40236 16≪22144|$="15≪61382 16≪$="18>=;
-⊡‹_14j_xo›⇒p⇐p16﹢⊙⇒a⇐p24﹢⊙⇒b⇐p32﹢⊙⇒c⇐p40﹢⊙⇒d⇐b5﹡"7≪\\57>|9﹡
- ⇐b17≪⇒t⇐c⇐a=⇒c⇐d⇐b=⇒d⇐b⇐c=⇒b⇐a⇐d=⇒a⇐c⇐t=⇒c⇐d"45≪\\19>|⇒d
+⊡‹_14j_xo›⇒p⇐p16﹢⊙⇒a⇐p24﹢⊙⇒b⇐p32﹢⊙⇒c⇐p40﹢⊙⇒d⇐b5﹡⇒r⇐r7≪⇐r57>|9﹡
+ ⇐b17≪⇒t⇐c⇐a=⇒c⇐d⇐b=⇒d⇐b⇐c=⇒b⇐a⇐d=⇒a⇐c⇐t=⇒c⇐d45≪⇐d19>|⇒d
  ⇐a⇐p16﹢⊛⇐b⇐p24﹢⊛⇐c⇐p32﹢⊛⇐d⇐p40﹢⊛;
 :‹_14j_mix›"30>=48984 48≪ 18285 32≪| 7396 16≪| 58809|﹡"27>=38096 48≪ 18875 32≪| 4913 16≪| 4587|﹡"31>=;
 ⊡‹rng›⇒x6A⇒p5⇐p⊛0⇐p8﹢⊛16⇒i
  {⇐i48≡⋄⇐x40503 48≪ 31161 32≪| 32586 16≪| 31765|﹢"⇒x‹_14j_mix›⇐p⇐i﹢⊛⇐i8﹢⇒i}⇐p32767 48≪|;
-⊡‹mtrng›"0≺1﹢[0\\﹣]⇒s627A⇒p626⇐p⊛1⇐p8﹢⊛624⇐p16﹢⊛⇐p24﹢⇒q
+⊡‹mtrng›"0≺1﹢[~1﹢]⇒s627A⇒p626⇐p⊛1⇐p8﹢⊛624⇐p16﹢⊛⇐p24﹢⇒q
  ⇐s32≪32>⇒a⇐s32>⇒b⇐b[1⋄2]⇒l
- 19650218⇐q⊛1⇒i{⇐i624≡⋄⇐q⇐i3≪﹢"8﹣⊙"30>=1812433253﹡⇐i﹢32≪32>\\⊛⇐i1﹢⇒i}
+ 19650218⇐q⊛1⇒i{⇐i624≡⋄⇐q⇐i3≪﹢⇒t⇐t8﹣⊙"30>=1812433253﹡⇐i﹢32≪32>⇐t⊛⇐i1﹢⇒i}
  1⇒i0⇒j624⇒k
  {⇐k0≡⋄⇐q⇐i3≪﹢⇒t⇐t⊙⇐t8﹣⊙"30>=1664525﹡=⇐j[⇐a⋄⇐b]﹢⇐j﹢32≪32>⇐t⊛
   ⇐i1﹢⇒i⇐j1﹢⇒j⇐i624≡1﹢[⇐q4984﹢⊙⇐q⊛1⇒i]⇐j⇐l≡1﹢[0⇒j]⇐k1﹣⇒k}
@@ -3035,7 +3037,7 @@
 ⊡‹randbits›⇒k‹_14j_rec›⇐k"65<[“randbits: k out of range“U‹throw›]‹_14j_b›;
 ⊡‹randbelow›⇒n‹_14j_rec›⇐n"0≻[“randbelow: empty range“U‹throw›]‹_14j_below›;
 ⊡‹randint›⇒h⇒l‹_14j_rec›⇒p⇐h⇐l≺1﹢[“randint: empty range“U‹throw›]
- ⇐h⇐l﹣1﹢"[{_⇐p64‹_14j_b›⇐p1‹_14j_b›1=}⋄⇐p\\‹_14j_below›]⇐l﹢;
+ ⇐h⇐l﹣1﹢⇒w⇐w[0{_⇐p64‹_14j_b›⇐p1‹_14j_b›1=}⋄⇐p⇐w‹_14j_below›]⇐l﹢;
 ⊡‹random53›‹_14j_rec›⇒p⇐p8﹢⊙[⇐p‹_14j_xo›11>^]⇐p‹_14j_mt32›5>67108864﹡⇐p‹_14j_mt32›6>﹢;
 ⊡‹choice›‹_2d_chk›⇒l‹_14j_rec›⇐l⊙"[“choice: empty list“U‹throw›]‹_14j_below›3≪⇐l8﹢﹢⊙;
 ⊡‹shuffle›‹_2d_chk›⇒l‹_14j_rec›⇒p⇐l⊙"⇒n1﹢A⇒o⇐n⇐o⊛8⇒i
@@ -3067,10 +3069,10 @@
  37054 16≪ 65530| 42064 16≪ 27883| 48889 16≪ 41975| 50801 16≪ 30962|;
 ⊡‹_14j_blk›⇒u⇒k⇒w⇒z⇐w⇒x⇐w128﹢⇒y
  {⇐x⇐y≡⋄⇐u⊙255$24≪⇐u8﹢⊙255$16≪|⇐u16﹢⊙255$8≪|⇐u24﹢⊙255$|⇐x⊛⇐u32﹢⇒u⇐x8﹢⇒x}⇐w512﹢⇒y
- {⇐x⇐y≡⋄⇐x16﹣⊙"10>\\"32≪|"17>\\19>==⇐x56﹣⊙﹢⇐x120﹣⊙"3>\\"32≪|"7>\\18>==﹢⇐x128﹣⊙﹢32≪32>⇐x⊛⇐x8﹢⇒x}
+ {⇐x⇐y≡⋄⇐x16﹣⊙"⇒s10>⇐s"32≪|"⇒s17>=⇐s19>=⇐x56﹣⊙﹢⇐x120﹣⊙"⇒s3>⇐s"32≪|"⇒s7>=⇐s18>=﹢⇐x128﹣⊙﹢32≪32>⇐x⊛⇐x8﹢⇒x}
  ⇐z⊙⇒a⇐z8﹢⊙⇒b⇐z16﹢⊙⇒c⇐z24﹢⊙⇒d⇐z32﹢⊙⇒e⇐z40﹢⊙⇒f⇐z48﹢⊙⇒g⇐z56﹢⊙⇒h⇐k⇒u⇐w⇒x
- {⇐x⇐y≡⋄⇐e"32≪|"6>\\"11>\\25>==⇐h﹢⇐f⇐g=⇐e$⇐g=﹢⇐u⊙﹢⇐x⊙﹢⇒v
-  ⇐a"32≪|"2>\\"13>\\22>==⇐a⇐b$⇐c⇐a⇐b|$|﹢
+ {⇐x⇐y≡⋄⇐e"32≪|"⇒s6>⇐s11>=⇐s25>=⇐h﹢⇐f⇐g=⇐e$⇐g=﹢⇐u⊙﹢⇐x⊙﹢⇒v
+  ⇐a"32≪|"⇒s2>⇐s13>=⇐s22>=⇐a⇐b$⇐c⇐a⇐b|$|﹢
   ⇐g⇒h⇐f⇒g⇐e⇒f⇐d⇐v﹢32≪32>⇒e⇐c⇒d⇐b⇒c⇐a⇒b⇐v﹢32≪32>⇒a⇐u8﹢⇒u⇐x8﹢⇒x}
  ⇐z⊙⇐a﹢32≪32>⇐z⊛⇐z8﹢⊙⇐b﹢32≪32>⇐z8﹢⊛⇐z16﹢⊙⇐c﹢32≪32>⇐z16﹢⊛⇐z24﹢⊙⇐d﹢32≪32>⇐z24﹢⊛
  ⇐z32﹢⊙⇐e﹢32≪32>⇐z32﹢⊛⇐z40﹢⊙⇐f﹢32≪32>⇐z40﹢⊛⇐z48﹢⊙⇐g﹢32≪32>⇐z48﹢⊛⇐z56﹢⊙⇐h﹢32≪32>⇐z56﹢⊛;
