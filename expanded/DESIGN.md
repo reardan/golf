@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1380** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **5100** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **16891** bytes |
-| assertions in the run2 suite | **926** |
+| assertions in the run2 suite | **932** |
 | assertions in the selfcheck suite | **69** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -513,6 +513,28 @@ the golf2 fixpoint included. In order:
   does not encode back (gtools' prelude round trip caught it). A one-byte
   program's own code compiles to the same bytes as before; only the prelude
   part of the binary grows (run2 checks this).
+- **W13-I — programs pay only for the prelude they reach.** W13 wave 1 grew
+  the compiled prelude to 125,566 bytes of the 196,608-byte image, so tests
+  were shrunk to fit. The fix is dead-code elimination in the toolchain, not
+  the compiler: `tools/golfprune.py`, called by `tools/golfc` between
+  encoding and `golf2`, cuts the encoded prelude into top-level definitions
+  and top-level code, marks every name the program, its includes and the
+  top-level code mention (one-byte names, `‹long›`, `ʘB`, prefix operands, plus
+  the `⑂` that `⊚` forks through and the `⍳ I` that `⊜` calls), closes over
+  the kept bodies, and drops the rest, leaving their newlines so line numbers
+  stay put. golf2, the seed and golfref did not change, so seed ≡ golf2
+  holds by construction and each still compiles in one pass. A compiler
+  pre-scan would have had to do the same transitive closure twice, in v2
+  GOLF and v1 GOLF, over a buffer neither compiler keeps. Raising the cap
+  instead would move the out buffer, the spill stack and the compilers'
+  buffers, which are hard-coded in many places. Results: `1Ṅ` 125,566 → 13,527
+  bytes; the ten `bench/leetcode` programs ~125.8 KB → 17.8–33.4 KB; golfc ~40%
+  faster (the encoded prelude is cached in `build/prelude.gb`, keyed by a
+  hash). Only addresses change: every compiled reference binds as before.
+  `golfc -P` / `GOLFC_FULL=1` keep the whole prelude, for programs that reach
+  a word only through an address computed at run time. run2's `>64 KB`
+  (2000 statements), W12-O3 (2000 ops), W12-A5 (one program) and 256-field
+  record tests are back to their original sizes, through `gcp`/`grefp`.
 - **W10-A — forward references for every name; 1024 long names.** M2's
   pending-site lists were already indexed by name number, so a one-byte name
   needed no new mechanism, only permission: `e` and `X` now send any name that
@@ -713,8 +735,10 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   `0x430000`, the W11-1C output buffer (the lowest address a running program
   uses; REGISTRY §3). Both compilers check it as they emit: `golf2` writes
   `GOLF: program too large` to fd 2 and exits 2 with nothing on fd 1, the seed
-  exits 2 silently. The prelude alone is about 43 KB (an empty program is 43047
-  bytes, after W11 wave 4), which leaves about 150 KB; an empty word costs 20 bytes. `p_filesz`
+  exits 2 silently. The whole prelude grew to about 123 KB by W13 wave 1, but
+  since W13-I `tools/golfc` compiles only the definitions a program reaches
+  (`1Ṅ` is 13,527 bytes; the whole prelude, `golfc -P`, is 125,566), so about
+  180 KB is left for a program's own code; an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).
   Raising the cap further means moving the 1C buffer and the spill stack up
