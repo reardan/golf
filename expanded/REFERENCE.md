@@ -2010,6 +2010,85 @@ them all. The streams read their input lists in place and do not own them.
   `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
   0.52 s. Names that start with `‹_13e` are these words' helpers.
 
+### Formatting, bytes and UTF-8 (W14-G)
+
+These words are for scripts: printf-style output, the Python string methods
+that "Text" lacks, binary records and UTF-8. Text is a **code list**, one
+byte per element (after `‹utf8›`, one code point per element). Every word that
+returns a list returns a NEW list and never writes its input. The one
+exception is `‹setle›`, which stores in place. A flag is zero-is-true, as for
+`‹startswith›`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹format›` | `tpl args -> list` | printf. `tpl` is a code list and `args` a list of values. A conversion is `%`, then any of the flags `-` (left-justify), `0` (zero-pad; numbers only), `+` and space (a sign for a non-negative `%d`), then a width, then `.N`, then one of `d u x X o b c s %`. `%d` is signed decimal. `%u %x %X %o %b` read the int as **unsigned** 64-bit, like C, so `-1` gives sixteen `f`s. `%c` is one element with that code. `%s` takes a code list (an int prints in decimal). `.N` keeps at most N bytes of a `%s`, and gives a number at least N digits. `%%` is `%` |
+| `‹printf›` | `tpl args ->` | `‹format›`, then print it with `⊐` (buffered), then free it |
+| `‹fixed›` | `n d k -> list` | `n/d` with `k` decimals, rounded half away from zero, computed exactly in integers: `1234567 1000000 3` is `1.235`. A `-` is shown only when the rounded value is not zero. `k < 0` counts as `0`. `d = 0` is `GOLF: divide by zero`. The absolute value of `d` must stay below 2^63/10 |
+| `‹ljust›` | `list w -> list` | pad on the right with spaces to `w` (Python's `str.ljust`). It never truncates |
+| `‹center›` | `list w -> list` | pad both sides, exactly as Python's `str.center` does: when the padding is odd, the extra space goes on the left if `w` is odd |
+| `‹replace›` | `list old new -> list` | every non-overlapping `old`, left to right, replaced by `new` (`str.replace`). An empty `old` puts `new` in every gap, both ends included |
+| `‹rfind›` | `h n -> i` | the last index at which the list `n` occurs in `h`, or `-1`. The empty `n` is found at `≢h`. `‹find›` (LeetCode library) is the first |
+| `‹count›` | `h n -> k` | non-overlapping occurrences of `n` in `h`. The empty `n` gives `≢h + 1`, as in Python |
+| `‹endswith›` | `list s -> f` | `0` if `s` is a suffix of `list`, else `1`. The empty `s` always matches |
+| `‹partition›` | `list sep -> head tail f` | split at the first `sep`: what is before it, what is after it, and `0`. When `sep` is absent: a copy of `list`, the empty list, and `1` |
+| `‹rpartition›` | `list sep -> head tail f` | the same at the last `sep`. Absent is again `list [] 1`. Python's `rpartition` gives `('', '', s)` there instead |
+| `‹translate›` | `list from to -> list` | map bytes: every `from[i]` in `list` becomes `to[i]`. When `to` is empty, the bytes in `from` are deleted. Otherwise the lengths must match. An element outside `0`–`255` passes through unchanged |
+| `‹le›` | `list off w -> n` | the unsigned little-endian int in the `w` bytes at `off` (`w` is 1, 2, 4 or 8). Each element's low byte is used |
+| `‹les›` | `list off w -> n` | the same, sign-extended from `8w` bits |
+| `‹tole›` | `n w -> list` | the low `w` bytes of `n`, little-endian |
+| `‹setle›` | `list off n w -> list` | store the low `w` bytes of `n` at `off`, **in place**, and leave `list` |
+| `‹hexbytes›` | `list -> list` | two lowercase hex digits per byte: `“hi“⊃` gives `6869` |
+| `‹unhexbytes›` | `list -> list` | the inverse. Digits may be either case. Whitespace between two pairs is skipped |
+| `‹utf8›` | `list -> cps` | decode UTF-8 into code points. Decoding is strict: overlong forms, surrogates and anything past U+10FFFF are invalid. Each byte `b` of an invalid sequence becomes `0xDC00+b`, as Python's `surrogateescape` does, so no input fails |
+| `‹unutf8›` | `cps -> list` | encode code points as UTF-8. `0xDC80`–`0xDCFF` become the raw byte again, so `‹utf8›‹unutf8›` gives back any byte string |
+
+```
+“%-6s|%05d|%x“⊃Ṿ“ab“⊃⍆42⍆255⍆‹format›⊐            ->  ab    |00042|ff
+“%+.2d %c%%“⊃Ṿ7⍆65⍆‹printf›                        ->  +07 A%
+“[%5.2s] %X %o %b %u“⊃Ṿ“abc“⊃⍆255⍆8⍆5⍆0 1-⍆‹format›⊐  ->  [   ab] FF 10 101 18446744073709551615
+1234567 1000000 3‹fixed›⊐                           ->  1.235
+0 5-10 0‹fixed›⊐                                    ->  -1
+“ab“⊃6‹center›⊐“|“🗲“ab“⊃5‹ljust›⊐“|“🗲              ->    ab  |ab   |
+“a.b.c“⊃“.“⊃“::“⊃‹replace›⊐                         ->  a::b::c
+“a.b.c“⊃“.“⊃‹rfind›Ṅ“a.b.c“⊃“.“⊃‹count›Ṅ             ->  32
+“k=v=w“⊃“=“⊃‹partition›Ṅ\\⊐“,“🗲⊐                    ->  0k,v=w
+“k=v=w“⊃“=“⊃‹rpartition›Ṅ\\⊐“,“🗲⊐                   ->  0k=v,w
+“hello“⊃“el“⊃“ip“⊃‹translate›⊐                      ->  hippo
+“hello“⊃“l“⊃0⍳‹translate›⊐                          ->  heo
+“abcd“⊃0 4‹le›‹hex›⊐                                ->  64636261
+0 2-2‹tole›"⍕0 2‹les›Ṅ                              ->  254 255 -2
+4⍳1 258 2‹setle›⍕                                   ->  0 2 1 3 
+“68 69“⊃‹unhexbytes›⊐                               ->  hi
+“c3a9ff“⊃‹unhexbytes›‹utf8›⍕                        ->  233 56575 
+Ṿ8364⍆56575⍆‹unutf8›‹hexbytes›⊐                     ->  e282acff
+“%d %d“⊃Ṿ1⍆‹format›                                 ->  GOLF: format: not enough arguments
+```
+
+`Ṿ…⍆` builds the argument list (a vector is a list). The last line prints on
+stderr and exits 1. Errors go through `‹throw›`, so `‹catch›` catches them:
+
+- `‹format›`: `format: not enough arguments`, `format: too many arguments`,
+  `format: bad conversion %q`, `format: incomplete conversion` (a `%` at the
+  end), `format: %d needs a number` (a list given to a numeric conversion),
+  and `format: args must be a list` / `format: template must be a list`. A
+  `“…“` literal without `⊃` is not a list.
+- `partition: empty separator` (`rpartition: …` too), `translate: from and to
+  differ in length`, and `translate: not a byte` for a `from` element outside
+  `0`–`255`.
+- `le: width must be 1, 2, 4 or 8` and `le: offset out of range` when the `w`
+  bytes at `off` are not all inside the list. `‹les›` says `le:` too, and
+  `‹tole›` and `‹setle›` use their own names.
+- `unhexbytes: odd number of hex digits`, `unhexbytes: bad hex digit` (which
+  includes a space inside a pair), and `unutf8: invalid code point N` for a
+  negative N, one past `0x10FFFF`, or a surrogate outside `0xDC80`–`0xDCFF`.
+
+All of these are `⊡` words with no global state, so they are re-entrant.
+`‹format›` and `‹fixed›` free their temporaries, and variable-length results
+grow a vector. `run2.sh` checks the words against Python: `%`, `decimal`
+with `ROUND_HALF_UP`, the `str` methods, `struct`, and `surrogateescape` on
+every byte and on random UTF-8. Names that start with `‹_14g` are these
+words' helpers.
+
 ### Prelude pruning
 
 `tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your

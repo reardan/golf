@@ -4419,6 +4419,17 @@ done <<'W14GCASES'
 W14GCASES
 [ -z "$w14gbad" ] && ok "W14-G fixed cases: format/printf conversions and flags, fixed, center/ljust, replace/rfind/count/endswith, partition/rpartition, translate, le/les/tole/setle, hex, UTF-8; every diagnostic; catchable; ‹format› and ‹fixed› free their temporaries; ‹count› as a variable still works" \
   || no "W14-G fixed cases:$w14gbad"
+# REFERENCE.md's W14-G examples print (stdout + stderr) what the doc says.
+while IFS= read -r w14gl; do
+  w14gp=${w14gl%%  ->*}; w14gp=${w14gp%"${w14gp##*[! ]}"}; w14gw=${w14gl##*->  }
+  [ "$(printf '%s' "$w14gp" | gc 2>&1)" = "$w14gw" ] || w14gbad="$w14gbad [$w14gp]"
+done < <(sed -n '/^### Formatting, bytes and UTF-8 (W14-G)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14gbad" ] && [ "$(sed -n '/^### Formatting, bytes and UTF-8 (W14-G)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 18 ] \
+  && ok "REFERENCE.md's W14-G examples print what they say" || no "REFERENCE W14-G examples:$w14gbad"
+# The Python reference compiler (boot/golfref.py) runs the W14-G words identically.
+w14go='“%-4s|%+05d|%X|%.1s“⊃Ṿ“ab“⊃⍆7⍆255⍆“xy“⊃⍆‹format›⊐7 2 1‹fixed›⊐“a-b-c“⊃“-“⊃“+“⊃‹replace›⊐“c3a9ff“⊃‹unhexbytes›‹utf8›"⍕‹unutf8›‹hexbytes›⊐0 3-4‹tole›0 4‹les›Ṅ'
+[ "$(printf '%s' "$w14go" | gref)" = "$(printf '%s' "$w14go" | gc)" ] && [ "$(printf '%s' "$w14go" | gc)" = "ab  |+0007|FF|x3.5a+b+c233 56575 c3a9ff-3" ] \
+  && ok "oracle: boot/golfref.py runs the W14-G words identically" || no "w14-g oracle"
 w14gsecs=$(python3 - "$TMP" <<'W14GPY'
 import random, struct, string, sys
 from decimal import Decimal, ROUND_HALF_UP, getcontext
