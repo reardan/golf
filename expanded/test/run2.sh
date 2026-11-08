@@ -2128,11 +2128,14 @@ echo "W11-1E: the program-size cap is 192 KB (196608 bytes), checked; p_filesz i
 # W11-1C output buffer, the lowest runtime region; REGISTRY §3).
 w11e(){ cat "$TMP/pre.gb" - > "$TMP/e.src"; "$1" < "$TMP/e.src" > "$TMP/e.out" 2>"$TMP/e.err"; echo "$?"; }
 w11efsz(){ python3 -c 'import sys; b=open(sys.argv[1],"rb").read(); print(int.from_bytes(b[96:104],"little"), len(b))' "$1"; }
-# P(a,b) = `0 0`, a x ⊕ (4 bytes each), b x `&_` (5 bytes), `Ṅ`: any size from
-# P(0,0) up is reachable, so the test lands on the cap exactly.
+# P(a,b) = `0 0`, a x ⊕ (u bytes each: 4 until W12-O1 put its not-a-number
+# check in front, 26 since), b x `&_` (5 bytes), `Ṅ`: gcd(u,5) = 1, so any size
+# from P(0,0) up is reachable and the test lands on the cap exactly.
 w11eprog(){ python3 -c 'import sys; a,b=int(sys.argv[1]),int(sys.argv[2]); sys.stdout.write("0 0"+"⊕"*a+"&_"*b+"Ṅ")' "$1" "$2" | python3 tools/codepage.py encode; }
 [ "$(w11eprog 0 0 | w11e "$TMP/golf2")" = 0 ] && w11e0=$(stat -c%s "$TMP/e.out") || w11e0=0
-w11ed=$((196608 - w11e0)); w11eb=$((w11ed % 4)); w11ea=$(((w11ed - 5*w11eb) / 4))
+w11eu=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2; print(len(mkblob2.OVERRIDES[0x81]))')
+w11ed=$((196608 - w11e0)); w11eb=0; while [ $(((w11ed - 5*w11eb) % w11eu)) -ne 0 ]; do w11eb=$((w11eb+1)); done
+w11ea=$(((w11ed - 5*w11eb) / w11eu))
 w11eprog "$w11ea" "$w11eb" > "$TMP/e.cap.g2"
 [ "$(w11e "$TMP/golf2" < "$TMP/e.cap.g2")" = 0 ] && [ "$(w11efsz "$TMP/e.out")" = "196608 196608" ] \
   && chmod +x "$TMP/e.out" && [ "$("$TMP/e.out")" = "$w11ea" ] \
@@ -2145,7 +2148,7 @@ cmp -s "$TMP/e.cap.bin" "$TMP/e.cap.ref" && ok "oracle: golfref emits the same 1
   && ok "... and so does seed" || no "seed at the cap"
 w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
 [ "$(w11e "$TMP/golf2" < "$TMP/e.over.g2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
-  && ok "4 bytes over the cap: GOLF: program too large on fd 2, exit 2, nothing on fd 1" || no "over the cap: $(cat "$TMP/e.err")"
+  && ok "$w11eu bytes (one ⊕) over the cap: GOLF: program too large on fd 2, exit 2, nothing on fd 1" || no "over the cap: $(cat "$TMP/e.err")"
 [ "$(w11e "$TMP/seed" < "$TMP/e.over.g2")" = 2 ] && [ ! -s "$TMP/e.out" ] && [ ! -s "$TMP/e.err" ] \
   && ok "... seed exits 2 silently, as for an undefined word" || no "seed over the cap"
 [ "$(python3 boot/golfref.py < "$TMP/e.src" 2>"$TMP/e.err" > "$TMP/e.out"; echo $?)" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] \
@@ -3056,6 +3059,71 @@ done < <(sed -n '/^### Threading state through/,/^### /p' REFERENCE.md | sed -n 
   || no "REFERENCE threading examples:$w120bad"
 w120reg=$(sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -cE '\| (reserved|shipped) \|$')
 [ "$w120reg" -ge 13 ] && ok "REGISTRY.md §1.4 reserves the W12 bytes ($w120reg rows)" || no "W12 byte reservations: $w120reg"
+
+# === W12-O1 ===
+echo "W12-O1: ± ⊕ ⊖ ² ⊗ ⊘ on a list throw 'not a number' (catchable); on ints, and in bare programs, unchanged"
+# The six templates test TOS's top byte (0x7F) and, only then, call the hook
+# cell 5180864 the prelude fills with ‹_12o1_nan› (exact: tagged AND in the
+# list heap).  w110 (W11-0, above) prints rc, the stdout byte count and stderr.
+w12o1bad=""
+for w12o1a in '±' '⊕' '⊖' '²' '⊗' '⊘'; do
+  [ "$(w110 "7Ṅ5⍳$w12o1a⍕")" = "rc=1 1 GOLF: not a number" ] || w12o1bad="$w12o1bad [$w12o1a: $(w110 "7Ṅ5⍳$w12o1a⍕")]"
+  [ "$(w110 "0⍳$w12o1a")" = "rc=1 0 GOLF: not a number" ] || w12o1bad="$w12o1bad [empty $w12o1a]"
+  [ "$(printf '%s' ":‹f›3⍳$w12o1a;1 2′‹f›‹catch›⊐␤Ṅ␤Ṅ" | gc)" = "$(printf 'not a number\n2\n1')" ] || w12o1bad="$w12o1bad [catch $w12o1a]"
+  [ "$(printf '%s' "7Ṅ5⍳$w12o1a⍕" | gref; echo " rc=$?")" = "7 rc=1" ] || w12o1bad="$w12o1bad [oracle $w12o1a]"
+done
+[ -z "$w12o1bad" ] && ok "each of ± ⊕ ⊖ ² ⊗ ⊘ on a list (empty too): GOLF: not a number on fd 2, exit 1, earlier output flushed; ′f‹catch› gets the message with the stack restored; the oracle agrees" \
+  || no "W12-O1 atoms on lists:$w12o1bad"
+[ "$(printf '%s' '2⍳′⍳€′⊕€⍕' | gc 2>&1)" = "GOLF: not a number" ] && [ "$(printf '%s' '3⍳"⌫⊖' | gc 2>&1)" = "GOLF: not a number" ] \
+  && [ "$(printf '%s' '3⍳′⊕€⍕␤3⍳′²€⍕␤3⍳′±€⍕' | gc)" = "$(printf '1 2 3 \n0 1 4 \n0 -1 -2 ')" ] \
+  && ok "an inner list (′⊕€ over a list of lists) and a freed list throw too; ′⊕ ′² ′± over a list of ints map as before" || no "W12-O1 inner/freed/map"
+# Ints, edge values included: INT64_MAX and every int in [0x7F<<56, 2^63)
+# reach the hook (top byte 0x7F) and must come back untouched, as must the old
+# M-TAG band [2^48, 2^49), INT64_MIN, -1 and a tag-band int pointing below the
+# heap.  Expected values from Python's 64-bit wrap; ⊘ is a LOGICAL shift.
+python3 - "$TMP" <<'PYEOF'
+import sys
+T = sys.argv[1]
+vals = [("9223372036854775807", 2**63 - 1), ("9223372036854775806", 2**63 - 2), ("1 63≪", -2**63),
+        ("281474976710661", 2**48 + 5), ("562949953421311", 2**49 - 1), ("32767 48≪ 4096|", (32767 << 48) | 4096),
+        ("35747322042253312", 0x7F << 48), ("1 63≪±⊖", 2**63 - 1), ("0", 0), ("7", 7), ("1\\neg", -1)]
+ops = {"±": lambda v: -v, "⊕": lambda v: v + 1, "⊖": lambda v: v - 1, "²": lambda v: v * v,
+       "⊗": lambda v: v * 2, "⊘": lambda v: (v % 2**64) >> 1}
+# The raw spellings of the same six, for the bare (no-prelude) program, which cannot print.
+raw = {"±": "~1﹢", "⊕": " 1﹢", "⊖": " 1﹣", "²": "\"﹡", "⊗": "\"﹢", "⊘": " 1>"}
+s = lambda v: (v + 2**63) % 2**64 - 2**63
+prog, want, bare = [], [], []
+for src, v in vals:
+    for g, f in ops.items():
+        prog.append(f"{src}{g}Ṅ␤"); want.append(str(s(f(v))))
+        bare.append(f"{src}{g} {src}{raw[g]}≡1+[89)]")
+open(f"{T}/o1.prog", "w", encoding="utf-8").write("".join(prog))
+open(f"{T}/o1.want", "w").write("\n".join(want) + "\n")
+open(f"{T}/o1.bare", "w", encoding="utf-8").write("".join(bare))
+open(f"{T}/o1.n", "w").write(str(len(bare)))
+PYEOF
+[ "$(gc < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] && [ "$(gref < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] \
+  && ok "on $(cat "$TMP/o1.n") int cases (INT64_MAX/MIN, MAX-1, the old [2^48,2^49) band, 0x7F<<48, a tag-band int below the heap, -1 0 7) the six give Python's 64-bit result, golf2 and oracle" \
+  || no "W12-O1 ints: $(diff <(gc < "$TMP/o1.prog") "$TMP/o1.want" | head -5 | tr '\n' ' ')"
+w12o1y=$(printf '%*s' "$(cat "$TMP/o1.n")" '' | tr ' ' Y)
+mkdir -p "$TMP/o1"; cp "$TMP/o1.bare" "$TMP/o1/b.golfj"
+(cd "$TMP/o1" && "$EXP/tools/golfc" -n -j b.golfj b > /dev/null 2>&1 && ./b > b.out 2>&1; echo $? > b.rc)
+[ "$(cat "$TMP/o1/b.out")" = "$w12o1y" ] && [ "$(cat "$TMP/o1/b.rc")" = 0 ] \
+  && [ "$(cd "$TMP/o1" && "$EXP/tools/golfc" -j b.golfj p > /dev/null 2>&1 && ./p)" = "$w12o1y" ] \
+  && ok "golfc -n (no prelude, the hook cell stays 0): each atom equals its raw spelling on all $(cat "$TMP/o1.n") cases; with the prelude too" \
+  || no "W12-O1 bare: $(cat "$TMP/o1/b.out") rc=$(cat "$TMP/o1/b.rc")"
+w12o1t=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2 as m
+print(all(m.OVERRIDES[b][:7] == [0x80,0x7C,0x24,0x07,0x7F,0x75,15] and m.OVERRIDES[b][22:] == m._ATOM_TPL[b] for b in m.NUMCHK_BYTES),
+      m.NAN_HOOK == 5180864, all(b not in m.OVERRIDES for b in (0x7E,0x24,0x7C,0x3D,0x3E,0xA2,0xA3,0x91,0x92,0x93)))')
+[ "$w12o1t" = "True True True" ] && grep -q '^:‹_12o1_init›\\ref‹_12o1_nan›5180864\\store;$' lib/prelude.golfj \
+  && ok "templates: cmp byte [rsp+7],0x7F; jne over the 15-byte hook call; then the atom byte for byte; hook cell 5180864 (slot O1); ~ \$ | = > ≪ ≫ and the raw atoms stay unchecked" \
+  || no "W12-O1 template shape: $w12o1t"
+w12o1bad=""; w12o1n=0
+while IFS= read -r w12o1l; do
+  w12o1p=${w12o1l%%  ->*}; w12o1p=${w12o1p%"${w12o1p##*[! ]}"}; w12o1w=${w12o1l##*->  }; w12o1n=$((w12o1n+1))
+  [ "$(printf '%s' "$w12o1p" | gc 2>&1 | sed 's/ *$//')" = "$w12o1w" ] || w12o1bad="$w12o1bad [$w12o1p]"
+done < <(sed -n '/^The unary arithmetic atoms/,/^### Atoms$/p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12o1bad" ] && [ "$w12o1n" -ge 4 ] && ok "REFERENCE.md §2's atoms-on-lists examples print what they say" || no "REFERENCE W12-O1 examples:$w12o1bad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

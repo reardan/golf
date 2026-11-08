@@ -53,6 +53,8 @@ TEMPLATES.update({chr(b): list(tpl) for b, _mn, _gl, tpl, _d in mkblob2.ATOMS})
 # keeps the last write, while the blob's `f` returns the FIRST record for a key
 # and therefore emits the override instead of the original — same result, so the
 # oracle and the self-hosted compiler stay in agreement.
+# W12-O1's not-a-number check in front of ± ⊕ ⊖ ² ⊗ ⊘ (mkblob2._numchk) is an
+# override too, so it reaches the oracle through this same line.
 TEMPLATES.update({chr(b): list(tpl) for b, tpl in mkblob2.OVERRIDES.items()})
 
 # Compiler-logic ops (prefixes / delimiters, not templates).

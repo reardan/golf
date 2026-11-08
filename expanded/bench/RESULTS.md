@@ -18,3 +18,19 @@ rows taken on the same day and treat ±15% as noise.
 | Wave | loop | iota | sum | map | fold | filter | vadd | dictput |
 |---|---|---|---|---|---|---|---|---|
 | W12-0, 2026-11-08 | 1.12 | 8.33 | 20.43 | 24.33 | 21.61 | 25.74 | 39.69 | 555.32 |
+| W12-O1, 2026-11-08 | 1.12 | 9.24 | 19.77 | 24.08 | 21.54 | 25.18 | 41.15 | 552.18 |
+
+W12-O1 put a not-a-number check in front of `± ⊕ ⊖ ² ⊗ ⊘`, and `loop` uses
+`⊖`, so its row above is noise-level against W12-0. The A/B below is the
+measured cost. Each program was compiled twice with the oracle, with and
+without the check, and the two were run interleaved, best of 11, on
+10^8 iterations:
+
+| program | without | with | cost per checked op |
+|---|---|---|---|
+| `loop` `{⊖"0≡}` (1 op) | 0.69–0.85 ns | 0.85–1.02 ns | +0.16 to +0.17 ns |
+| `inc2` `{⊕⊖⊖"0≡}` (3 ops; new micro case) | 1.20 ns | 1.46–1.83 ns | +0.08 to +0.21 ns |
+| `{±±⊖"0≡}` (3 ops) | 1.01 ns | 1.54 ns | +0.18 ns |
+
+`inc2` was 1.12 ns per element before the check and 1.78–1.89 ns after it
+in `micro.sh`.

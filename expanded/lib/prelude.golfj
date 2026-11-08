@@ -1303,3 +1303,20 @@
 # behind a looser filter too.  32-bit `!` is enough —
 # BSS leaves each cell's high half zero.  Must stay last: ′ needs the words.
 \ref\vadd 5177944!\ref\vsub 5177960!\ref\vmul 5177936!\ref\vmax 5178688!\ref\vmin 5178696!
+
+# === W12-O1 atoms on lists ===
+# ‹_12o1_nan›  v -> v   the not-a-number hook of the unary arithmetic atoms
+# ± ⊕ ⊖ ² ⊗ ⊘ (cell 0x4F0DC0 = 5180864, tools/mkblob2.NAN_HOOK).  Their
+# templates call it only when TOS's top byte is 0x7F, a loose superset of the
+# tag; here the test is exact: v is a list iff it is tagged (T) AND its
+# address lies in the list heap (addr - base <u span, A's own two cells, the
+# test ⌫ makes).  Then `GOLF: not a number` through ‹throw›, so ‹catch› takes
+# it.  Anything else — INT64_MAX, any int in the tag band that no heap could
+# hold — returns untouched and the atom's scalar body runs on it as before.
+# A leaf on the happy path: no scratch, stack-neutral.  The prelude's own
+# uses of these atoms are all on ints (lengths, indices, flags), so none of
+# them can reach the throw.  Installed LAST, after the W3 hooks, so no init
+# code above it can trip the check.
+:‹_12o1_nan›"T["16\shl16>5177396@\rsub5177400@\rlt1\radd[“not a number“U‹throw›]];
+:‹_12o1_init›\ref‹_12o1_nan›5180864\store;
+‹_12o1_init›
