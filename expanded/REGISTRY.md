@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **49** are now spent, leaving **62** free. It is partitioned as follows
+space; **50** are now spent, leaving **61** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -233,7 +233,7 @@ no glyph is in use.
 | `0xD7` | `\pop` | `⍅` | prelude: `v ⍅ -> v x` vector pop (empty throws `pop from empty`); on a `‹deque›`, its back | Z4 | shipped |
 | `0xD8` | `\win` | `⊟` | prelude: `l n ′f ⊟ -> l'` reduce of every length-`n` window (monotonic deque for `⌈`/`⌊`) | A5 | reserved |
 | `0xD9` | `\fix` | `⍣` | prelude: `x ′f ⍣ -> y` apply `f` until the result `≣` the previous one | A6 | reserved |
-| `0xDA` | `\next` | `⍞` | prelude: `s ⍞ -> s x 0 \| s 1` pull the next value of a stream | A8 | reserved |
+| `0xDA` | `\next` | `⍞` | prelude: `s ⍞ -> s x 0 \| s 1` pull the next value of a stream (W12-A8; the stream words are long names, see REFERENCE "Streams") | A8 | shipped |
 | `0xDB`–`0xE3` | — | — | one-byte aliases of the hottest long names, picked from measured usage | Z1 (W12-6) | reserved |
 
 ## 2. Prelude word letters
@@ -589,7 +589,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | A4 sort-by / grade | `0x4F0EC0`–`0x4F0EFF` | 5181120 | 5181120 … 5181128 used (shipped, W12-A4): the key list's element 0 · the merge step's take-right flag F, live only inside `‹grade›`'s sort loop (no user code runs there); 5181136 … 5181176 free |
 | A5 window | `0x4F0F00`–`0x4F0F3F` | 5181184 | 5181184 … 5181240 |
 | A6 fixpoint | `0x4F0F40`–`0x4F0F7F` | 5181248 | 5181248 … 5181304 |
-| A8 streams | `0x4F0F80`–`0x4F0FBF` | 5181312 | 5181312 … 5181368 |
+| A8 streams | `0x4F0F80`–`0x4F0FBF` | 5181312 | 5181312 5181320 5181336 … 5181368 used (shipped, W12-A8), each live only across a stretch with no user call: the record being built · ⍞'s x while s is unparked · ‹sints›'s end of bytes / sign / byte and accumulator, constructor arguments, x under an accumulator, ‹szip›'s f — see the prelude's W12-A8 section; 5181328 free. Stream state itself lives in the records on the heap and in one-cell parks on the spill stack |
 | O2 freeable thunks | `0x4F0FC0`–`0x4F0FFF` | 5181376 | 5181376 … 5181432 |
 
 ---

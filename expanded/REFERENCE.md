@@ -328,6 +328,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xD5` | `⍈` | `\putat` | — | store-at: list i v -> list; list[i] = v in place (bounds-checked) |
 | `0xD6` | `⍆` | `\push` | — | push: v x -> v'; append x (vector or deque back); use the returned v' |
 | `0xD7` | `⍅` | `\pop` | — | pop: v -> v x; remove the last element (empty: pop from empty) |
+| `0xDA` | `⍞` | `\next` | — | stream next: s -> s x 0 \| s 1 (zero-is-true, like ‹readline›) |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -1006,6 +1007,101 @@ The last one prints on stderr and exits 1; under `‹catch›` it gives back
 caller left under `acc x` (or under `x i`), so the count `4` is the number of
 calls: `⍀` and `⍁` do not call `f` on the seed. `g` runs a scan inside the
 scan's function, and `h` runs `⍸` inside `€`'s.
+
+### Streams
+
+A **stream** (W12-A8) hands out values one at a time, so a pipeline from
+stdin to a result runs in constant memory. A stream is a small tagged list
+`[step, free, state…]` on the heap. `⍞` (`0xDA`, `\next`) pulls one value:
+
+| glyph | mnemonic | stack effect | meaning |
+|---|---|---|---|
+| `⍞` | `\next` | `s -> s x 0 \| s 1` | the next value `x` and `0`, or `1` when the stream has ended. The flag is zero-is-true, like `‹readline›`'s. An ended stream keeps answering `1`. `s` stays on the stack either way |
+
+The other stream words have long names:
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹sints›` | `-> s` | the integers on stdin, one per pull, read the same way as `‹ints›` (same whitespace, signs, `12ab` is 12, `x` is 0, overflow wraps). It parses straight out of the shared input buffer and leaves the buffer just past the number it returned, so `‹readline›`, `‹getc›` or `‹ints›` can carry on from there, and a pipeline that stops pulling reads no more input |
+| `‹slines›` | `-> s` | the lines of stdin, as `‹readline›` returns them (a new code list each time, without the `\n`) |
+| `‹sbytes›` | `-> s` | the bytes of stdin, `0`–`255`, as `‹getc›` returns them |
+| `‹upto›` | `n -> s` | `0, 1, …, n-1`: a lazy `⍳` |
+| `‹nat›` | `-> s` | `0, 1, 2, …` without end (it stops at `2^63-1`) |
+| `‹stream›` | `l -> s` | the elements of the list `l`. The stream reads `l` in place and does not own it: keep `l` alive while the stream is in use |
+| `‹smap›` | `s ′f -> s'` | `f x` for each `x` |
+| `‹sfilter›` | `s ′p -> s'` | the `x` for which `p x` is `0`, like `⌿` |
+| `‹sscan›` | `s ′f -> s'` | inclusive scan, like `⍀`: the first value, then `f(acc, x)` for each later one |
+| `‹stake›` | `s n -> s'` | the first `n` values. After the `n`th it answers `1` without pulling `s` again, so `‹nat›n‹stake›` ends |
+| `‹sdrop›` | `s n -> s'` | all but the first `n` values (skipped on the first pull) |
+| `‹swhile›` | `s ′p -> s'` | the values up to the first one for which `p x` is not `0`. That one is dropped and the stream ends |
+| `‹senum›` | `s ′f -> s'` | `f(x, i)` with `i` counting from `0`, like `⍸` |
+| `‹szip›` | `s1 s2 ′f -> s'` | `f(a, b)` for each pair, until either stream ends |
+| `‹swin›` | `s n -> s'` | the sliding windows of `n` values, from the `n`th value on. Each window is the stream's own list, shifted by one cell per value (O(n) a pull). It is valid until the next pull: copy it (`0↓`) to keep it, and do not `⌫` it. `n < 1` is `GOLF: window size` |
+| `‹sfold›` | `s init ′f -> x` | fold, like `⇤`: `f(acc, x)` from `init` |
+| `‹collect›` | `s -> l` | all the values as a new list |
+| `‹sshow›` | `s ->` | print the values as `⍕` prints a list (an inner list as `[a b]`), each followed by a space |
+| `‹sfind›` | `s ′p -> x 0 \| 1` | the first `x` for which `p x` is `0`, or `1` if there is none. It stops at the first hit and pulls nothing more |
+| `‹sfree›` | `s ->` | free the stream and everything it owns |
+
+```
+5‹upto›‹collect›⍕                        ->  0 1 2 3 4
+‹nat›′²‹smap›5‹stake›‹sshow›              ->  0 1 4 9 16
+:p2∣;10‹upto›′p‹sfilter›‹sshow›           ->  0 2 4 6 8
+“31415“⊃48-‹stream›′⌈‹sscan›‹sshow›       ->  3 3 4 4 5
+‹nat›3‹sdrop›4‹stake›‹sshow›              ->  3 4 5 6
+:p5≺1+;‹nat›′p‹swhile›‹sshow›             ->  0 1 2 3 4
+“abc“⊃‹stream›′+‹senum›‹sshow›            ->  97 99 101
+‹nat›5‹upto›′*‹szip›‹sshow›               ->  0 1 4 9 16
+6‹upto›3‹swin›′∑‹smap›‹sshow›             ->  3 6 9 12
+3‹upto›′⍳‹smap›‹sshow›                    ->  [] [0] [0 1]
+10‹upto›0′+‹sfold›Ṅ                       ->  45
+:p20≻1+;‹nat›′²‹smap›′p‹sfind›ṄṄ          ->  025
+:p9≻1+;5‹upto›′p‹sfind›Ṅ                  ->  1
+3‹upto›⍞_Ṅ⍞_Ṅ⍞_Ṅ⍞Ṅ‹sfree›                 ->  0121
+:c\\⊕\\;0 5‹upto›′c‹smap›‹collect›⍕Ṅ       ->  0 1 2 3 4 5
+:g+\\⊕\\;0 4‹upto›0′g‹sfold›ṄṄ             ->  64
+‹heapstats›_→b 1000‹upto›9‹swin›′∑‹smap›0′+‹sfold›_‹heapstats›_←b-Ṅ  ->  0
+5‹upto›"‹sfree›⍞                          ->  GOLF: use after free
+```
+
+On stdin:
+
+```
+‹sints›0′+‹sfold›Ṅ                       # printf '1 2 3' | ./sum    prints 6
+‹slines›′≢‹smap›‹sshow›                  # the length of every line
+:p10-;‹sbytes›′p‹sfilter›‹collect›≢Ṅ     # the number of newlines
+:p\\&⌊\\&-;1 62≪‹sints›′p‹smap›0′⌈‹sfold›Ṅ_   # Stock: best x - min so far
+```
+
+- **Threading.** The function of `‹smap›`, `‹sfilter›`, `‹sscan›`,
+  `‹swhile›`, `‹senum›`, `‹szip›`, `‹sfold›` and `‹sfind›` runs as `€`'s does
+  (see "Threading state" above): with the stack of whoever called `⍞` or the
+  sink underneath its arguments, so it may read and leave values there.
+  Nothing a stream keeps is on the data stack while it runs: `⍞` and the
+  sinks park the stream and the accumulator on the spill stack, one cell
+  each. In the `c` line the counter under the pipeline ends at 5; in the `g`
+  line `‹sfold›`'s function counts its 4 calls in the same way. The Stock
+  line keeps the running minimum under the pipeline, and `p` turns each `x`
+  into `x - min`.
+- **Ownership.** A transformer owns the stream it was made from, and a sink
+  owns the stream it is given. The sinks `‹sfold›`, `‹collect›`, `‹sshow›` and
+  `‹sfind›` free the whole chain when they finish (`‹sfind›` too, after its
+  hit). `‹sfree›` frees a stream you stop pulling by hand, with everything
+  it owns: its upstream, recursively (both of `‹szip›`'s), and `‹swin›`'s
+  window. `⌫` on a stream frees only its record. `‹stream›` does not own
+  its list, and the lists `‹slines›` and the transformers hand out are the
+  caller's (free them with `⌫` when done; `‹swin›`'s window is the exception
+  above).
+- **Constant memory.** A pull allocates nothing (except the list `‹slines›`
+  returns and whatever the functions make). `‹sints›′⌊‹sscan›0′+‹sfold›`
+  over 100M integers from a pipe keeps `‹heapstats›` within 8.5 KB of where it
+  started, the input buffer included, and the process at 13 MB. 1M integers
+  take about 70 ms (`‹ints›∑` takes about 55 ms and 16 MB).
+- **Errors.** `⍞`, `‹sfree›` and the sinks check the record: a freed stream
+  is `GOLF: use after free`, and so is a second `‹sfree›`. A throw inside a
+  stream's function unwinds through `‹catch›` like one inside `€`, and the
+  parked cells go with it. The stream is then not freed.
+- Names that start with `‹_12a8` are these words' helpers.
 
 ### Closures
 

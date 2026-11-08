@@ -87,6 +87,8 @@ LIB = [
     (0xD5, "putat", "⍈", "store-at: list i v -> list; list[i] = v in place (bounds-checked)"),
     (0xD6, "push", "⍆", "push: v x -> v'; append x (vector or deque back); use the returned v'"),
     (0xD7, "pop",  "⍅", "pop: v -> v x; remove the last element (empty: pop from empty)"),
+    # --- W12-A8 LIB row: the stream protocol (prelude section W12-A8) ---
+    (0xDA, "next", "⍞", "stream next: s -> s x 0 | s 1 (zero-is-true, like ‹readline›)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
