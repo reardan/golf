@@ -1879,11 +1879,17 @@ cat "$TMP/pre.gb" <(printf '%s' "$W10AP" | python3 tools/codepage.py encode) > "
 python3 boot/golfref.py < "$TMP/w10a.src" > "$TMP/w10a.ref" 2>/dev/null
 [ -s "$TMP/w10a.g2" ] && cmp -s "$TMP/w10a.g2" "$TMP/w10a.ref" \
   && ok "oracle: identical bytes for one-byte forward references" || no "oracle one-byte forward bytes"
-# 1024 long names: every one a word AND a variable (cells 0x4E0800..0x4E27F8),
-# two of them called forward, so the table, the heads and the bank all reach
-# their ends.  P are the prelude's, so the program adds 1024 - P.
+# 1024 long names: every one a variable (cells 0x4E0800..0x4E27F8), the first,
+# the last two and every 16th also a word, two of them called forward, so the
+# table, the heads and the bank all reach their ends.  P are the prelude's, so
+# the program adds 1024 - P.  (Not every name is a word: an empty word costs 20
+# bytes, a `k→‹vk›` 14, and a compiled program must stay under the 64 KB
+# p_filesz the ELF header maps — the prelude alone is ~33 KB since W11-1D.)
 w10n=$((1024 - w93p)); w10s=""
-for k in $(seq 1 $w10n); do w10s="$w10s:‹v$k›$k→‹v$k›;"; done
+for k in $(seq 1 $w10n); do
+  if [ "$k" = 1 ] || [ "$k" -ge $((w10n-1)) ] || [ $((k % 16)) = 0 ]; then w10s="$w10s:‹v$k›$k→‹v$k›;"
+  else w10s="$w10s$k→‹v$k›"; fi
+done
 w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
 w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
 [ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z›" ] \

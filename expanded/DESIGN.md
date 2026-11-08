@@ -619,11 +619,18 @@ These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 - **Long names (M2) are bounded and global.** 1024 per program since W10-A
-  (the prelude's 13 count too), at most 60 bytes each, interned in a fixed
+  (the prelude's 40 count too, as of W11 wave 1), at most 60 bytes each, interned in a fixed
   compiler table; a 1025th is refused. Every name, one-byte or long, may be
   forward-referenced (W10-A). Locals take long names too (W9-4D), up to 16 per
   `⊡` word. And there are no scopes: a long name, like a letter, is
   one dictionary entry and one variable cell for the whole program.
+- **A compiled program is at most 64 KB of code, and nothing checks it.** The
+  ELF header's one `LOAD` segment has a fixed `p_filesz` of `0x10000`, so bytes
+  past 64 KB are in the file but never mapped: the program dies of SIGSEGV or
+  SIGILL when it reaches them. The prelude alone compiles to about 33 KB since
+  W11 wave 1 (an empty program is 33184 bytes), which leaves about 32 KB for a
+  user program; an empty word costs 20 bytes. Found when the 1024-long-name
+  tests stopped fitting after W11-1D; they now make most names variables only.
 - **`(` and the input words are two readers.** `‹readall›`, `‹readline›`,
   `‹getc›` and `‹ints›` read through the prelude's 8 KB buffer; `(` is a raw
   one-byte `read` that bypasses it, so mixing the two loses or reorders bytes.

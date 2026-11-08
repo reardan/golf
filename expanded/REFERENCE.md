@@ -446,7 +446,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 13 in all), so a program has 1011 for itself.
+has 40 in all after W11 wave 1, helpers included), so a program has 984 for itself.
 
 ### Text
 

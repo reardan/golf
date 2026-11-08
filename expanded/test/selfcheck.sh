@@ -155,7 +155,7 @@ both fwd1 "$TMP/src.fwd1"
 [ "$("$TMP/new.fwd1" 2>/dev/null)" = "621" ] \
   && ok "prelude + one-byte forward references runs (W10-A)" || no "one-byte forward program output"
 w10p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
-python3 -c 'import sys; n=int(sys.argv[1]); sys.stdout.write("‹v%d›" % n + "".join(":‹v%d›%d→‹v%d›;" % (k, k, k) for k in range(1, n + 1)) + "←‹v%d›Ṅ" % n)' \
+python3 -c 'import sys; n=int(sys.argv[1]); sys.stdout.write("‹v%d›" % n + "".join((":‹v%d›%d→‹v%d›;" if k == n or k % 16 == 0 else "%.0s%d→‹v%d›") % (k, k, k) for k in range(1, n + 1)) + "←‹v%d›Ṅ" % n)' \
   $((1024 - w10p)) | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.names1k"
 both names1k "$TMP/src.names1k"
 [ "$("$TMP/new.names1k" 2>/dev/null)" = "$((1024 - w10p))" ] \
