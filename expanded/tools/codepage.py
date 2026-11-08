@@ -93,6 +93,8 @@ COMPILER = [
     (mkblob2.LNAME_BYTE, "lname", "‹",
      "opens a long name: ‹name› stands wherever a one-byte name can"),
     (mkblob2.RNAME_BYTE, "rname", "›", "closes a long name"),
+    (mkblob2.IMPORT_BYTE, "import", "⎘",
+     "prefix: ⎘“path“ compiles that file in place (once; searches . then lib/)"),
 ]
 
 def lib_byte(key) -> int:

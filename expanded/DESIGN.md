@@ -139,10 +139,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **32** |
 | the template blob itself | **1078** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **2965** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **8958** bytes |
-| assertions in the run2 suite | **544** |
-| assertions in the selfcheck suite | **50** |
+| the generated bootstrap seed (`self/seed.golf`) | **3491** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **10417** bytes |
+| assertions in the run2 suite | **563** |
+| assertions in the selfcheck suite | **53** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -547,6 +547,29 @@ allocations they need are in [`REGISTRY.md`](REGISTRY.md) §1.3, §2 and §3.1.
    order is the current directory, then `lib/` (then `vendor/`, added by
    W11-4A). It is a compiler **op byte** (`0xB6`, `⎘“path“` or
    `\import“path“`), not a recognised long name — REGISTRY §1.3 says why.
+   **Shipped (W11-2A):** `t` has one more case, `‹import›`, and `g` reads
+   through `‹inbyte›`, which at end of file inside an include `dup2`s the saved
+   fd back (`‹unnest›`) and reads on; `(` itself is unchanged. Limits: 8
+   levels, 60 distinct files, 250-byte paths, each refused with a
+   `GOLF: …` line and exit 2 (`cannot include <path>` for a missing file).
+   Include-once compares the path's **bytes as written** (`x.g2` and
+   `lib/x.g2` are two paths); the main program is not in the table. A file's
+   end ends its last token, so nothing runs across it. The included bytes are
+   the compiler's input form, raw code page: `tools/golfc` encodes an
+   included `.golfj` into a temp copy first (recursively, one copy per real
+   file) and rewrites the path — the compiler stays one-format, and the
+   encoders (`tools/codepage.py`, `gtools/encode.golfj`) needed no change,
+   since a `“…“` literal is already copied verbatim. The seed is v1 GOLF,
+   which has no syscall op, so it gained one: its word `K` is a raw blob
+   escape holding `⎈`'s template plus `jmp +5` (`mkblob2.SEED_SYS`, spliced
+   at `@SYS@`), armed once at startup by zeroing the rel32 of the escape's own
+   jmp-over (v1's segment is RWX). `boot/golfref.py` splices the file's bytes
+   (plus a newline) in place, with the same search, bounds and messages, and
+   emits the same bytes. State: `0x438000`–`0x43BE00` and, in the seed,
+   `m+160`…`m+172` (REGISTRY §3). Cost: the `golf2` binary +1789 bytes
+   (12634 → 14423), `seed` +1926 (8923 → 10849); `self/golf2.golf` +1459
+   (8958 → 10417), `self/seed.golf` +526 (2965 → 3491). A program without
+   `⎘` compiles to the same bytes as before.
 3. **A caught error's value is its message (W11-3A).** `′f‹catch›` leaves `0`
    when `f` returns normally and, when `f` throws, the error's message as a
    code list — the text after `GOLF: `, like Python's exception text. Every

@@ -12,7 +12,8 @@ This is a full oracle, not a shim:
     here with no edit to this file.
   * **Compiler ops are implemented natively** here: ′ ref (0x8C), “ str (0x8E),
     → set (0x8F), ← get (0x90), ⊚ chain (0xB0), ⊡ ⇒ ⇐ (0xB1-0xB3) and the
-    M2 long-name brackets ‹ › (0xB4/0xB5).  These change the compiler's
+    M2 long-name brackets ‹ › (0xB4/0xB5), and W11-2A's include ⎘ (0xB6),
+    spliced in place here.  These change the compiler's
     *logic*, not just its template table, so they cannot be inherited — they are
     transcribed from the authoritative cases in self/seed.golfv1 and
     self/golf2.golfj, whose byte allocations tools/mkblob2.py owns.
@@ -61,6 +62,7 @@ LSET_BYTE = mkblob2.LSET_BYTE    # ⇒  pop TOS into a local slot
 LGET_BYTE = mkblob2.LGET_BYTE    # ⇐  push a local slot
 LNAME_BYTE = mkblob2.LNAME_BYTE  # ‹  opens a long name (M2)
 RNAME_BYTE = mkblob2.RNAME_BYTE  # ›  closes it
+IMPORT_BYTE = mkblob2.IMPORT_BYTE  # ⎘  ⎘“path“ includes a file (W11-2A)
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -88,6 +90,8 @@ def compile_bytes(src: bytes) -> bytes:
     longs = []          # M2: long names in order of first appearance; name
                         # number LONG_BASE + i, exactly as golf2 interns them
     pending = {}        # M2/W10-A: name -> call/jmp sites awaiting its body
+    included = []       # W11-2A: include-once table, the paths as written
+    ends = []           # W11-2A: where each open include's spliced bytes end
     i, n = 0, len(src)
 
     def emit(bs):
@@ -195,7 +199,46 @@ def compile_bytes(src: bytes) -> bytes:
         b = src[i]; i += 1
         return b
 
+    def include():
+        """W11-2A: ⎘“path“ — golf2 swaps the file onto fd 0; here its bytes
+        are spliced in at i, with a newline after them so that no token runs
+        across the file's end (golf2's reader sees end of file there).  Same
+        search (as written, then lib/), include-once on the path's bytes, depth
+        and table bounds, and the same diagnostics, exit 2."""
+        nonlocal src, n
+        path = b""
+        def bad(what):
+            sys.stderr.buffer.write(b"GOLF: " + what + b" " + path + b"\n")
+            raise SystemExit(2)
+        if i >= n or src[i] != STR_BYTE:
+            bad(b"cannot include")
+        j = i + 1
+        while j < n and src[j] != STR_BYTE and j - i - 1 < mkblob2.IMPORT_LEN:
+            j += 1
+        path = src[i + 1:j]
+        if j >= n or src[j] != STR_BYTE:
+            bad(b"cannot include")
+        rest = j + 1                                 # just past the closing “
+        if path in included:
+            return rest, b""
+        if len(ends) >= mkblob2.IMPORT_DEPTH:
+            bad(b"includes nested too deeply")
+        if len(included) >= mkblob2.IMPORT_FILES:
+            bad(b"too many includes")
+        included.append(path)
+        for cand in (path, b"lib/" + path):
+            try:
+                with open(cand, "rb") as f:
+                    return rest, f.read() + b"\n"
+            except IsADirectoryError:                # golf2 reads it as empty
+                return rest, b"\n"
+            except OSError:
+                pass
+        bad(b"cannot include")
+
     while i < n:
+        while ends and i >= ends[-1]:                # W11-2A: left an include
+            ends.pop()
         c = src[i]; i += 1
         ch = chr(c)
         if c <= 32:
@@ -334,6 +377,12 @@ def compile_bytes(src: bytes) -> bytes:
                 emit([0x48, 0x8B, 0x45, 8 * slot, 0x50])
             continue
 
+        if c == IMPORT_BYTE:                         # W11-2A: ⎘“path“
+            i, data = include()
+            if data:
+                src = src[:i] + data + src[i:]; n = len(src)
+                ends[:] = [e + len(data) for e in ends] + [i + len(data)]
+            continue
         if c == CHAIN_BYTE:                          # ⊚name … ; : a tacit chain
             name = take_name()                       # the header is ':'s
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")

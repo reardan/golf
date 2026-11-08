@@ -161,7 +161,18 @@ both names1k "$TMP/src.names1k"
 [ "$("$TMP/new.names1k" 2>/dev/null)" = "$((1024 - w10p))" ] \
   && ok "prelude + 1024 long names in all runs (W10-A)" || no "1024 long-name program output"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k; do
+# W11-2A: ⎘“path“ includes — nested, repeated (include-once) and a file that
+# includes itself — through both source forms.  The seed reaches open/dup/dup2
+# through its K word (a syscall blob), golf2 through ⎈.
+printf '%s' ':‹sq›"*;' | python3 tools/codepage.py encode > "$TMP/inc.sq.g2"
+printf '%s' "⎘“$TMP/inc.sq.g2“⎘“$TMP/inc.cube.g2“:‹cube›\"‹sq›*;12" | python3 tools/codepage.py encode > "$TMP/inc.cube.g2"
+printf '%s' "⎘“$TMP/inc.cube.g2“‹cube›Ṅ⎘“$TMP/inc.sq.g2“3‹sq›Ṅ" \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.include"
+both include "$TMP/src.include"
+[ "$("$TMP/new.include" 2>/dev/null)" = "17289" ] \
+  && ok "prelude + nested, repeated and self includes run (W11-2A)" || no "include program output"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k include; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -236,6 +247,15 @@ cat "$TMP/pre.gb" <(printf '%s' "⊡f$w94d;" | python3 tools/codepage.py encode)
   && [ "$(cat "$TMP/badloc.newerr")" = "GOLF: too many locals ‹l17›" ] \
   && ok "both reject a 17th local in one ⊡ word (M-FRAME2)" \
   || no "too-many-locals rejection differs (seed $sst, golf2 $gst)"
+
+# W11-2A: a missing include is refused by both; only golf2 can say which.
+cat "$TMP/pre.gb" <(printf '%s' "⎘“$TMP/inc.none.g2“1Ṅ" | python3 tools/codepage.py encode) > "$TMP/badinc.src"
+"$TMP/seed"  < "$TMP/badinc.src" > "$TMP/badinc.old" 2>"$TMP/badinc.olderr"; sst=$?
+"$TMP/golf2" < "$TMP/badinc.src" > "$TMP/badinc.new" 2>"$TMP/badinc.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badinc.old" ] && [ ! -s "$TMP/badinc.new" ] && [ ! -s "$TMP/badinc.olderr" ] \
+  && [ "$(cat "$TMP/badinc.newerr")" = "GOLF: cannot include $TMP/inc.none.g2" ] \
+  && ok "both refuse a missing include, exit 2 (W11-2A)" \
+  || no "missing-include rejection differs (seed $sst, golf2 $gst)"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

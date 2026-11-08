@@ -2160,6 +2160,88 @@ w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
   && ok "golf2's own p_filesz is its size, under the 64 KB its data base (0x410000) needs" || no "golf2 p_filesz"
 
 # === W11-2A ===
+echo "W11-2A: ⎘“path“ includes a file (fd-0 swap, nested, include-once, . then lib/)"
+# Every include test runs in its own directory: paths resolve against the
+# compiler's cwd, then lib/.  w112a <compiler> compiles prelude + stdin there,
+# leaving $TMP/inc/p (binary), $TMP/inc/err and the exit status on stdout.
+mkdir -p "$TMP/inc/lib" "$TMP/inc/sub"
+w112enc(){ python3 tools/codepage.py encode; }
+w112a(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && "$1" < src > p 2>err; echo $?); }
+w112run(){ chmod +x "$TMP/inc/p" && "$TMP/inc/p"; }
+printf '%s' ':‹sq›"*;'                 | w112enc > "$TMP/inc/sq.g2"
+printf '%s' '⎘“sq.g2“:‹cube›"‹sq›*;'   | w112enc > "$TMP/inc/lib/cube.g2"
+printf '%s' '12'                        > "$TMP/inc/twelve.g2"
+printf '%s' '# a comment with no newline at the end' > "$TMP/inc/c.g2"
+[ "$(printf '%s' '⎘“sq.g2“5‹sq›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 25 ] \
+  && ok "a program uses a word defined in an included file" || no "include a word: $(cat "$TMP/inc/err")"
+cp "$TMP/inc/p" "$TMP/inc/p.one"
+printf '%s' ':‹sq›"*;5‹sq›Ṅ' | w112a "$TMP/golf2" > /dev/null
+cmp -s "$TMP/inc/p" "$TMP/inc/p.one" && ok "... and compiles to exactly the bytes of the same source written in place" || no "include is not textual"
+[ "$(printf '%s' '⎘“sq.g2“⎘“sq.g2“5‹sq›Ṅ⎘“sq.g2“' | w112a "$TMP/golf2")" = 0 ] && cmp -s "$TMP/inc/p" "$TMP/inc/p.one" \
+  && ok "a file included three times compiles once (include-once; same bytes as one include)" || no "double include"
+[ "$(printf '%s' '⎘“cube.g2“⎘“sq.g2“3‹cube›Ṅ␤4‹sq›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "$(printf '27\n16')" ] \
+  && ok "nested: lib/cube.g2 (found through lib/) includes sq.g2, which is then not included again" || no "nested include: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⎘“nope.g2“1Ṅ' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include nope.g2" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "a missing file: GOLF: cannot include nope.g2 on fd 2, exit 2, nothing on fd 1" || no "missing include: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⎘“nope.g2“1Ṅ' | w112a "$TMP/seed")" = 2 ] && [ ! -s "$TMP/inc/err" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "... the seed exits 2 silently, as for every compile error" || no "seed missing include"
+[ "$(printf '%s' '⎘“twelve.g2“3+Ṅ⎘“c.g2“7Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "157" ] \
+  && ok "a file's end ends its last token: 12 then 3, and a final comment does not eat the includer" || no "token boundary at end of include"
+printf '%s' ':‹sq›0;' | w112enc > "$TMP/inc/lib/sq.g2"
+[ "$(printf '%s' '⎘“sq.g2“5‹sq›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 25 ] \
+  && ok "search order: the path as written (cwd) before lib/" || no "search order"
+printf '%s' '⎘“sub/me.g2“:‹me›9;' | w112enc > "$TMP/inc/sub/me.g2"
+[ "$(printf '%s' '⎘“sub/me.g2“‹me›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 9 ] \
+  && ok "a file that includes itself is compiled once; a path with a directory works" || no "self include"
+for k in 1 2 3 4 5 6 7 8 9; do printf '%s' "⎘“d$((k + 1)).g2“" | w112enc > "$TMP/inc/d$k.g2"; done
+printf '%s' '7)' > "$TMP/inc/d8.g2"
+[ "$(printf '%s' '⎘“d1.g2“8)' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "$(printf '\007\010')" ] \
+  && ok "includes nest 8 deep" || no "8-deep include: $(cat "$TMP/inc/err")"
+printf '%s' '⎘“d9.g2“' | w112enc > "$TMP/inc/d8.g2"; : > "$TMP/inc/d10.g2"
+[ "$(printf '%s' '⎘“d1.g2“' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: includes nested too deeply d9.g2" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "a 9th level: GOLF: includes nested too deeply d9.g2, exit 2" || no "9-deep include: $(cat "$TMP/inc/err")"
+w112many=""; for k in $(seq 1 61); do : > "$TMP/inc/e$k.g2"; w112many="$w112many⎘“e$k.g2“"; done
+[ "$(printf '%s' "${w112many%⎘“e61.g2“}1Ṅ" | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 1 ] \
+  && [ "$(printf '%s' "${w112many}" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: too many includes e61.g2" ] \
+  && ok "60 distinct files may be included; the 61st: GOLF: too many includes e61.g2" || no "include table bound: $(cat "$TMP/inc/err")"
+w112long=$(printf 'x%.0s' $(seq 1 251))
+[ "$(printf '%s' "⎘“$w112long“" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include ${w112long%x}" ] \
+  && [ "$(printf '%s' '⎘5' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include " ] \
+  && [ "$(printf '%s' '⎘“sq.g2' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include sq.g2" ] \
+  && ok "a path over 250 bytes, ⎘ without “, an unclosed path: GOLF: cannot include …, exit 2" || no "bad include syntax: $(cat "$TMP/inc/err")"
+w112p='⎘“cube.g2“⎘“twelve.g2“‹cube›Ṅ⎘“d1.g2“'
+printf '%s' '7)' > "$TMP/inc/d8.g2"
+[ "$(printf '%s' "$w112p" | w112a "$TMP/golf2")" = 0 ] && cp "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && [ "$(printf '%s' "$w112p" | w112a "$TMP/seed")" = 0 ] && cmp -s "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && (cd "$TMP/inc" && python3 "$EXP/boot/golfref.py" < src > p.ref 2>/dev/null) && cmp -s "$TMP/inc/p.ref" "$TMP/inc/p.g2" \
+  && [ "$("$TMP/inc/p.g2")" = "$(printf '1728\007')" ] \
+  && ok "seed, golf2 and boot/golfref.py emit the same bytes for nested and repeated includes" || no "include parity (seed/golf2/golfref)"
+[ "$(printf '%s' '⎘“nope.g2“' | w112a "$TMP/golf2")" = 2 ] && (cd "$TMP/inc" && python3 "$EXP/boot/golfref.py" < src > p.ref 2>err.ref; [ $? = 2 ]) \
+  && [ "$(cat "$TMP/inc/err.ref")" = "GOLF: cannot include nope.g2" ] \
+  && ok "golfref: the same missing-file message and status" || no "golfref missing include"
+[ "$(printf '%s' '\import\strx.g2\str ⎘“y“' | w112enc | od -An -tx1 | tr -d ' \n')" = "b68e782e67328e20b68e798e" ] \
+  && [ "$(printf '\266\216a#b\216' | python3 tools/codepage.py decode)" = "⎘“a#b“" ] \
+  && ok "⎘ and \\import encode to 0xB6; the encoder leaves the path (a “…“ literal) alone; decode shows ⎘" || no "⎘ encode/decode"
+# tools/golfc: an included .golfj is glyph source, so golfc encodes it on the
+# way (recursively, one copy per real file); a .g2 include is read raw.
+mkdir -p "$TMP/incj/lib"
+printf '%s\n' '# squares: glyph source, a comment and a \mnemonic' ':‹sq›"\rmul;' > "$TMP/incj/lib/sqj.golfj"
+printf '%s\n' '⎘“sqj.golfj“' ':‹quad›‹sq›‹sq›;   # x^4' > "$TMP/incj/util.golfj"
+printf '%s\n' '⎘“util.golfj“⎘“sqj.golfj“⎘“lib/sqj.golfj“⎘“raw.g2“' '3‹quad›Ṅ␤5‹sq›Ṅ␤‹r›Ṅ' > "$TMP/incj/main.golfj"
+printf '%s' ':‹r›6;' | w112enc > "$TMP/incj/raw.g2"
+printf '%s' '⎘“gone.golfj“1Ṅ' > "$TMP/incj/bad.golfj"
+(cd "$TMP/incj" && "$EXP/tools/golfc" -j main.golfj m >/dev/null 2>&1) && [ "$("$TMP/incj/m")" = "$(printf '81\n25\n6')" ] \
+  && ok "golfc -j: nested .golfj includes (via lib/) are encoded, a .g2 one read raw, the same file once" || no "golfc -j with .golfj includes"
+[ "$(cd "$TMP/incj" && "$EXP/tools/golfc" -j bad.golfj b 2>&1 >/dev/null; echo "rc=$?")" = "$(printf 'GOLF: cannot include gone.golfj\nrc=2')" ] \
+  && ok "golfc -j: a missing .golfj include is reported under its own name, exit 2" || no "golfc missing .golfj include"
+# REFERENCE.md's Modules example, cut out of the doc and run as it says.
+mkdir -p "$TMP/incr/lib"
+sed -n '/^### Modules$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' > "$TMP/incr/ex"
+sed -n '/^# lib\/geom.golfj$/,/^$/p' "$TMP/incr/ex" > "$TMP/incr/lib/geom.golfj"
+sed -n '/^# main.golfj/,/^```$/p' "$TMP/incr/ex" | grep -v '^```$' > "$TMP/incr/main.golfj"
+(cd "$TMP/incr" && "$EXP/tools/golfc" -j main.golfj main >/dev/null 2>&1) && [ "$("$TMP/incr/main")" = 25 ] \
+  && grep -q 'prints 25' "$TMP/incr/main.golfj" && grep -q '‹hyp2›' "$TMP/incr/lib/geom.golfj" \
+  && ok "REFERENCE.md's Modules example builds with golfc -j and prints 25" || no "REFERENCE Modules example"
 
 # === W11-2B ===
 
