@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# golftest — run GOLF test files (W11-4B).
+#
+#   tools/golftest                 # every *_test.golfj under the current dir
+#   tools/golftest DIR|FILE ...    # under each DIR (recursively), plus each FILE
+#
+# Each test file is compiled with `tools/golfc -j` (from the CURRENT directory,
+# so `⎘“…“` includes resolve as they do for golfc) and run with stdin from
+# /dev/null.  A test file is an ordinary program that calls ‹assert› and
+# ‹expect› (REFERENCE.md "### Testing"); a failing check prints `FAIL: <msg>…`
+# and the program's exit status becomes 1.  Per file this prints
+#
+#   PASS path
+#   FAIL path (exit N)            then its stdout's FAIL: lines and all of its
+#                                 stderr (a GOLF: error, …), indented
+#   FAIL path (compile error)     then the compiler's message, indented
+#   FAIL path (timeout)           it ran longer than $GOLFTEST_TIMEOUT s (60)
+#
+# A file fails when it does not compile, exits non-zero, or prints a line that
+# starts with `FAIL: ` (even with exit 0, e.g. after a raw exit syscall).
+# Then a summary `N passed, M failed`.  Exit status: 0 when every file passed,
+# 1 when any failed or when no test file was found (`no *_test.golfj found`).
+# Files are taken in sorted order; a FILE argument is run whatever its name.
+set -u
+HERE=$(cd "$(dirname "$0")/.." && pwd)          # expanded/
+GOLFC="$HERE/tools/golfc"
+TO=${GOLFTEST_TIMEOUT:-60}
+[ $# -gt 0 ] || set -- .
+files=()
+for a in "$@"; do
+  if [ -d "$a" ]; then
+    while IFS= read -r f; do files+=("$f"); done \
+      < <(find "$a" -name '*_test.golfj' -type f | LC_ALL=C sort)
+  elif [ -f "$a" ]; then
+    files+=("$a")
+  else
+    echo "golftest: no such file or directory: $a" >&2; exit 1
+  fi
+done
+if [ ${#files[@]} = 0 ]; then echo "golftest: no *_test.golfj found" >&2; exit 1; fi
+
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+run=()
+command -v timeout > /dev/null && run=(timeout "$TO")
+pass=0; failn=0
+for f in "${files[@]}"; do
+  if ! "$GOLFC" -j "$f" "$tmp/t" > "$tmp/cerr" 2>&1; then
+    echo "FAIL $f (compile error)"; sed 's/^/  /' "$tmp/cerr"
+    failn=$((failn+1)); continue
+  fi
+  rc=0; ${run[@]+"${run[@]}"} "$tmp/t" < /dev/null > "$tmp/out" 2> "$tmp/err" || rc=$?
+  if [ "$rc" = 0 ] && ! grep -q '^FAIL: ' "$tmp/out"; then
+    echo "PASS $f"; pass=$((pass+1))
+  else
+    if [ "$rc" = 124 ] && [ ${#run[@]} -gt 0 ]; then echo "FAIL $f (timeout)"
+    else echo "FAIL $f (exit $rc)"; fi
+    { grep '^FAIL: ' "$tmp/out"; cat "$tmp/err"; } | sed 's/^/  /'
+    failn=$((failn+1))
+  fi
+  rm -f "$tmp/t"
+done
+echo "$pass passed, $failn failed"
+[ "$failn" = 0 ]

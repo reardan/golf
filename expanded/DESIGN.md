@@ -818,6 +818,8 @@ unbuilt, and three defects this list does not yet cover — see
 | `REFERENCE.md` | **the language reference**: v1 core ops, the generated v2 code-page tables, a checked tutorial |
 | `tools/codepage.py` | code page: encode/decode glyph/mnemonic ⇄ raw bytes; `table` / `reference` (REFERENCE.md's generated tables) |
 | `tools/golfc` | compile a program (prepends the prelude; `-j` to encode glyph source) |
+| `tools/golftest` | W11-4B test runner: compile and run every `*_test.golfj`, PASS/FAIL per file, non-zero exit on any failure |
+| `examples/tests/`, `test/fixtures/golftest/` | a passing test file, and the deliberately failing one run2 feeds `golftest` |
 | `lib/prelude.golfj` | the standard library: list runtime, map/fold, number/list printing |
 | `boot/golfref.py` | Python reference/oracle for v2 (debugging only) |
 | `examples/` | v2 programs (`capstone.golfj`, `legacy_capstone.golfj`, `bigheap.golfj`, …) |

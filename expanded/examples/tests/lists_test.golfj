@@ -1,0 +1,12 @@
+# A passing test file (W11-4B).  Run:  tools/golftest examples/tests
+#   ‹assert›  f msg ->                passes when f is -1 (the true of ≡ ≣ ≺ < …)
+#   ‹expect›  actual expected msg ->  passes when actual ≣ expected
+# Keep messages plain ASCII: a glyph inside “…“ is encoded to its byte.
+:‹sq›"*;
+3‹sq› 9“3 squared“⊃‹expect›
+4⍳′‹sq›€ 4⍳"* “map sq is the elementwise square“⊃‹expect›
+4⍳′‹sq›€∑ 14≡“sum of squares“⊃‹assert›
+3⍳⌽⍋ 3⍳“sort undoes reverse“⊃‹expect›
+3⍳′⍳€ 2⍳′⍳€≣ 0“nested lists of different length differ“⊃‹expect›
+2 3≺“2 < 3, signed“⊃‹assert›
+5⍳3∊0≡“3 is in range 5 (member is zero-is-true, so 0= first)“⊃‹assert›

@@ -2659,6 +2659,51 @@ printf '%s' ':‹boom›3⍳9⊇;:‹safe›′‹boom›‹catch›;' | w112enc
 # === W11-4A ===
 
 # === W11-4B ===
+echo "W11-4B: ‹assert› ‹expect›, exit status 1 after a failure, tools/golftest"
+# w114b PROG -> "rc=N" ; stdout+stderr in $TMP/w114b.out
+w114b(){ printf '%s' "$1" | gc > "$TMP/w114b.out" 2>&1; echo "rc=$?"; }
+[ "$(w114b '1 1≡“a“⊃‹assert›3⍳3⍳“b“⊃‹expect›3⍳′⍳€3⍳′⍳€“c“⊃‹expect›7 7“d“⊃‹expect›')" = "rc=0" ] && [ ! -s "$TMP/w114b.out" ] \
+  && ok "passing ‹assert›/‹expect› (ints, lists, nested lists) print nothing and exit 0" || no "passing checks: $(cat "$TMP/w114b.out")"
+[ "$(w114b '1 2≡“one is two“⊃‹assert›“after“⊃⊐␤')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: one is two\nafter')" ] \
+  && ok "a failing ‹assert› prints FAIL: <msg>, the program carries on, and the end-of-program exit becomes 1" || no "failing assert: $(cat "$TMP/w114b.out")"
+[ "$(w114b '0“z“⊃‹assert›1“o“⊃‹assert›2“t“⊃‹assert›5180416⊙Ṅ')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: z\nFAIL: o\nFAIL: t\n3')" ] \
+  && ok "‹assert› passes only on -1: 0, 1 (zero-is-true true) and 2 fail; the failure count cell 5180416 counts them" || no "assert convention: $(cat "$TMP/w114b.out")"
+[ "$(w114b '3⍳⌽3⍳“r“⊃‹expect›6 7“s“⊃‹expect›0⍳1⍳“e“⊃‹expect›2⍳′⍳€0⍳“n“⊃‹expect›')" = "rc=1" ] \
+  && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: r: expected [0 1 2] got [2 1 0]\nFAIL: s: expected 7 got 6\nFAIL: e: expected [0] got []\nFAIL: n: expected [] got [[] [0]]')" ] \
+  && ok "a failing ‹expect› prints expected/got (ints by Ṅ, lists in brackets via ⍕, empty and nested)" || no "failing expect: $(cat "$TMP/w114b.out")"
+[ "$(w114b '0“x“⊃‹assert›0.')" = "rc=1" ] && [ "$(w114b '0“x“⊃‹assert›3.')" = "rc=3" ] && [ "$(w114b '1 1≡“x“⊃‹assert›0.')" = "rc=0" ] \
+  && ok "after a failure '0.' exits 1, '3.' keeps 3; with no failure '0.' still exits 0" || no "explicit exit after failure"
+[ "$(w114b '0“x“⊃‹assert›65)66)␤(Ṅ“y“⊃⊐')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: x\nAB\n0y')" ] \
+  && ok "raw ) and ( after a failure still just flush (the exit hook leaves them alone)" || no "raw io after failure: $(cat "$TMP/w114b.out")"
+[ "$(w114b ':‹t›0“in“⊃‹assert›“boom“⊃‹throw›;′‹t›‹catch›⊐␤5180416⊙Ṅ')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: in\nboom\n1')" ] \
+  && ok "a failure inside a caught ‹catch› still counts and still makes the exit 1" || no "assert in catch: $(cat "$TMP/w114b.out")"
+# REFERENCE.md's Testing examples print what the doc says (and exit 1 exactly when they print FAIL:).
+w114bbad=""
+while IFS= read -r w114bl; do
+  w114bp=${w114bl%%  ->*}; w114bp=${w114bp%"${w114bp##*[! ]}"}; w114bw=${w114bl##*->  }
+  w114brc=$(w114b "$w114bp"); w114bexp=rc=0; case "$w114bw" in FAIL:*) w114bexp=rc=1;; esac
+  [ "$(cat "$TMP/w114b.out")" = "$w114bw" ] && [ "$w114brc" = "$w114bexp" ] || w114bbad="$w114bbad [$w114bp]"
+done < <(sed -n '/^### Testing$/,/^## /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w114bbad" ] && [ "$(sed -n '/^### Testing$/,/^## /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 6 ] \
+  && ok "REFERENCE.md's Testing examples print what they say" || no "REFERENCE Testing examples:$w114bbad"
+# tools/golftest on the shipped passing example and the failing fixture.
+w114bgt(){ tools/golftest "$@" > "$TMP/w114b.gt" 2>&1; echo "rc=$?"; }
+[ "$(w114bgt examples/tests)" = "rc=0" ] && [ "$(cat "$TMP/w114b.gt")" = "$(printf 'PASS examples/tests/lists_test.golfj\n1 passed, 0 failed')" ] \
+  && ok "golftest examples/tests: PASS examples/tests/lists_test.golfj, exit 0" || no "golftest pass: $(cat "$TMP/w114b.gt")"
+[ "$(w114bgt test/fixtures/golftest/fail_test.golfj examples/tests)" = "rc=1" ] \
+  && [ "$(cat "$TMP/w114b.gt")" = "$(printf 'FAIL test/fixtures/golftest/fail_test.golfj (exit 1)\n  FAIL: one is two\n  FAIL: reverse is identity: expected [0 1 2] got [2 1 0]\n  FAIL: six: expected 7 got 6\nPASS examples/tests/lists_test.golfj\n1 passed, 1 failed')" ] \
+  && ok "golftest on the failing fixture: FAIL (exit 1) with its FAIL lines, then the summary; exits 1" || no "golftest fail: $(cat "$TMP/w114b.gt")"
+mkdir -p "$TMP/w114b/sub"
+printf '1Ṅ\n5qṄ\n' > "$TMP/w114b/sub/bad_test.golfj"
+printf '“FAIL: by hand“⊃⊐␤‹flush›0 0 0 60⎈' > "$TMP/w114b/raw_test.golfj"
+printf '3⍳9⊇' > "$TMP/w114b/err_test.golfj"
+printf '0“never run“⊃‹assert›' > "$TMP/w114b/helper.golfj"
+[ "$(w114bgt "$TMP/w114b")" = "rc=1" ] \
+  && [ "$(sed "s#$TMP/##" "$TMP/w114b.gt")" = "$(printf 'FAIL w114b/err_test.golfj (exit 1)\n  GOLF: index out of range\nFAIL w114b/raw_test.golfj (exit 0)\n  FAIL: by hand\nFAIL w114b/sub/bad_test.golfj (compile error)\n  GOLF: undefined word q at line 2\n0 passed, 3 failed')" ] \
+  && ok "golftest DIR recurses, takes only *_test.golfj; runtime error, FAIL: with exit 0 and compile error all fail" || no "golftest cases: $(cat "$TMP/w114b.gt")"
+mkdir -p "$TMP/w114b/none"
+[ "$(w114bgt "$TMP/w114b/none")" = "rc=1" ] && grep -q 'no \*_test.golfj found' "$TMP/w114b.gt" \
+  && ok "golftest with no test files: 'no *_test.golfj found', exit 1" || no "golftest none: $(cat "$TMP/w114b.gt")"
 
 # === W11-4C ===
 
