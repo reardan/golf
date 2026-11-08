@@ -71,6 +71,8 @@ RNAME_BYTE = mkblob2.RNAME_BYTE  # ›  closes it
 IMPORT_BYTE = mkblob2.IMPORT_BYTE  # ⎘  ⎘“path“ includes a file (W11-2A)
 REC_BYTE = mkblob2.REC_BYTE  # ⊜  ⊜‹point›‹x›‹y›; a record header (W11-4A)
 ELSE_BYTE = mkblob2.ELSE_BYTE  # ⋄  c[a⋄b] if-else, {c⋄body} top-tested while (W12-A7)
+VINC_BYTE = mkblob2.VINC_BYTE  # ⇡x  inc qword [x] (W12-Z2)
+VDEC_BYTE = mkblob2.VDEC_BYTE  # ⇣x  dec qword [x]
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -509,6 +511,21 @@ def compile_bytes(src: bytes) -> bytes:
                 emit([0x58, 0x48, 0x89, 0x45, 8 * slot])
             else:                                    # mov rax,[rbp+d]; push rax
                 emit([0x48, 0x8B, 0x45, 8 * slot, 0x50])
+            continue
+
+        if c in (VINC_BYTE, VDEC_BYTE):              # W12-Z2: ⇡x / ⇣x, in memory
+            glyph = "⇡" if c == VINC_BYTE else "⇣"
+            if i >= n:                               # golf2 reads 0 at the end
+                die((glyph + " needs a variable").encode())
+            name = take_name()                       # a letter, or a ‹long name›
+            if name < 256 and not (65 <= name < 91 or 97 <= name < 123):
+                die((glyph + " needs a variable").encode())
+            k = 0 if c == VINC_BYTE else 8           # /0 inc, /1 dec: modrm + 8
+            if frame and name in flocals:            # a local this ⊡ word has
+                emit([0x48, 0xFF, 0x45 + k, 8 * flocals.index(name)])  # named
+            else:                                    # inc/dec qword [rbp+d] ...
+                emit([0x48, 0xFF, 0x04 + k, 0x25])   # ... or qword [cell]
+                emit_u32(VARBANK + VARSTRIDE * name)
             continue
 
         if c == IMPORT_BYTE:                         # W11-2A: ⎘“path“

@@ -1,1 +1,1 @@
-:f8*←b﹢"⊙←s⌈→s←i⊕"→i\\⊛←i←s-←r⌈→r0;256⍶→b‹readall›‹trim›′f€_←rṄ
+:f8*←b﹢"⊙←s⌈→s⇡i←i\\⊛←i←s-←r⌈→r0;256⍶→b‹readall›‹trim›′f€_←rṄ

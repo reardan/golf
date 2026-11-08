@@ -201,7 +201,15 @@ both else "$TMP/src.else"
 [ "$("$TMP/new.else" 2>/dev/null)" = "eoeo0210112" ] \
   && ok "prelude + an if-else / while program runs (W12-A7)" || no "⋄ program output: $("$TMP/new.else" 2>/dev/null)"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include records else; do
+# W12-Z2: ⇡ / ⇣ on one-byte and long variables, on a ⊡ word's named local, and
+# on a name a ⊡ word has not named (the variable), through both source forms.
+printf '%s' '5→x⇡x⇡x⇣x←xṄ0→‹n›⇡‹n›⇡‹n›←‹n›Ṅ⊡f⇒a⇡a⇡a⇣‹n›⇐a;3fṄ←‹n›Ṅ⊡g⇡a←aṄ;9→a g' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.step"
+both step "$TMP/src.step"
+[ "$("$TMP/new.step" 2>/dev/null)" = "625110" ] \
+  && ok "prelude + a ⇡/⇣ program runs (W12-Z2)" || no "⇡⇣ program output: $("$TMP/new.step" 2>/dev/null)"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include records else step; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -210,7 +218,7 @@ done
 # W11-3B: `golf2 -g` only adds the symbol map on fd 2, so it still emits the
 # seed's bytes (the seed ignores argv) — over the same corpus.
 w113b=""
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include else; do
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include else step; do
   case $t in hello) s=examples/v1/hello.golf;; fizz) s=examples/v1/fizzbuzz.golf;; *) s="$TMP/src.$t";; esac
   "$TMP/golf2" -g < "$s" > "$TMP/g.$t" 2> "$TMP/g.$t.map" && cmp -s "$TMP/g.$t" "$TMP/old.$t" || w113b="$w113b $t"
 done
@@ -326,6 +334,17 @@ for w12a7s in '1⋄|⋄ outside [ ] or { }' ':f⋄;|⋄ outside [ ] or { }' '0[1
     && [ "$(cat "$TMP/badelse.newerr")" = "GOLF: ${w12a7s#*|} at line 1" ] || w12a7="$w12a7 [${w12a7s%%|*}: seed $sst, golf2 $gst]"
 done
 [ -z "$w12a7" ] && ok "both refuse a stray or second ⋄, exit 2 (W12-A7)" || no "stray-⋄ rejection differs:$w12a7"
+
+# W12-Z2: ⇡ / ⇣ need a letter or a ‹long name› after them; both refuse anything else.
+w12z2=""
+for w12z2s in '⇡1|⇡ needs a variable' '⇣ x|⇣ needs a variable' '1⇡|⇡ needs a variable' ':f⇡“a“;|⇡ needs a variable'; do
+  cat "$TMP/pre.gb" <(printf '%s' "${w12z2s%%|*}" | python3 tools/codepage.py encode) > "$TMP/badstep.src"
+  "$TMP/seed"  < "$TMP/badstep.src" > "$TMP/badstep.old" 2>"$TMP/badstep.olderr"; sst=$?
+  "$TMP/golf2" < "$TMP/badstep.src" > "$TMP/badstep.new" 2>"$TMP/badstep.newerr"; gst=$?
+  [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badstep.old" ] && [ ! -s "$TMP/badstep.new" ] && [ ! -s "$TMP/badstep.olderr" ] \
+    && [ "$(cat "$TMP/badstep.newerr")" = "GOLF: ${w12z2s#*|} at line 1" ] || w12z2="$w12z2 [${w12z2s%%|*}: seed $sst, golf2 $gst]"
+done
+[ -z "$w12z2" ] && ok "both refuse ⇡ / ⇣ without a variable, exit 2 (W12-Z2)" || no "⇡⇣ rejection differs:$w12z2"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

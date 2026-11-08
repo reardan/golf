@@ -30,6 +30,15 @@ of a `[0^]` guard plus a bottom test (110 → 106); 821 → 815 for all ten.
 Outputs match the old binaries and Python. Old and new on the same inputs,
 best of 7, same session: queens 17–20 → 18–22 ms, parens 115–123 → 116–122 ms,
 i.e. noise (the while form costs one `jmp` per pass).
+| W12-Z2, 2026-11-08 | 0.078 | 0.128 | 0.080 | 0.082 | 0.132 | 0.096 | 0.104 | 0.102 | 0.281 | 0.025 | 772 |
+
+W12-Z2 rewrote four counters with `⇡` (`inc qword [cell]`, no stack traffic):
+twosum `←i⊕"→i` → `⇡i←i` (89 → 87), longsub the same (62 → 60), islands
+`←c⊕→c` → `⇡c` (131 → 128) and slidemax `←i⊕→i` → `⇡i` (125 → 122); 782 →
+772 for all ten (the base had 782 after the merges since A7's row).
+Outputs match the old binaries and Python. Old and new on the same inputs,
+best of 7, same session: twosum 71 → 71 ms, longsub 70 → 80, islands 108 →
+89, slidemax 228 → 236, i.e. noise either way.
 
 ## Micro, ns per element
 
