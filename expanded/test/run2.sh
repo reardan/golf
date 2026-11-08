@@ -1528,7 +1528,7 @@ b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
 out, i, skip = bytearray(), 0, False
 while i < len(b):
     c = b[i]
-    if c == 0x3A and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True
+    if c in (0x3A, 0xB1) and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True   # W13-E: ⊡‹name› too
     if c == mkblob2.LNAME_BYTE and not skip:
         j = b.index(mkblob2.RNAME_BYTE, i) + 1
         if b[i+1:j-1] == b"_1c_put": out += b")"   # W11-1C: the raw byte write
@@ -2156,11 +2156,12 @@ w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
 [ "$(w11eprog 262144 0 | w11e "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
   && ok "a 1 MB program is refused the same way" || no "far over the cap"
 # Between the old 64 KB and the new cap, with real work in it: one word of
-# 2000 store/load/increment statements, then the list heap and the printers.
-w11es=""; for k in $(seq 1 2000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
+# 1000 store/load/increment statements (2000 before W13-E grew the prelude),
+# then the list heap and the printers.
+w11es=""; for k in $(seq 1 1000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
 w11es=":‹f›0$w11es←‹x›⊕;‹f›Ṅ 100⍳"'"*∑Ṅ'
 [ "$(printf '%s' "$w11es" | python3 tools/codepage.py encode | w11e "$TMP/golf2")" = 0 ] && chmod +x "$TMP/e.out" \
-  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "2002328350" ] \
+  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "1002328350" ] \
   && ok "a $(stat -c%s "$TMP/e.out")-byte program (> 64 KB) runs: the list heap and the output buffer above the image still work" \
   || no "program past 64 KB: $(cat "$TMP/e.err")"
 w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
@@ -2683,7 +2684,14 @@ done
 [ -z "$w114bad" ] \
   && ok "malformed ⊜ (no fields, no ;, bad field, bad name, a 61-byte invented name): golf2 and golfref say so with the line, exit 2; the seed exits 2" \
   || no "malformed ⊜:$w114bad"
-w114many=$(python3 -c 'print("⊜‹r›" + "".join("‹f%d›" % k for k in range(256)) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-f255›Ṅ␤\"‹r-f0›Ṅ␤≢Ṅ")')
+# W13-E: the fields reuse the prelude's own long names (then ‹fK› fillers), so
+# the 256 fields add only their 512 invented names to the 1024 however many
+# long names the prelude defines (up to 511).
+w114many=$(python3 -c '
+import re
+pre = re.findall(r"^ *[:⊡]‹([0-9A-Za-z_-]+)›", open("lib/prelude.golfj", encoding="utf-8").read(), re.M)
+f = list(dict.fromkeys(pre))[:256]; f += ["f%d" % k for k in range(256 - len(f))]
+print("⊜‹r›" + "".join("‹%s›" % x for x in f) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-%s›Ṅ␤\"‹r-%s›Ṅ␤≢Ṅ" % (f[255], f[0]))')
 [ "$(printf '%s' "$w114many" | gc)" = "$(printf '355\n100\n256')" ] \
   && [ "$(printf '%s' "${w114many/;/‹f256›;}" | w114a "$TMP/golf2")" = "2 GOLF: too many record fields ‹r› at line 1" ] \
   && ok "256 fields (512 invented names) work; a 257th: GOLF: too many record fields ‹r›" || no "record field bound: $(cat "$TMP/inc/err")"
@@ -3723,6 +3731,7 @@ ops = [("′⌈", max), ("′⌊", min), ("′⩌", max), ("′m", max), ("′k"
 for L in range(10):
     a = [random.randint(-9, 9) for _ in range(L)]
     lit = "".join(f"{v}⍆" if v >= 0 else f"0 {-v}-⍆" for v in a)
+    if L == 7: prog.append("\f:m⌈;:k⌊;")   # W13-E: two programs, so each fits the 192 KB image next to the grown prelude
     for n in range(1, L + 2):
         for g, f in ops:
             prog.append(f"0⍳{lit}{n}{g}⊟⍕␤")
@@ -3733,13 +3742,15 @@ for L in range(10):
                     acc = f(acc, x)
                 out.append(acc)
             want.append(" ".join(map(str, out)))
-open(f"{T}/a5win.prog", "w", encoding="utf-8").write("".join(prog))
+p1, p2 = "".join(prog).split("\f")
+open(f"{T}/a5win.prog", "w", encoding="utf-8").write(p1)
+open(f"{T}/a5win2.prog", "w", encoding="utf-8").write(p2)
 open(f"{T}/a5win.want", "w").write("\n".join(want) + "\n")
 PYEOF
-[ "$(gc < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
-  && [ "$(gref < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+[ "$({ gc < "$TMP/a5win.prog"; gc < "$TMP/a5win2.prog"; } | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+  && [ "$({ gref < "$TMP/a5win.prog"; gref < "$TMP/a5win2.prog"; } | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
   && ok "lengths 0..9, every n 1..len+1, ⌈ ⌊ ⩌ :m⌈; :k⌊; + - match Python (golf2 and the oracle)" \
-  || no "W12-A5 vs Python: $(diff <(gc < "$TMP/a5win.prog" | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
+  || no "W12-A5 vs Python: $(diff <({ gc < "$TMP/a5win.prog"; gc < "$TMP/a5win2.prog"; } | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
 # The deque is O(len): a window of 100,000 over a million elements would be
 # 10^11 calls of f on the general path.  Here it is two passes.
 printf '%s' ':m⌈;1000000⍳100000′⌈⊟∑Ṅ␤1000000⍳100000′⌊⊟∑Ṅ␤1000000⍳⌽100000′m⊟∑Ṅ␤1000000⍳100000′⩍⊟≢Ṅ' \
@@ -4193,6 +4204,181 @@ done
 [ "$w12o5n" = "stock trap slidemax" ] && [ -z "$w12o5bad" ] \
   && ok "the LeetCode tutorial's Stock, Trap and Sliding Window are bench/leetcode/golf/'s text, their stated sizes, and print their documented (and Python's) output" \
   || no "W12-O5 LeetCode tutorial ($w12o5n):$w12o5bad"
+
+# === W13-E ===
+echo "W13-E: the LeetCode library (graphs, grids, union-find, DP, heaps, monotonic stacks, combinatorics streams)"
+# Helpers for the cases: k parses "1 2 3" into a list, l a string, m "1 2;3 4" into a list of lists.
+w13ep=':k32‹split›′‹num›€;:l⊃k;:m⊃59‹split›′k€;:h⌫0;:z"′h€⌫⌫;:p1-;:f⌫;'
+w13ebad=""
+while IFS='|' read -r w13ex w13ew; do
+  [ -z "$w13ex" ] && continue
+  w13eg=$(printf '%s' "$w13ep$w13ex" | gc 2>&1 | tr '\n' '/' | sed 's/ *\/*$//')
+  [ "$w13eg" = "$w13ew" ] || w13ebad="$w13ebad [$w13ex => $w13eg]"
+done <<'W13ECASES'
+5“0 1 1 2 0 2 3 4“l‹adj›⍕|[1 2] [0 2] [1 0] [4] [3]
+5“0 1;1 2;0 2;3 4“m‹dadj›⍕|[1 2] [2] [] [4] []
+3“0 1 5 1 2 7“l‹wadj›⍕|[1 5] [0 5 2 7] [1 7]
+3“0 1 5;1 2 7“m‹dwadj›⍕|[1 5] [2 7] []
+5“0 1 1 2 0 2 3 4“l‹adj›0‹bfs›⍕|0 1 1 -1 -1
+6“0 1 1 2 0 2 3 4“l‹adj›‹comps›⍕|0 0 0 1 1 2
+4“0 1;1 2;0 2;3 0“m‹dadj›‹toposort›[⍕]|3 0 1 2
+3“0 1;1 2;2 0“m‹dadj›‹toposort›[⍕⋄“cycle“🗲]|cycle
+4“0 1 5;1 2 1;0 2 9;2 3 1“m‹dwadj›0‹dijkstra›⍕|0 5 6 7
+5“0 1 5;1 2 1;0 2 9;2 3 1“m‹wadj›3‹dijkstra›⍕|7 2 1 0 -1
+4“0 7“l‹adj›|GOLF: vertex out of range
+3 4⍳‹dadj›0‹bfs›⍕|GOLF: vertex out of range
+“1 2 3;4 5 6“m"1 2‹gget›Ṅ"0 1 9‹gset›⍕|6[1 9 3] [4 5 6]
+“1 2 3;4 5 6“m"‹transpose›⍕␤"‹rot90›⍕␤"0 0‹nbrs4›⍕␤"1 1‹nbrs4›⍕␤"0 1‹nbrs8›⍕␤"1 2‹nbrs8›⍕|[1 4] [2 5] [3 6] /[4 1] [5 2] [6 3] /[0 1] [1 0] /[0 1] [1 0] [1 2] /[0 0] [0 2] [1 0] [1 1] [1 2] /[0 1] [0 2] [1 1]
+“1 1 0 0 0;1 1 0 0 0;0 0 1 0 0;0 0 0 1 1“m′p‹gcomps›Ṅ|3
+“1 0 1;0 1 0;1 0 1“m′p‹gcomps›Ṅ “1 1 1;1 0 1;1 1 1“m′p‹gcomps›Ṅ “1;1 1 1“m′p‹gcomps›Ṅ|511
+:c\\⊕\\1-;0“1 0 1;0 1 0;1 0 1“m′c‹gcomps›ṄṄ|59
+5‹uf›"‹ucount›Ṅ0 1‹uunion›Ṅ3 4‹uunion›Ṅ1 0‹uunion›Ṅ"‹ucount›Ṅ"1‹ufind›Ṅ"0‹ufind›Ṅ"4‹ufind›Ṅ1 4‹uunion›Ṅ"‹ucount›Ṅ"3‹ufind›Ṅ⍕|50013003020-4 0 -1 0 3 2
+3‹uf›1±‹ufind›|GOLF: vertex out of range
+:c\\⊕\\;0 ′c‹memo›→‹F› 7←‹F›⍎Ṅ 7←‹F›⍎Ṅ 8←‹F›⍎Ṅ Ṅ|7782
+:g"0⊇\\1⊇+;′g‹memo›→‹G›1 2‹_13e_pair›←‹G›⍎Ṅ1 2‹_13e_pair›←‹G›⍎Ṅ|33
+⊡s⇒j⇒i⇐i[_1^]⇐j[_1^]"⇐i1-⊇⇐j⊇\\⇐i⊇⇐j1-⊇+;5 5′s‹table2›⍕|[1 1 1 1 1] [1 2 3 4 5] [1 3 6 10 15] [1 4 10 20 35] [1 5 15 35 70]
+:c\\⊕\\;0 1 4′c‹times›ṄṄ 5 0′⊕‹times›Ṅ|145
+⊡c⇒j⇒i_⊕0;0 3 4′c‹table2›≢Ṅ Ṅ|312
+⊡c⇒i⇒t⊕0;0 5′c‹table1›≢ṄṄ|55
+“5 3 8 1 9 2 7“l"‹heapify›"⍕␤‹pqpop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ_␤"3‹nsmallest›⍕␤"3‹nlargest›⍕␤"99‹nlargest›⍕␤0‹nsmallest›≢Ṅ|1 3 2 5 9 8 7 /123/1 2 3 /9 8 7 /9 8 7 5 3 2 1 /0
+‹pq›5“e“‹pq2push›1“a“‹pq2push›3“c“‹pq2push›"≢Ṅ‹pq2pop›🗲Ṅ‹pq2pop›🗲Ṅ‹pq2pop›🗲Ṅ‹pq2pop›|6a1c3e5GOLF: pop from empty
+‹pq›0→i{←i7*11%"‹pq2push›←i1+"→i20≡}{‹pq2pop›Ṅ32)Ṅ32)"≢0≡}⌫|0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3 4 4 5 5 5 5 6 6 6 6 7 7 7 7 8 8 9 9 9 9 10 10 10 10
+:‹g›‹pq›‹pq2pop›;′‹g›‹catch›⊐|pop from empty
+“3 1 2“l"‹nextgreater›⍕"‹nextsmaller›⍕"‹prevgreater›⍕‹prevsmaller›⍕|-1 2 -1 1 -1 -1 -1 0 0 -1 -1 1
+“2 1 2 4 3“l‹nextgreater›⍕|3 2 3 -1 -1
+“1 2 3“l"‹nextperm›Ṅ⍕"‹nextperm›Ṅ⍕"‹nextperm›Ṅ⍕"‹nextperm›Ṅ⍕"‹nextperm›Ṅ⍕"‹nextperm›Ṅ⍕|01 3 2 02 1 3 02 3 1 03 1 2 03 2 1 11 2 3
+“1 2 3“l‹perms›‹sshow›|[1 2 3] [1 3 2] [2 1 3] [2 3 1] [3 1 2] [3 2 1]
+“1 2 3 4“l2‹combs›‹sshow›|[1 2] [1 3] [1 4] [2 3] [2 4] [3 4]
+“1 2 3“l0‹combs›‹sshow›␤“1 2 3“l4‹combs›‹sshow›␤“1 2 3“l3‹combs›‹sshow›␤“1 2 3“l1±‹combs›‹sshow›|[] //[1 2 3]
+0⍳‹perms›‹sshow›␤0⍳‹subsets›‹sshow›␤0⍳3⍳‹cartesian›‹sshow›␤3⍳0⍳‹cartesian›‹sshow›␤“1 2“l“7 8 9“l‹cartesian›‹sshow›|[] /[] ///[1 7] [1 8] [1 9] [2 7] [2 8] [2 9]
+5⍳"⌫‹perms›|GOLF: use after free
+63⍳‹subsets›|GOLF: too many subsets
+‹heapstats›_→b 7⍳→l ←l‹perms›0′f‹sfold›_ ←l3‹combs›0′f‹sfold›_ ←l‹subsets›0′f‹sfold›_ ←l←l‹cartesian›0′f‹sfold›_ ←l⌫ 4⍳→l ←l‹perms›‹sfree› ←l‹perms›⍞_⌫‹sfree› ←l⌫‹heapstats›_←b-Ṅ|0
+“0 1;1 2;2 0“m→e ‹heapstats›_→b 3←e‹dadj›"‹toposort›_z 5←e‹adj›z ‹heapstats›_←b-Ṅ|0
+“0 1 5;1 2 1;0 2 9;2 3 1“m→e ‹heapstats›_→b 4←e‹dwadj›"0‹dijkstra›⌫z 4←e‹wadj›"2‹dijkstra›⌫"‹comps›⌫"0‹bfs›⌫z ‹heapstats›_←b-Ṅ|0
+“1 0 1;0 1 1“m→g ‹heapstats›_→b ←g′p‹gcomps›_←g‹transpose›z←g‹rot90›z←g0 0‹nbrs4›z←g1 1‹nbrs8›z ‹heapstats›_←b-Ṅ|0
+‹heapstats›_→b 9⍳"‹heapify›⌫"4‹nsmallest›⌫"4‹nlargest›⌫"‹nextgreater›⌫"‹prevsmaller›⌫⌫ 10‹uf›"1 2‹uunion›_⌫ 5 3′⊕‹times›_ ‹heapstats›_←b-Ṅ|0
+7 9 5“0 1 1 2 0 2 3 4“l‹_dg36›0‹_dg71›⍕ṄṄ|0 1 1 -1 -1 97
+W13ECASES
+[ -z "$w13ebad" ] && ok "W13-E words: results, errors, use after free, flat ‹heapstats›, threading counters, stack untouched" \
+  || no "W13-E cases:$w13ebad"
+# REFERENCE.md's examples print what they say.
+w13ebad=""; w13en=0
+while IFS= read -r w13el; do
+  w13ex=${w13el%%  ->*}; w13ex=${w13ex%"${w13ex##*[! ]}"}; w13ew=${w13el##*->  }; w13en=$((w13en+1))
+  [ "$(printf '%s' "$w13ex" | gc 2>&1 | sed 's/ *$//')" = "$w13ew" ] || w13ebad="$w13ebad [$w13ex]"
+done < <(sed -n '/^### LeetCode library: graphs, grids, DP, heaps, combinatorics$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w13ebad" ] && [ "$w13en" -ge 25 ] && ok "REFERENCE.md's LeetCode-library examples ($w13en) print what they say" \
+  || no "W13-E REFERENCE examples ($w13en):$w13ebad"
+# Random graphs and grids against Python: bfs, comps, toposort, dijkstra,
+# union-find, gcomps (the Islands rule), nsmallest, the monotonic stacks.
+rm -rf "$TMP/w13e"; mkdir -p "$TMP/w13e"
+python3 - "$TMP/w13e" <<'PYEOF'
+import sys, random, heapq
+from collections import deque
+T = sys.argv[1]; R = random.Random(1313)
+progs, want = [], []
+for t in range(6):
+    n = R.randint(1, 30); m = R.randint(0, 60)
+    E = [(R.randrange(n), R.randrange(n), R.randint(1, 20)) for _ in range(m)]
+    flat = "".join(f"{u}⍆{v}⍆" for u, v, w in E); wflat = "".join(f"{u}⍆{v}⍆{w}⍆" for u, v, w in E)
+    adj = [[] for _ in range(n)]; dag = [[] for _ in range(n)]
+    for u, v, w in E: adj[u].append((v, w)); adj[v].append((u, w))
+    s = R.randrange(n)
+    d = [-1] * n; d[s] = 0; q = deque([s])
+    while q:
+        u = q.popleft()
+        for v, w in adj[u]:
+            if d[v] < 0: d[v] = d[u] + 1; q.append(v)
+    progs.append(f"{n}Ṿ{flat}‹adj›{s}‹bfs›⍕␤"); want.append(" ".join(map(str, d)))
+    lab = [-1] * n; k = 0
+    for i in range(n):
+        if lab[i] < 0:
+            lab[i] = k; st = [i]
+            while st:
+                u = st.pop()
+                for v, w in adj[u]:
+                    if lab[v] < 0: lab[v] = k; st.append(v)
+            k += 1
+    progs.append(f"{n}Ṿ{flat}‹adj›‹comps›⍕␤"); want.append(" ".join(map(str, lab)))
+    D = [-1] * n; h = [(0, s)]
+    while h:
+        c, u = heapq.heappop(h)
+        if D[u] >= 0: continue
+        D[u] = c
+        for v, w in adj[u]:
+            if D[v] < 0: heapq.heappush(h, (c + w, v))
+    progs.append(f"{n}Ṿ{wflat}‹wadj›{s}‹dijkstra›⍕␤"); want.append(" ".join(map(str, D)))
+    p = list(range(n))
+    def f(x):
+        while p[x] != x: x = p[x]
+        return x
+    cnt = n
+    for u, v, w in E:
+        a, b = f(u), f(v)
+        if a != b: p[a] = b; cnt -= 1
+    progs.append(f"{n}‹uf›→u Ṿ{flat}→e 0→i{{←i←e≢≡⋄←u←e←i⊇←e←i1+⊇‹uunion›__⇡i⇡i}}←u‹ucount›Ṅ␤"); want.append(str(cnt))
+    # a DAG: edges low -> high only, then Kahn in index order
+    DE = [(min(u, v), max(u, v)) for u, v, w in E if u != v]
+    for u, v in DE: dag[u].append(v)
+    ind = [0] * n
+    for u, v in DE: ind[v] += 1
+    q = deque(i for i in range(n) if ind[i] == 0); order = []
+    while q:
+        u = q.popleft(); order.append(u)
+        for v in dag[u]:
+            ind[v] -= 1
+            if ind[v] == 0: q.append(v)
+    dflat = "".join(f"{u}⍆{v}⍆" for u, v in DE)
+    progs.append(f"{n}Ṿ{dflat}‹dadj›‹toposort›[⍕]␤"); want.append(" ".join(map(str, order)))
+    a = [R.randint(-9, 9) for _ in range(R.randint(0, 25))]
+    lit = "Ṿ" + "".join(f"{v}⍆" if v >= 0 else f"{-v}±⍆" for v in a)
+    def mono(a, rng, better):
+        out = [-1] * len(a); st = []
+        for i in rng:
+            while st and not better(a[st[-1]], a[i]): st.pop()
+            out[i] = st[-1] if st else -1; st.append(i)
+        return out
+    fw, bw = range(len(a)), range(len(a) - 1, -1, -1)
+    for name, rng, b in (("nextgreater", bw, lambda x, y: x > y), ("nextsmaller", bw, lambda x, y: x < y),
+                         ("prevgreater", fw, lambda x, y: x > y), ("prevsmaller", fw, lambda x, y: x < y)):
+        progs.append(f"{lit}‹{name}›⍕␤"); want.append(" ".join(map(str, mono(a, rng, b))))
+    kk = R.randint(0, len(a) + 1)
+    progs.append(f"{lit}{kk}‹nsmallest›⍕␤{lit}{kk}‹nlargest›⍕␤")
+    want.append(" ".join(map(str, sorted(a)[:kk]))); want.append(" ".join(map(str, sorted(a, reverse=True)[:kk])))
+    rr, cc = R.randint(1, 12), R.randint(1, 12)
+    g = [[R.choice("01") for _ in range(cc)] for _ in range(rr)]
+    seen = [[0] * cc for _ in range(rr)]; isl = 0
+    for i in range(rr):
+        for j in range(cc):
+            if g[i][j] == "1" and not seen[i][j]:
+                isl += 1; seen[i][j] = 1; st = [(i, j)]
+                while st:
+                    y, x = st.pop()
+                    for v, u in ((y+1, x), (y-1, x), (y, x+1), (y, x-1)):
+                        if 0 <= v < rr and 0 <= u < cc and g[v][u] == "1" and not seen[v][u]:
+                            seen[v][u] = 1; st.append((v, u))
+    progs.append(":q49-;“" + ";".join("".join(r) for r in g) + "“⊃59‹split›′q‹gcomps›Ṅ␤"); want.append(str(isl))
+open(f"{T}/p.golfj", "w", encoding="utf-8").write("".join(progs))
+open(f"{T}/want", "w").write("\n".join(want) + "\n")
+PYEOF
+[ "$(gc < "$TMP/w13e/p.golfj" | sed 's/ *$//')" = "$(cat "$TMP/w13e/want")" ] \
+  && ok "random graphs, sequences and grids: bfs comps dijkstra uunion toposort, the four monotonic stacks, nsmallest/nlargest and gcomps match Python" \
+  || no "W13-E vs Python: $(diff <(gc < "$TMP/w13e/p.golfj" | sed 's/ *$//') "$TMP/w13e/want" | head -4 | tr '\n' ' ')"
+# The oracle agrees on a mixed program; every digraph alias calls its word.
+w13eo='5Ṿ0⍆1⍆1⍆2⍆3⍆4⍆‹adj›"0‹bfs›⍕‹comps›⍕:p49-;“110;010;001“⊃59‹split›′p‹gcomps›Ṅ3⍳‹perms›‹sshow›Ṿ2⍆1⍆5⍆3⍆‹nextgreater›⍕5‹uf›0 1‹uunion›_‹ucount›Ṅ'
+[ "$(printf '%s' "$w13eo" | gref)" = "$(printf '%s' "$w13eo" | gc)" ] && [ -n "$(printf '%s' "$w13eo" | gc)" ] \
+  && ok "golfref runs the W13-E words identically" || no "W13-E oracle"
+w13ebad=""
+for w13ed in 6E:nextgreater 6F:toposort 70:perms 71:bfs 72:rot90 73:subsets 74:table1 75:uunion 76:ufind 77:dijkstra 78:cartesian 79:memo 7A:transpose 35:nbrs4 36:adj 37:gcomps 38:nbrs8 39:combs; do
+  grep -qF ":‹_dg${w13ed%%:*}›‹${w13ed#*:}›;" lib/prelude.golfj || w13ebad="$w13ebad ${w13ed}"
+  grep -qF "‹_dg${w13ed%%:*}›" REGISTRY.md || w13ebad="$w13ebad registry:${w13ed}"
+done
+[ -z "$w13ebad" ] && [ "$(grep -c '^:‹_dg[3-7][0-9A-F]›' lib/prelude.golfj)" -ge 18 ] \
+  && ok "the 18 W13-E digraphs (ʘn…ʘz, ʘ5…ʘ9) are defined as ‹_dgHH› aliases and listed in REGISTRY.md" || no "W13-E digraphs:$w13ebad"
+# The prelude section stays free of the raw swap byte (gtools' decode round trip).
+[ "$(sed -n '/^# ===== W13-E =====$/,/^# ===== W13-[A-DF-Z]/p' lib/prelude.golfj | grep -v '^ *#' | grep -c '\\\\')" = 0 ] \
+  && ok "the W13-E prelude section has no swap byte" || no "W13-E section uses the swap byte"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

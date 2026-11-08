@@ -297,6 +297,7 @@ Prelude long names in use (all **shipped**):
 | `‹assert›` `‹expect›`, and the helpers `‹_4b_show›` `‹_4b_exit›` `‹_4b_fail›` | W11-4B (**shipped**) | `W11-4B test words` |
 | `‹stack›` | W11-4C (**shipped**) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 | `‹getor›` `‹bump›` `‹upd›`, and the helpers `‹_12p2_ins›` `‹_12p2_huge›` (W12-P2 also rewrote the W11-2B words `‹_2b_find›` `‹_2b_grow›` `‹_2b_zero›` `‹put›` `‹get›` `‹has›` `‹del›` `‹dict›` in place) | W12-P2 (**shipped**) | `W12-P2 dicts that hash once` |
+| `‹adj›` `‹dadj›` `‹wadj›` `‹dwadj›` `‹bfs›` `‹comps›` `‹toposort›` `‹dijkstra›` `‹gget›` `‹gset›` `‹nbrs4›` `‹nbrs8›` `‹gcomps›` `‹transpose›` `‹rot90›` `‹uf›` `‹ufind›` `‹uunion›` `‹ucount›` `‹memo›` `‹table1›` `‹table2›` `‹times›` `‹heapify›` `‹nsmallest›` `‹nlargest›` `‹pq2push›` `‹pq2pop›` `‹nextgreater›` `‹nextsmaller›` `‹prevgreater›` `‹prevsmaller›` `‹nextperm›` `‹perms›` `‹combs›` `‹subsets›` `‹cartesian›` (37), the 18 digraph aliases `‹_dg35›`–`‹_dg39›` `‹_dg6E›`–`‹_dg7A›` (see "Digraph page" below), and 21 helpers `‹_13e_…›` (the prefix `‹_13e` is reserved for them): 76 names | W13-E (**shipped**) | `# ===== W13-E =====` |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -606,6 +607,40 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | A8 streams | `0x4F0F80`–`0x4F0FBF` | 5181312 | 5181312 5181320 5181336 … 5181368 used (shipped, W12-A8), each live only across a stretch with no user call: the record being built · ⍞'s x while s is unparked · ‹sints›'s end of bytes / sign / byte and accumulator, constructor arguments, x under an accumulator, ‹szip›'s f — see the prelude's W12-A8 section; 5181328 free. Stream state itself lives in the records on the heap and in one-cell parks on the spill stack |
 | O2 freeable thunks | `0x4F0FC0`–`0x4F0FFF` | 5181376 | W12-O2 needs none (thunks are `A` blocks). W12-O3, the same task's pair, uses two (shipped): 5181376 E = &q[n'] · 5181384 &q[c], the chosen child, live only inside `‹pqpop›`'s sift-down (no user code runs there); 5181392 … 5181432 free |
 
+### 3.3 W13 runtime cells
+
+| Task | Cells | Use |
+|---|---|---|
+| W13-E LeetCode library | none | every W13-E word is a `⊡` word: its loop state is its own frame on the return stack, so it needs no scratch cell and no spill frame and is re-entrant. The streams (`‹perms›` `‹combs›` `‹subsets›` `‹cartesian›`) build their records with W12-A8's `‹_12a8_mk›`, which uses A8's cell 5181312 for a moment, as A8's own constructors do |
+
+## Digraph page
+
+W13's `ʘ` (`0xBD`) followed by any byte `B` calls the long name `‹_dgHH›`,
+`HH` being `B` in upper-case hex. A library gives a word a digraph by
+defining `:‹_dgHH›‹name›;`. Second bytes are partitioned: `A`–`Z` W13-C,
+`a`–`m` and `0`–`4` W13-D, `n`–`z` and `5`–`9` W13-E.
+
+| digraph | name | calls | owner |
+|---|---|---|---|
+| `ʘn` | `‹_dg6E›` | `‹nextgreater›` | W13-E |
+| `ʘo` | `‹_dg6F›` | `‹toposort›` | W13-E |
+| `ʘp` | `‹_dg70›` | `‹perms›` | W13-E |
+| `ʘq` | `‹_dg71›` | `‹bfs›` | W13-E |
+| `ʘr` | `‹_dg72›` | `‹rot90›` | W13-E |
+| `ʘs` | `‹_dg73›` | `‹subsets›` | W13-E |
+| `ʘt` | `‹_dg74›` | `‹table1›` | W13-E |
+| `ʘu` | `‹_dg75›` | `‹uunion›` | W13-E |
+| `ʘv` | `‹_dg76›` | `‹ufind›` | W13-E |
+| `ʘw` | `‹_dg77›` | `‹dijkstra›` | W13-E |
+| `ʘx` | `‹_dg78›` | `‹cartesian›` | W13-E |
+| `ʘy` | `‹_dg79›` | `‹memo›` | W13-E |
+| `ʘz` | `‹_dg7A›` | `‹transpose›` | W13-E |
+| `ʘ5` | `‹_dg35›` | `‹nbrs4›` | W13-E |
+| `ʘ6` | `‹_dg36›` | `‹adj›` | W13-E |
+| `ʘ7` | `‹_dg37›` | `‹gcomps›` | W13-E |
+| `ʘ8` | `‹_dg38›` | `‹nbrs8›` | W13-E |
+| `ʘ9` | `‹_dg39›` | `‹combs›` | W13-E |
+
 ---
 
 ## W9 — the gap-fix waves
@@ -617,7 +652,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 186 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47 and W12-O6 1, helpers included) — 1024 since W10-A, so 838 are left
+prelude now uses 262 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1 and W13-E 76, helpers included) — 1024 since W10-A, so 762 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

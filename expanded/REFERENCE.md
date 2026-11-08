@@ -637,7 +637,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 186 in all after W12-O6, helpers included), so a program has 838 for itself.
+has 262 in all after W13-E, helpers included), so a program has 762 for itself.
 
 ### Sorting by key
 
@@ -1077,8 +1077,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`), the prelude has 186 long
-names, which leaves 838 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-E's 76 LeetCode-library names), the prelude has 262 long
+names, which leaves 762 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1379,6 +1379,145 @@ for `‹cadd›` when `(a^r)&(b^r)` is negative, for `‹csub›` when `(a^b)&(a
 is, and for `‹cmul›` when `a≠0` and either `r÷a ≠ b` or `a = -1, b = INT64_MIN`
 (the one case the divide test misses, since `÷` defines `INT64_MIN÷-1` as
 `INT64_MIN`).
+
+### LeetCode library: graphs, grids, DP, heaps, combinatorics
+
+W13-E adds the standard pieces of interview problems as long-named prelude
+words, so a solution names the algorithm instead of spelling it out. All of
+them are linear or n log n, and none of them recurses: a depth-first walk
+uses an explicit stack. The higher-order ones (`‹gcomps› ‹memo› ‹table1›
+‹table2› ‹times›`) keep the threading contract (see "Threading state"
+above): their function runs with the caller's stack under its arguments.
+Every word keeps its loop state in its own `⊡` frame, so they nest in each
+other and in `€ ⇤ ⌿` freely. They use no scratch cells.
+
+**Graphs.** An adjacency list is a list of `n` lists: row `u` holds `u`'s
+neighbours in edge order. Vertices are `0 … n-1`; any other is
+`GOLF: vertex out of range`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹adj›` | `n edges -> adj` | undirected adjacency list. `edges` is a flat list `u0 v0 u1 v1 …` or a list of pairs `[u v]`; each edge goes in both rows |
+| `‹dadj›` | `n edges -> adj` | the same, directed: `u -> v` only |
+| `‹wadj›` | `n edges -> adj` | weighted, undirected: `edges` is flat `u v w …` or a list of triples `[u v w]`; row `u` is flat `v w v w …` |
+| `‹dwadj›` | `n edges -> adj` | weighted, directed |
+| `‹bfs›` | `adj s -> dist` | hop count from `s` to each vertex, `-1` where unreachable. O(V+E) |
+| `‹comps›` | `adj -> labels` | connected-component label of each vertex of an undirected list: `0` for vertex 0's component, then `1`, `2` … in order of first vertex, so the count is the largest label + 1 |
+| `‹toposort›` | `adj -> order 0 \| 1` | Kahn's topological order of a directed list (ties in index order), and `0`; just `1` when there is a cycle, as `⍞` signals its end, so `‹toposort›[⍕]` prints an order or nothing |
+| `‹dijkstra›` | `wadj s -> dist` | shortest distances from `s` over a weighted list (weights `>= 0`), `-1` where unreachable. Lazy Dijkstra on `‹pq›`, O(E log E); a distance must stay below `2^(63-b)` with `2^b >= n` |
+
+**Grids.** A grid is a list of rows, each a list. A neighbour is a list
+`[r c]`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹gget›` | `g r c -> x` | `g[r][c]`, checked as `⊇` is |
+| `‹gset›` | `g r c v -> g` | `g[r][c] = v` in place, checked as `⍈` is |
+| `‹nbrs4›` | `g r c -> l` | the in-bounds neighbours up, left, right, down, as `[r c]` pairs |
+| `‹nbrs8›` | `g r c -> l` | the same with the diagonals: the 3×3 block in row-major order, the centre left out |
+| `‹gcomps›` | `g ′p -> k` | the number of 4-connected components of the cells `x` with `p x = 0` (zero-is-true, like `⌿`): Number of Islands. `p` runs once a cell. The grid is read as `≢g` rows of `≢g[0]` columns. O(cells): the marks sit in a block with a pre-marked border, so the flood fill tests no bounds |
+| `‹transpose›` | `g -> g'` | rows become columns (every row at least `≢g[0]` long) |
+| `‹rot90›` | `g -> g'` | a quarter turn clockwise |
+
+**Union-find.** `‹uf›` is a list of `n+1` cells (parents, `-size` at a
+root, and the set count last).
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹uf›` | `n -> u` | `n` singletons |
+| `‹ufind›` | `u x -> root` | the root of `x`, compressing the path |
+| `‹uunion›` | `u a b -> u f` | merge the sets of `a` and `b` (union by size); `f` is `0` when they were apart and are now one, `1` when they already were |
+| `‹ucount›` | `u -> k` | the number of sets |
+
+**Dynamic programming.**
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹memo›` | `′f -> ′g` | `g x` is `f x`, computed once for each distinct `x` (an int or a list, compared as dict keys are) and looked up afterwards. To recurse through the cache, `f` calls a word that runs `g`: store `′g` in a variable and define `:‹fib›←‹F›⍎;` (the example below). A list key is kept by reference: do not change or `⌫` it |
+| `‹table1›` | `n ′step -> t` | `t[i] = step(t, i)` for `i = 0 … n-1`; `step` sees `t` with `≢t = i`, so `‹last›` is `t[i-1]`. It must not `⍆` or `⌫` `t` |
+| `‹table2›` | `r c ′step -> g` | `g[i][j] = step(g, i, j)`, row by row: rows `0 … i-1` are whole and row `i` has `j` entries |
+| `‹times›` | `x n ′f -> y` | `f` applied `n` times |
+
+**Heaps.** These build on the min-priority queue of "Priority queues".
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹heapify›` | `l -> q` | a new `‹pq›` holding `l`'s elements, built in O(n); `‹pqpop›` and the rest work on it |
+| `‹nsmallest›` | `l k -> l'` | the `k` smallest, ascending (`k` clamped to `0 … ≢l`), O(n + k log n) |
+| `‹nlargest›` | `l k -> l'` | the `k` largest, descending |
+| `‹pq2push›` | `q p x -> q` | push payload `x` (anything, a list too) with signed priority `p` onto a `‹pq›` used for pairs. Keep the returned `q`, as with `‹pqpush›`. `≢q` is twice the size |
+| `‹pq2pop›` | `q -> q p x` | the pair with the smallest priority. Empty: `GOLF: pop from empty` |
+
+**Monotonic stack.** `l -> idx`: for each `i`, the index of the nearest
+element after (next) or before (prev) `i` that is strictly greater or
+smaller, signed, or `-1`. O(n).
+
+| word | finds |
+|---|---|
+| `‹nextgreater›` | the next strictly greater element (Daily Temperatures is its distance) |
+| `‹nextsmaller›` | the next strictly smaller one |
+| `‹prevgreater›` | the previous strictly greater one |
+| `‹prevsmaller›` | the previous strictly smaller one |
+
+**Combinatorics.** These are streams (see "Streams"): `⍞` pulls one value at
+a time, so memory stays flat however many there are. Each value is a new
+list that belongs to the caller (`⌫` it once used); `‹collect›` gathers
+them all. The streams read their input lists in place and do not own them.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹perms›` | `l -> s` | the `≢l!` orderings, as Python's `itertools.permutations`: lexicographic by position, equal elements not merged |
+| `‹combs›` | `l k -> s` | the `k`-element combinations in `itertools` order (none for `k < 0` or `k > ≢l`, one empty list for `k = 0`) |
+| `‹subsets›` | `l -> s` | all `2^≢l` subsets; the `i`-th holds `l[j]` for each set bit `j` of `i`. At most 62 elements |
+| `‹cartesian›` | `l1 l2 -> s` | the pairs `[a b]`, `a` in the outer loop |
+| `‹nextperm›` | `l -> l f` | `l` rearranged in place into its next lexicographic permutation and `0`; after the last one, `l` sorted ascending and `1` (C++'s `next_permutation`). From a `⍋`-sorted list it walks the distinct permutations |
+
+```
+5Ṿ0⍆1⍆1⍆2⍆3⍆4⍆‹adj›⍕                       ->  [1] [0 2] [1] [4] [3]
+4Ṿ0⍆1⍆1⍆2⍆0⍆2⍆2⍆3⍆‹adj›0‹bfs›⍕             ->  0 1 1 2
+5Ṿ0⍆1⍆3⍆4⍆‹adj›‹comps›⍕                     ->  0 0 1 2 2
+3Ṿ2⍆0⍆0⍆1⍆‹dadj›‹toposort›[⍕]               ->  2 0 1
+2Ṿ0⍆1⍆1⍆0⍆‹dadj›‹toposort›Ṅ                 ->  1
+3Ṿ0⍆1⍆4⍆1⍆2⍆1⍆0⍆2⍆9⍆‹wadj›0‹dijkstra›⍕       ->  0 4 5
+:p49-;“110;010;001“⊃59‹split›′p‹gcomps›Ṅ     ->  2
+:j⊐32)0;“ab;cd“⊃59‹split›‹rot90›′j€_          ->  ca db
+“abc;def“⊃59‹split›‹transpose›⍕              ->  [97 100] [98 101] [99 102]
+3⍳′⍳€"2 1 7‹gset›⍕"2 1‹gget›Ṅ                 ->  [] [0] [0 7] 7
+⊡s⇒j⇒i_⇐i3*⇐j+;3 3′s‹table2›"⍕"0 0‹nbrs4›⍕1 1‹nbrs8›≢Ṅ  ->  [0 1 2] [3 4 5] [6 7 8] [0 1] [1 0] 8
+5‹uf›0 1‹uunion›Ṅ1 0‹uunion›Ṅ3 4‹uunion›_"‹ucount›Ṅ4‹ufind›Ṅ  ->  0133
+:‹f›"2≺["1-‹fib›\\2-‹fib›+⋄];′‹f›‹memo›→‹F›:‹fib›←‹F›⍎;90‹fib›Ṅ  ->  2880067194370816120
+:s"[__1⋄\\‹last›*];6′s‹table1›⍕               ->  1 1 2 6 24 120
+1 10′⊗‹times›Ṅ                               ->  1024
+Ṿ5⍆1⍆4⍆2⍆3⍆"2‹nsmallest›⍕"2‹nlargest›⍕‹heapify›‹pqpop›Ṅ⌫  ->  1 2 5 4 1
+‹pq›2“b“⊃‹pq2push›1“a“⊃‹pq2push›‹pq2pop›⊐Ṅ‹pq2pop›⊐Ṅ⌫  ->  a1b2
+Ṿ2⍆1⍆5⍆3⍆"‹nextgreater›⍕‹prevsmaller›⍕        ->  2 2 -1 -1 -1 -1 1 1
+3⍳‹perms›‹sshow›                             ->  [0 1 2] [0 2 1] [1 0 2] [1 2 0] [2 0 1] [2 1 0]
+4⍳2‹combs›‹sshow›                            ->  [0 1] [0 2] [0 3] [1 2] [1 3] [2 3]
+3⍳‹subsets›‹sshow›                           ->  [] [0] [1] [0 1] [2] [0 2] [1 2] [0 1 2]
+2⍳3⍳‹cartesian›‹sshow›                       ->  [0 0] [0 1] [0 2] [1 0] [1 1] [1 2]
+:f⌫1+;8⍳‹perms›0′f‹sfold›Ṅ                   ->  40320
+0→c Ṿ1⍆1⍆2⍆{⇡c‹nextperm›}⍕←cṄ                 ->  1 1 2 3
+3‹uf›5‹ufind›                                ->  GOLF: vertex out of range
+```
+
+- The `‹fib›` line is the memo pattern: `‹f›` calls `‹fib›` (a forward
+  reference), `‹fib›` runs the cached `′g` kept in `‹F›`, so each
+  `fib(k)` is computed once and 90 takes 91 calls of `‹f›`.
+- In the `‹sfold›` line `f` frees each permutation as it counts it, so the
+  8! lists never coexist. The `‹nextperm›` line counts 3 calls: two
+  permutations follow `1 1 2`, then the third call wraps round to it.
+- The error goes to stderr with exit status 1, as `‹throw›` does.
+- **Digraphs** (W13 `ʘ`, the second byte's hex in `‹_dgHH›`): `ʘn ‹nextgreater›`
+  `ʘo ‹toposort›` `ʘp ‹perms›` `ʘq ‹bfs›` `ʘr ‹rot90›` `ʘs ‹subsets›`
+  `ʘt ‹table1›` `ʘu ‹uunion›` `ʘv ‹ufind›` `ʘw ‹dijkstra›` `ʘx ‹cartesian›`
+  `ʘy ‹memo›` `ʘz ‹transpose›` `ʘ5 ‹nbrs4›` `ʘ6 ‹adj›` `ʘ7 ‹gcomps›`
+  `ʘ8 ‹nbrs8›` `ʘ9 ‹combs›`. Number of Islands is `:p49-;⎕10‹split›′pʘ7Ṅ`
+  (21 bytes, 27 with `‹gcomps›` spelled out; `bench/leetcode/golf/islands.golfj`
+  is 101), and runs the 1000 × 1000 benchmark grid in 0.06 s.
+- Speed (1M-edge random graph, 200k vertices, input included): `‹adj›` then
+  `‹bfs›` 0.39 s, `‹wadj›` then `‹dijkstra›` 1.1 s, 1M `‹uunion›`s 0.19 s,
+  `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
+  0.52 s. Names that start with `‹_13e` are these words' helpers.
 
 ### Errors
 

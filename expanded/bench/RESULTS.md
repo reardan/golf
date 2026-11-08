@@ -121,3 +121,27 @@ the same. `⍒` adds n key calls through `€`, the key block and the gather.
 key and its unpacking. It went from 100 to 67 bytes and from 0.0885 to
 0.0852 s (best of 5, same session), with output equal to Python's on
 `gen.py 1 in`.
+
+
+### W13-E LeetCode library
+
+Best of 5, wall seconds, input parsing included (`ℤ` alone on the 2M-int
+graph file is 0.10 s). Graph: 200,000 vertices and 1,000,000 random edges
+(weights 1–99), as `n` then the flat edge list. All answers equal Python's.
+
+| program | s |
+|---|---|
+| `ℤ"0⊇\\1↓‹adj›≢Ṅ` (build only) | 0.34 |
+| `ℤ"0⊇\\1↓‹adj›0‹bfs›∑Ṅ` | 0.39 |
+| `ℤ"0⊇\\1↓‹wadj›0‹dijkstra›∑Ṅ` | 1.12 |
+| 1M `‹uunion›` over the same edges | 0.19 |
+| Islands, `:p49-;⎕10‹split›′p‹gcomps›Ṅ`, the 1000×1000 `gen.py 1` grid | 0.059 (`islands.golfj` today: 0.089) |
+| `ℤ‹heapify›≢Ṅ`, 1M ints (`ℤ≢Ṅ` alone: 0.042) | 0.075 |
+| `ℤ10‹nlargest›⍕`, 1M ints | 0.077 |
+| `ℤ‹nextgreater›∑Ṅ`, 1M ints | 0.076 |
+| all 10! `‹perms›` of `10⍳`, each freed | 0.52 |
+| the 20C10 `‹combs›` and 2^20 `‹subsets›` of `20⍳`, each freed | 0.37 |
+
+The pack adds 17.9 KB of code to every program: a trivial program (`1Ṅ`)
+compiles to 74,351 bytes before W13-E and 92,254 after. It uses no scratch
+cells: every word is a `⊡` word with its state in its own frame.
