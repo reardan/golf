@@ -123,7 +123,10 @@ What the W11 round added, closing the gaps against Python and Rust that
   `tools/golfi` (a replaying REPL that shows the stack via `‹stack›`),
   `tools/golfgdb` (gdb by word name: break, backtrace, data stack), and
   `tools/golfdeps` (packages pinned by sha256 in `golf.deps`, fetched into
-  `vendor/`).
+  `vendor/`), and `tools/golfrun` (runs a program as a script: compiles it
+  once into a cache and execs it, so `#!/usr/bin/env golfrun` works; W14-D).
+- **scripting** — `‹getenv› ‹environ› ‹isatty› ‹getpid› ‹exit› ‹eputs›`,
+  `‹now› ‹walltime› ‹sleep› ‹rusage›` (W14-D); see `expanded/examples/scripts/`.
 
 So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J` — which
 before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both

@@ -443,6 +443,7 @@ Prelude long names in use (all **shipped**):
 | `‹adj›` `‹dadj›` `‹wadj›` `‹dwadj›` `‹bfs›` `‹comps›` `‹toposort›` `‹dijkstra›` `‹gget›` `‹gset›` `‹nbrs4›` `‹nbrs8›` `‹gcomps›` `‹transpose›` `‹rot90›` `‹uf›` `‹ufind›` `‹uunion›` `‹ucount›` `‹memo›` `‹table1›` `‹table2›` `‹times›` `‹heapify›` `‹nsmallest›` `‹nlargest›` `‹pq2push›` `‹pq2pop›` `‹nextgreater›` `‹nextsmaller›` `‹prevgreater›` `‹prevsmaller›` `‹nextperm›` `‹perms›` `‹combs›` `‹subsets›` `‹cartesian›` (37), the 18 digraph aliases `‹_dg35›`–`‹_dg39›` `‹_dg6E›`–`‹_dg7A›` (see §1.6 "Digraph page"), and 21 helpers `‹_13e_…›` (the prefix `‹_13e` is reserved for them): 76 names | W13-E (**shipped**) | `# ===== W13-E =====` |
 | the helpers `‹_13h_cmp›` `‹_13h_bnd›` (the compose / bind kind words, whose addresses are a closure record's cell 2) and `‹_13h_comp›` `‹_13h_bind›` (the record builders `∘` and `⊸` forward to); names starting `‹_13h` are W13-H's | W13-H (**shipped**) | `# ===== W13-H =====` (end of the prelude) |
 | `‹spawn›` `‹wait›` `‹waitr›` `‹run›` `‹capture›` `‹capturet›` `‹exec›` `‹pipe›` `‹kill›` `‹signame›` (processes, REFERENCE "Processes (W14-B)"), and the helpers `‹_14b_ename›` `‹_14b_fail›` `‹_14b_pid›` `‹_14b_close›` `‹_14b_envp›` `‹_14b_path›` `‹_14b_cand›` `‹_14b_cands›` `‹_14b_frees›` `‹_14b_argvc›` `‹_14b_argvf›` `‹_14b_try›` `‹_14b_die›` `‹_14b_child›` `‹_14b_w4›` `‹_14b_st›` `‹_14b_now›` `‹_14b_reap›` `‹_14b_nb›` `‹_14b_ign›` `‹_14b_rst›` `‹_14b_rec›` `‹_14b_rd›` `‹_14b_out›` `‹_14b_drain›` `‹_14b_pf›` `‹_14b_cap0›`; names starting `‹_14b` are W14-B's | W14-B (**shipped**) | `# ===== W14-B =====` |
+| `‹getenv›` `‹environ›` `‹isatty›` `‹getpid›` `‹exit›` `‹eputs›` `‹now›` `‹walltime›` `‹sleep›` `‹rusage›`, and the helpers `‹_14d_envp›` `‹_14d_cstr›` `‹_14d_match›` `‹_14d_fail›`; names starting `‹_14d` are W14-D's | W14-D (**shipped**) | `# ===== W14-D =====` |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -770,6 +771,9 @@ W14-G 4399296–4399359, W14-J 4399360–4399423; W14-L none).
 | Task | Cells | Use |
 |---|---|---|
 | W14-B processes | none (its block 4399104–4399167 is unused) | every W14-B word is a `⊡` word or stateless; the syscall buffers (pipe2's fds, wait4's status and rusage, pollfds, clock_gettime, rt_sigaction) are `A` blocks freed after use, and the entry rsp cell 0x4F0040 is only read (envp) |
+| Task | Cells | Use |
+|---|---|---|
+| W14-D environment and time | none (its private block 4399168–4399231 is unused) | the leaves (`‹now› ‹walltime› ‹sleep› ‹isatty›`) keep the syscall's buffer on the data stack (zeros pushed, `⊷_` gives their address), `‹getenv› ‹environ› ‹rusage›` keep their state in `⊡` frames. On a failure `‹rusage›` stores the positive errno in W11-1B's errno cell 5179712 (§3.1) before it throws, as the file words do |
 
 ---
 

@@ -3116,3 +3116,68 @@
  a‹_14b_close›o‹_14b_close›q‹_14b_close›f⌫b[⋄b⌫]
  x‹_14b_out›y‹_14b_out›r;
 :‹capture›0 1﹣‹capturet›;
+# ===== W14-D =====
+# Environment, process and time words for scripts (REFERENCE "Environment
+# and time (W14-D)"), on ⎈ and ⌁.  No cells of their own: the leaves keep a
+# syscall's small buffer ON THE DATA STACK (push zeros, ⊷_ gives their
+# address, the kernel fills them in place), the rest keep their state in ⊡
+# frames, so every word is re-entrant.  The environment is read from the entry
+# rsp (cell 0x4F0040, 5177408): argc, argv[], NULL, then envp[], NULL.
+#   ‹getenv›   name -> value f   f 0 and the value (a code list; an empty value
+#                                too) when name is set, f 1 and the empty list
+#                                when not; the first matching entry wins, and
+#                                the empty name is never set
+#   ‹environ›  -> list           every envp entry `KEY=VALUE` as a code list,
+#                                in envp order
+#   ‹isatty›   fd -> f           0 if fd is a terminal (ioctl TCGETS succeeds),
+#                                else 1
+#   ‹getpid›   -> pid
+#   ‹exit›     code ->           exactly `.`: run the flush hook (so buffered
+#                                output is written, and a failed ‹assert›
+#                                still turns status 0 into 1), then exit(code).
+#                                Like `.`, no implicit output
+#   ‹eputs›    list ->           write a code list to fd 2, after draining the
+#                                stdout buffer (‹fwrite› on fd 2)
+#   ‹now›      -> ns             CLOCK_MONOTONIC in nanoseconds
+#   ‹walltime› -> ns             CLOCK_REALTIME in nanoseconds since the epoch
+#   ‹sleep›    ms ->             clock_nanosleep(CLOCK_MONOTONIC) for ms
+#                                milliseconds (a negative ms counts as 0),
+#                                restarted with the time left on EINTR
+#   ‹rusage›   who -> list       getrusage(who): 0 self, -1 children, 1 this
+#                                thread; [user µs, system µs, maxrss KB].  A
+#                                bad who throws `cannot getrusage (EINVAL)`
+# A failure stores the positive errno in W11-1B's errno cell 5179712 first,
+# as the file words do.  Helpers (‹_14d…›):
+#   ‹_14d_envp›   -> p            the address of envp[0]
+#   ‹_14d_cstr›   p -> list       the NUL-terminated bytes at p as a code list
+#   ‹_14d_match›  p s n -> f      0 if the C string p starts with the n cells
+#                                 at s (the name) followed by `=`, else 1.
+#                                 The scan stops at p's NUL, so it never reads
+#                                 past the entry
+#   ‹_14d_fail›   r verb ->       throw `cannot <verb> (<ENAME>)` for the
+#                                 kernel's negative return r (verb a “…“ block)
+# The stack buffers: `0 0 1⊷_8﹢` leaves two zero cells and the 1 (clock id)
+# above them, with the address of the upper zero; clock_gettime writes tv_sec
+# there and tv_nsec in the cell below it, so `_` (the result) leaves nsec sec.
+:‹_14d_envp›5177408⊙"⊙3≪﹢16﹢;
+⊡‹_14d_cstr›"⇒p⇒e{⇐e?0≡⋄⇐e1﹢⇒e}⇐p⇐e⇐p﹣‹_1b_tolist›;
+⊡‹_14d_match›⇒n⇒s⇒p0⇒i
+ {⇐p⇐i﹢?⇒c⇐i⇐n﹤⇐c⇐s⇐i3≪﹢⊙≡$⇐c0≡~$1﹢⋄⇐i1﹢⇒i}
+ ⇐i⇐n≡1﹢[⇐p⇐n﹢?61≡1﹢⋄1];
+⊡‹_14d_fail›⇒v±"5179712⊛‹_1b_ename›⇒e“cannot “⊃⇐v⊃⧺“ (“⊃⧺⇐e⧺“)“⊃⧺‹throw›;
+⊡‹getenv›‹_2d_chk›"⊙"⇒n0≡1﹢[_0⍳1^]8﹢⇒s‹_14d_envp›⇒q
+ {⇐q⊙0≡⋄⇐q⊙⇐s⇐n‹_14d_match›[⇐q⊙⇐n﹢1﹢‹_14d_cstr›0^]⇐q8﹢⇒q}0⍳1;
+⊡‹environ›‹_14d_envp›"⇒q⇒p0⇒n{⇐p⊙0≡⋄⇐n1﹢⇒n⇐p8﹢⇒p}
+ ⇐n⍳"16≪16>8﹢⇒d{⇐q⊙0≡⋄⇐q⊙‹_14d_cstr›⇐d⊛⇐d8﹢⇒d⇐q8﹢⇒q};
+⊡‹isatty›⇒f0 0 0 0 0 0 0 0⊷_⇒b⇐f21505⇐b16⎈⇒r________⇐r0≺±;
+:‹getpid›0 0 0 39⎈;
+:‹exit›.;
+:‹eputs›2‹fwrite›;
+:‹now›0 0 1⊷_8﹢0 228⎈_1000000000﹡﹢;
+:‹walltime›0 0 0⊷_8﹢0 228⎈_1000000000﹡﹢;
+:‹sleep›0⌈"1000%1000000﹡&1000/{1 0⊷_16﹢"0 0 230⌁4±≡1﹢}___;
+⊡‹rusage›⇒w18A⇒b⇐w⇐b0 98⎈"0≺1﹢[⇐b⌫“getrusage“‹_14d_fail›]_
+ 3⍳"16≪16>⇒l
+ ⇐b⊙1000000﹡⇐b8﹢⊙﹢⇐l8﹢⊛
+ ⇐b16﹢⊙1000000﹡⇐b24﹢⊙﹢⇐l16﹢⊛
+ ⇐b32﹢⊙⇐l24﹢⊛⇐b⌫;
