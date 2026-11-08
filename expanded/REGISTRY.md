@@ -240,7 +240,7 @@ Prelude long names in use (all **shipped**):
 | `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›`, and the helper `‹_inread›` (names starting `‹_in` are reserved for it) | W9-4C | `W9-4C-INPUT` |
 | `‹throw›` | W11-0 (the stub; W11-3A rewrites it in place) | `W11-0` — defined right after `H`, ahead of `X` |
 | `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›` | W11-1B (reserved) | `W11-1B Files` |
-| `‹flush›` | W11-1C (reserved) | `W11-1C buffered output` |
+| `‹flush›`, and the helpers `‹_1c_put›` `‹_1c_init›` | W11-1C (**shipped**) | `W11-1C buffered output` |
 | `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›` | W11-1D (reserved) | `W11-1D Text` |
 | `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›` | W11-2B (reserved) | `W11-2B dict and set` |
 | `‹heapstats›` | W11-2D (reserved) | `W11-2D use after free` |
@@ -250,7 +250,7 @@ Prelude long names in use (all **shipped**):
 | `‹stack›` | W11-4C (reserved) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 
 The table heading says shipped; the W11 rows marked *reserved* are allocated,
-not live (only `‹throw›` is shipped). **W11 helper names:** a W11 task that
+not live (only `‹throw›` and W11-1C's `‹flush›` are shipped). **W11 helper names:** a W11 task that
 needs a private helper word names it `‹_<id>…›` with its lowercase task id,
 e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
 `‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers
@@ -394,7 +394,7 @@ both forms are given here and the decimal is the one you type.
 | `m+2048`–`m+4095` | 0x410800–0x410FFF | **RETIRED** (W10-A) — v1's dictionary (`m+2048 + 4*name`; M2 ran its long names into `m+3072`…). Neither `golf2` nor `seed` touches it any more (v1c, a frozen binary, still uses it in its own process); do not encroach anyway, it is what v1 documents | free |
 | `m+4096` | 0x411000 | the output buffer, at most `p_filesz` = 64 KB | shipped |
 | `0x430000`–`0x43FFFF` | 4390912– | **RETIRED** (W10-A) — M2's long-name region (the 256-name table and its heads), moved up below. W11-0 re-allocated parts of it (next three rows); the rest stays free | free |
-| `0x430000`–`0x431FFF` | 4390912–4399103 | **W11-1C output buffer**, 8192 bytes, compiled programs only: `Ṅ ⍕ ␤ 🗲 ⊐` (and `‹fmt›`-based printers) append here; the pending-byte count is `0x4F0980` below. BSS, so untouched it costs no RAM | reserved (W11-1C) |
+| `0x430000`–`0x431FFF` | 4390912–4399103 | **W11-1C output buffer**, 8192 bytes, compiled programs only: `Ṅ ⍕ ␤ 🗲 ⊐` (and `‹fmt›`-based printers) append here; the pending-byte count is `0x4F0980` below. BSS, so untouched it costs no RAM | shipped (W11-1C) |
 | `0x432000`–`0x437FFF` | 4399104–4423679 | free (headroom, e.g. if 1C's buffer grows) | free |
 | `0x438000`–`0x43BFFF` | 4423680–4440063 | **W11-2A include state, compiler-only**: the stack of saved fd-0 duplicates for nested includes and the include-once table of paths already compiled; 2A lays it out and documents the layout here | reserved (W11-2A) |
 | `0x43C000`–`0x43FFFF` | 4440064–4456447 | **W11-4A record state, compiler-only**: field tables for `⊜` definitions; 4A lays it out and documents it here | reserved (W11-4A) |
@@ -503,7 +503,7 @@ to the integrator. Decimals are what you type.
 |------|------------|-----------------|-------------|-------------------|
 | 1A | `0x4F0900`–`0x4F093F` | 5179648 | — | 5179648 … 5179704 (all eight) |
 | 1B | `0x4F0940`–`0x4F097F` | 5179712 | `0x4F0940` 5179712: last errno (for the throw message) | 5179720 … 5179768 |
-| 1C | `0x4F0980`–`0x4F09BF` | 5179776 | `0x4F0980` 5179776: bytes pending in the output buffer at `0x430000` (0 = empty, BSS) · `0x4F0988` 5179784: the buffer's fd (0 = use fd 1) | 5179792 … 5179832 |
+| 1C | `0x4F0980`–`0x4F09BF` | 5179776 | `0x4F0980` 5179776: bytes pending in the output buffer at `0x430000` (0 = empty, BSS) · `0x4F0988` 5179784: the buffer's fd (0 = use fd 1) · `0x4F0990` 5179792: the **flush hook** — the address of `‹flush›`, stored by the prelude's init; `.` `)` `(`, the end-of-program exit and the divide-by-zero exit call it when non-zero (`tools/mkblob2.FLUSH_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0998` 5179800: `‹flush›`'s drain offset (shipped) | 5179808 … 5179832 |
 | 1D | `0x4F09C0`–`0x4F09FF` | 5179840 | — | 5179840 … 5179896 (all eight) |
 | 2A | `0x4F0A00`–`0x4F0A3F` | 5179904 | — (compiler work; its state is in `m+160` and `0x438000`) | 5179904 … 5179960 |
 | 2B | `0x4F0A40`–`0x4F0A7F` | 5179968 | dict scratch: `0x4F0A40` 5179968 · `0x4F0A48` 5179976 · `0x4F0A50` 5179984 · `0x4F0A58` 5179992 (e.g. table, mask, probe index, hash) | 5180000 … 5180024 |

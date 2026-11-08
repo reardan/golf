@@ -340,6 +340,28 @@ missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 102
 name with `GOLF: too many long names ‹…›`, both exit status 2. Locals take long
 names inside a `⊡` word (M-FRAME2), up to 16 per word.
 
+### Output
+
+The prelude's printers `Ṅ ⍕ ␤ 🗲 ⊐` write through one 8 KB output buffer
+(W11-1C). It drains to fd 1 when it fills, when the program ends, at `.`,
+before every `GOLF:` error message (so prior output comes first), before
+`‹readline›`/`‹getc›`/`‹readall›` read stdin (so a prompt shows), and before
+every raw `)` or `(`. `)` and `(` themselves are not buffered: still one
+`write`/`read` per byte.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹flush›` | `->` | write the buffered output now. Needed only before raw output that bypasses it, i.e. a `⎈` write |
+
+```
+1000000⍳⍕                # 6.9 MB of output in about 840 write(2) calls
+5Ṅ‹flush›1“b“4+1 1⎈_     # prints 5b; without ‹flush› the raw ⎈ write comes first: b5
+```
+
+Output still pending when the process dies of a signal (a kill, or the
+return-stack guard page's SIGSEGV) is lost. The cell `0x4F0988` (`5179784`)
+holds the fd the buffer drains to; `0` means fd 1.
+
 ### Input
 
 The prelude's input words (W9-4C) have long names, so they take no letter

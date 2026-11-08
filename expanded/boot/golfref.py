@@ -370,7 +370,7 @@ def compile_bytes(src: bytes) -> bytes:
     for k, name in enumerate(longs):                 # M2: called, never defined
         if mkblob2.LONG_BASE + k in pending:
             raise SystemExit(f"golfref: undefined word ‹{name.decode()}›")
-    emit(v1.AUTOEXIT)
+    emit(mkblob2.AUTOEXIT2)                          # W11-1C: flush hook, exit(0)
     if len(out) >= FILESZ:
         raise SystemExit(f"golfref: output {len(out)} bytes exceeds p_filesz {FILESZ}")
     return bytes(out)
