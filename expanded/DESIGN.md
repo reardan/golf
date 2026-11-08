@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1380** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **5100** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **16891** bytes |
-| assertions in the run2 suite | **932** |
+| assertions in the run2 suite | **935** |
 | assertions in the selfcheck suite | **69** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |

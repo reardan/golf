@@ -3467,7 +3467,8 @@ for w12z4a in parens islands slidemax; do
   "$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/$w12z4a.golfj" "$TMP/z4lc/$w12z4a" > /dev/null 2>&1 || w12z4bad="$w12z4bad [compile $w12z4a]"
 done
 grep -q '⊛' bench/leetcode/golf/parens.golfj bench/leetcode/golf/islands.golfj bench/leetcode/golf/slidemax.golfj && w12z4bad="$w12z4bad [raw ⊛ left]"
-grep -q '⍆' bench/leetcode/golf/parens.golfj && grep -q '⍈' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
+# (W13-F: parens now keeps its stack on the data stack under €, islands is ʘ7 ‹gcomps›.)
+grep -q '€' bench/leetcode/golf/parens.golfj && grep -q 'ʘ7' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
 for w12z4a in '([]{})' '([)]' '((' '())' '}' '{[()()]}'; do
   [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/parens")" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/parens.py)" ] || w12z4bad="$w12z4bad [parens $w12z4a]"
 done
@@ -3477,7 +3478,7 @@ done
 for w12z4a in '3 1 3 -1 -3 5 3 6 7' '1 4 2 9' '2 9 8 7 6 5' '4 1 2 3 4 5 6' '3 5 5 5 5'; do
   [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/slidemax" | sed 's/ *$//')" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/slidemax.py)" ] || w12z4bad="$w12z4bad [slidemax $w12z4a]"
 done
-[ -z "$w12z4bad" ] && ok "LeetCode parens (⍆ ⍅), islands (⍈ ⊇ ⍆ ⍅) and slidemax (deque, since W12-A5 one ⊟) lost their raw stacks and still answer like the Python solutions" \
+[ -z "$w12z4bad" ] && ok "LeetCode parens (since W13-F the data stack under €), islands (since W13-F ʘ7 ‹gcomps›) and slidemax (deque, since W12-A5 one ⊟) lost their raw stacks and still answer like the Python solutions" \
   || no "W12-Z4 LeetCode rewrites:$w12z4bad"
 w12z4bad=""; w12z4n=0
 while IFS= read -r w12z4l; do
@@ -4113,15 +4114,17 @@ while IFS= read -r w12o6l; do
   [ "$(printf '%s' "$w12o6x" | gc 2>&1 | sed 's/ *$//')" = "$w12o6w" ] || w12o6bad="$w12o6bad [$w12o6x]"
 done < <(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -- '  ->  ')
 [ -z "$w12o6bad" ] && [ "$(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
-  && grep -q '‹tf›⊐' bench/leetcode/golf/parens.golfj \
-  && ok "REFERENCE.md's ‹tf› examples print what they say; Valid Parentheses prints through ‹tf›" || no "W12-O6 examples:$w12o6bad"
+  && grep -q 'ṭ⊐' bench/leetcode/golf/parens.golfj \
+  && ok "REFERENCE.md's ‹tf› examples print what they say; Valid Parentheses prints through ṭ (‹tf›)" || no "W12-O6 examples:$w12o6bad"
 # === W12-O4 ===
 echo "W12-O4: bench/leetcode/golf/* — answers match Python on gen.py 0.001 inputs; bytes never grow past README.md"
-# The ten problems and their ceilings are bench/leetcode/README.md's "Byte
-# ceilings" table; bytes are counted as bytes.sh counts them (code-page bytes,
-# newlines dropped).  gen.py seeds random.Random(42), so its inputs are the
-# same every run; parens gets two extra unbalanced inputs (gen.py's are all
-# balanced).  Python's own solution (bench/leetcode/py/) is the reference.
+# The twenty problems (the W12 ten and W13-F's ten) and their ceilings are
+# bench/leetcode/README.md's "Byte ceilings" table; bytes are counted as
+# bytes.sh counts them (code-page bytes, newlines dropped).  gen.py seeds
+# random.Random(42), so its inputs are the same every run; it also writes
+# small edge cases name2.txt, name3.txt … for the W13-F ten, and parens gets
+# two extra unbalanced inputs here (gen.py's are all balanced).  Python's own
+# solution (bench/leetcode/py/) is the reference.
 w12o4L=bench/leetcode; w12o4D="$TMP/lc"; w12o4bad=""; w12o4n=0
 python3 "$w12o4L/gen.py" 0.001 "$w12o4D"
 printf '([)]\n' > "$w12o4D/parens2.txt"; printf '((\n' > "$w12o4D/parens3.txt"
@@ -4138,8 +4141,8 @@ while read -r w12o4p w12o4c; do
       || w12o4bad="$w12o4bad [$w12o4p: wrong answer on $(basename "$w12o4i")]"
   done
 done < <(sed -n '/^### Byte ceilings$/,/^### /p' "$w12o4L/README.md" | sed -n 's/^| \([a-z]*\) | \([0-9]*\) |$/\1 \2/p')
-[ "$w12o4n" = 10 ] && [ -z "$w12o4bad" ] \
-  && ok "the 10 LeetCode solutions give Python's answers on tiny inputs, each within its README byte ceiling" \
+[ "$w12o4n" = 20 ] && [ -z "$w12o4bad" ] \
+  && ok "the 20 LeetCode solutions give Python's answers on tiny inputs, each within its README byte ceiling" \
   || no "W12-O4 leetcode ($w12o4n problems):$w12o4bad"
 # === W12-Z1 ===
 echo "W12-Z1: one-byte aliases ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ (0xDB-0xE3) of the hottest long names"
@@ -5060,6 +5063,54 @@ for w13ip in twosum parens stock longsub prodself topk islands trap slidemax que
     || w13ibad="$w13ibad $w13ip($(w13isz b))"
 done
 [ -z "$w13ibad" ] && ok "the ten bench/leetcode programs: the same answers pruned and whole, $((w13isum / 10)) bytes on average" || no "W13-I bench:$w13ibad"
+# === W13-F ===
+echo "W13-F: bench/leetcode has twenty problems; ceilings are tight; pyg/ and the W13 forms agree with py/"
+# W12-O4 (above) runs the golf solutions against README.md's ceilings.  Here:
+# the twenty names in README.md's "Byte ceilings" table are bench.sh's and
+# bytes.sh's lists, in order; each has golf/ py/ pyg/ cpp/ files; each
+# ceiling is the solution's size exactly (so a shrink must lower it) and
+# "Total N" is their sum.
+w13fL=bench/leetcode; w13fbad=""; w13fsum=0
+w13fn=$(sed -n '/^### Byte ceilings$/,/^### /p' "$w13fL/README.md" | sed -n 's/^| \([a-z]*\) | \([0-9]*\) |$/\1 \2/p')
+w13fnames=$(printf '%s\n' "$w13fn" | cut -d' ' -f1 | tr '\n' ' ' | sed 's/ $//')
+for w13fs in bench.sh bytes.sh; do
+  [ "$(sed -n '/^for p in /,/; do$/p' "$w13fL/$w13fs" | tr -d '\\\n' | sed 's/^for p in *//; s/; do$//; s/  */ /g')" = "$w13fnames" ] \
+    || w13fbad="$w13fbad [$w13fs list]"
+done
+while read -r w13fp w13fc; do
+  for w13ff in golf/$w13fp.golfj py/$w13fp.py pyg/$w13fp.py cpp/$w13fp.cpp; do
+    [ -f "$w13fL/$w13ff" ] || w13fbad="$w13fbad [missing $w13ff]"
+  done
+  [ "$(python3 tools/codepage.py encode < "$w13fL/golf/$w13fp.golfj" | tr -d '\n' | wc -c)" = "$w13fc" ] \
+    || w13fbad="$w13fbad [$w13fp: ceiling $w13fc is not its size]"
+  w13fsum=$((w13fsum + w13fc))
+done <<< "$w13fn"
+[ "$(printf '%s\n' "$w13fn" | wc -l)" = 20 ] && [ -z "$w13fbad" ] \
+  && sed -n '/^### Byte ceilings$/,/^### /p' "$w13fL/README.md" | grep -q "^Total $w13fsum:" \
+  && ok "README's twenty ceilings are bench.sh's and bytes.sh's problems, each solution's exact size, total $w13fsum" \
+  || no "W13-F ceilings / lists ($w13fsum):$w13fbad"
+# Golfed Python gives py/'s answers on the gate's inputs (gen.py 0.001 and its edge cases).
+rm -rf "$TMP/w13f"; python3 "$w13fL/gen.py" 0.001 "$TMP/w13f"; w13fbad=""
+for w13fp in $w13fnames; do
+  for w13fi in "$TMP/w13f/$w13fp".txt "$TMP/w13f/$w13fp"[0-9].txt; do
+    [ -f "$w13fi" ] || continue
+    [ "$(python3 "$w13fL/pyg/$w13fp.py" < "$w13fi" 2>&1 | tr -s ' \n' '  ' | sed 's/ *$//')" \
+      = "$(python3 "$w13fL/py/$w13fp.py" < "$w13fi" | tr -s ' \n' '  ' | sed 's/ *$//')" ] \
+      || w13fbad="$w13fbad [$w13fp: pyg on $(basename "$w13fi")]"
+  done
+done
+[ -z "$w13fbad" ] && ok "pyg/ (golfed Python) gives py/'s answers for all twenty on the gate's inputs" || no "W13-F pyg:$w13fbad"
+# The README notes' alternative forms give the benchmark's answers: topk's
+# 12-byte ‹mostcommon› form (kept out for speed) and parens on deep and on
+# closing-first inputs (its stack is the data stack).
+w13fbad=""
+for w13fi in "$TMP/w13f/topk.txt"; do
+  [ "$(gin 'ℤ⍘\\"ĊḲ⍋\\⧺\\ʘk' < "$w13fi" | sed 's/ *$//')" = "$(python3 "$w13fL/py/topk.py" < "$w13fi")" ] || w13fbad="$w13fbad [topk ʘk form]"
+done
+w13fq=$(cat "$w13fL/golf/parens.golfj")
+[ "$(python3 -c "print('('*100000+'[]'*7+')'*100000)" | gin "$w13fq")" = true ] || w13fbad="$w13fbad [parens deep]"
+[ "$(printf ')(\n' | gin "$w13fq")$(printf '}\n' | gin "$w13fq")$(printf '\n' | gin "$w13fq")" = falsefalsetrue ] || w13fbad="$w13fbad [parens edge]"
+[ -z "$w13fbad" ] && ok "topk's ‹mostcommon› form agrees; parens holds 100k open brackets and starts with a closer correctly" || no "W13-F forms:$w13fbad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
