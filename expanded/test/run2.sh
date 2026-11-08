@@ -2162,6 +2162,83 @@ w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
 # === W11-2A ===
 
 # === W11-2B ===
+echo "W11-2B: dict and set — ‹hash› ‹dict› ‹put› ‹get› ‹has› ‹del› ‹keys› ‹vals› ‹set› ‹add›"
+# A compact (insertion-ordered) open-addressing dict, keys compared with ≣.
+# d is changed in place, so `"…‹put›` leaves the same d twice; the tests keep
+# one copy with `"` and let the extras pile up.
+[ "$(printf '%s' '‹dict›"1 10‹put›_"2 20‹put›_"1 11‹put›_"1‹get›Ṅ32)"2‹get›Ṅ␤"‹keys›⍕␤"‹vals›⍕␤"3‹has›Ṅ"1‹has›Ṅ␤‹keys›≢Ṅ' | gc)" \
+   = "$(printf '11 20\n1 2 \n11 20 \n10\n2')" ] \
+  && ok "put / get / overwrite in place / has (zero-is-true) / keys / vals" || no "w11-2b basics"
+# ‹hash› is FNV-1a 64 over an int's 8 bytes (low first), or over a list's
+# elements with inner lists hashed first; Python computes the same numbers.
+w112bh=$(python3 -c '
+M=2**64; B=0xcbf29ce484222325
+def f(h,x):
+  for i in range(8): h=((h^((x>>(8*i))&255))*0x100000001b3)%M
+  return h
+def H(v):
+  if isinstance(v,int): return f(B,v%M)
+  h=B
+  for e in v: h=f(h,H(e) if isinstance(e,list) else e%M)
+  return h
+s=lambda v: v-M if v>=2**63 else v
+print(" ".join(str(s(H(v))) for v in [5,0,-1,[],[0,1,2],[[],[0],[0,1]],[97,98]]))')
+[ "$(printf '%s' '5‹hash›Ṅ32)0‹hash›Ṅ32)0 1-‹hash›Ṅ32)0⍳‹hash›Ṅ32)3⍳‹hash›Ṅ32)3⍳′⍳€‹hash›Ṅ32)“ab“⊃‹hash›Ṅ' | gc)" = "$w112bh" ] \
+  && ok "‹hash›: FNV-1a 64 of ints, flat and nested lists matches Python" || no "w11-2b hash: $w112bh"
+[ "$(printf '%s' '3⍳′⍳€‹hash›3⍳′⍳€‹hash›≡Ṅ“ab“⊃‹hash›“ab“⊃‹hash›≡Ṅ3⍳‹hash›4⍳‹hash›≡Ṅ' | gc)" = "-1-10" ] \
+  && ok "‹hash›: ≣-equal (distinct) lists hash equal; different lists differ" || no "w11-2b hash eq"
+# Delete, reinsert (goes to the end), delete of a missing key, and churn: 100k
+# put+del of distinct keys only ever compacts, so the table stays at cap 8.
+[ "$(printf '%s' '‹dict›"5 1‹put›_"6 2‹put›_"7 3‹put›_"6‹del›_"‹keys›⍕"‹vals›⍕"6‹has›Ṅ"9‹del›_"6 4‹put›_"‹keys›⍕‹vals›⍕' | gc)" = "5 7 1 3 15 7 6 1 3 4 " ] \
+  && ok "‹del›: removes, a reinserted key goes last, deleting a missing key is a no-op" || no "w11-2b del"
+[ "$(printf '%s' '‹dict›→‹d›0→‹i›{←‹d›←‹i›←‹i›‹put›_←‹d›←‹i›‹del›_←‹i›⊕"→‹i›100000≡}←‹d›1⊇Ṅ32)←‹d›‹keys›≢Ṅ32)←‹d›42 1‹put›42‹get›Ṅ' | gc)" = "8 0 1" ] \
+  && ok "100k put+del: tombstones are compacted away, the table never grows" || no "w11-2b churn"
+# Growth: 1000 keys double the table to 2048 (load <= 1/2), keep insertion
+# order and every value.
+[ "$(printf '%s' '‹dict›→‹d›0→‹i›{←‹d›←‹i›←‹i›²‹put›_←‹i›⊕"→‹i›1000≡}←‹d›1⊇Ṅ32)←‹d›‹keys›1000⍳≣Ṅ32)←‹d›‹vals›1000⍳"*≣Ṅ32)←‹d›999‹get›Ṅ' | gc)" = "2048 -1 -1 998001" ] \
+  && ok "growth: 1000 keys, cap 2048, keys in insertion order, values intact" || no "w11-2b growth"
+# List keys: code lists made separately find each other; nested keys; [5] and
+# 5 are different keys though they hash alike; the empty list is a key.
+[ "$(printf '%s' '‹dict›"“ab“⊃1‹put›_"3⍳′⍳€2‹put›_"5 3‹put›_"5 1⍳+4‹put›_"0⍳5‹put›_"“ab“⊃‹get›Ṅ"3⍳′⍳€‹get›Ṅ"5‹get›Ṅ"1⍳5+‹get›Ṅ"0⍳‹get›Ṅ"2⍳′⍳€‹has›Ṅ"“abc“⊃‹has›Ṅ‹keys›⍕' | gc)" = "1234511[97 98] [[] [0] [0 1]] 5 [5] [] " ] \
+  && ok "list keys: ≣ equality, nested lists, [5] vs 5, the empty list" || no "w11-2b list keys"
+# Sets on top: ‹add› twice is one member; ‹has› ‹del› ‹keys› work on sets.
+[ "$(printf '%s' '‹set›"4‹add›_"2‹add›_"4‹add›_"“x“⊃‹add›_"‹keys›⍕"2‹has›Ṅ"3‹has›Ṅ"2‹del›_"2‹has›Ṅ"‹keys›≢Ṅ‹vals›⍕' | gc)" = "4 2 [120] 01120 0 " ] \
+  && ok "sets: ‹set› ‹add› (idempotent), ‹has› ‹del› ‹keys› on a set" || no "w11-2b sets"
+w112be(){ printf '%s' "$1" | gc > "$TMP/w112b.out" 2> "$TMP/w112b.err"; echo "rc=$? $(cat "$TMP/w112b.out") $(cat "$TMP/w112b.err")"; }
+[ "$(w112be '7Ṅ‹dict›"1 1‹put›_"2‹get›Ṅ')" = "rc=1 7 GOLF: key not found" ] && [ "$(w112be '‹dict›"1 1‹put›_"1‹del›_1‹get›')" = "rc=1  GOLF: key not found" ] \
+  && ok "‹get› of a missing (or deleted) key throws: GOLF: key not found, exit 1" || no "w11-2b missing key"
+# The done-when pair.  Word count over stdin (two of this repo's docs) matches
+# sort | uniq -c once both are sorted the same way.
+w112bwc=':‹bump›→‹k›←‹d›←‹k›1←‹d›←‹k›‹has›[_←‹d›←‹k›‹get›⊕]‹put›;:‹show›→‹k›←‹d›←‹k›‹get›Ṅ“ “🗲←‹k›⊐␤0;‹dict›→‹d›‹readall›‹words›′‹bump›€_←‹d›‹keys›′‹show›€_'
+printf '%s' "$w112bwc" | gc > /dev/null; cp "$TMP/p" "$TMP/w112bwc"
+cat REFERENCE.md DESIGN.md > "$TMP/w112b.in"
+"$TMP/w112bwc" < "$TMP/w112b.in" | LC_ALL=C sort > "$TMP/w112b.got"
+tr -s ' \t\n\r\v\f' '\n' < "$TMP/w112b.in" | grep -v '^$' | LC_ALL=C sort | uniq -c | awk '{print $1, $2}' | LC_ALL=C sort > "$TMP/w112b.want"
+[ -s "$TMP/w112b.want" ] && cmp -s "$TMP/w112b.got" "$TMP/w112b.want" \
+  && ok "word count of stdin ($(wc -l < "$TMP/w112b.want") distinct words) matches sort | uniq -c" || no "w11-2b word count"
+[ "$("$TMP/w112bwc" < "$TMP/w112b.in" | head -1 | cut -d' ' -f2-)" = "$(tr -s ' \t\n\r\v\f' '\n' < "$TMP/w112b.in" | grep -v '^$' | head -1)" ] \
+  && ok "... keys come out in order of first appearance" || no "w11-2b word count order"
+# 100,000 int inserts then 100,000 lookups (sum of the values 3i): well under
+# 1 s (about 0.05 s here; the bound is generous for slow machines).
+printf '%s' '‹dict›→‹d›0→‹i›{←‹d›←‹i›←‹i›3*‹put›_←‹i›⊕"→‹i›100000≡}0→‹s›0→‹i›{←‹s›←‹d›←‹i›‹get›+→‹s›←‹i›⊕"→‹i›100000≡}←‹s›Ṅ32)←‹d›‹keys›≢Ṅ' | gc > /dev/null
+cp "$TMP/p" "$TMP/w112bt"; w112bt0=$(date +%s%N); w112bto=$("$TMP/w112bt"); w112bt1=$(date +%s%N)
+w112bms=$(( (w112bt1 - w112bt0) / 1000000 ))
+[ "$w112bto" = "14999850000 100000" ] && [ "$w112bms" -lt 1000 ] \
+  && ok "100k int inserts + 100k lookups: right sum, ${w112bms} ms (< 1000)" || no "w11-2b 100k ($w112bto, ${w112bms} ms)"
+# The Python oracle compiles the prelude to the same behaviour.
+w112bo='‹dict›"“ab“⊃1‹put›_"3⍳′⍳€2‹put›_"7 3‹put›_"7‹del›_"9 4‹put›_"“ab“⊃‹get›Ṅ"3⍳′⍳€‹get›Ṅ‹keys›⍕7‹hash›Ṅ'
+[ "$(printf '%s' "$w112bo" | gref)" = "$(printf '%s' "$w112bo" | gc)" ] && [ "$(printf '%s' "$w112bo" | gc)" = "12[97 98] [[] [0] [0 1]] 9 5465015992139406178" ] \
+  && ok "oracle: boot/golfref.py runs the dict words identically" || no "w11-2b oracle"
+# REFERENCE.md's "Dicts and sets" examples print (stdout + stderr) what they
+# say, trailing spaces aside.
+w112bbad=""
+while IFS= read -r w112bl; do
+  w112bp=${w112bl%%  ->*}; w112bp=${w112bp%"${w112bp##*[! ]}"}; w112bw=${w112bl##*->  }
+  w112bg=$(printf '%s' "$w112bp" | gc 2>&1); w112bg=${w112bg%"${w112bg##*[! ]}"}
+  [ "$w112bg" = "$w112bw" ] || w112bbad="$w112bbad [$w112bp]"
+done < <(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w112bbad" ] && [ "$(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Dicts and sets examples print what they say" || no "REFERENCE Dicts examples:$w112bbad"
 
 # === W11-2C ===
 

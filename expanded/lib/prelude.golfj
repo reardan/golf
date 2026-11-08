@@ -929,6 +929,126 @@
  5177472\fetch5177464\fetch5177440\fetch‹_1d_put›_ Y;
 
 # === W11-2B dict and set ===
+# Hash dict and set, keyed by ints or (nested) lists, compared with ≣.
+#   ‹hash›  v -> h        FNV-1a 64-bit.  An int: its 8 bytes, low byte first.
+#                         A list: from the FNV basis, each element's 8 bytes in
+#                         turn, an inner list standing as the 8 bytes of ITS
+#                         ‹hash› — so ≣-equal values hash equal (and [5] hashes
+#                         like 5; ≣ tells them apart)
+#   ‹dict›  -> d          a new empty dict
+#   ‹put›   d k v -> d    set k to v (insert, or overwrite in place)
+#   ‹get›   d k -> v      the value; a missing k throws `key not found`
+#   ‹has›   d k -> f      0 if k is present, else 1 (zero-is-true, like ∊)
+#   ‹del›   d k -> d      remove k (no-op when absent)
+#   ‹keys›  d -> list     the live keys, in insertion order (a key deleted and
+#                         put again goes to the end)
+#   ‹vals›  d -> list     their values, in the same order
+#   ‹set›   -> s          a dict whose values are all 0;  ‹add›  s k -> s
+# d is UPDATED IN PLACE: ‹put› ‹del› ‹add› return the same d, so `‹put›_` is
+# fine.  A key list is stored by reference (not copied): changing or freeing
+# it while it is a key breaks the dict.  d is a tagged 6-cell list (≢d is 6,
+# not the count — use ‹keys›≢):
+#   d[0] index table (raw A block, cap cells)   d[1] cap (a power of two, >= 8)
+#   d[2] 64 - log2(cap) (the hash shift)        d[3] entries (raw A block)
+#   d[4] used (entries appended)                d[5] live (the count)
+# A CPython-style compact dict: entries are appended in insertion order as
+# triples [h' key value] (h' = ‹hash›>>1, never negative; -1 marks a deleted
+# entry), and the index table holds entry number + 1 (0 = empty slot), found
+# by linear probing from the top log2(cap) bits of h' * 0x9E3779B97F4A7C15.  A
+# deleted entry's slot stays as a tombstone.  When used reaches cap/2 the
+# entries are compacted into new blocks, at 2*cap when live >= cap/4 (else the
+# same cap), the index is rebuilt and the old blocks go back via ⌫ — so the
+# table's load (tombstones included) never passes 1/2.
+# 2B cells: 5179968 ‹_2b_h8›'s byte source · 5179976 / 5179984 / 5179992
+# short-lived temps (no call in between) · 5180000..5180016 ‹_2b_zero›.
+# Helpers: ‹_2b_h8› (h -> h', eight FNV-1a rounds over the int in 5179968),
+# ‹_2b_zero› (addr n ->, zero n cells), ‹_2b_find› (d k -> h' e s: e the
+# entry number or -1, s the empty slot the probe stopped at), ‹_2b_grow›
+# (d ->, compact/double), ‹_2b_col› (d off -> list, off 8 keys / 16 values).
+:‹_2b_h8›5179968\fetch255$=1 40\shl435|\rmul5179968\fetch8>5179968\store
+ 5179968\fetch255$=1 40\shl435|\rmul5179968\fetch8>5179968\store
+ 5179968\fetch255$=1 40\shl435|\rmul5179968\fetch8>5179968\store
+ 5179968\fetch255$=1 40\shl435|\rmul5179968\fetch8>5179968\store
+ 5179968\fetch255$=1 40\shl435|\rmul5179968\fetch8>5179968\store
+ 5179968\fetch255$=1 40\shl435|\rmul5179968\fetch8>5179968\store
+ 5179968\fetch255$=1 40\shl435|\rmul5179968\fetch8>5179968\store
+ 5179968\fetch255$=1 40\shl435|\rmul;
+:‹hash›"T[X16\shl16>5177440\store52210 48\shl40164 32\shl|33826 16\shl|8997|5177456\store0 5177448\store
+ 5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"T[‹hash›]5179968\store5177456\fetch‹_2b_h8›5177456\store5177448\fetch1\radd"5177448\store5177440\fetch\fetch\rlt1\radd}]
+ 5177456\fetch Y^]5179968\store52210 48\shl40164 32\shl|33826 16\shl|8997|‹_2b_h8›;
+:‹_2b_zero›5180008\store5180000\store0 5180016\store
+ {0 5180000\fetch5180016\fetch8\rmul\radd\store5180016\fetch1\radd"5180016\store5180008\fetch\rlt1\radd};
+:‹dict›6R"16\shl16>5179976\store
+ 8 A"5179976\fetch8\radd\store8‹_2b_zero›
+ 8 5179976\fetch16\radd\store61 5179976\fetch24\radd\store
+ 12 A5179976\fetch32\radd\store0 5179976\fetch40\radd\store0 5179976\fetch48\radd\store;
+# ‹_2b_find›: s0 d (masked) · s7 k · s2 h' · s1 slot · s3 the slot's content t
+# · s6 the entry's address · s4 the answer (-1 until a hit).  Per probe:
+# E = (t == 0) stops the loop; otherwise M = (h' matches) && (key ≣ k) — ≣ is
+# called only on a hash match — stops it with s4 = t-1, and a miss steps the
+# slot (mod cap).  The table is at most half full, so an empty slot exists.
+:‹_2b_find›X5177496\store16\shl16>5177440\store
+ 5177496\fetch‹hash›1>5177456\store
+ 5177456\fetch40503 48\shl31161 32\shl|32586 16\shl|31765|\rmul5177440\fetch24\radd\fetch>5177448\store
+ 0 1\rsub5177472\store
+ {5177440\fetch8\radd\fetch5177448\fetch8\rmul\radd\fetch"5177464\store0\eq
+  "[_5177440\fetch32\radd\fetch5177464\fetch1\rsub24\rmul\radd"5177488\store
+   \fetch5177456\fetch\eq~"[_5177488\fetch8\radd\fetch5177496\fetch\match~]~
+   "[5177448\fetch1\radd5177440\fetch16\radd\fetch1\rsub$5177448\store]
+   "~[5177464\fetch1\rsub5177472\store]]}
+ 5177456\fetch5177472\fetch5177448\fetch Y;
+# ‹_2b_grow›: s0 d (masked) · s4 new cap · s6 new shift · s2 new index ·
+# s3 new entries · s1 old entry number · s7 new entry count; 5179976 the old
+# entry, 5179992 the new one, 5179984 the probe slot.
+:‹_2b_grow›X16\shl16>5177440\store
+ 5177440\fetch16\radd\fetch5177472\store5177440\fetch24\radd\fetch5177488\store
+ 5177440\fetch48\radd\fetch4\rmul5177472\fetch\rlt[5177472\fetch2\rmul5177472\store5177488\fetch1\rsub5177488\store]
+ 5177472\fetch A"5177456\store5177472\fetch‹_2b_zero›
+ 5177472\fetch1>3\rmul A5177464\store
+ 0 5177496\store0 5177448\store
+ 5177440\fetch40\radd\fetch0\eq[{5177440\fetch32\radd\fetch5177448\fetch24\rmul\radd"5179976\store\fetch0\slt[
+   5177464\fetch5177496\fetch24\rmul\radd5179992\store
+   5179976\fetch\fetch5179992\fetch\store5179976\fetch8\radd\fetch5179992\fetch8\radd\store5179976\fetch16\radd\fetch5179992\fetch16\radd\store
+   5179976\fetch\fetch40503 48\shl31161 32\shl|32586 16\shl|31765|\rmul5177488\fetch>5179984\store
+   {5177456\fetch5179984\fetch8\rmul\radd\fetch0\eq"[_5179984\fetch1\radd5177472\fetch1\rsub$5179984\store0]}
+   5177496\fetch1\radd5177456\fetch5179984\fetch8\rmul\radd\store5177496\fetch1\radd5177496\store]
+  5177448\fetch1\radd"5177448\store5177440\fetch40\radd\fetch\rlt1\radd}]
+ 5177440\fetch8\radd\fetch\free5177440\fetch32\radd\fetch\free
+ 5177456\fetch5177440\fetch8\radd\store5177472\fetch5177440\fetch16\radd\store5177488\fetch5177440\fetch24\radd\store
+ 5177464\fetch5177440\fetch32\radd\store5177496\fetch5177440\fetch40\radd\store5177496\fetch5177440\fetch48\radd\store Y;
+# ‹put›: s3 v · s1 slot · s4 entry number · s2 h' · s7 k · s0 d (tagged, the
+# result) · s6 d masked.  A miss grows first when used == cap/2 (and then
+# probes again for the slot), then appends [h' k v] and points the slot at it.
+:‹put›X5177464\store&&‹_2b_find›5177448\store5177472\store5177456\store5177496\store"5177440\store16\shl16>5177488\store
+ 5177472\fetch0\slt[5177464\fetch5177488\fetch32\radd\fetch5177472\fetch24\rmul\radd16\radd\store]
+ 5177472\fetch0\slt1\radd[
+  5177488\fetch40\radd\fetch5177488\fetch16\radd\fetch1>\eq1\radd[5177488\fetch‹_2b_grow›5177440\fetch5177496\fetch‹_2b_find›5177448\store__]
+  5177488\fetch32\radd\fetch5177488\fetch40\radd\fetch24\rmul\radd5179976\store
+  5177456\fetch5179976\fetch\store5177496\fetch5179976\fetch8\radd\store5177464\fetch5179976\fetch16\radd\store
+  5177488\fetch40\radd\fetch1\radd"5177488\fetch40\radd\store5177488\fetch8\radd\fetch5177448\fetch8\rmul\radd\store
+  5177488\fetch48\radd\fetch1\radd5177488\fetch48\radd\store]
+ 5177440\fetch Y;
+:‹get›X&&‹_2b_find›_5177472\store__16\shl16>5177440\store
+ 5177472\fetch0\slt1\radd[“key not found“U‹throw›]
+ 5177440\fetch32\radd\fetch5177472\fetch24\rmul\radd16\radd\fetch Y;
+:‹has›‹_2b_find›_0\slt\neg5179976\store_5179976\fetch;
+:‹del›X&&‹_2b_find›_5177472\store__"5177440\store
+ 5177472\fetch0\slt[5177440\fetch16\shl16>"32\radd\fetch5177472\fetch24\rmul\radd5179976\store
+  0 1\rsub5179976\fetch\store0 5179976\fetch8\radd\store0 5179976\fetch16\radd\store
+  48\radd"\fetch1\rsub&\store_]
+ Y;
+# ‹_2b_col›: s3 off · s0 d (masked) · s4 the result (masked; the tagged copy
+# waits on the data stack) · s1 entry number · s7 output index.
+:‹_2b_col›X5177464\store16\shl16>5177440\store
+ 5177440\fetch48\radd\fetch R"16\shl16>5177472\store0 5177448\store0 5177496\store
+ 5177440\fetch40\radd\fetch0\eq[{5177440\fetch32\radd\fetch5177448\fetch24\rmul\radd"5179976\store\fetch0\slt[
+   5179976\fetch5177464\fetch\radd\fetch5177472\fetch5177496\fetch8\rmul\radd8\radd\store5177496\fetch1\radd5177496\store]
+  5177448\fetch1\radd"5177448\store5177440\fetch40\radd\fetch\rlt1\radd}]
+ Y;
+:‹keys›8‹_2b_col›;
+:‹vals›16‹_2b_col›;
+:‹set›‹dict›;
+:‹add›0‹put›;
 
 # === W11-2C bind ===
 
