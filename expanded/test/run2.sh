@@ -1509,6 +1509,10 @@ fi
 # prelude with every `:‹name›…;` definition cut out (the encoded bytes, walked
 # so a `;` inside “…“ or after ' does not end one), and skips the examples that
 # use ‹ themselves — the contract under test is "a program without ‹".
+# Since W11-0 one-byte words call a long name too (I, ∘ and ⌫ raise their
+# errors through ‹throw›): such a call outside a definition is cut as well,
+# which leaves those failure paths without their exit — harmless, as both
+# compilers get the same cut prelude and nothing here takes a failure path.
 python3 - lib/prelude.golfj > "$TMP/pre-m1.gb" <<'PY'
 import sys; sys.path.insert(0, "tools"); import mkblob2, codepage
 b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
@@ -1516,6 +1520,8 @@ out, i, skip = bytearray(), 0, False
 while i < len(b):
     c = b[i]
     if c == 0x3A and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True
+    if c == mkblob2.LNAME_BYTE and not skip:
+        i = b.index(mkblob2.RNAME_BYTE, i) + 1; continue
     if c == 0x27: n = 2
     elif c == mkblob2.STR_BYTE: n = b.index(mkblob2.STR_BYTE, i + 1) + 1 - i
     else: n = 1
@@ -1929,6 +1935,52 @@ w10cerr=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | cat "$TM
 grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REGISTRY.md \
   && [ "$(grep -o '4456448\\radd' lib/prelude.golfj | wc -l)" = 2 ] && grep -q '"262144\\rlt\[' lib/prelude.golfj \
   && ok "REGISTRY §3 and prelude X/Y agree on the spill region and its 4096-frame bound" || no "spill region docs/prelude"
+
+# W11 — round 3 (Python/Rust gaps): one marker per task.  A task adds its tests
+# directly under its own marker, never below the next one.
+# === W11-0 ===
+echo "W11-0: ‹throw›, the runtime's one error exit (msg code list -> 'GOLF: msg' on fd 2, exit 1)"
+# The stub every prelude error but X's goes through (index, compose arena, the
+# two ⌫ guards); W11-3A makes it catchable.  stdout stays empty, stderr is
+# exactly the line, and the routed errors read as they always did.
+w110(){ printf '%s' "$1" | gc > "$TMP/w110.out" 2> "$TMP/w110.err"; echo "rc=$? $(wc -c < "$TMP/w110.out") $(cat "$TMP/w110.err")"; }
+[ "$(w110 '7Ṅ“boom“U‹throw›8Ṅ')" = "rc=1 1 GOLF: boom" ] && [ "$(w110 '0⍳‹throw›')" = "rc=1 0 GOLF: " ] \
+  && [ "$(w110 '3⍳9⊇')" = "rc=1 0 GOLF: index out of range" ] && [ "$(w110 '3⍳"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
+  && [ "$(w110 '5⌫')" = "rc=1 0 GOLF: free of a non-heap value" ] \
+  && [ "$(w110 '0→i{′⊕′⊖∘_←i1+"→i1700\rlt1+}')" = "rc=1 0 GOLF: compose arena exhausted" ] \
+  && ok "‹throw›: user message, empty message, and the four routed errors unchanged" || no "‹throw› stub / routed errors"
+
+# === W11-1A ===
+
+# === W11-1B ===
+
+# === W11-1C ===
+
+# === W11-1D ===
+
+# === W11-2A ===
+
+# === W11-2B ===
+
+# === W11-2C ===
+
+# === W11-2D ===
+
+# === W11-3A ===
+
+# === W11-3B ===
+
+# === W11-3C ===
+
+# === W11-4A ===
+
+# === W11-4B ===
+
+# === W11-4C ===
+
+# === W11-4D ===
+
+# === W11-4E ===
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

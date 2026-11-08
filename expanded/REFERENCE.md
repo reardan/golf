@@ -389,7 +389,26 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 12 in all), so a program has 1012 for itself.
+has 13 in all), so a program has 1011 for itself.
+
+### Errors
+
+A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
+with status 1; stdout gets nothing more. The prelude raises its errors through
+one word, which a program may call too:
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹throw›` | `msg ->` | print `GOLF: `, the code list `msg` as text, and a newline on fd 2, then exit 1. Never returns |
+
+```
+“no input“⊃‹throw›       # stderr: GOLF: no input     exit status 1
+```
+
+`⊇` (`index out of range`), `∘` (`compose arena exhausted`) and `⌫`
+(`free of a non-heap value`, `double free`) go through `‹throw›`. The spill
+stack's `spill stack exhausted` and the divide-by-zero check of `/ % ÷ ∣` print
+the same way without it. Compile errors (`GOLF: undefined word x` …) exit 2.
 
 ## 4. Tutorial
 

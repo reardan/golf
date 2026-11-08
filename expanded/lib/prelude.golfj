@@ -30,7 +30,9 @@
 #                        5177488 5177496
 #   0x4F00A0..0x4F00B8   lib/tio.golfj state
 #   0x4F00C0..0x4F00F8   free-list heads, one per size class (A and ⌫, W9-3C)
-#   0x4F0900..0x4F0FFF   scratch spill stack — 28 frames of 64 bytes (X/Y)
+#   0x4F0900..0x4F0CFF   W11 runtime cells, one 64-byte slot per W11 task
+#                        (REGISTRY.md §3.1; the spill stack is at 0x440000
+#                        since W10-C, and 0x430000.. is W11-1C's out buffer)
 #   ..0x600000           return stack, growing DOWN from the top of the BSS
 #   0x600000+ (moving)   the BRK HEAP — W6/M-MEM: the list heap is whatever the
 #                        kernel gives back, starting at the program break and
@@ -104,12 +106,29 @@
 #   J  list ->             join: print a code list as text (cell -> byte)
 #   Z  l1 l2 fn -> list    zip elementwise over min(len l1, len l2)
 :H5177344;                                          # H: heap-pointer address
+# ‹throw›  msg ->   W11-0 stub of the runtime's ONE error exit; W11-3A owns it
+# and makes it catchable.  msg is a CODE LIST (tagged or a raw A block), the
+# shape “text“U builds — the same value ‹catch› will hand back.  Writes
+# `GOLF: <msg>` and a newline to fd 2 and exits 1; it never returns.  Every
+# runtime error the prelude raises comes here (I's index, ∘'s arena, ⌫'s two
+# guards) EXCEPT X's spill-stack overflow: its message would need U, which
+# frames with X, so it stays inline in X.  Hence ‹throw› must stay a leaf that
+# calls no X-framed word (and not I, whose failure path calls it).  It parks
+# the message in s0 and the index / staged byte in s1 / s2 — harmless only
+# because it never returns.  The message goes out one byte per write(2).
+:‹throw›16\shl16>5177440\store
+ “GOLF: “5177448\store 2 5177448\fetch4\radd 5177448\fetch@ 1\sys_
+ 0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177456\store 2 5177456 1 1\sys_5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
+ 10 5177456\store 2 5177456 1 1\sys_
+ 1.;
 # X/Y: callee-save spill of s0..s7 (64-byte frames at 0x440000, pointer at
 # 0x4F0030 — still a 32-bit cell, still a byte offset, now stepped by 64).
 # W10-C: the stack is 0x440000..0x47FFFF = 256 KB = 4096 frames (it was 28 at
 # 0x4F0900), and X checks it: an offset of 262144 has no room for a frame, so it
 # writes `GOLF: spill stack exhausted` to fd 2 and exits 1 (like ∘'s arena check)
-# — one compare-and-branch on the hot path, and Y needs none.  Data
+# — one compare-and-branch on the hot path, and Y needs none.  This is the one
+# prelude error NOT routed through ‹throw› (W11-0): building its message with U
+# would call X again and recurse on the full stack, so it stays inline.  Data
 # stack only: `&` (over) re-supplies the frame base for each store, `"` (dup) for
 # each load, so neither word needs a temporary.  Every slot is a full 64-bit
 # \fetch/\store, which is the whole point: a scratch cell may now hold -1.
@@ -147,20 +166,22 @@
   "1048576\radd5177396@\radd\brk 5177396@\rsub5177400!]H!
  "5177480\store\store5177480\fetch8\radd;
 :L16\shl16>\fetch;                                           # L: len(list)
+# U chars(str) -> list is defined here, ahead of I, rather than with O and J
+# below (W11-0): I's failure path builds its message with U, and a prelude a
+# pre-W10-A compiler can read (run2.sh's M2 check) calls nothing forward.
+:U X5177440\store5177440\fetch@"1\radd A"5177472\store\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]5177472\fetch1 48\shl| Y;
 # I: index(list,i).  W9-2B: CHECKED.  `&\fetch&\gt` is len >u i, so one unsigned
 # compare rejects i >= len AND every negative i (which is huge unsigned); `[`
 # then runs the failure path, which writes `GOLF: index out of range` to fd 2
-# and exits 1 — before W9-2B `3⍳9⊇` quietly read whatever cell lay past the
-# block.  The happy path costs over/fetch/over/compare/branch and still no
-# scratch; only the failure path borrows s0/s1, and it never returns.  The
+# and exits 1 (through ‹throw› since W11-0) — before W9-2B `3⍳9⊇` quietly read
+# whatever cell lay past the block.  The happy path costs over/fetch/over/
+# compare/branch and still no scratch; only the failure path (U, ‹throw›)
+# touches scratch, and it never returns.  The
 # check is its own step in front of the untouched address arithmetic.
 # W9-2A/M-TAG2: the list is masked ((v<<16)>>16) for the length read and again
 # for the address arithmetic, so a tagged list and a raw A block both index.
 :I&16\shl16>\fetch&\gt[
- “GOLF: index out of range“5177440\store
- 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
- 10 5177448\store 2 5177448 1 1\sys_
- 1.]
+ “index out of range“U‹throw›]
  8\rmul\radd16\shl16>8\radd\fetch;
 :R X"1\radd A"5177440\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177448\fetch"8\rmul5177440\fetch\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177440\fetch1 48\shl| Y;
 :S X16\shl16>5177440\store0 5177456\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177456\fetch+5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177456\fetch Y;
@@ -179,13 +200,13 @@
 :V X16\shl16>"5177440\store\fetch"1\radd A"5177472\store\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I5177472\fetch5177440\fetch\fetch5177448\fetch\rsub8\rmul\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177472\fetch1 48\shl| Y;
 :W X5177464\store16\shl16>"5177440\store\fetch"1\radd A"5177472\store__0 5177488\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I"5177456\store5177464\fetch\exec[5177488\fetch1\radd5177488\store5177456\fetch5177472\fetch5177488\fetch8\rmul\radd\store]5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]5177488\fetch5177472\fetch\store5177472\fetch1 48\shl| Y;
 # O puts(str): print a “...“ byte block.  U chars(str)->list: byte block to code
-# list (so list ops apply).  J join(list): print a code list as text (cell->byte).
+# list (so list ops apply; U itself sits above I).  J join(list): print a code
+# list as text (cell->byte).
 # A STRING IS NOT A LIST: STR_CASE emits [len:4][bytes], a 4-byte length prefix
 # followed by raw bytes, and W4A left that alone — so O and U read the length
 # with the 32-bit `@` and the bytes with `?` at str+4+i.  Only U's OUTPUT is a
 # list, and it is an ordinary 8-byte-cell one.  J's input is a real list.
 :O X5177440\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]Y;
-:U X5177440\store5177440\fetch@"1\radd A"5177472\store\store0 5177448\store5177440\fetch@0\eq[{5177440\fetch4\radd5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch@\rlt1\radd}]5177472\fetch1 48\shl| Y;
 :J X16\shl16>5177440\store0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch I)5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]Y;
 # Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
 # shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved in s7, the common length
@@ -290,10 +311,7 @@
 # The message goes to fd 2 via ⎈ and the status is 1 — a compiled program writes
 # its real output to fd 1, so a diagnostic must never land there.
 :∘5177404@65498\rlt[
- “GOLF: compose arena exhausted“5177440\store
- 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
- 10 5177448\store 2 5177448 1 1\sys_
- 1.]
+ “compose arena exhausted“U‹throw›]
  X5177456\store5177448\store5046272 5177404@\radd"5177464\store
  72&,1\radd131&,1\radd237&,1\radd8&,1\radd143&,1\radd69&,1\radd0&,1\radd
  72&,1\radd184&,1\radd5177448\fetch&!4\radd0&!4\radd255&,1\radd208&,1\radd
@@ -407,15 +425,9 @@
 # block freed, reallocated and freed again through a stale copy, is not caught.
 # A leaf like A: s5 only (the payload), no call, no frame.
 :\free16\shl16>"8\rsub5177396@\rsub5177400@\rlt[
- “GOLF: free of a non-heap value“5177440\store
- 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
- 10 5177448\store 2 5177448 1 1\sys_
- 1.]
+ “free of a non-heap value“U‹throw›]
  "8\rsub\fetch0\slt1\radd[
- “GOLF: double free“5177440\store
- 2 5177440\fetch4\radd 5177440\fetch@ 1\sys_
- 10 5177448\store 2 5177448 1 1\sys_
- 1.]
+ “double free“U‹throw›]
  "5177480\store8\rsub\fetch0&4\gt\rsub&8\gt\rsub&16\gt\rsub&32\gt\rsub&64\gt\rsub&128\gt\rsub&256\gt\rsub
  8\rmul5177536\radd"\fetch5177480\fetch\store5177480\fetch&\store_
  \neg5177480\fetch8\rsub\store;
@@ -672,6 +684,33 @@
   5177472\fetch5177448\fetch8\rmul\radd8\radd"\fetch1 48\shl|&\store_
   5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
  5177472\fetch1 48\shl| Y;
+
+# --- W11 (round 3): one named section per prelude-owning task, in wave order.
+# A task appends its words directly under its own marker line, never below the
+# next one, so parallel branches touch disjoint lines.  2A 3B 4A 4D 4E add no
+# prelude words; ‹throw› (W11-0) lives above, next to X, and 3A rewrites it in
+# place. ---
+# === W11-1A list tag 0x7FFF ===
+
+# === W11-1B Files ===
+
+# === W11-1C buffered output ===
+
+# === W11-1D Text ===
+
+# === W11-2B dict and set ===
+
+# === W11-2C bind ===
+
+# === W11-2D use after free ===
+
+# === W11-3A catch ===
+
+# === W11-3C checked arithmetic ===
+
+# === W11-4B test words ===
+
+# === W11-4C REPL stack ===
 
 # --- W3 hook installation (top-level init; must stay LAST) ---
 # M-VEC — implicit vectorization.  The bare + - * ⌈ ⌊ now compile to a

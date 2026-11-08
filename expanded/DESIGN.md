@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **948** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **2807** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **8579** bytes |
-| assertions in the run2 suite | **494** |
+| assertions in the run2 suite | **495** |
 | assertions in the selfcheck suite | **50** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -524,6 +524,33 @@ the golf2 fixpoint included. In order:
   binary −74 bytes (11841 → 11767), `seed`'s −97 (8722 → 8625); `golf2.golf`
   −37, `seed.golf` −19.
 
+## W11 decisions
+
+Recorded in W11-0, before the round-3 (Python/Rust gaps) waves start; the
+allocations they need are in [`REGISTRY.md`](REGISTRY.md) §1.3, §2 and §3.1.
+
+1. **The list tag moves to the top of the range (W11-1A).** A list value
+   becomes `addr | 0x7FFF<<48` instead of `addr | 2^48`: the top 16 bits read
+   `0x7FFF`, not `0x0001`. Afterwards only integers within `2^48` of
+   `INT64_MAX` are mistaken for lists, instead of the everyday range
+   `[2^48, 2^49)` (281 to 562 trillion) today's Known limits row describes.
+2. **Include is done in the compiler, by swapping fd 0 (W11-2A).** At an
+   include the compiler `dup`s its current fd 0, `dup2`s the opened file onto
+   fd 0, and restores the saved fd at that file's EOF; a stack of saved fds
+   gives nesting, a table of compiled paths gives include-once, and the search
+   order is the current directory, then `lib/` (then `vendor/`, added by
+   W11-4A). It is a compiler **op byte** (`0xB6`, `⎘“path“` or
+   `\import“path“`), not a recognised long name — REGISTRY §1.3 says why.
+3. **A caught error's value is its message (W11-3A).** `′f‹catch›` leaves `0`
+   when `f` returns normally and, when `f` throws, the error's message as a
+   code list — the text after `GOLF: `, like Python's exception text. Every
+   runtime error goes through one word, `‹throw›` (`msg ->`, msg a code list);
+   W11-0 shipped it as a stub that prints `GOLF: <msg>` and a newline to fd 2
+   and exits 1, and routed the prelude's index, compose-arena and two `⌫`
+   errors through it with unchanged output. `X`'s spill-stack overflow stays
+   inline (building its message would need `X` again), and so do the
+   divide-by-zero templates and the compiler's own messages.
+
 ## Invariants we do not break
 
 - `test/run2.sh` stays green, **including the golf2 self-hosting fixpoint**
@@ -586,7 +613,7 @@ These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 - **Long names (M2) are bounded and global.** 1024 per program since W10-A
-  (the prelude's 12 count too), at most 60 bytes each, interned in a fixed
+  (the prelude's 13 count too), at most 60 bytes each, interned in a fixed
   compiler table; a 1025th is refused. Every name, one-byte or long, may be
   forward-referenced (W10-A). Locals take long names too (W9-4D), up to 16 per
   `⊡` word. And there are no scopes: a long name, like a letter, is
