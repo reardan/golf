@@ -1530,7 +1530,7 @@ b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
 out, i, skip = bytearray(), 0, False
 while i < len(b):
     c = b[i]
-    if c == 0x3A and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True
+    if c in (0x3A, mkblob2.FRAME_BYTE) and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True   # W13-D: ⊡‹name› too
     if c == mkblob2.LNAME_BYTE and not skip:
         j = b.index(mkblob2.RNAME_BYTE, i) + 1
         if b[i+1:j-1] == b"_1c_put": out += b")"   # W11-1C: the raw byte write
@@ -2158,11 +2158,12 @@ w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
 [ "$(w11eprog 262144 0 | w11e "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
   && ok "a 1 MB program is refused the same way" || no "far over the cap"
 # Between the old 64 KB and the new cap, with real work in it: one word of
-# 2000 store/load/increment statements, then the list heap and the printers.
-w11es=""; for k in $(seq 1 2000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
+# 1200 store/load/increment statements (2000 until W13-D grew the prelude to
+# 87 KB), then the list heap and the printers.
+w11es=""; for k in $(seq 1 1200); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
 w11es=":‹f›0$w11es←‹x›⊕;‹f›Ṅ 100⍳"'"*∑Ṅ'
 [ "$(printf '%s' "$w11es" | python3 tools/codepage.py encode | w11e "$TMP/golf2")" = 0 ] && chmod +x "$TMP/e.out" \
-  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "2002328350" ] \
+  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "1202328350" ] \
   && ok "a $(stat -c%s "$TMP/e.out")-byte program (> 64 KB) runs: the list heap and the output buffer above the image still work" \
   || no "program past 64 KB: $(cat "$TMP/e.err")"
 w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
@@ -2685,7 +2686,14 @@ done
 [ -z "$w114bad" ] \
   && ok "malformed ⊜ (no fields, no ;, bad field, bad name, a 61-byte invented name): golf2 and golfref say so with the line, exit 2; the seed exits 2" \
   || no "malformed ⊜:$w114bad"
-w114many=$(python3 -c 'print("⊜‹r›" + "".join("‹f%d›" % k for k in range(256)) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-f255›Ṅ␤\"‹r-f0›Ṅ␤≢Ṅ")')
+# W13-E: the fields reuse the prelude's own long names (then ‹fK› fillers), so
+# the 256 fields add only their 512 invented names to the 1024 however many
+# long names the prelude defines (up to 511).
+w114many=$(python3 -c '
+import re
+pre = re.findall(r"^ *[:⊡]‹([0-9A-Za-z_-]+)›", open("lib/prelude.golfj", encoding="utf-8").read(), re.M)
+f = list(dict.fromkeys(pre))[:256]; f += ["f%d" % k for k in range(256 - len(f))]
+print("⊜‹r›" + "".join("‹%s›" % x for x in f) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-%s›Ṅ␤\"‹r-%s›Ṅ␤≢Ṅ" % (f[255], f[0]))')
 [ "$(printf '%s' "$w114many" | gc)" = "$(printf '355\n100\n256')" ] \
   && [ "$(printf '%s' "${w114many/;/‹f256›;}" | w114a "$TMP/golf2")" = "2 GOLF: too many record fields ‹r› at line 1" ] \
   && ok "256 fields (512 invented names) work; a 257th: GOLF: too many record fields ‹r›" || no "record field bound: $(cat "$TMP/inc/err")"
@@ -3734,6 +3742,7 @@ ops = [("′⌈", max), ("′⌊", min), ("′⩌", max), ("′m", max), ("′k"
 for L in range(10):
     a = [random.randint(-9, 9) for _ in range(L)]
     lit = "".join(f"{v}⍆" if v >= 0 else f"0 {-v}-⍆" for v in a)
+    if L == 7: prog.append("\f:m⌈;:k⌊;")   # W13-E: two programs, so each fits the 192 KB image next to the grown prelude
     for n in range(1, L + 2):
         for g, f in ops:
             prog.append(f"0⍳{lit}{n}{g}⊟⍕␤")
@@ -3744,13 +3753,15 @@ for L in range(10):
                     acc = f(acc, x)
                 out.append(acc)
             want.append(" ".join(map(str, out)))
-open(f"{T}/a5win.prog", "w", encoding="utf-8").write("".join(prog))
+p1, p2 = "".join(prog).split("\f")
+open(f"{T}/a5win.prog", "w", encoding="utf-8").write(p1)
+open(f"{T}/a5win2.prog", "w", encoding="utf-8").write(p2)
 open(f"{T}/a5win.want", "w").write("\n".join(want) + "\n")
 PYEOF
-[ "$(gc < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
-  && [ "$(gref < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+[ "$({ gc < "$TMP/a5win.prog"; gc < "$TMP/a5win2.prog"; } | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+  && [ "$({ gref < "$TMP/a5win.prog"; gref < "$TMP/a5win2.prog"; } | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
   && ok "lengths 0..9, every n 1..len+1, ⌈ ⌊ ⩌ :m⌈; :k⌊; + - match Python (golf2 and the oracle)" \
-  || no "W12-A5 vs Python: $(diff <(gc < "$TMP/a5win.prog" | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
+  || no "W12-A5 vs Python: $(diff <({ gc < "$TMP/a5win.prog"; gc < "$TMP/a5win2.prog"; } | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
 # The deque is O(len): a window of 100,000 over a million elements would be
 # 10^11 calls of f on the general path.  Here it is two passes.
 printf '%s' ':m⌈;1000000⍳100000′⌈⊟∑Ṅ␤1000000⍳100000′⌊⊟∑Ṅ␤1000000⍳⌽100000′m⊟∑Ṅ␤1000000⍳100000′⩍⊟≢Ṅ' \
@@ -4504,6 +4515,122 @@ while IFS= read -r w13cl; do
 done < <(sed -n '/^### More one-byte words$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
 [ -z "$w13cbad" ] && [ "$(sed -n '/^### More one-byte words$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 12 ] \
   && ok "REFERENCE.md's More one-byte words examples print what they say" || no "W13-C examples:$w13cbad"
+
+# === W13-D ===
+echo "W13-D: the LeetCode library (search, counting, lists, math, text) and its digraph names"
+# Every \`->\` example of REFERENCE.md's section prints what it says (errors on stderr).
+w13dbad=""
+while IFS= read -r w13dl; do
+  w13dx=${w13dl%%  ->*}; w13dx=${w13dx%"${w13dx##*[! ]}"}; w13de=${w13dl##*->  }
+  [ "$(printf '%s' "$w13dx" | gc 2>&1 | sed 's/ *$//')" = "$w13de" ] || w13dbad="$w13dbad [$w13dx]"
+done < <(sed -n '/^### LeetCode library: search, counting, lists, math, text$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w13dbad" ] && [ "$(sed -n '/^### LeetCode library: search, counting, lists, math, text$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 30 ] \
+  && ok "REFERENCE.md's LeetCode library examples print what they say" || no "W13-D examples:$w13dbad"
+# Each digraph name is a one-call alias of its word, and the partition is a-m, 0-4.
+w13dbad=""
+while read -r w13dh w13dw; do
+  grep -qxF ":‹_dg$w13dh›‹$w13dw›;" lib/prelude.golfj || w13dbad="$w13dbad [_dg$w13dh]"
+  sed -n '/^### 1.6 Digraph page/,/^## 2\./p' REGISTRY.md | grep -F "\`‹_dg$w13dh›\` | \`‹$w13dw›\`" | grep -q '| W13-D | shipped |$' || w13dbad="$w13dbad [REGISTRY _dg$w13dh]"
+done <<'W13D'
+61 any
+62 bisect
+63 countif
+64 divmod
+65 all
+66 find
+67 gcd
+68 bsearch
+69 inter
+6A groupby
+6B mostcommon
+6C lcm
+6D argmax
+30 argmin
+31 abs
+32 isdigit
+33 union
+34 ispal
+W13D
+[ -z "$w13dbad" ] && [ "$(grep -c '^:‹_dg[0-9A-F][0-9A-F]›' <(sed -n '/^# ===== W13-D =====/,/^# =====/p' lib/prelude.golfj))" = 18 ] \
+  && [ "$(printf '%s' '12 18‹_dg67›Ṅ“a1“⊃′‹_dg32›‹_dg63›Ṅ0 7- 2‹_dg64›ṄṄ5⍳2-‹_dg31›⍕' | gc)" = "611-42 1 0 1 2 " ] \
+  && ok "the 18 digraph names ‹_dg61›…‹_dg6D› ‹_dg30›…‹_dg34› are one-call aliases (REGISTRY's Digraph page agrees) and run as their words" \
+  || no "W13-D digraph names:$w13dbad"
+# Threading: the function sees the caller's stack and the early exits stop calling it.
+[ "$(printf '%s' ':c\\⊕\\2∣;0 6⍳′c‹countif›ṄṄ 0 6⍳′c‹any›ṄṄ 0 6⍳′c‹all›ṄṄ' | gc)" = "360112" ] \
+  && [ "$(printf '%s' ':c\\⊕\\3≺1﹢;0 6⍳′c‹takewhile›⍕Ṅ0 6⍳′c‹dropwhile›⍕Ṅ' | gc)" = "0 1 2 43 4 5 4" ] \
+  && [ "$(printf '%s' ':c\\⊕\\²50≺±;0 0 100′c‹bsearch›ṄṄ:k\\⊕\\3∣;0 7⍳′k‹groupby›‹vals›⍕Ṅ' | gc)" = "87[0 3 6] [1 4] [2 5] 7" ] \
+  && [ "$(printf '%s' ':g′‹isdigit›‹countif›;“a1“⊃“22“⊃“x“⊃Ṿ\\⍆\\⍆\\⍆′g€⍕:h3≺1﹢;:f′h‹any›;3⍳′⍳€′f‹countif›Ṅ' | gc)" = "0 2 1 2" ] \
+  && ok "‹countif› ‹any› ‹all› ‹takewhile› ‹dropwhile› ‹bsearch› ‹groupby› thread the caller's stack, stop early, and nest (inside € and each other)" \
+  || no "W13-D threading"
+# Edge cases: empty lists, n=0/1/2 sieves, k past the distinct count, nested abs/isdigit.
+[ "$(printf '%s' '0⍳3‹bisect›Ṅ0⍳‹argmin›Ṅ0⍳3‹chunk›≢Ṅ0⍳‹prefix›⍕0⍳‹ispal›Ṅ0⍳0⍳‹lexcmp›Ṅ0⍳0⍳‹find›Ṅ0⍳1⍳‹find›Ṅ0⍳9‹mostcommon›≢Ṅ0⍳"‹union›≢Ṅ' | gc)" = "0-100 000-100" ] \
+  && [ "$(printf '%s' '0‹sieve›≢Ṅ2‹sieve›≢Ṅ3‹sieve›⍕5 0 1‹powmod›Ṅ5 0 7‹powmod›Ṅ0 3 7‹powmod›Ṅ1‹isqrt›Ṅ0‹isqrt›Ṅ0 0‹lcm›Ṅ0 5-0‹gcd›Ṅ' | gc)" = "002 0101005" ] \
+  && [ "$(printf '%s' '3⍳′⍳€1-‹abs›⍕“ab“⊃“1“⊃Ṿ\\⍆\\⍆‹isdigit›⍕0‹_13d_a›Ṅ0 3-‹sign›Ṅ' | gc)" = "[] [1] [1 0] [0] [1 1] 0-1" ] \
+  && [ "$(printf '%s' '5Ṿ‹diffapply›⍕0 1-Ṿ‹diffapply›≢Ṅ' | gc)" = "0 0 0 0 0 0" ] \
+  && ok "empty lists, the smallest sieves and moduli, nested ‹abs›/‹isdigit›, an empty ‹diffapply›" || no "W13-D edge cases"
+# Errors, through ‹catch› too.
+[ "$(w110 '5⍳0‹chunk›')" = "rc=1 0 GOLF: chunk size < 1" ] && [ "$(w110 '0 1-‹isqrt›')" = "rc=1 0 GOLF: isqrt of negative" ] \
+  && [ "$(w110 '5⍳"⌫3‹bisect›')" = "rc=1 0 GOLF: use after free" ] && [ "$(w110 '5⍳"⌫′⊕‹countif›')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(w110 '5 0‹divmod›')" = "rc=1 0 GOLF: divide by zero" ] && [ "$(w110 '2 3 0‹powmod›')" = "rc=1 0 GOLF: divide by zero" ] \
+  && [ "$(printf '%s' ':f5⍳0‹chunk›;′f‹catch›⊐:g9 8 7 0 1-‹isqrt›;1 2′g‹catch›⊐ṄṄ' | gc)" = "chunk size < 1isqrt of negative21" ] \
+  && ok "chunk size < 1, isqrt of negative, use after free, divide by zero exit 1 and are catchable (the stack below a catch survives)" || no "W13-D errors"
+# Differential against Python on random inputs.
+w13dpy=$(python3 - "$TMP" <<'PY'
+import random, sys, bisect, math, collections
+t = sys.argv[1]; R = random.Random(13)
+def w(name, s): open(f"{t}/w13d_{name}", "w").write(s)
+srt = sorted(R.randrange(-50, 50) for _ in range(300)); qs = [R.randrange(-60, 60) for _ in range(200)]
+w("bis.in", " ".join(map(str, srt + qs)))
+w("bis.out", " ".join(str(bisect.bisect_left(srt, q)) for q in qs) + " \n" + " ".join(str(bisect.bisect_right(srt, q)) for q in qs) + " ")
+mc = [R.randrange(30) for _ in range(2000)]; c = collections.Counter(mc); first = {}
+for i, x in enumerate(mc): first.setdefault(x, i)
+w("mc.in", " ".join(map(str, mc)))
+w("mc.out", " ".join(str(x) for x in sorted(c, key=lambda x: (-c[x], first[x]))[:7]) + " ")
+a = [R.randrange(400) for _ in range(500)]; b = [R.randrange(400) for _ in range(500)]
+def uniq(s):
+    seen = set(); return [x for x in s if not (x in seen or seen.add(x))]
+sb = set(b)
+w("set.in", " ".join(map(str, a + b)))
+w("set.out", "\n".join(" ".join(map(str, l)) + " " for l in (uniq(a + b), uniq([x for x in a if x in sb]), uniq([x for x in a if x not in sb]))))
+lines, outs = [], []
+for _ in range(60):
+    h = "".join(R.choice("ab") for _ in range(R.randrange(0, 40))); n = "".join(R.choice("ab") for _ in range(R.randrange(0, 6)))
+    lines += [h, n]; outs.append(str(h.find(n)))
+w("find.in", "\n".join(lines) + "\n"); w("find.out", "\n".join(outs))
+rows, outs = [], []
+for _ in range(80):
+    x = R.randrange(-10**6, 10**6); y = R.choice([1, -1]) * R.randrange(1, 10**4); m = R.choice([1, 2, 97, 10**9 + 7, 2**61 - 1, 2**62 + 135])
+    q, r = divmod(x, y); rows += [x, y, m]
+    outs.append(f"{math.gcd(x, y)} {abs(x * y) // math.gcd(x, y)} {q} {r} {pow(x, abs(y), m)} {math.isqrt(abs(x))}")
+w("math.in", " ".join(map(str, rows))); w("math.out", "\n".join(outs))
+big = [R.randrange(2**63) for _ in range(100)] + [k * k - d for k in (2**31, 3037000499) for d in (0, 1)]
+w("isq.in", " ".join(map(str, big))); w("isq.out", " ".join(str(math.isqrt(v)) for v in big) + " ")
+pr = [p for p in range(2, 5000) if all(p % d for d in range(2, int(p ** .5) + 1))]
+w("sieve.out", " ".join(map(str, pr)) + " ")
+lx, outs = [], []
+for _ in range(100):
+    u = [R.randrange(3) for _ in range(R.randrange(4))]; v = [R.randrange(3) for _ in range(R.randrange(4))]
+    lx += [len(u)] + u + [len(v)] + v; outs.append(str((u > v) - (u < v)))
+w("lex.in", " ".join(map(str, lx))); w("lex.out", "".join(outs))
+print("ok")
+PY
+)
+w13dbad=""
+[ "$(gin ':q←s\\‹bisect›;:r←s\\‹bisectr›;ℤ"300↑→s300↓"′q€⍕␤′r€⍕' < "$TMP/w13d_bis.in")" = "$(cat "$TMP/w13d_bis.out")" ] || w13dbad="$w13dbad [bisect]"
+[ "$(gin 'ℤ7‹mostcommon›⍕' < "$TMP/w13d_mc.in")" = "$(cat "$TMP/w13d_mc.out")" ] || w13dbad="$w13dbad [mostcommon]"
+[ "$(gin 'ℤ"500↑→a500↓→b←a←b‹union›⍕␤←a←b‹inter›⍕␤←a←b‹diff›⍕' < "$TMP/w13d_set.in")" = "$(cat "$TMP/w13d_set.out")" ] || w13dbad="$w13dbad [sets]"
+[ "$(gin '{⏎[→h⏎_←h\\‹find›Ṅ␤0⋄_1]}' < "$TMP/w13d_find.in")" = "$(cat "$TMP/w13d_find.out")" ] || w13dbad="$w13dbad [find]"
+[ "$(gin '⊡t"0⊇⇒a"1⊇⇒b2⊇⇒m⇐a⇐b‹gcd›Ṅ“ “🗲⇐a⇐b‹lcm›Ṅ“ “🗲⇐a⇐b‹divmod›\\Ṅ“ “🗲Ṅ“ “🗲⇐a⇐b‹abs›⇐m‹powmod›Ṅ“ “🗲⇐a‹abs›‹isqrt›Ṅ␤0;ℤ3‹chunk›′t€_' < "$TMP/w13d_math.in")" = "$(cat "$TMP/w13d_math.out")" ] || w13dbad="$w13dbad [math]"
+[ "$(gin 'ℤ′‹isqrt›€⍕' < "$TMP/w13d_isq.in")" = "$(cat "$TMP/w13d_isq.out")" ] || w13dbad="$w13dbad [isqrt]"
+[ "$(gin '5000‹sieve›⍕' < /dev/null)" = "$(cat "$TMP/w13d_sieve.out")" ] || w13dbad="$w13dbad [sieve]"
+[ "$(gin ':g‹_w›→u‹_w›←u\\‹lexcmp›Ṅ;⊡‹_w›←l"0⊇⇒c1↓"⇐c↑\\⇐c↓→l;ℤ→l100⍳′g€_' < "$TMP/w13d_lex.in")" = "$(cat "$TMP/w13d_lex.out")" ] || w13dbad="$w13dbad [lexcmp]"
+[ "$w13dpy" = ok ] && [ -z "$w13dbad" ] \
+  && ok "‹bisect› ‹bisectr› ‹mostcommon› ‹union› ‹inter› ‹diff› ‹find› ‹gcd› ‹lcm› ‹divmod› ‹powmod› ‹isqrt› ‹sieve› ‹lexcmp› agree with Python on random inputs (moduli up to 2^62)" \
+  || no "W13-D differential:$w13dbad"
+# The oracle compiles the same prelude to the same behaviour.
+w13dp='5⍳2*3‹bisect›Ṅ“mississippi“⊃2‹mostcommon›⊐“abcab“⊃“bcd“⊃‹inter›⊐:e2∣;5⍳′e‹countif›Ṅ7⍳3‹chunk›⍕3 200 1000000007‹powmod›Ṅ30‹sieve›⍕“abababc“⊃“ababc“⊃‹find›Ṅ“Hi“⊃‹upper›⊐'
+[ "$(printf '%s' "$w13dp" | gref)" = "$(printf '%s' "$w13dp" | gc)" ] && [ "$(printf '%s' "$w13dp" | gc)" = "2isbc3[0 1 2] [3 4 5] [6] 1363181652 3 5 7 11 13 17 19 23 29 2HI" ] \
+  && ok "oracle: golfref runs the W13-D words identically" || no "W13-D oracle: $(printf '%s' "$w13dp" | gc)"
 
 # === W13-INT ===
 echo "W13-INT: the wave-1 features together (digraphs under S1, S3 output, blocks, ⍖ Ṁ, S5)"
