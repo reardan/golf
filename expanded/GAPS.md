@@ -396,6 +396,14 @@ in `vendor/` (W11-4A, for fetched packages) (REFERENCE.md "Modules"). It is text
 an include guard, not Python's modules: there are no namespaces, so an
 included file's names are the includer's names.
 
+**Tooling: test runner — closed by W11-4B.** `‹assert›` (`f msg`, passes on
+`-1`) and `‹expect›` (`actual expected msg`, `≣`) print `FAIL: msg` (with
+`expected … got …`), keep going, and make the exit status 1; `tools/golftest
+[DIR|FILE…]` compiles and runs every `*_test.golfj`, prints `PASS`/`FAIL` per
+file and a summary, and exits non-zero on any failure (REFERENCE.md
+"Testing"). Unlike pytest there are no line numbers (the message names the
+check), no fixtures, and one process per file.
+
 ---
 
 ## 3. Defects found while writing this

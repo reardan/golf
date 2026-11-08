@@ -454,7 +454,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 67 in all after W11 wave 3, helpers included), so a program has 957 for itself.
+has 72 in all after W11-4B, helpers included), so a program has 952 for itself.
 
 ### Text
 
@@ -667,8 +667,8 @@ A word count over stdin:
 
 It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words), the prelude has 67 long
-names, which leaves 957 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers), the prelude has 72 long
+names, which leaves 952 for a program.
 
 ### Closures
 
@@ -855,6 +855,77 @@ glyphs).
 
 Every word body starts with the same prologue (`sub rbp,8; pop [rbp]`, bytes
 `48 83 ED 08 8F 45 00`), so a map line is easy to check against the binary.
+
+### Testing
+
+Two prelude words check values (W11-4B), and `tools/golftest` runs test files.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹assert›` | `f msg ->` | passes when `f` is exactly `-1`, the "true" that the comparisons `≡ ≣ ≺ ≻ < »` push, so `a b≡“msg“⊃‹assert›` says what it checks. **Every other value fails**: `0`, and also `1` and any zero-is-true flag (`∊ ‹has› ‹startswith› T`, a difference `a b-`), so a flag of the other convention can never pass by accident. Turn one into a `-1` first with `0≡`: `l x∊0≡“has x“⊃‹assert›` |
+| `‹expect›` | `actual expected msg ->` | passes when `actual ≣ expected` (structural equality, so ints, lists and nested lists alike) |
+
+`msg` is a code list, `“text“⊃` (plain ASCII: a glyph inside `“…“` is
+encoded to its byte). A check that passes prints nothing. One that fails
+prints one line through the buffered printers, so on stdout and in order with
+the program's own output:
+
+```
+FAIL: <msg>                              ‹assert›
+FAIL: <msg>: expected <e> got <a>        ‹expect›
+```
+
+where an int shows as `Ṅ` prints it and a list as `[0 1 2]` (`⍕`'s elements in
+brackets, nested lists as `⍕` shows them, no trailing space; `[]` when empty).
+Then the program **carries on**: every check in a file runs. The failures are
+counted in the cell `0x4F0C00` (`5180416⊙` reads it), and once one has failed
+the program's **exit status becomes 1**: the end of the program exits 1
+instead of 0, and an explicit `0.` exits 1 too (any other `.` status is kept;
+an uncaught error still exits 1). There is no closing word to call. (How: the
+first failure wraps the output-flush hook that every exit runs, W11-1C, in a
+word that flushes and then turns the exit status 0 into 1.)
+
+There are no line numbers: the compiler's line count exists only at compile
+time, so **the message is the check's name** — make each one distinct.
+
+```
+1 1≡“one is one“⊃‹assert›“ok“⊃⊐  ->  ok
+1 2≡“one is two“⊃‹assert›  ->  FAIL: one is two
+0“zero is not true here“⊃‹assert›  ->  FAIL: zero is not true here
+5⍳3∊0≡“3 in 0..4“⊃‹assert›“ok“⊃⊐  ->  ok
+3⍳⌽ 3⍳“reversed“⊃‹expect›  ->  FAIL: reversed: expected [0 1 2] got [2 1 0]
+6 7“six“⊃‹expect›  ->  FAIL: six: expected 7 got 6
+2⍳′⍳€ 0⍳“nested“⊃‹expect›  ->  FAIL: nested: expected [] got [[] [0]]
+2 3≺“signed less“⊃‹assert›“ok“⊃⊐  ->  ok
+```
+
+Each example that prints `FAIL:` exits with status 1. A program that goes on
+after a failure keeps printing: `1 2≡“a“⊃‹assert›“still here“⊃⊐␤5180416⊙Ṅ`
+prints `FAIL: a`, `still here` and `1` on three lines, and exits 1.
+
+**`tools/golftest [DIR|FILE …]`** finds every `*_test.golfj` under each DIR
+(recursively; the current directory when no argument is given) plus each FILE
+named, compiles each with `tools/golfc -j` from the current directory (so `⎘`
+includes resolve as usual), runs it with stdin from `/dev/null`, and prints
+one line per file, then a summary:
+
+```
+PASS examples/tests/lists_test.golfj
+FAIL test/fixtures/golftest/fail_test.golfj (exit 1)
+  FAIL: one is two
+  FAIL: reverse is identity: expected [0 1 2] got [2 1 0]
+  FAIL: six: expected 7 got 6
+1 passed, 1 failed
+```
+
+A file fails when it does not compile (`FAIL f (compile error)` and the
+compiler's message, e.g. `GOLF: undefined word q at line 2`), when it exits
+non-zero (`FAIL f (exit N)`, then its `FAIL:` lines and its stderr, such as a
+`GOLF:` runtime error), when it prints a line starting `FAIL: ` even with exit
+0, or when it runs past `GOLFTEST_TIMEOUT` seconds (default 60; `FAIL f
+(timeout)`). `golftest` exits 0 when every file passed and 1 when any failed
+or none was found. A test file is an ordinary program: it may define words,
+`⎘` the code under test, and print.
 
 ## 4. Tutorial
 

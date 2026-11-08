@@ -1232,6 +1232,40 @@
   5180288\fetch1\neg\eq5180296\fetch1 63\shl\eq$~$[“integer overflow“U‹throw›]];
 
 # === W11-4B test words ===
+# ‹assert›  f msg ->               PASS iff f is exactly -1, the true of the
+#   comparison atoms (≡ ≣ ≺ ≻ < » …), so `a b≡“msg“⊃‹assert›` reads as it
+#   says.  Anything else fails — 0, and also 1 and every zero-is-true flag
+#   (∊ ‹has› ‹startswith› T): those never pass by accident; write `0≡` first
+#   to test one (`l x∊0≡“has x“⊃‹assert›`).
+# ‹expect›  actual expected msg -> PASS iff actual ≣ expected (structural, so
+#   ints, lists and nested lists alike).
+# msg is a code list (`“text“⊃`).  A failure prints, through the buffered
+# printers (stdout, in order with the program's own output), one line
+#   FAIL: msg                                  (‹assert›)
+#   FAIL: msg: expected E got A                (‹expect›; E A as ‹_4b_show›)
+# adds 1 to the failure count (REGISTRY §3.1 cell 5180416) and carries on.
+# EXIT STATUS: the first failure swaps the 1C flush hook (5179792) for
+# ‹_4b_exit›, keeping the old value in 5180424.  ‹_4b_exit› calls that old
+# hook (‹flush›) and then looks at the byte its call returns to: the hook is
+# called from fixed templates (tools/mkblob2._FLUSH_CALL), so 0x31 (`xor
+# edi,edi`) is the end-of-program exit(0) — make it exit(1) — and 0x5F (`pop
+# rdi`) is `.` — turn a status 0 on the data stack into 1 (any other status is
+# kept).  `)` `(` (0x6A) and the divide-by-zero exit (0x48) just flush.  So a
+# test file needs no closing word; a program that never fails never installs
+# the hook and pays nothing.  run2's W11-4B block checks both exit paths.
+# ‹_4b_show›  v ->   an int as Ṅ; a list as `[a b c]` (the inner elements by ⍕,
+#   the last one by ‹_4b_show›, so no trailing space); `[]` when empty.
+# Cells: 5180416 failures · 5180424 saved hook · 5180432 actual · 5180440
+# expected · 5180448 msg · 5180456 rbp in ‹_4b_exit›.  No swap (`\\`) here:
+# codepage.py decode -m prints the swap byte as a bare `\`, so the prelude's
+# decode/encode round trip (test/gtools.sh) only holds without it.
+:‹_4b_show›"T["≢[_“[]“🗲^]“[“🗲""≢⊖↑"⍕⌫"≢⊖⊇‹_4b_show›“]“🗲^]Ṅ;
+:‹_4b_exit›5180424\fetch\exec\spr5180456\store_5180456\fetch\fetch?"49\eq1\radd[_1 0 0 60\sys]95\eq1\radd["0\eq1\radd[_1]];
+:‹_4b_fail›“FAIL: “🗲⊐5180416\fetch"1\radd5180416\store
+ 0\eq1\radd[5179792\fetch5180424\store\ref‹_4b_exit›5179792\store];
+:‹assert›5180448\store1\radd[^]5180448\fetch‹_4b_fail›␤;
+:‹expect›5180448\store5180440\store"5180432\store5180440\fetch≣1\radd[^]
+ 5180448\fetch‹_4b_fail›“: expected “🗲5180440\fetch‹_4b_show›“ got “🗲5180432\fetch‹_4b_show›␤;
 
 # === W11-4C REPL stack ===
 
