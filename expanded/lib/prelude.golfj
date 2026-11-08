@@ -693,6 +693,78 @@
 # === W11-1A list tag 0x7FFF ===
 
 # === W11-1B Files ===
+# File I/O for ordinary programs, on ⎈ (open=2 read=0 write=1 close=3).  Paths
+# and file contents are CODE LISTS, the shape “x.txt“⊃ and ‹readall› make.
+#   ‹open›      path -> fd         open for reading (O_RDONLY)
+#   ‹create›    path -> fd         open for writing: create, truncate, mode 0644
+#   ‹close›     fd ->
+#   ‹fread›     fd n -> list       ONE read(2) of up to n bytes; empty = EOF
+#   ‹fwrite›    list fd ->         write every element's low byte, looping over
+#                                  short writes
+#   ‹readfile›  path -> list       the whole file
+#   ‹writefile› list path ->       create/truncate path, write list, close
+# Failure: ‹throw› with `cannot <verb> <path> (<ENAME>)` — verb open, create,
+# read, write or close; the fd words name `fd N` instead of a path; an errno
+# without a name reads `errno N`.  The positive errno is stored first in the
+# 1B errno cell 5179712 (0x4F0940, REGISTRY §3.1); it is never cleared.
+# State (1B slot, 8-byte cells): 5179720 errno name list · 5179728 the subject
+# path (0 = an fd word) · 5179736 the subject fd · 5179744 a path buffer, then
+# ‹_1b_dec›'s n · 5179752 / 5179760 ‹_1b_dec›'s buffer and cursor.  No word
+# here calls user code, so one global set of cells is enough.  Looping words
+# frame with X/Y and never hold s5 (A's) across a call.  Names ‹_1b…› are the
+# helpers.  Results are tagged with `1 48\shl|` like every prelude list (1A).
+# ‹_1b_tobytes›  list -> buf   a raw A block holding each element's low byte,
+# then a NUL (a path for open(2)).  s0 list · s1 i · s4 buf.
+:‹_1b_tobytes›X16\shl16>5177440\store5177440\fetch\fetch3>1\radd A5177472\store0 5177448\store
+ 5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch\radd,5177448\fetch1\radd"5177448\store5177440\fetch\fetch\rlt1\radd}]
+ 0 5177472\fetch5177440\fetch\fetch\radd,5177472\fetch Y;
+# ‹_1b_tolist›  buf n -> list   n bytes from buf as a fresh tagged code list.
+# s2 n · s3 buf · s4 result · s1 i.
+:‹_1b_tolist›X5177456\store5177464\store5177456\fetch1\radd A5177472\store5177456\fetch5177472\fetch\store0 5177448\store
+ 5177456\fetch0\eq[{5177464\fetch5177448\fetch\radd?5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
+ 5177472\fetch1 48\shl| Y;
+# ‹_1b_dec›  n -> list   unsigned decimal digits as a code list (for messages):
+# written backwards into a 24-byte block, copied out, the block freed.
+:‹_1b_dec›5179744\store3 A5179752\store24 5179760\store
+ {5179744\fetch10%48\radd5179760\fetch1\rsub"5179760\store5179752\fetch\radd,5179744\fetch10/"5179744\store0\eq}
+ 5179752\fetch5179760\fetch\radd24 5179760\fetch\rsub‹_1b_tolist›5179752\fetch\free;
+# ‹_1b_ename›  e -> list   errno e's name, or `errno e`.
+:‹_1b_ename›"1\eq1\radd[_“EPERM“U^]"2\eq1\radd[_“ENOENT“U^]"5\eq1\radd[_“EIO“U^]"9\eq1\radd[_“EBADF“U^]
+ "13\eq1\radd[_“EACCES“U^]"17\eq1\radd[_“EEXIST“U^]"20\eq1\radd[_“ENOTDIR“U^]"21\eq1\radd[_“EISDIR“U^]
+ "22\eq1\radd[_“EINVAL“U^]"24\eq1\radd[_“EMFILE“U^]"27\eq1\radd[_“EFBIG“U^]"28\eq1\radd[_“ENOSPC“U^]
+ "30\eq1\radd[_“EROFS“U^]"36\eq1\radd[_“ENAMETOOLONG“U^]"40\eq1\radd[_“ELOOP“U^]
+ “errno “U&‹_1b_dec›\cat5179744\store_5179744\fetch;
+# ‹_1b_fail›  verb r ->   r is the kernel's negative return; verb a “…“ block.
+# Store -r in the errno cell, build `verb subject (ENAME)`, ‹throw›.
+:‹_1b_fail›\neg"5179712\store‹_1b_ename›5179720\store U
+ 5179728\fetch"[_“fd “U5179736\fetch‹_1b_dec›\cat]\cat
+ “ (“U\cat5179720\fetch\cat“)“U\cat‹throw›;
+:‹open›"5179728\store‹_1b_tobytes›"5179744\store0 0 2\sys5179744\fetch\free"0\slt1\radd[“cannot open “&‹_1b_fail›];
+:‹create›"5179728\store‹_1b_tobytes›"5179744\store577 420 2\sys5179744\fetch\free"0\slt1\radd[“cannot create “&‹_1b_fail›];
+:‹close›"5179736\store0 5179728\store0 0 3\sys"0\slt1\radd[“cannot close “&‹_1b_fail›]_;
+# ‹fread›  fd n -> list.  s0 fd · s2 n (a negative n counts as 0) · s4 buf.
+:‹fread›X"0\slt1\radd[_0]5177456\store"5179736\store5177440\store0 5179728\store
+ 5177456\fetch3>1\radd A5177472\store
+ 5177440\fetch5177472\fetch5177456\fetch0\sys"0\slt1\radd[“cannot read “&‹_1b_fail›]
+ 5177456\store5177472\fetch5177456\fetch‹_1b_tolist›5177472\fetch\free Y;
+# ‹_1b_wr›  list fd ->   write it all (the subject cells are already set).
+# s0 fd · s1 cursor · s2 bytes left · s4 the byte buffer.
+:‹_1b_wr›X5177440\store"L5177456\store‹_1b_tobytes›"5177472\store5177448\store
+ 5177456\fetch0\eq[{5177440\fetch5177448\fetch5177456\fetch1\sys"1\slt1\radd[“cannot write “&‹_1b_fail›]
+  "5177448\fetch\radd5177448\store5177456\fetch&\rsub5177456\store_5177456\fetch0\eq}]
+ 5177472\fetch\free Y;
+:‹fwrite›"5179736\store0 5179728\store‹_1b_wr›;
+# ‹readfile›  path -> list.  Slurp into a doubling byte block, then one copy
+# into a list.  s0 fd · s1 buf · s2 len · s3 capacity (bytes) · s6 the new
+# block and s7 the copy index while growing.  A read error names the path.
+:‹readfile›X‹open›5177440\store65536"5177464\store3>A5177448\store0 5177456\store
+ {5177440\fetch5177448\fetch5177456\fetch\radd5177464\fetch5177456\fetch\rsub0\sys"0\slt1\radd[“cannot read “&‹_1b_fail›]
+  "0\eq["5177456\fetch\radd5177456\store5177456\fetch5177464\fetch\rsub[
+   5177464\fetch2\rmul3>A5177488\store0 5177496\store
+   {5177448\fetch5177496\fetch8\rmul\radd\fetch5177488\fetch5177496\fetch8\rmul\radd\store5177496\fetch1\radd"5177496\store5177464\fetch3>\rlt1\radd}
+   5177448\fetch\free5177488\fetch5177448\store5177464\fetch2\rmul5177464\store]]0\eq}
+ 5177440\fetch‹close›5177448\fetch5177456\fetch‹_1b_tolist›5177448\fetch\free Y;
+:‹writefile›‹create›"5179736\store‹_1b_wr›5179736\fetch‹close›;
 
 # === W11-1C buffered output ===
 

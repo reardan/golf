@@ -178,6 +178,13 @@ names, so no letter was spent: `‹readall›`, `‹readline›`, `‹getc›`,
 the program's *shape*: no implicit `main`, no auto-print, and the command line
 arrives as code lists the program must parse itself (`‹args›′‹num›€`).
 
+**Files — closed by W11-1B.** A user program could not open a file at all:
+`⎈` was there, but the file words lived only in the tools' `lib/tio.golfj`.
+The prelude now has `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›`
+`‹readfile›` `‹writefile›` (REFERENCE.md, "Files"), taking paths and contents
+as code lists, and a failure is a message, not a negative number to forget:
+`GOLF: cannot open x.txt (ENOENT)`, exit 1.
+
 ---
 
 ## 2. Gaps to Python

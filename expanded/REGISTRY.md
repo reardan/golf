@@ -239,7 +239,7 @@ Prelude long names in use (all **shipped**):
 |---|---|---|
 | `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›`, and the helper `‹_inread›` (names starting `‹_in` are reserved for it) | W9-4C | `W9-4C-INPUT` |
 | `‹throw›` | W11-0 (the stub; W11-3A rewrites it in place) | `W11-0` — defined right after `H`, ahead of `X` |
-| `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›` | W11-1B (reserved) | `W11-1B Files` |
+| `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›`, and the helpers `‹_1b_tobytes›` `‹_1b_tolist›` `‹_1b_dec›` `‹_1b_ename›` `‹_1b_fail›` `‹_1b_wr›` | W11-1B (**shipped**) | `W11-1B Files` |
 | `‹flush›` | W11-1C (reserved) | `W11-1C buffered output` |
 | `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›` | W11-1D (reserved) | `W11-1D Text` |
 | `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›` | W11-2B (reserved) | `W11-2B dict and set` |
@@ -501,7 +501,7 @@ to the integrator. Decimals are what you type.
 | Task | Slot (hex) | Slot base (dec) | Named cells | Spare cells (dec) |
 |------|------------|-----------------|-------------|-------------------|
 | 1A | `0x4F0900`–`0x4F093F` | 5179648 | — | 5179648 … 5179704 (all eight) |
-| 1B | `0x4F0940`–`0x4F097F` | 5179712 | `0x4F0940` 5179712: last errno (for the throw message) | 5179720 … 5179768 |
+| 1B | `0x4F0940`–`0x4F097F` | 5179712 | `0x4F0940` 5179712: last errno, positive, stored before the throw (never cleared) · shipped, private to the file words: 5179720 the errno-name list · 5179728 the message's path (0 = an fd word) · 5179736 the message's fd · 5179744 the path buffer, then `‹_1b_dec›`'s n · 5179752 / 5179760 `‹_1b_dec›`'s buffer / cursor | 5179768 |
 | 1C | `0x4F0980`–`0x4F09BF` | 5179776 | `0x4F0980` 5179776: bytes pending in the output buffer at `0x430000` (0 = empty, BSS) · `0x4F0988` 5179784: the buffer's fd (0 = use fd 1) | 5179792 … 5179832 |
 | 1D | `0x4F09C0`–`0x4F09FF` | 5179840 | — | 5179840 … 5179896 (all eight) |
 | 2A | `0x4F0A00`–`0x4F0A3F` | 5179904 | — (compiler work; its state is in `m+160` and `0x438000`) | 5179904 … 5179960 |
