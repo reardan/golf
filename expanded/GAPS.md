@@ -381,9 +381,11 @@ still one error per compile.
 ### 2.6 Everything around the language
 
 No modules or namespaces (textual includes: W11-2A, below), no standard
-library beyond the prelude, no package ecosystem, no REPL, no debugger
-beyond gdb by word name (W11-4D, below), no introspection, no threads or
-async, and one target: x86-64 Linux, ELF64, statically laid out. A retargetable IR is also M9.
+library beyond the prelude and no introspection; the package
+ecosystem is pinned git packages (W11-4E), the REPL is a replaying one
+(W11-4C), the debugger is gdb by word name (W11-4D) and tests run under
+`tools/golftest` (W11-4B), all below. There are no threads or async, and one
+target: x86-64 Linux, ELF64, statically laid out. A retargetable IR is also M9.
 
 **Symbols — closed by W11-3B (the debugger itself is W11-4D).** `golfc -g`
 writes `OUT.map`, one `name 0xaddr` line per defined word (the address of its
@@ -421,6 +423,17 @@ definitions, variables, includes and the stack persist; a line that fails to
 compile or run is reported and dropped (REFERENCE.md "REPL"). Not a true
 incremental REPL — earlier lines' side effects rerun, silently, every time,
 and stdin is `/dev/null`.
+
+**Package manager — closed by W11-4E.** A project's `golf.deps` pins each
+package as `name git-url tag sha256`, shaped like the root `SEEDS` file.
+`tools/golfdeps fetch` clones each tag into `vendor/<name>/`. It refuses a
+package whose content hash differs from the pin and leaves nothing behind when
+it does. The hash is a sha256 over the sorted files' own hashes, so the clone's
+metadata does not affect it. `verify` catches a modified vendor copy
+(REFERENCE.md "Packages"). Programs include package files as
+`⎘“<name>/<file>.golfj“` through W11-4A's `vendor/` search path. There is no
+registry, no version solving and no transitive dependencies: a package's own
+`golf.deps` is not read, so the project pins everything it needs.
 
 ---
 

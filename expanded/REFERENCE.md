@@ -582,6 +582,68 @@ exit status 2, and no binary. So do a 9th level of nesting
 (`GOLF: too many includes <path>`), and a path that is too long, unclosed, or
 not a `“…“` literal (`GOLF: cannot include …`).
 
+### Packages
+
+A project pins the GOLF packages it uses in **`golf.deps`**, and
+`tools/golfdeps` fetches them into **`vendor/<name>/`** next to that file
+(W11-4E). The manifest is shaped like the repo's root `SEEDS` file. A `#`
+starts a comment, at the start of a line or after a blank, and blank lines are
+ignored. Every other line is one package with four fields:
+
+```
+# golf.deps — name  git-url                                 tag    sha256
+mathx   https://github.com/example/golf-mathx.git    v1.2   3f1c8a0e5b2d4c6f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7
+textx   file:///srv/git/textx                        v0.3   0000000000000000000000000000000000000000000000000000000000000000
+```
+
+- **name** is the directory under `vendor/`. It may use letters, digits, `_`,
+  `-` and `.`, and may not start with `.`.
+- **git-url** is anything `git clone` accepts: `https://`, ssh, `file://` or a
+  local path.
+- **tag** is cloned with `--depth 1 --branch <tag>`.
+- **sha256** is the package hash (below), 64 lowercase hex digits. An all-zero
+  pin asks for the hash: `fetch` refuses the package and prints the hash it
+  got, as `SEEDS` does before a release.
+
+```
+tools/golfdeps fetch  [-f golf.deps]   # clone, check, install into vendor/<name>/
+tools/golfdeps verify [-f golf.deps]   # re-hash vendor/<name>/; exit 1 if missing or modified
+tools/golfdeps list   [-f golf.deps]   # name tag ok|missing|modified, one per line
+tools/golfdeps hash   DIR              # the package hash of DIR, to fill in a pin
+```
+
+**The package hash** covers the files only, not git's metadata. So it is the
+same for any clone, depth, git version or mirror. Take every regular file under
+the package directory except the top-level `.git/`, by its relative path. Sort
+the paths bytewise (`LC_ALL=C`). Write one line per file:
+`<sha256 of its bytes> <path>` and a newline. The package hash is the sha256 of
+those lines. File modes, timestamps and empty directories do not count. A
+symlink, a device or a file name with a newline in it is refused.
+
+`fetch` leaves alone a package whose `vendor/<name>/` already matches its pin,
+so running it again does nothing ("up to date"). Any other package is cloned
+into a temporary `vendor/.<name>.tmp/` and its `.git/` is removed. Then it is
+hashed. On a match it replaces `vendor/<name>/`. On a mismatch, `fetch` removes
+the clone and any old `vendor/<name>/`, prints the wanted and the computed
+hash, and exits 1. So nothing unpinned is left in `vendor/` to be included.
+`verify` changes nothing, and `fetch` puts a modified package back. The exit
+status is 0 when all is well, 1 when a package failed (clone, hash or verify),
+and 2 for a usage or manifest error (the message names the line).
+
+**Using a package.** A package is plain GOLF source. A program in the
+project directory includes its files through the include search path, which
+W11-4A extends with `vendor/` after the path as written and `lib/`:
+
+```
+⎘“mathx/mathx.golfj“            # found as vendor/mathx/mathx.golfj (W11-4A)
+3‹pkgcube›Ṅ                     # prints 27, with mathx.golfj holding :‹pkgcube›""**;
+```
+
+To be explicit, the same file can also be spelled
+`⎘“vendor/mathx/mathx.golfj“`, its path as written. Inside a package, a file includes its siblings the same way, as
+`⎘“<name>/<file>.golfj“`. Include-once compares paths as written, so a program
+should spell a package's files one way only.
+
 ### Memory
 
 `⌫` gives a list (or an `A` block) back to the allocator, and the next
