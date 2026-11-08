@@ -2328,6 +2328,56 @@ done < <(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | sed -n '/^```$/
   && ok "REFERENCE.md's Dicts and sets examples print what they say" || no "REFERENCE Dicts examples:$w112bbad"
 
 # === W11-2C ===
+echo "W11-2C: ⊸ bind, closures by value (x ′f ⊸ -> ′g; g pushes the captured x, calls f)"
+# The done-when line: the VALUE of n is captured when ⊸ runs, so k still adds 10
+# after n becomes 99.  (GAPS §2.2's `:f←k+;` reads k at call time instead.)
+[ "$(printf '%s' '10→n ←n′+⊸→k 99→n 3⍳←k€⍕' | gc)" = "10 11 12 " ] \
+  && ok "10→n ←n′+⊸→k 99→n 3⍳←k€⍕ prints 10 11 12 (value captured, not the variable)" || no "w11-2c capture"
+[ "$(printf '%s' '10→k :f←k+; 3⍳′f€⍕ 99→k 3⍳′f€⍕' | gc)" = "10 11 12 99 100 101 " ] \
+  && ok "... while a word reading ←k follows the global (the contrast)" || no "w11-2c global contrast"
+# x sits ABOVE the element when f runs, so ′- binds the right operand.
+[ "$(printf '%s' '3⍳5′-⊸€⍕ 4⍳2′⊇⊸⍎Ṅ' | gc)" = "-5 -4 -3 2" ] \
+  && ok "partial application of a binary word: e-5 per element; ′⊇ bound to an index" || no "w11-2c partial"
+# A captured LIST: the tagged 64-bit value goes into the thunk whole.
+[ "$(printf '%s' '3⍳′⧺⊸→c 2⍳←c⍎⍕ 0⍳←c⍎⍕ 3⍳10+′+⊸→a 3⍳←a⍎⍕ 0⍳′⧺⊸→p 2⍳←p⍎⍕' | gc)" = "0 1 0 1 2 0 1 2 10 12 14 0 1 " ] \
+  && ok "binding a list: ⧺ appends the captured list (also the empty one); + adds it elementwise" || no "w11-2c list"
+[ "$(printf '%s' '5 1 63≪′+⊸⍎Ṅ 0 1-′⊕⊸⍎Ṅ 7 0 1-′+⊸⍎Ṅ' | gc)" = "-922337203685477580306" ] \
+  && ok "the full 64 bits are captured (INT64_MIN, -1)" || no "w11-2c 64-bit"
+# Composes with ∘ on either side, binds a composed quotation, binds a bound one.
+w112cc=':d⊗;3⍳10′+⊸′d∘€⍕ 3⍳′d10′+⊸∘€⍕ 5′⊗′⊕∘⊸⍎Ṅ 3 4′+⊸⊸⍎Ṅ'
+[ "$(printf '%s' "$w112cc" | gc)" = "20 22 24 10 12 14 117" ] \
+  && ok "bind composes with ∘ (either side), binds a composed quotation, and binds a bound one" || no "w11-2c compose"
+[ "$(printf '%s' "$w112cc" | gref)" = "20 22 24 10 12 14 117" ] \
+  && ok "oracle: boot/golfref.py runs ⊸ identically" || no "w11-2c oracle"
+# ⊸ inside a map: a fresh thunk per element (X/Y frames nest), each its own x.
+[ "$(printf '%s' ':b′⍳⊸;3⍳′b€′⍎€⍕' | gc)" = "[] [0] [0 1] " ] \
+  && ok "⊸ inside €: one thunk per element, each with its own x" || no "w11-2c in map"
+# A thunk is 38 bytes in ∘'s arena (∘'s is 39), on the same bump pointer.
+[ "$(printf '%s' '1′⊕⊸1′⊕⊸\rsub\negṄ ′⊕′⊕∘1′⊕⊸\rsub\negṄ' | gc)" = "3839" ] \
+  && ok "a bind thunk is 38 bytes, on the compose arena's bump pointer" || no "w11-2c thunk size"
+# The arena bound holds for ⊸ alone and for any mix of ⊸ and ∘.  1724 binds
+# (65512 bytes) fit, the 1725th would start past 65498; 851 ∘+⊸ pairs (77 bytes
+# each) end at 65527 and the 852nd ∘ would cross.  The canary v is a variable
+# the overrun would reach (the bank starts right after the arena).
+w112c(){ printf '1234→v 0→i{%s←i1+"→i%s\\rlt1+}%s←vṄ' "$1" "$2" "${3-}" | arena; }
+w112cb='0→i{1′⊕⊸_←i1+"→i698\rlt1+}'
+[ "$(w112c '1′⊕⊸_' 1724)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && [ "$(w112c '1′⊕⊸_' 1725)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
+  && ok "1724 binds fit the arena, the 1725th says compose arena exhausted (exit 1, stdout clean)" || no "w11-2c bind arena"
+[ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 851)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && [ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 852)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
+  && ok "mixing ∘ and ⊸: 851 pairs fit with the canary intact, the next ∘ is diagnosed" || no "w11-2c mixed arena"
+[ "$(w112c '′⊕′⊖∘_' 1000 "$w112cb")" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && [ "$(w112c '′⊕′⊖∘_' 1000 "${w112cb/698/699}")" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] \
+  && ok "1000 composes then 698 binds fit; the 699th bind is diagnosed" || no "w11-2c compose-then-bind arena"
+# REFERENCE.md's Closures examples print what the doc says.
+w112cbad=""
+while IFS= read -r w112cl; do
+  w112cp=${w112cl%%  ->*}; w112cp=${w112cp%"${w112cp##*[! ]}"}; w112cw=${w112cl##*->  }
+  [ "$(printf '%s' "$w112cp" | gc | sed 's/ *$//')" = "$w112cw" ] || w112cbad="$w112cbad [$w112cp]"
+done < <(sed -n '/^### Closures$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w112cbad" ] && [ "$(sed -n '/^### Closures$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && ok "REFERENCE.md's Closures examples print what they say" || no "REFERENCE Closures examples:$w112cbad"
 
 # === W11-2D ===
 echo "W11-2D: use after free — ⌫ poisons the length cell, list words check it; ‹heapstats›"

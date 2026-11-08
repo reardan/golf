@@ -75,6 +75,8 @@ LIB = [
     # --- W9-4B LIB rows: list words (prelude anchor W9-4B-LISTWORDS2) ---
     (0xCE, "sort", "⍋", "sort: list -> new list, ascending signed (stable merge sort)"),
     (0xCF, "memb", "∊", "member: list x -> 0 if x is an element, else 1"),
+    # --- W11-2C LIB row: closures by value (prelude anchor W11-2C bind) ---
+    (0xD0, "bind", "⊸", "bind: x ′f -> ′g; g pushes the captured x, then calls f"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

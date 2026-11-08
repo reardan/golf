@@ -253,6 +253,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xCA` | `⌫` | `\free` | — | free(list\|block): release an A block to the free list |
 | `0xCE` | `⍋` | `\sort` | — | sort: list -> new list, ascending signed (stable merge sort) |
 | `0xCF` | `∊` | `\memb` | — | member: list x -> 0 if x is an element, else 1 |
+| `0xD0` | `⊸` | `\bind` | — | bind: x ′f -> ′g; g pushes the captured x, then calls f |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -270,7 +271,8 @@ A few notes on what the tables leave out:
   list ops work on text, and `⊐` prints such a list back as text.
 - **Quotations.** `′x` pushes the address of word `x`. For an atom, it pushes a
   small wrapper around the atom. `⍎` calls the address it pops. `€ ⇤ ⌿ ⊞` take
-  such an address as their function argument. `∘ ⇉ ⑂` combine them.
+  such an address as their function argument. `∘ ⇉ ⑂` combine them, and `⊸`
+  binds a value into one (see Closures below).
 - **Variables.** `→x` / `←x` store and load one global 64-bit cell per name
   byte. They are global, so a recursive word should use `⊡` locals instead:
   `⇒x` / `⇐x` reach local `x` in the current call's frame (see Locals below).
@@ -608,6 +610,34 @@ It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them,
 the prelude has 55 long names, which leaves 969 for a program.
 
+### Closures
+
+`⊸` (bind, W11-2C) makes a closure **by value**. `x ′f⊸` returns a new
+quotation that pushes the `x` it captured and then calls `f`. Use it wherever
+a quotation goes: `⍎ € ⇤ ⌿ ⊞`, or `∘` and `⊸` themselves.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `⊸` | `x ′f -> ′g` | `g` pushes `x`, then calls `f`. `x` is any 64-bit value, a list included. Since `x` lands above `g`'s own argument, `5′-⊸` is "subtract 5" (partial application of the right operand) |
+
+The value is copied when `⊸` runs, so the variable it came from can change
+afterwards. A word that reads a variable reads it at call time instead:
+
+```
+10→n ←n′+⊸→k 99→n 3⍳←k€⍕         ->  10 11 12
+10→k :f←k+; 99→k 3⍳′f€⍕           ->  99 100 101
+3⍳5′-⊸€⍕                          ->  -5 -4 -3
+3⍳′⧺⊸→c 2⍳←c⍎⍕                    ->  0 1 0 1 2
+:d⊗;3⍳10′+⊸′d∘€⍕                  ->  20 22 24
+3 4′+⊸⊸⍎Ṅ                         ->  7
+```
+
+`⊸` builds its quotation like `∘` does: a 38-byte machine-code thunk in the
+same code arena (`0x4D0000`–`0x4DFFFF`, `∘`'s thunks are 39 bytes). Nothing
+in the arena is ever freed, so a program can make about 1700 composed or
+bound quotations in all. One more prints `GOLF: compose arena exhausted` and
+exits 1, whichever of the two words asks.
+
 ### Errors
 
 A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
@@ -622,9 +652,10 @@ one word, which a program may call too:
 “no input“⊃‹throw›       # stderr: GOLF: no input     exit status 1
 ```
 
-`⊇` (`index out of range`), `∘` (`compose arena exhausted`), `⌫`
-(`free of a non-heap value`, `double free`) and every list word (`use after
-free`, see Memory above) go through `‹throw›`. The spill
+`⊇` (`index out of range`), `∘` and `⊸` (`compose arena exhausted`), `⌫`
+(`free of a non-heap value`, `double free`), `‹get›` (`key not found`)
+and every list word (`use after free`, see Memory above) go through
+`‹throw›`. The spill
 stack's `spill stack exhausted` and the divide-by-zero check of `/ % ÷ ∣` print
 the same way without it. Compile errors (`GOLF: undefined word x` …) exit 2.
 So does a program whose binary would pass 192 KB (196608 bytes, the prelude's
