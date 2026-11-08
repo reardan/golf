@@ -77,6 +77,10 @@ LIB = [
     (0xCF, "memb", "∊", "member: list x -> 0 if x is an element, else 1"),
     # --- W11-2C LIB row: closures by value (prelude anchor W11-2C bind) ---
     (0xD0, "bind", "⊸", "bind: x ′f -> ′g; g pushes the captured x, then calls f"),
+    # --- W12-A2 / W12-A3 LIB rows (prelude sections W12-A2, W12-A3) ---
+    (0xD1, "scan", "⍀", "scan: l ′f -> l'; inclusive, l'[0] = l[0], l'[i] = f(l'[i-1], l[i])"),
+    (0xD2, "reduce", "⍁", "reduce: l ′f -> x; fold seeded by l[0] (empty: empty reduce)"),
+    (0xD3, "eachi", "⍸", "each-indexed: l ′f -> l'; l'[i] = f(l[i], i)"),
     # --- W12-Z4 LIB rows: store-at, vector push/pop (prelude section W12-Z4) ---
     (0xD5, "putat", "⍈", "store-at: list i v -> list; list[i] = v in place (bounds-checked)"),
     (0xD6, "push", "⍆", "push: v x -> v'; append x (vector or deque back); use the returned v'"),

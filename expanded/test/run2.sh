@@ -3534,6 +3534,74 @@ w12p3x=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '"+⍤N E'; } | cat "$T
   && [ "$( { printf '%s:‹d›"+⍤;' "$W10CW"; w10cn 100000 3; printf '′‹d›‹catch›⊐␤5⍳"+⍕'; } | gc)" = "$(printf 'spill stack exhausted\n0 2 4 6 8 ')" ] \
   && ok "+ 100,000 deep: GOLF: spill stack exhausted, exit 1; under ‹catch› the message, then + works" || no "W12-P3 + spill exhaustion: $w12p3x"
 
+# === W12-A2 ===
+echo "W12-A2: ⍀ inclusive scan and ⍁ seedless reduce"
+# REFERENCE.md's examples for ⍀ ⍁ ⍸ (A2 and A3 share the section), on golf2
+# and, for those that print on stdout, the oracle.
+w12a2bad=""; w12a2n=0
+while IFS= read -r w12a2l; do
+  w12a2p=${w12a2l%%  ->*}; w12a2p=${w12a2p%"${w12a2p##*[! ]}"}; w12a2w=${w12a2l##*->  }
+  w12a2n=$((w12a2n+1))
+  [ "$(printf '%s' "$w12a2p" | gc 2>&1 | sed 's/ *$//')" = "$w12a2w" ] || w12a2bad="$w12a2bad [$w12a2p]"
+  case "$w12a2w" in GOLF:*) ;; *) [ "$(printf '%s' "$w12a2p" | gref | sed 's/ *$//')" = "$w12a2w" ] || w12a2bad="$w12a2bad oracle[$w12a2p]";; esac
+done < <(sed -n '/^### Scan, reduce and each-indexed/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12a2bad" ] && [ "$w12a2n" -ge 15 ] \
+  && ok "REFERENCE.md's ⍀ ⍁ ⍸ examples ($w12a2n) print what they say, golf2 and oracle" || no "W12-A2 REFERENCE examples:$w12a2bad"
+# Every length 0..9 (and 100000), scan of + and of ⌈ over a shuffled list,
+# reduce of + and ⌊, checked against Python.
+w12a2a=""
+for n in 0 1 2 3 4 5 6 7 8 9; do
+  w12a2p=":g7*11∣3-;$n⍳′g€\"′+⍀⍕␤\"′⌈⍀⍕␤\"≢0≡[\"′+⍁Ṅ␤\"′⌊⍁Ṅ]␤_"
+  w12a2w=$(python3 - "$n" <<'PY'
+import sys, itertools
+n = int(sys.argv[1]); l = [(x*7) % 11 - 3 for x in range(n)]; j = lambda v: " ".join(map(str, v))
+out = [j(itertools.accumulate(l)), j(itertools.accumulate(l, max))]
+if n: out += [str(sum(l)), str(min(l))]
+print("\n".join(out + [""]))
+PY
+)
+  [ "$(printf '%s' "$w12a2p" | gc | sed 's/ *$//')" = "$w12a2w" ] || w12a2a="$w12a2a $n"
+done
+[ -z "$w12a2a" ] && [ "$(printf '%s' '100000⍳"′+⍀"≢Ṅ␤99999⊇Ṅ␤"′+⍁Ṅ␤∑Ṅ' | gc)" = "$(printf '100000\n4999950000\n4999950000\n4999950000')" ] \
+  && ok "lengths 0..9 and 100000: ⍀ (+, ⌈) and ⍁ (+, ⌊) match Python's accumulate / sum / min" || no "W12-A2 lengths:$w12a2a"
+# A scan inside a scan's function inside a reduce's, a reduce inside a
+# reduce's, and the input is never written; the result is a new tagged list,
+# the empty one too.
+[ "$(printf '%s' ':a⍳′+⍀∑;:b⍳′a€′+⍀∑+;:r⍳1+′*⍁+;6⍳′b⍀⍕␤4⍳1+′r⍁Ṅ␤5⍳"′+⍀_⍕␤5⍳′+⍀48>Ṅ␤0⍳′+⍀48>Ṅ␤3⍳′⍳€′⧺⍁⍤Ṅ' | gc)" \
+    = "$(printf '0 0 0 1 7 28 \n33\n0 1 2 3 4 \n32767\n32767\n1')" ] \
+  && [ "$(printf '%s' ':a⍳′+⍀∑;:b⍳′a€′+⍀∑+;6⍳′b⍀⍕' | gref)" = "0 0 0 1 7 28 " ] \
+  && ok "⍀ inside ⍀ inside € inside ⍀, ⍁ inside ⍁ (and the oracle); input unchanged; results tagged" || no "W12-A2 nesting: $(printf '%s' ':a⍳′+⍀∑;:b⍳′a€′+⍀∑+;6⍳′b⍀⍕' | gc)"
+# A throw from f mid-scan / mid-reduce is caught, the word runs again and the
+# spill stack is back to 0; empty reduce is catchable; errors exit 1 with the
+# output so far flushed.
+[ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:g5⍳′t⍀;′g‹catch›⊐␤7⍳′+⍀⍕␤:h5⍳′t⍁;′h‹catch›⊐␤7⍳′+⍁Ṅ␤:e0⍳′+⍁;′e‹catch›⊐␤:k3⍳′g€;′k‹catch›⊐␤5177392@Ṅ')" \
+    = "$(printf 'two\n0 1 3 6 10 15 21 \ntwo\n21\nempty reduce\ntwo\n0 rc=0')" ] \
+  && [ "$(w110 '7Ṅ0⍳′+⍁')" = "rc=1 1 GOLF: empty reduce" ] && [ "$(w110 '5⍳"⌫′+⍀')" = "rc=1 0 GOLF: use after free" ] \
+  && [ "$(w110 '5⍳"⌫′+⍁')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "a throw mid-⍀ / mid-⍁ (also under €) is caught and the word works again; empty reduce, use after free" || no "W12-A2 errors: $(w110 '7Ṅ0⍳′+⍁')"
+[ "$(sed -n '/^# === W12-A2 scan and reduce ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 " ] \
+  && ok "⍀ ⍁ keep their state in s0..s4 under one spill frame (A2's slot 5180992… stays free)" || no "W12-A2 cells"
+
+# === W12-A3 ===
+echo "W12-A3: ⍸ each-indexed (f gets x i)"
+w12a3a=""
+for n in 0 1 2 3 4 5 6 7 8 9; do
+  w12a3w=$(python3 -c "import sys; n=int(sys.argv[1]); print(' '.join(str((x+5)*i-(x+5)) for i,x in enumerate(range(n))))" "$n")
+  [ "$(printf '%s' ":f&*\\\\-;$n⍳5+′f⍸⍕" | gc | sed 's/ *$//')" = "$w12a3w" ] || w12a3a="$w12a3a $n"
+done
+[ -z "$w12a3a" ] && [ "$(printf '%s' ':f\\_;100000⍳′f⍸"99999⊇Ṅ∑Ṅ' | gc)" = "999994999950000" ] \
+  && ok "lengths 0..9 and 100000: ⍸ calls f with x i, i from 0 (f = x*i - x)" || no "W12-A3 lengths:$w12a3a"
+# ⍸ inside €, € inside ⍸, ⍸ inside ⍸ (and the oracle); threading; tagged.
+w12a3n=':h′+⍸;:m⍳′²€∑+;:q⍳′+⍸∑+;3⍳′⍳€′h€⍕␤4⍳′m⍸⍕␤5⍳′q⍸⍕␤5⍳′+⍸48>Ṅ␤0⍳′+⍸"48>Ṅ≢Ṅ'
+[ "$(printf '%s' "$w12a3n" | gc | sed 's/ *$//')" = "$(printf '[] [0] [0 2]\n0 1 3 8\n0 1 4 9 16\n32767\n327670')" ] \
+  && [ "$(printf '%s' "$w12a3n" | gref)" = "$(printf '%s' "$w12a3n" | gc)" ] \
+  && ok "⍸ inside €, € inside ⍸, ⍸ inside ⍸ (golf2 and the oracle); results tagged, empty too" || no "W12-A3 nesting: $(printf '%s' "$w12a3n" | gc)"
+[ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:k5⍳′t⍸;′k‹catch›⊐␤4⍳′+⍸⍕␤:j3⍳′k€;′j‹catch›⊐␤5177392@Ṅ')" = "$(printf 'two\n0 2 4 6 \ntwo\n0 rc=0')" ] \
+  && [ "$(w110 '5⍳"⌫′+⍸')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "a throw mid-⍸ (also under €) is caught and ⍸ works again; use after free" || no "W12-A3 errors"
+[ "$(sed -n '/^# === W12-A3 each-indexed ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 5177488 " ] \
+  && ok "⍸ keeps its state in s0..s4 and s6 under one spill frame (A3's slot 5181056… stays free)" || no "W12-A3 cells"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
