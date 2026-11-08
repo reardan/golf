@@ -643,6 +643,45 @@ in the arena is ever freed, so a program can make about 1700 composed or
 bound quotations in all. One more prints `GOLF: compose arena exhausted` and
 exits 1, whichever of the two words asks.
 
+### Checked arithmetic
+
+The bare `+ - *` (and `﹢ ﹣ ﹡`) wrap at 64 bits, silently. The checked words
+(W11-3C) are Rust's `checked_add` / `checked_sub` / `checked_mul` turned into
+errors: the exact signed result when it fits in 64 bits, otherwise
+`GOLF: integer overflow` through `‹throw›` (exit 1; once W11-3A's `‹catch›`
+lands, `′f‹catch›` catches it and returns the message, like any other error).
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹cadd›` | `a b -> a+b` | signed add; overflow (`INT64_MAX 1`, `INT64_MIN -1`, …) throws `integer overflow` |
+| `‹csub›` | `a b -> a-b` | signed subtract; overflow (`INT64_MIN 1`, `0 INT64_MIN`, …) throws `integer overflow` |
+| `‹cmul›` | `a b -> a*b` | signed multiply; overflow (`-1 INT64_MIN`, `3037000500 3037000500`, …) throws `integer overflow`; `0` times anything is `0` |
+
+They are **scalar only**: no shape test, no broadcasting. They work through
+the raw atoms, so a number whose top 16 bits are `0x7FFF` (which the bare ops
+would take for a list, see Known limits in `DESIGN.md`) is just a number here,
+`INT64_MAX` included — and a list passed to them is likewise just its tagged
+64-bit address, never an error. Map them over a list with `€` or `⊞`.
+`INT64_MIN` is `1 63≪`; a negative is `n±`.
+
+```
+3 4‹cadd›Ṅ                                ->  7
+1 63≪ 1‹cadd›Ṅ                            ->  -9223372036854775807
+3 10‹csub›Ṅ                               ->  -7
+3037000499"‹cmul›Ṅ                        ->  9223372030926249001
+0 1 63≪‹cmul›Ṅ                            ->  0
+9223372036854775807⊕Ṅ                     ->  -9223372036854775808
+9223372036854775807 1‹cadd›Ṅ              ->  GOLF: integer overflow
+1± 1 63≪‹cmul›Ṅ                           ->  GOLF: integer overflow
+```
+
+The last two exit with status 1 (the message is on stderr). The sixth shows
+the bare increment wrapping. Overflow is found from the wrapped result `r`:
+for `‹cadd›` when `(a^r)&(b^r)` is negative, for `‹csub›` when `(a^b)&(a^r)`
+is, and for `‹cmul›` when `a≠0` and either `r÷a ≠ b` or `a = -1, b = INT64_MIN`
+(the one case the divide test misses, since `÷` defines `INT64_MIN÷-1` as
+`INT64_MIN`).
+
 ### Errors
 
 A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
@@ -688,14 +727,15 @@ set the two stack pointers.
 Everything the runtime checks raises through `‹throw›`, so all of it is
 catchable: `⊇` (`index out of range`), `∘` and `⊸` (`compose arena
 exhausted`), `⌫` (`free of a non-heap value`, `double free`), `‹get›` (`key
-not found`), every list word (`use after free`, see Memory above), the file
+not found`), `‹cadd›` `‹csub›` `‹cmul›` (`integer overflow`, see Checked
+arithmetic above), every list word (`use after free`, see Memory above), the file
 words (`cannot open x.txt (ENOENT)` …), the spill stack (`spill stack
 exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
 ÷ ∣` (`divide by zero`). Not catchable: a return-stack overflow (a recursion
 past ~138k plain calls dies of SIGSEGV on the guard page), any other signal,
 `.` (exit is exit), and compile errors (`GOLF: undefined word x at line 3` …,
-below), which exit 2. So does a program whose binary would pass 192 KB (196608 bytes, the
-prelude's ~40 KB included): `GOLF: program too large`, and no binary.
+below), which exit 2. So does a program whose binary would pass 192 KB
+(196608 bytes, the prelude's ~40 KB included): `GOLF: program too large`, and no binary.
 
 ### Compile errors
 

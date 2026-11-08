@@ -80,6 +80,13 @@ one type, and it wraps:
 7 2÷Ṅ                  ->  3                        # truncating; no rationals
 ```
 
+**Overflow detection — CLOSED (W11-3C), opt-in.** The bare ops still wrap,
+but `‹cadd›` `‹csub›` `‹cmul›` (`a b -> a op b`, scalars only) are Rust's
+checked ops: `9223372036854775807 1‹cadd›` stops with `GOLF: integer
+overflow` (exit 1; catchable with `‹catch›` once W11-3A lands) instead of
+printing `-9223372036854775808`. Still no bignums: overflow is an error, never
+a promotion (REFERENCE.md, "Checked arithmetic").
+
 No floats, no bignums, no complex, no rationals — and no *characters* either.
 Jelly distinguishes a character from an integer, which is how it prints
 `"abc"` as text and `[97,98,99]` as numbers from the same list machinery. GOLF

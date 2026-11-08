@@ -2570,6 +2570,80 @@ w113bex=$(sed -n '/^### Compile errors$/,/^### /p' REFERENCE.md | grep -m1 -B1 '
   && ok "REFERENCE.md's Compile errors example is what golf2 reports; ### Debugging documents -g" || no "REFERENCE compile errors example"
 
 # === W11-3C ===
+echo "W11-3C: checked arithmetic — ‹cadd› ‹csub› ‹cmul› throw 'integer overflow'; the bare ops still wrap"
+# The literal 9223372036854775807 is fine in a USER program (golf2 reads 64-bit
+# literals); INT64_MIN is spelled `1 63\shl`.  The bare - on INT64_MAX would
+# list-dispatch (top 16 bits 0x7FFF), so negatives are built with \neg.
+[ "$(w110 '7Ṅ9223372036854775807 1‹cadd›Ṅ')" = "rc=1 1 GOLF: integer overflow" ] \
+  && [ "$(w110 '9223372036854775807 1‹cadd›Ṅ')" = "rc=1 0 GOLF: integer overflow" ] \
+  && ok "INT64_MAX 1 ‹cadd›: GOLF: integer overflow, exit 1 (earlier output flushed)" || no "cadd MAX+1: $(w110 '9223372036854775807 1‹cadd›Ṅ')"
+w113cbad=""
+for w in '9223372036854775807 1‹cadd›' '1 63\shl 1\neg‹cadd›' '1 63\shl"‹cadd›' '9223372036854775807"‹cadd›' \
+         '1 63\shl 1‹csub›' '9223372036854775807 1\neg‹csub›' '0 1 63\shl‹csub›' '1\neg 9223372036854775807‹csub›\neg 2‹csub›' \
+         '1\neg 1 63\shl‹cmul›' '1 63\shl 1\neg‹cmul›' '9223372036854775807 2‹cmul›' '3037000500"‹cmul›' \
+         '3037000500"\neg‹cmul›' '1 32\shl"‹cmul›' '1 62\shl 2‹cmul›' '1 62\shl\neg 2\neg‹cmul›' '1 63\shl"‹cmul›'; do
+  r=$(w110 "$w")
+  [ "$r" = "rc=1 0 GOLF: integer overflow" ] || w113cbad="$w113cbad [$w: $r]"
+done
+[ -z "$w113cbad" ] && ok "boundary overflows: MAX+1, MIN-1, MIN+MIN, MAX+MAX, MIN-1 (sub), MAX-(-1), 0-MIN, -1×MIN, MIN×-1, MAX×2, 3037000500², 2^32², 2^62×2" \
+  || no "checked boundary overflows:$w113cbad"
+[ "$(printf '%s' '9223372036854775807 0‹cadd›Ṅ␤1 63\shl 1‹cadd›Ṅ␤9223372036854775807 1\neg‹cadd›Ṅ␤9223372036854775807"\neg‹cadd›Ṅ␤1 63\shl 1\neg‹csub›Ṅ␤9223372036854775807 1‹csub›Ṅ␤1\neg 9223372036854775807‹csub›Ṅ␤0 9223372036854775807‹csub›Ṅ␤0 1 63\shl‹cmul›Ṅ␤1 63\shl 0‹cmul›Ṅ␤1 63\shl 1‹cmul›Ṅ␤1\neg 9223372036854775807‹cmul›Ṅ␤3037000499"‹cmul›Ṅ␤3037000499"\neg‹cmul›Ṅ␤1 62\shl\neg 2‹cmul›Ṅ␤4611686018427387903 2‹cmul›Ṅ' | gc)" \
+    = "$(printf '9223372036854775807\n-9223372036854775807\n9223372036854775806\n0\n-9223372036854775807\n9223372036854775806\n-9223372036854775808\n-9223372036854775807\n0\n0\n-9223372036854775808\n-9223372036854775807\n9223372030926249001\n-9223372030926249001\n-9223372036854775808\n9223372036854775806')" ] \
+  && ok "boundary non-overflows: MAX+0, MIN+1, MIN-(-1), -1-MAX = MIN, 0×MIN, MIN×1, 3037000499², -2^62×2 = MIN" || no "checked boundary non-overflows"
+# Differential against Python over 20 values × 20 values × 3 ops: every pair that
+# fits gives Python's exact result (and the same as the bare op, where the bare
+# op can be used: neither operand in the 0x7FFF list band); every pair that does
+# not fit dies with the message.  The programs are encoded once, in one Python.
+python3 - "$TMP" <<'PYEOF'
+import sys; sys.path.insert(0, "tools"); import codepage
+T = sys.argv[1]; M = 1 << 63
+V = [0, 1, -1, 2, -2, 7, -1000, 65536, 3037000499, -3037000499, 3037000500, -3037000500,
+     1 << 32, (1 << 32) - 1, 1 << 62, -(1 << 62), M - 1, -M, -M + 1, (32767 << 48) + 5]
+def lit(v):
+    return "1 63\\shl" if v == -M else (f"{-v}\\neg" if v < 0 else str(v))
+band = lambda v: (v & ((1 << 64) - 1)) >> 48 == 0x7FFF
+ops = [("‹cadd›", "+", lambda a, b: a + b), ("‹csub›", "-", lambda a, b: a - b), ("‹cmul›", "*", lambda a, b: a * b)]
+n = 0
+for k, (word, bare, f) in enumerate(ops):
+    src, want = [], []
+    for a in V:
+        for b in V:
+            r = f(a, b)
+            if -M <= r < M:
+                src.append(f"{lit(a)} {lit(b)}{word}Ṅ␤"); want.append(str(r))
+                if not band(a) and not band(b):
+                    src.append(f"{lit(a)} {lit(b)}{bare}Ṅ␤"); want.append(str(r))
+            else:
+                n += 1
+                open(f"{T}/w113c.ov{n}.g2", "wb").write(codepage.encode(f"{lit(a)} {lit(b)}{word}Ṅ"))
+    open(f"{T}/w113c.ok{k}.g2", "wb").write(codepage.encode("".join(src)))
+    open(f"{T}/w113c.ok{k}.want", "w").write("\n".join(want) + "\n")
+open(f"{T}/w113c.nov", "w").write(str(n))
+PYEOF
+w113cbad=""
+for k in 0 1 2; do
+  cat "$TMP/pre.gb" "$TMP/w113c.ok$k.g2" | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.got" 2>&1
+  cmp -s "$TMP/w113c.got" "$TMP/w113c.ok$k.want" || w113cbad="$w113cbad [op $k: $(diff "$TMP/w113c.got" "$TMP/w113c.ok$k.want" | head -3 | tr '\n' ' ')]"
+done
+w113cn=$(cat "$TMP/w113c.nov")
+for i in $(seq 1 "$w113cn"); do
+  cat "$TMP/pre.gb" "$TMP/w113c.ov$i.g2" | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.out" 2> "$TMP/w113c.err"
+  r="rc=$? $(wc -c < "$TMP/w113c.out") $(cat "$TMP/w113c.err")"
+  [ "$r" = "rc=1 0 GOLF: integer overflow" ] || w113cbad="$w113cbad [ov$i: $r]"
+done
+[ -z "$w113cbad" ] && [ "$w113cn" -gt 100 ] \
+  && ok "differential vs Python, 20×20 values × 3 ops: every fitting result exact (= the bare op where usable), all $w113cn overflows throw" \
+  || no "checked differential:$w113cbad"
+[ "$(printf '%s' '3 4‹cadd›Ṅ␤3 4‹csub›Ṅ␤3037000499"‹cmul›Ṅ␤1\neg 1 63\shl‹cmul›Ṅ' | gref; echo " $?")" = "$(printf '7\n-1\n9223372030926249001\n 1')" ] \
+  && ok "oracle: golfref runs ‹cadd› ‹csub› ‹cmul› and the overflow exit the same" || no "checked oracle"
+# REFERENCE.md's Checked arithmetic examples print what the doc says.
+w113cbad=""
+while IFS= read -r w113cl; do
+  w113cp=${w113cl%%  ->*}; w113cp=${w113cp%"${w113cp##*[! ]}"}; w113cw=${w113cl##*->  }
+  [ "$(printf '%s' "$w113cp" | gc 2>&1)" = "$w113cw" ] || w113cbad="$w113cbad [$w113cp]"
+done < <(sed -n '/^### Checked arithmetic$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w113cbad" ] && [ "$(sed -n '/^### Checked arithmetic$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 4 ] \
+  && ok "REFERENCE.md's Checked arithmetic examples print what they say" || no "REFERENCE Checked arithmetic examples:$w113cbad"
 
 # === W11-4A ===
 
