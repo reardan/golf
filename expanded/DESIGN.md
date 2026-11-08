@@ -139,10 +139,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **34** |
 | the template blob itself | **1278** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **4333** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **13966** bytes |
-| assertions in the run2 suite | **706** |
-| assertions in the selfcheck suite | **57** |
+| the generated bootstrap seed (`self/seed.golf`) | **4344** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **14030** bytes |
+| assertions in the run2 suite | **728** |
+| assertions in the selfcheck suite | **60** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -338,6 +338,10 @@ the golf2 fixpoint included. In order:
   byte-identity case holds `⊡` programs to their old output instead). Outside a
   `⊡` word `⇒a`…`⇒h` keep M-FRAME's fixed slots and a long local is refused.
   Cost: seed +183 bytes (2539 → 2722), golf2 +617 (7895 → 8512).
+  W12-Z3 widened the one-letter names inside a `⊡` word from `a`–`h` to
+  `a`–`z`: the slot table already holds any name number, so only the range
+  check moved (the 16-local cap and the `m+96` table are unchanged). Outside
+  a `⊡` word `⇒i`…`⇒z` are still refused. Cost: seed +11 bytes (4201 → 4212), golf2 +64 (13834 → 13898).
 - **M2 (W9-3A) — long names, with forward references.** `‹name›` (`0xB4` …
   `0xB5`, bytes `0-9 A-Z a-z _ -`) works wherever a one-byte name does — `:`,
   `⊚`, `⊡` headers, calls, `′`, chain links, `→`/`←`. The compiler interns each

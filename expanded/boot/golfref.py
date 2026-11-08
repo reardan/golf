@@ -484,12 +484,12 @@ def compile_bytes(src: bytes) -> bytes:
             frame = True                             # which '^' and ';' release
             continue
         if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
-            name = take_name()                       # a..h, or a ‹long name›
-            if name < 256 and not 0 <= name - ord('a') < 8:
+            name = take_name()                       # a..z (W12-Z3), or a ‹long name›
+            if name < 256 and not 0 <= name - ord('a') < 26:
                 die(b"local out of range " + shown(name))
             if not frame:                            # outside ⊡: M-FRAME's fixed
-                if name >= 256:                      # a..h slot; a long name has
-                    die(b"local out of range " + shown(name))
+                if name >= 256 or name - ord('a') >= 8:  # a..h slot; a long name
+                    die(b"local out of range " + shown(name))  # (or i..z) has
                 slot = name - ord('a')               # nowhere to go
             else:                                    # M-FRAME2: first appearance
                 if name not in flocals:              # claims the next slot

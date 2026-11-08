@@ -203,7 +203,7 @@ linked list through their own unpatched immediates and walked at `;`. That is a
 well-understood assembler technique and costs one compiler variable (definitions
 do not nest), but it is real work and M-FRAME already removed the wrong answer.
 
-*Also still open.* Eight slots means eight *names*, `a`–`h`; M2's name table
+*Also still open* (closed since: M-FRAME2 took long names, W12-Z3 all of `a`–`z`). Eight slots means eight *names*, `a`–`h`; M2's name table
 (item 4, shipped) could let a `⊡` word name its locals anything and let the count fall
 out of the name arena. The return stack's missing guard, which M-FRAME's
 ~15k-frame ceiling made easier to reach, is fixed: W9-2C's guard page turns an

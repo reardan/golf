@@ -147,6 +147,14 @@ both frames "$TMP/src.frames"
 [ "$("$TMP/new.frames" 2>/dev/null)" = "$(printf '5050\n-5\n61')" ] \
   && ok "prelude + a sized-frame program runs (M-FRAME2)" || no "sized-frame program output: $("$TMP/new.frames" 2>/dev/null)"
 
+# W12-Z3: one-letter locals past h inside ⊡ — i…z mixed with a and a long
+# name, recursing, and all 16 slots as one-letter names — through both.
+printf '%s' '⊡‹t›⇒r⇐r[0^]⇐r⇒s⇐s2*⇒a⇐a⇒‹acc›⇐r1-‹t›⇒z⇐z⇐‹acc›+⇐s-;⊡‹w›⇒k⇒l⇒m⇒n⇒o⇒p⇒q⇒r⇒s⇒t⇒u⇒v⇒w⇒x⇒y⇒z⇐k⇐z-⇐q+;100‹t›Ṅ␤1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16‹w›Ṅ' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.locz"
+both locz "$TMP/src.locz"
+[ "$("$TMP/new.locz" 2>/dev/null)" = "$(printf '5050\n25')" ] \
+  && ok "prelude + one-letter locals i…z in ⊡ words runs (W12-Z3)" || no "i–z locals program output: $("$TMP/new.locz" 2>/dev/null)"
+
 # W10-A: one-byte forward references — calls, ′ and a chain link to words
 # defined further down — and a program with 1024 long names (the prelude's
 # included), through both source forms.
@@ -185,7 +193,7 @@ printf '%s' ':‹fy›‹q-b›;⎘“rpt.g2“⊜q a ‹b›;3 4‹pt›‹n2�
 [ "$("$TMP/new.records" 2>/dev/null)" = "25177" ] \
   && ok "prelude + records and a vendor/ include run (W11-4A)" || no "records program output: $("$TMP/new.records" 2>&1)"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k include records; do
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include records; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -194,7 +202,7 @@ done
 # W11-3B: `golf2 -g` only adds the symbol map on fd 2, so it still emits the
 # seed's bytes (the seed ignores argv) — over the same corpus.
 w113b=""
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k include; do
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames locz fwd1 names1k include; do
   case $t in hello) s=examples/v1/hello.golf;; fizz) s=examples/v1/fizzbuzz.golf;; *) s="$TMP/src.$t";; esac
   "$TMP/golf2" -g < "$s" > "$TMP/g.$t" 2> "$TMP/g.$t.map" && cmp -s "$TMP/g.$t" "$TMP/old.$t" || w113b="$w113b $t"
 done
@@ -270,6 +278,15 @@ cat "$TMP/pre.gb" <(printf '%s' "⊡f$w94d;" | python3 tools/codepage.py encode)
   && [ "$(cat "$TMP/badloc.newerr")" = "GOLF: too many locals ‹l17› at line 1" ] \
   && ok "both reject a 17th local in one ⊡ word (M-FRAME2)" \
   || no "too-many-locals rejection differs (seed $sst, golf2 $gst)"
+
+# W12-Z3: outside a ⊡ word a one-letter local past h is still refused by both.
+cat "$TMP/pre.gb" <(printf '%s' ":f⇒q;" | python3 tools/codepage.py encode) > "$TMP/badlq.src"
+"$TMP/seed"  < "$TMP/badlq.src" > "$TMP/badlq.old" 2>/dev/null; sst=$?
+"$TMP/golf2" < "$TMP/badlq.src" > "$TMP/badlq.new" 2>"$TMP/badlq.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badlq.old" ] && [ ! -s "$TMP/badlq.new" ] \
+  && [ "$(cat "$TMP/badlq.newerr")" = "GOLF: local out of range q at line 1" ] \
+  && ok "both reject ⇒q outside a ⊡ word (W12-Z3)" \
+  || no "⇒q-outside-⊡ rejection differs (seed $sst, golf2 $gst)"
 
 # W11-2A: a missing include is refused by both; only golf2 can say which.
 cat "$TMP/pre.gb" <(printf '%s' "⎘“$TMP/inc.none.g2“1Ṅ" | python3 tools/codepage.py encode) > "$TMP/badinc.src"

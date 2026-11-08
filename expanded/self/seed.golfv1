@@ -167,13 +167,14 @@
 # was wrapped like an atom, around a template that does not exist (SIGILL).
 :X"Y@"[_"f?[233o5wPm24+!233&FLm24+@606208-w_^]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@606208-w_^]\_606208-Lw; # X: emit a push of a word's address
 # l — M-FRAME2: the rbp displacement of a local, from its name number.  A
-# one-byte local must be a..h.  Outside a ⊡ word (m56 clear) it keeps M-FRAME's
-# fixed slot name-'a', and a long name is refused.  Inside, the definition's
+# one-byte local must be a..z (W12-Z3; a..h before).  Outside a ⊡ word (m56
+# clear) it keeps M-FRAME's fixed slot name-'a', so there only a..h pass, and a
+# long name is refused.  Inside, the definition's
 # slot table at m96 (name numbers, 4 bytes each) is searched in order of first
 # appearance; a new name claims slot m88 (the count so far), at most 16, so every
 # displacement is a disp8.  m80 is the walking index (M2's, idle by now).  golf2
 # names the offending local on fd 2; the seed can only exit(2).
-:l"256<1+["97-8<[2.]]m56+@["256<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
+:l"256<1+["97-26<[2.]]m56+@["256<[2.]"97-8<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
 # ---------------------------------------------------------------------------
 # W11-4A — records, ⊜‹point›‹x›‹y›; (0xB7).  At compile time the header becomes
 # the words golf2's ‹defrecord› emits (see self/golf2.golfj, Records):
@@ -248,7 +249,7 @@
 # definition since M-FRAME2 (W9-4D).
 #
 #   ⊡name … ;   define a word WITH a frame of locals, one cell per local named
-#   ⇒x          pop TOS into local x   (x in a..h, or a ‹long name›)
+#   ⇒x          pop TOS into local x   (x in a..z, or a ‹long name›)
 #   ⇐x          push local x
 #
 # ⊡ is `:`'s case plus three things: `sub rbp, imm32` right after the prologue,
@@ -263,12 +264,12 @@
 # k waits for `;`.  Every frame-size immediate — the ⊡'s and each `^`'s
 # `add rbp, imm32` — holds the previous one's address (the ⊡'s holds 0) and m92
 # the newest, so `;` walks that list writing 8k into each, then emits its own
-# `add rbp, 8k`.  A one-letter local past h, a 17th local, or a long local
-# outside a ⊡ word stops the compile: golf2 says which on fd 2; this seed, in v1
+# `add rbp, 8k`.  A one-letter local past z (past h outside a ⊡ word), a 17th
+# local, or a long local outside a ⊡ word stops the compile: golf2 says which on fd 2; this seed, in v1
 # GOLF, can only exit(2).  Same status, same asymmetry as `e` above, gated by
 # test/selfcheck.sh.
 "177-[_G"233oP4+\Y!RP0w1E72o129o237oPm92+!0w0m88+!1m56+!^] # 0xB1  ⊡  define a word owning a frame of locals
-"178-[_Gl88o72o137o69oo^]                               # 0xB2  ⇒x pop TOS into local x (a..h or ‹name›)
+"178-[_Gl88o72o137o69oo^]                               # 0xB2  ⇒x pop TOS into local x (a..z or ‹name›)
 "179-[_Gl72o139o69oo80o^]                               # 0xB3  ⇐x push local x
 
 # `^` was a plain template until M-FRAME; it becomes a case purely so it can test

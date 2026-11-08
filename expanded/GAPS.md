@@ -311,6 +311,7 @@ inheritance.
   Since M-FRAME2 (W9-4D) locals may have long names (`⇒‹acc›`) and a frame
   is sized to the locals a word names, one cell each — the `^`s' frame-size
   immediates are patched at `;` ([`NEXT_STEPS.md`](NEXT_STEPS.md) §2).
+  Since W12-Z3 a one-letter local may be any of `a`–`z` (16 per word).
 
 ### 2.3 Functions
 
