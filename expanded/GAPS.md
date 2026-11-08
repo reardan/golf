@@ -381,14 +381,23 @@ still one error per compile.
 ### 2.6 Everything around the language
 
 No modules or namespaces (textual includes: W11-2A, below), no standard
-library beyond the prelude, no package ecosystem, no REPL, no debugger, no
-introspection, no threads or async, and one target: x86-64 Linux, ELF64,
-statically laid out. A retargetable IR is also M9.
+library beyond the prelude, no package ecosystem, no REPL, no debugger
+beyond gdb by word name (W11-4D, below), no introspection, no threads or
+async, and one target: x86-64 Linux, ELF64, statically laid out. A retargetable IR is also M9.
 
 **Symbols — closed by W11-3B (the debugger itself is W11-4D).** `golfc -g`
 writes `OUT.map`, one `name 0xaddr` line per defined word (the address of its
 body in the running program), so a crash address or a gdb `break *0x…` can be
 tied to a word name; the binary is unchanged by `-g`.
+
+**Debugger — closed by W11-4D (tooling).** `tools/golfgdb prog` runs gdb with
+a script generated from `prog.map`: `golf-break NAME` breaks in a word by
+name, `golf-bt` walks the rbp return stack into a backtrace of word names,
+`golf-stack [N]` shows the data stack (rsp) with lists expanded, `golf-where`
+names the word at `$pc` (REFERENCE.md "Debugging"). Still open: no source
+lines (the map is per word, not per token), no single-step by GOLF word or
+token (gdb's `stepi` steps machine instructions), no view of the X/Y spill
+stack or `→x` variables by name, and it needs gdb with Python.
 
 **Includes — closed by W11-2A.** `⎘“path“` compiles that file's bytes in
 place: nested (8 deep), include-once, searched as written, then in `lib/`, then
