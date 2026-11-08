@@ -114,6 +114,7 @@ echo "Quotations: ′ ref (push a word's address), ⍎ exec (indirect call)"
 
 echo "List type (prelude library): A alloc R range L len I index S sum N num M map F fold Q print"
 python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"    # encoded prelude
+printf '\f' >> "$TMP/pre.gb"   # + the form feed golfc puts after it: lines count from the program (W11-3B)
 gc(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
         && chmod +x "$TMP/p" && "$TMP/p"; }
 [ "$(printf '%s' '5R L N E'    | gc)" = "5" ]    && ok "range + len"       || no "range/len"
@@ -384,19 +385,20 @@ echo "Big literals (M4): a constant wider than 32 bits"
   && ok "no prelude: the high dword of 2^32 is 1" || no "bare big literal"
 # The ENCODING itself, not just the value — a literal that fitted before must
 # still compile to exactly the five bytes it always did, or every compiled
-# program on the ladder would shift.  `)` follows each literal (6a 01 58 ...).
+# program on the ladder would shift.  `)` follows each literal (since W11-1C its
+# template opens with the flush-hook load, 48 8b 04 25 ...; it was 6a 01 58).
 w6alit(){ printf '%s' "$1" | "$TMP/golf2" 2>/dev/null | od -An -tx1 -v | tr -d ' \n'; }
 case "$(w6alit '5)')" in
-  *68050000006a01*) ok "5 is still push imm32 (68 05 00 00 00)";;
+  *6805000000488b0425*) ok "5 is still push imm32 (68 05 00 00 00)";;
   *)                no "small literal encoding changed";; esac
 case "$(w6alit '2147483647)')" in
-  *68ffffff7f6a01*) ok "2^31-1 is still push imm32 (68 ff ff ff 7f)";;
+  *68ffffff7f488b0425*) ok "2^31-1 is still push imm32 (68 ff ff ff 7f)";;
   *)                no "2^31-1 encoding";; esac
 case "$(w6alit '2147483648)')" in
-  *48b80000008000000000506a01*) ok "2^31 switches to mov rax,imm64; push rax";;
+  *48b8000000800000000050488b0425*) ok "2^31 switches to mov rax,imm64; push rax";;
   *)                            no "2^31 encoding";; esac
 case "$(w6alit '4294967296)')" in
-  *48b80000000001000000506a01*) ok "2^32 as mov rax,imm64; push rax";;
+  *48b8000000000100000050488b0425*) ok "2^32 as mov rax,imm64; push rax";;
   *)                            no "2^32 encoding";; esac
 # Differential: the encodings are the whole point here, so boot/golfref.py has to
 # agree byte for byte, not merely behave the same.
@@ -426,7 +428,7 @@ echo "Growable heap (M-MEM): ⌸ brk, the list heap is the kernel's, not a BSS h
 # The prelude's init publishes what the kernel gave into A's base/span cells.
 # The base is ASLR-shifted (observed anywhere from ~0x1C00000 to ~0x3B000000),
 # so only its relation to the static image is assertable — never its value.
-# W9-2A/M-TAG2: a list VALUE is addr | 2^48, so the address is masked out with
+# W9-2A/M-TAG2: a list VALUE is addr | 0x7FFF<<48 (W11-1A; 2^48 before), so the address is masked out with
 # (v<<16)>>16 before it is compared against the window.
 [ "$(printf '%s' '0 5177400@\rlt1\radd N E' | gc)" = "0" ] \
   && ok "heap span cell is non-zero (brk handed back the initial chunk)" || no "brk heap span"
@@ -789,8 +791,10 @@ tiomsg=$("$TMP/tpd" "$TMP/no-such-file-here" 2>&1 >/dev/null); tiost=$?
 [ "$tiost" = 1 ] && [ "$tiomsg" = "tio: cannot open file for reading" ] \
   && ok "a die: open of a missing file -> fd 2 + exit 1" || no "die on open failure"
 # X/Y discipline: d and e take a spill frame, so they nest inside a prelude
-# looping word the way every scratch-using word must.
-[ "$(printf '%s' ':x 65\radd"g;5R′xM S N E f' | tio)" = "$(printf '335\nABCDE')" ] \
+# looping word the way every scratch-using word must.  (W11-1C: N E buffer in
+# the prelude's output buffer, apart from tio's, so ‹flush› puts the sum out
+# ahead of what f writes.)
+[ "$(printf '%s' ':x 65\radd"g;5R′xM S N E‹flush› f' | tio)" = "$(printf '335\nABCDE')" ] \
   && ok "g inside a map (scratch survives the nesting)" || no "emit in map"
 [ "$(printf '%s' ':y“ab“→s 1 ←s4\radd ←s@ d 7;3R′yM S N E' | tio)" = "$(printf 'ababab21')" ] \
   && ok "d inside a map (X/Y frame nests)" || no "write-all in map"
@@ -1130,10 +1134,10 @@ echo "Per-call locals (M-FRAME): ⊡name … ; owns a frame, ⇒x / ⇐x reach i
 # Unchecked, ⇒z is displacement 200 — a NEGATIVE disp8 (-56), landing in the
 # frame of a word not yet called — and ⇒A wraps to 0 and silently aliases slot a.
 [ "$(printf '%s' '\dlocf\lsetz;1fN' | und)" = "2" ] \
-  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range z" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range z at line 1" ] \
   && ok "a slot name past h is refused, not silently wrapped" || no "lset range"
 [ "$(printf '%s' '\dlocf\lgetA;1fN' | und)" = "2" ] \
-  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range A" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range A at line 1" ] \
   && ok "... and one before a, which would have aliased slot a" || no "lget range"
 tools/golfc -j examples/locals.golfj "$TMP/loc" 2>/dev/null
 [ "$("$TMP/loc" 2>/dev/null)" = "$(printf '55\n10\n0 2 4 6 8 \nneg\n0\n7')" ] \
@@ -1154,7 +1158,7 @@ echo "Diagnostics: an undefined word is reported, not compiled to a jump to zero
 # must be defined before use, of every attempt at mutual recursion.
 [ "$(printf '%s' '5qN' | und)" = "2" ] \
   && ok "a call to an undefined word exits 2 instead of emitting the call" || no "undefined word status"
-[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "... naming the offending byte, on fd 2" || no "undefined word message"
 [ ! -s "$TMP/u.out" ] \
   && ok "... and no partial binary reaches fd 1" || no "undefined word stdout"
@@ -1194,9 +1198,10 @@ echo "W9-1A: ⌈ ⌊ (and ⩌ ⩍) are SIGNED; ⊔ ⊓ stay unsigned"
 [ "$(printf '%s' '5R 2-0\vmax QE 5R 2-0\vmin QE' | gc)" = "$(printf -- '0 0 0 1 2 \n-2 -1 0 0 0 ')" ] \
   && ok "⩌ ⩍ list,int elementwise signed" || no "vmax/vmin list signed"
 # The extremes: d = b-a overflows here, but the compare is a ≻ a+d = a ≻ b, exact.
-[ "$(printf '%s' '9223372036854775807 0 9223372036854775807- 1-\vmax N E 9223372036854775807 0 9223372036854775807- 1-\vmin N E' | gc)" \
-    = "$(printf -- '9223372036854775807\n-9223372036854775808')" ] \
-  && ok "⩌ ⩍ at INT64_MAX vs INT64_MIN" || no "vmax/vmin extremes"
+# W11-1A: the top int is 0x7FFF<<48 - 1 now — [0x7FFF<<48, 2^63) is the list tag's band.
+[ "$(printf '%s' '9223090561878065151 1 63\shl\vmax N E 9223090561878065151 1 63\shl\vmin N E' | gc)" \
+    = "$(printf -- '9223090561878065151\n-9223372036854775808')" ] \
+  && ok "⩌ ⩍ at the largest int (0x7FFF<<48 - 1) vs INT64_MIN" || no "vmax/vmin extremes"
 [ "$(printf '%s' '6R 3-0 9-\ref\maxFNE' | gc)" = "2" ] && ok "fold ′⌈ over negatives (seed -9) = 2" || no "fold signed max"
 # ⊔ ⊓ stay UNSIGNED — the prelude's pointer math depends on it: -5 is 2^64-5.
 [ "$(printf '%s' '0 5-3\rmax N E 0 5-3\rmin N E' | gc)" = "$(printf -- '-5\n3')" ] \
@@ -1235,10 +1240,10 @@ echo "Diagnostics: ′name of an undefined name is reported, not wrapped as an a
 # to `e`, which is the undefined-word diagnostic already.
 [ "$(printf '%s' '3⍳′q€⍕' | und)" = "2" ] \
   && ok "′ of an undefined name exits 2 instead of building a thunk" || no "ref undefined status"
-[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "... with the same message as a plain call, on fd 2" || no "ref undefined message"
 [ ! -s "$TMP/u.out" ] && ok "... and no partial binary on fd 1" || no "ref undefined stdout"
-[ "$(printf '%s' '⊚mq≢÷;5⍳mṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(printf '%s' '⊚mq≢÷;5⍳mṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "a chain link to an undefined name is reported the same way" || no "chain link undefined"
 # Atoms and defined words keep compiling, to the bytes they did before.
 [ "$(printf '%s' '3⍳′⊗€⍕' | gc)" = "0 2 4 " ] && ok "′⊗ still auto-wraps the atom"  || no "ref ⊗"
@@ -1305,7 +1310,7 @@ done
   || no "tutorial: $w9dn examples extracted (need 6-10), failing:$w9dbad"
 
 # @@ W9-2A-TAG2 @@
-echo "M-TAG2: a list value is addr | 2^48; T and the M-VEC filter test the tag, not a range"
+echo "M-TAG2: a list value is addr | 0x7FFF<<48; T and the M-VEC filter test the tag, not a range"
 # The regression the range test could not pass: the heap BASE, read out of A's
 # cell as a plain integer, sat inside [base, base+span) and so was dispatched
 # as a list.  It is an int now, and bare + is scalar on it.
@@ -1317,26 +1322,26 @@ echo "M-TAG2: a list value is addr | 2^48; T and the M-VEC filter test the tag, 
   && ok "T: a list's untagged address is an int" || no "tag2 raw addr T"
 [ "$(printf '%s' '5⍳16\shl16>→a ←a 3* ←a 3\rmul≡N E' | gc)" = "-1" ] \
   && ok "bare * on an untagged heap address is scalar" || no "tag2 raw addr *"
-[ "$(printf '%s' '5⍳48>N E' | gc)" = "1" ] \
-  && ok "a list value carries the tag: v >> 48 == 1" || no "tag2 tag bit"
+[ "$(printf '%s' '5⍳48>N E' | gc)" = "32767" ] \
+  && ok "a list value carries the tag: v >> 48 == 0x7FFF" || no "tag2 tag bits"
 [ "$(printf '%s' '0 1-T N E' | gc)" = "1" ] && ok "T: -1 is still an int" || no "tag2 -1"
 [ "$(printf '%s' '0 1 63\shl- T N E' | gc)" = "1" ] && ok "T: -2^63 is an int" || no "tag2 min int"
 [ "$(printf '%s' '0 1000000000000000-T N E 0 1000000000000000- 7+N E' | gc)" = "$(printf '1\n-999999999999993')" ] \
   && ok "a large negative is an int, and bare + is scalar on it" || no "tag2 big negative"
-[ "$(printf '%s' '1 48\shl1\rsub T N E 1 49\shl T N E' | gc)" = "$(printf '1\n1')" ] \
-  && ok "T: 2^48-1 and 2^49 are ints (only [2^48, 2^49) is sacrificed)" || no "tag2 edges"
+[ "$(printf '%s' '1 48\shl T N E 32767 48\shl1\rsub T N E 1 63\shl1\rsub T N E' | gc)" = "$(printf '1\n1\n0')" ] \
+  && ok "T: 2^48 and 0x7FFF<<48 - 1 are ints; 2^63-1 is in the sacrificed band" || no "tag2 edges"
 [ "$(printf '%s' '5⍳→x←x T N E ←x Q E ←x 10+Q E' | gc)" = "$(printf '0\n0 1 2 3 4 \n10 11 12 13 14 ')" ] \
   && ok "a list round-trips through →x/←x and still vectorizes" || no "tag2 var round trip"
 # Lists of lists: R's result stored as an element stays a tagged list, so it
 # indexes, measures and vectorizes like the outer one.
-[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 1 48\shl| "T N E "0 I T N E "0 I Q E 0 I 100+Q E' | gc)" = "$(printf '0\n0\n0 1 2 \n100 101 102 ')" ] \
+[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 32767 48\shl| "T N E "0 I T N E "0 I Q E 0 I 100+Q E' | gc)" = "$(printf '0\n0\n0 1 2 \n100 101 102 ')" ] \
   && ok "a list of lists stores and indexes; the inner element is a tagged list" || no "tag2 nested"
 [ "$(printf '%s' ':s3⍳;3⍳\refs M "L N E 1 I"L N E ∑N E' | gc)" = "$(printf '3\n3\n3')" ] \
   && ok "map building a list per element (inner lists keep the tag)" || no "tag2 map of lists"
 # A hand-built block from A is a raw address: every list word accepts it (the
 # masking is idempotent), but it is an INT to T and the bare operators until it
-# is tagged with 1 48≪|.
-[ "$(printf '%s' '3A 2&\store 5&8\radd\store 6&16\radd\store "S N E "T N E 1 48\shl| 1+Q E' | gc)" = "$(printf '11\n1\n6 7 ')" ] \
+# is tagged with 32767 48≪|.
+[ "$(printf '%s' '3A 2&\store 5&8\radd\store 6&16\radd\store "S N E "T N E 32767 48\shl| 1+Q E' | gc)" = "$(printf '11\n1\n6 7 ')" ] \
   && ok "hand-built list: list words take it raw; tagging it makes it vectorize" || no "tag2 hand-built"
 
 # @@ W9-2B-CHECKS @@
@@ -1469,14 +1474,14 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
   && ok "′ of a long name defined further down (a jmp thunk, patched)" || no "forward quotation"
 [ "$(printf '%s' ':‹ab›1;:‹abc›2;:‹a›3;‹abc›Ṅ‹ab›Ṅ‹a›Ṅ' | gc)" = "213" ] \
   && ok "‹ab› ‹abc› ‹a› are three names (no prefix collision)" || no "long-name prefixes"
-[ "$(printf '%s' '5‹nope›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹nope›" ] \
+[ "$(printf '%s' '5‹nope›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹nope› at line 1" ] \
   && [ ! -s "$TMP/u.out" ] \
   && ok "a long name never defined: GOLF: undefined word ‹nope›, exit 2, no binary" || no "undefined long name"
-[ "$(printf '%s' ':‹f›‹g›;1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹g›" ] \
+[ "$(printf '%s' ':‹f›‹g›;1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word ‹g› at line 1" ] \
   && ok "... reported at end of input, even from inside a definition" || no "undefined long name in a body"
-[ "$(printf '%s' '5qṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(printf '%s' '5qṄ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "a one-byte name never defined: same message as before (at end of input since W10-A)" || no "one-byte undefined regression"
-[ "$(printf '%s' '‹a b›' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: bad long name ‹a›" ] \
+[ "$(printf '%s' '‹a b›' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: bad long name ‹a› at line 1" ] \
   && ok "a byte outside 0-9 A-Z a-z _ - is rejected" || no "bad long-name byte"
 [ "$(printf '%s' '‹›' | und)" = "2" ] && [ "$(printf '%s' '‹abc' | und)" = "2" ] \
   && [ "$(printf '%s' '‹abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk›' | und)" = "2" ] \
@@ -1486,7 +1491,7 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
 # number 1025 - P.
 w93p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
 w93n=""; for k in $(seq 1 $((1025 - w93p))); do w93n="$w93n:‹w$k›;"; done
-[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((1025 - w93p))›" ] \
+[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((1025 - w93p))› at line 1" ] \
   && [ "$(printf '%s' "${w93n%:*}" | und)" = "0" ] \
   && ok "the 1025th long name is refused (1024 fit the table; $w93p of them are the prelude's)" || no "too many long names"
 # The other half of the contract: a program without ‹ compiles to the bytes it
@@ -1509,6 +1514,16 @@ fi
 # prelude with every `:‹name›…;` definition cut out (the encoded bytes, walked
 # so a `;` inside “…“ or after ' does not end one), and skips the examples that
 # use ‹ themselves — the contract under test is "a program without ‹".
+# Since W11-0 one-byte words call a long name too (I, ∘ and ⌫ raise their
+# errors through ‹throw›): such a call outside a definition is cut as well,
+# which leaves those failure paths without their exit — harmless, as both
+# compilers get the same cut prelude and nothing here takes a failure path.
+# Since W11-1C the printers N E O J Q emit through ‹_1c_put› (the output
+# buffer): that call is cut to a raw `)` instead, so the cut prelude still
+# prints, unbuffered, exactly what it used to.
+# Since W11-2D the list words enter through ‹_2d_chk› (the mask plus the
+# use-after-free check) and their loops index through ‹_2d_ix›: those calls
+# are cut to the bare mask `16\shl16>` and to `I`, what they replaced.
 python3 - lib/prelude.golfj > "$TMP/pre-m1.gb" <<'PY'
 import sys; sys.path.insert(0, "tools"); import mkblob2, codepage
 b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
@@ -1516,6 +1531,12 @@ out, i, skip = bytearray(), 0, False
 while i < len(b):
     c = b[i]
     if c == 0x3A and b[i+1:i+2] == bytes([mkblob2.LNAME_BYTE]): skip = True
+    if c == mkblob2.LNAME_BYTE and not skip:
+        j = b.index(mkblob2.RNAME_BYTE, i) + 1
+        if b[i+1:j-1] == b"_1c_put": out += b")"   # W11-1C: the raw byte write
+        if b[i+1:j-1] == b"_2d_chk": out += codepage.encode("16\\shl16>")   # W11-2D: the bare mask
+        if b[i+1:j-1] == b"_2d_ix": out += b"I"   # W11-2D: the loops' index is I
+        i = j; continue
     if c == 0x27: n = 2
     elif c == mkblob2.STR_BYTE: n = b.index(mkblob2.STR_BYTE, i + 1) + 1 - i
     else: n = 1
@@ -1537,7 +1558,10 @@ for f in examples/*.golfj examples/bitwise.g2 examples/v1/*.golf gtools/*.golfj;
     *) cp "$f" "$TMP/w93.src";;
   esac
   "$TMP/golf2" < "$TMP/w93.src" > "$TMP/w93.new" 2>/dev/null
+  # W11-1E: the pre-M2 logic leaves v1's fixed p_filesz (0x10000) in the header;
+  # today's compilers write the image's size there, so the old output gets the same.
   if [ "$w93ref" = pre-m2 ]; then "$TMP/pre-m2" < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null
+    python3 -c 'import sys; f=sys.argv[1]; b=bytearray(open(f,"rb").read()); b[96:104]=len(b).to_bytes(8,"little"); open(f,"wb").write(b)' "$TMP/w93.old"
   else python3 boot/golfref.py < "$TMP/w93.src" > "$TMP/w93.old" 2>/dev/null; fi
   # M-FRAME2 (W9-4D) deliberately changed what a ⊡ word compiles to (its frame
   # is sized to its locals), so a program using ⊡ is held to the same OUTPUT
@@ -1642,7 +1666,7 @@ echo "List words (W9-4A): ⧺ cat, ↑ take, ↓ drop — new tagged lists, inpu
 [ "$(printf '%s' '5⍳2↑T N E 5⍳2↓T N E' | gc)" = "$(printf '0\n0')" ] && ok "↑/↓ results are tagged lists" || no "take/drop tag"
 [ "$(printf '%s' '3⍳→a 2⍳→b ←a←b⧺_ ←a 1↑_ ←a 1↓_ ←a 0 1-↑_ ←a⍕E ←b⍕E' | gc)" = "$(printf '0 1 2 \n0 1 ')" ] \
   && ok "⧺/↑/↓ leave their inputs unchanged" || no "inputs unchanged"
-[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 1 48≪| 5⍳1↑⧺"≢N E"0⊇100+⍕E 1⊇N E' | gc)" = "$(printf '2\n100 101 102 \n0')" ] \
+[ "$(printf '%s' '2A 1&\store 3⍳&8\radd\store 32767 48≪| 5⍳1↑⧺"≢N E"0⊇100+⍕E 1⊇N E' | gc)" = "$(printf '2\n100 101 102 \n0')" ] \
   && ok "⧺ carries a nested (tagged inner) list through unchanged" || no "cat nested"
 tools/golfc -j examples/listwords.golfj "$TMP/lw" 2>/dev/null
 LWOUT=$(printf '0 1 2 0 1 \n0 1 \n2 3 4 5 \n4 5 \n0 1 2 3 \n6\ngol is fun')
@@ -1655,8 +1679,8 @@ echo "List words (W9-4B): ⍋ sort (new list, signed, O(n log n)), ∊ member"
   && ok "⍋: empty, one element, already sorted, reverse sorted" || no "sort basic"
 [ "$(printf '%s' '6⍳⌽3- 4⍳⧺⍋⍕E 7⍳⌽7⍳⌽⧺0 5-+⍋⍕' | gc)" = "$(printf -- '-3 -2 -1 0 0 1 1 2 2 3 \n-5 -5 -4 -4 -3 -3 -2 -2 -1 -1 0 0 1 1 ')" ] \
   && ok "⍋: duplicates and negatives sort signed" || no "sort dup/neg"
-[ "$(printf '%s' '1⍳1 63≪1-+ 1⍳0 1 63≪-+⧺ 1⍳0 1-+⧺ 1⍳5+⧺⍋⍕' | gc)" = "-9223372036854775808 -1 5 9223372036854775807 " ] \
-  && ok "⍋: the full signed 64-bit range, -2^63 .. 2^63-1" || no "sort extremes"
+[ "$(printf '%s' '1⍳32767 48≪1\rsub+ 1⍳0 1 63≪-+⧺ 1⍳0 1-+⧺ 1⍳5+⧺⍋⍕' | gc)" = "-9223372036854775808 -1 5 9223090561878065151 " ] \
+  && ok "⍋: the full signed int range, -2^63 .. 0x7FFF<<48 - 1 (W11-1A)" || no "sort extremes"
 [ "$(printf '%s' ':f7919*1000%500-;37⍳′f€⍋⍕' | gc)" = "$(python3 -c 'print(" ".join(str(x) for x in sorted(i*7919%1000-500 for i in range(37))), end=" ")')" ] \
   && ok "⍋: 37 scrambled values (odd length, runs of unequal width) match Python's sorted" || no "sort scrambled"
 [ "$(printf '%s' '5⍳⌽→a ←a⍋_ ←a⍕E 5⍳⌽⍋T N E 3⍳⌽⍋10+⍕' | gc)" = "$(printf '4 3 2 1 0 \n0\n10 11 12 ')" ] \
@@ -1705,7 +1729,7 @@ W94UB=$(printf '%s' '200000⍳"⧺‹unique›≢N' > "$TMP/u10k.golfj"; tools/g
 [ "$(printf '%s' '0⍳‹flatten›≢N E :z_0⍳;5⍳‹flatten›⍕E 3⍳′z€‹flatten›≢N E 3⍳′⍳€‹flatten›⍤N E 5⍳→a ←a‹flatten›T N E ←a⍕E' | gc)" \
     = "$(printf '0\n0 1 2 3 4 \n0\n1\n0\n0 1 2 3 4 ')" ] \
   && ok "‹flatten›: empty, already flat (a copy), only empty inner lists, depth 1, tagged, input untouched" || no "flatten edges"
-[ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
+[ "$(printf '%s' ':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 32767 48≪|;5⍳200→i{‹wrap›←i1-"→i0\eq}"≢N E‹flatten›⍕E' | gc)" = "$(printf '1\n0 1 2 3 4 ')" ] \
   && ok "‹flatten› of a list nested 201 deep (no recursion, so no spill frames per level)" || no "flatten deep"
 [ "$(printf '%s' ':s⍳′⍳€;4⍳′s€"‹flatten›_⍕E' | gc)" = "[] [[]] [[] [0]] [[] [0] [0 1]] " ] \
   && ok "‹flatten› leaves its nested input intact" || no "flatten input"
@@ -1820,9 +1844,9 @@ w9g '⊡‹z›"[^]1-‹z›;100000‹z›N E'
 [ "$(printf '%s' '⊡‹ev›⇒‹n›⇐‹n›[1^]⇐‹n›1-‹od›;⊡‹od›⇒‹n›⇐a_⇐‹n›[0^]⇐‹n›1-‹ev›0[^]7;30000‹ev›N 30001‹ev›N E' | gc)" = "10" ] \
   && ok "two frame sizes, mutually recursive through early ^, 30,000 deep" || no "mutual sized frames"
 [ "$(printf '%s' '⊡f⇒‹a1›⇒‹a2›⇒‹a3›⇒‹a4›⇒‹a5›⇒‹a6›⇒‹a7›⇒‹a8›⇒‹a9›⇒‹a10›⇒‹a11›⇒‹a12›⇒‹a13›⇒‹a14›⇒‹a15›⇒‹a16›⇒‹a17›;' | und)" = "2" ] \
-  && [ "$(cat "$TMP/u.err")" = "GOLF: too many locals ‹a17›" ] && [ ! -s "$TMP/u.out" ] \
+  && [ "$(cat "$TMP/u.err")" = "GOLF: too many locals ‹a17› at line 1" ] && [ ! -s "$TMP/u.out" ] \
   && ok "a 17th local is refused (16 keep every slot a disp8), exit 2" || no "too many locals"
-[ "$(printf '%s' ':g⇐‹x›;' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range ‹x›" ] \
+[ "$(printf '%s' ':g⇐‹x›;' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range ‹x› at line 1" ] \
   && ok "a long local outside a ⊡ word is refused (there is no frame to hold it)" || no "long local outside ⊡"
 w94dsrc='⊡‹t›"⇒‹n›⇒a⇐‹n›[0^]⇐‹n›1-‹t›⇐a+0[^]9;⊡‹m›⇒a⇒‹x›⇒b⇐a⇐‹x›-⇐b*⇐a+;⊡‹z›1+;50‹t›N 2 7 3‹m›N 4‹z›N'
 cat "$TMP/pre.gb" <(printf '%s' "$w94dsrc" | python3 tools/codepage.py encode) > "$TMP/w94d.src"
@@ -1852,10 +1876,10 @@ echo "W10-A: forward references for one-byte names; 1024 long names"
 # word of that byte is defined later.
 [ "$(printf '%s' '3⊗Ṅ :⊗99; 3⊗Ṅ' | gc)" = "66" ] \
   && ok "an atom byte is still its template, never a forward call" || no "template before forward"
-[ "$(printf '%s' ':‹a›b;5‹a›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word b" ] \
+[ "$(printf '%s' ':‹a›b;5‹a›Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word b at line 1" ] \
   && [ ! -s "$TMP/u.out" ] \
   && ok "a one-byte name never defined: GOLF: undefined word b at end of input, exit 2, no binary" || no "one-byte undefined at end"
-[ "$(printf '%s' '′q_ 1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q" ] \
+[ "$(printf '%s' '′q_ 1Ṅ' | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: undefined word q at line 1" ] \
   && ok "... and ′q of one never defined, the same" || no "one-byte undefined quotation at end"
 # The oracle agrees byte for byte on forward one-byte calls, ′ and chains.
 W10AP=':a"0≡[_0^]1-b; :b"0≡[_1^]1-a; 7aṄ 3′d⍎Ṅ ⊚mq≢÷; :q∑; 5⍳mṄ :d⊗;'
@@ -1866,12 +1890,13 @@ python3 boot/golfref.py < "$TMP/w10a.src" > "$TMP/w10a.ref" 2>/dev/null
   && ok "oracle: identical bytes for one-byte forward references" || no "oracle one-byte forward bytes"
 # 1024 long names: every one a word AND a variable (cells 0x4E0800..0x4E27F8),
 # two of them called forward, so the table, the heads and the bank all reach
-# their ends.  P are the prelude's, so the program adds 1024 - P.
+# their ends.  P are the prelude's, so the program adds 1024 - P.  (About 66 KB
+# with the prelude: past the old 64 KB image, inside W11-1E's 192 KB cap.)
 w10n=$((1024 - w93p)); w10s=""
 for k in $(seq 1 $w10n); do w10s="$w10s:‹v$k›$k→‹v$k›;"; done
 w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
 w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
-[ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z›" ] \
+[ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z› at line 1" ] \
   && ok "1024 long names fill the table: one more (‹z›) is refused" || no "1024 cap: $(cat "$TMP/u.err")"
 w10s="${w10s/:‹z›;/}"
 [ "$(printf '%s' "$w10s" | und)" = "0" ] && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1$((w10n-1))$w10n" ] \
@@ -1910,7 +1935,7 @@ echo "Spill stack (W10-C): 4096 frames at 0x440000, overflow checked in X"
 # nested-list recursion and nested higher-order words go hundreds deep; past the
 # end X writes `GOLF: spill stack exhausted` to fd 2 and exits 1.  `w10cn D K`
 # pushes K⍳ nested D deep (W10CW defines ‹wrap›: x -> a one-element list [x]).
-W10CW=':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 1 48≪|;'
+W10CW=':‹wrap›→‹v›2A 1&\store←‹v›&8\radd\store 32767 48≪|;'
 w10cn(){ printf '%s⍳%s→i{‹wrap›←i1-"→i0\\eq}' "$2" "$1"; }
 [ "$( { printf '%s' "$W10CW"; w10cn 200 3; printf '⍕E'; } | gc)" = "$(printf '[%.0s' $(seq 200))0 1 2$(printf ']%.0s' $(seq 200)) " ] \
   && ok "⍕ of a list nested 200 deep" || no "⍕ 200 deep"
@@ -1929,6 +1954,1093 @@ w10cerr=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | cat "$TM
 grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REGISTRY.md \
   && [ "$(grep -o '4456448\\radd' lib/prelude.golfj | wc -l)" = 2 ] && grep -q '"262144\\rlt\[' lib/prelude.golfj \
   && ok "REGISTRY §3 and prelude X/Y agree on the spill region and its 4096-frame bound" || no "spill region docs/prelude"
+
+# W11 — round 3 (Python/Rust gaps): one marker per task.  A task adds its tests
+# directly under its own marker, never below the next one.
+# === W11-0 ===
+echo "W11-0: ‹throw›, the runtime's one error exit (msg code list -> 'GOLF: msg' on fd 2, exit 1)"
+# The stub every prelude error but X's goes through (index, compose arena, the
+# two ⌫ guards); W11-3A makes it catchable.  stdout stays empty, stderr is
+# exactly the line, and the routed errors read as they always did.
+w110(){ printf '%s' "$1" | gc > "$TMP/w110.out" 2> "$TMP/w110.err"; echo "rc=$? $(wc -c < "$TMP/w110.out") $(cat "$TMP/w110.err")"; }
+[ "$(w110 '7Ṅ“boom“U‹throw›8Ṅ')" = "rc=1 1 GOLF: boom" ] && [ "$(w110 '0⍳‹throw›')" = "rc=1 0 GOLF: " ] \
+  && [ "$(w110 '3⍳9⊇')" = "rc=1 0 GOLF: index out of range" ] && [ "$(w110 '3⍳"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
+  && [ "$(w110 '5⌫')" = "rc=1 0 GOLF: free of a non-heap value" ] \
+  && [ "$(w110 '0→i{′⊕′⊖∘_←i1+"→i1700\rlt1+}')" = "rc=1 0 GOLF: compose arena exhausted" ] \
+  && ok "‹throw›: user message, empty message, and the four routed errors unchanged" || no "‹throw› stub / routed errors"
+
+# === W11-1A ===
+echo "W11-1A: the list tag is 0x7FFF<<48; [2^48, 2^49) are ordinary integers again"
+# Through W10 a list was addr | 2^48, so 2^48+1 was dispatched as a list by the
+# bare + and segfaulted, and big sums of squares printed garbage.
+[ "$(printf '%s' '16777216 16777216* 1+Ṅ' | gc)" = "281474976710657" ] \
+  && ok "2^24*2^24 + 1 is scalar arithmetic (281474976710657)" || no "w111a 2^48+1"
+[ "$(printf '%s' '100000⍳"*∑Ṅ' | gc)" = "333328333350000" ] \
+  && ok "sum of squares below 100000 passes through [2^48, 2^49)" || no "w111a sum of squares"
+[ "$(printf '%s' '1 48\shl"T Ṅ␤1\rsub T Ṅ␤1 48\shl 2⍳+⍕␤1 49\shl 1\rsub 1+Ṅ' | gc)" \
+    = "$(printf '1\n1\n281474976710656 281474976710657 \n562949953421312')" ] \
+  && ok "2^48 boundary: 2^48 and 2^48-1 are ints, 2^48 broadcasts as a scalar, 2^49-1 + 1" || no "w111a 2^48 boundary"
+[ "$(printf '%s' '0 5-"T Ṅ␤3+Ṅ␤0 1 48\shl-"T Ṅ␤1-Ṅ␤0 5-3⍳*⍕' | gc)" \
+    = "$(printf '1\n-2\n1\n-281474976710657\n0 -5 -10 ')" ] \
+  && ok "negatives (top bits 0xFFFF) stay ints, scalar and broadcast" || no "w111a negatives"
+[ "$(printf '%s' '32766 48\shl"T Ṅ␤1+Ṅ␤3⍳48>Ṅ' | gc)" = "$(printf '1\n9222809086901354497\n32767')" ] \
+  && ok "0x7FFE<<48 is an int; a list's top 16 bits are 0x7FFF" || no "w111a band edge"
+
+# === W11-1B ===
+echo "W11-1B: file I/O — ‹open› ‹create› ‹close› ‹fread› ‹fwrite› ‹readfile› ‹writefile›"
+# w111b compiles the program and runs it INSIDE a fresh temp dir, so relative
+# paths like “x.txt“ land there; it prints `rc=<status> <stdout>|<stderr>`.
+mkdir -p "$TMP/w111b/d"
+w111b(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w111b/p" 2>/dev/null \
+          && chmod +x "$TMP/w111b/p" && (cd "$TMP/w111b" && ./p > p.out 2> p.err; echo "rc=$? $(cat p.out)|$(cat p.err)"); }
+[ "$(w111b '“hello, file“⊃“w.txt“⊃‹writefile›“w.txt“⊃‹readfile›"⊐␤≢Ṅ')" = "rc=0 hello, file
+11|" ] && [ "$(cat "$TMP/w111b/w.txt")" = "hello, file" ] \
+  && ok "‹writefile› then ‹readfile›: the file holds the bytes and reads back" || no "writefile/readfile round trip"
+[ "$(w111b '7Ṅ“x.txt“⊃‹readfile›⊐')" = "rc=1 7|GOLF: cannot open x.txt (ENOENT)" ] \
+  && ok "missing file: GOLF: cannot open x.txt (ENOENT), exit 1" || no "missing file message"
+[ "$(w111b '“d“⊃‹readfile›')" = "rc=1 |GOLF: cannot read d (EISDIR)" ] \
+  && [ "$(w111b '“d“⊃‹create›')" = "rc=1 |GOLF: cannot create d (EISDIR)" ] \
+  && [ "$(w111b '“w.txt/q“⊃‹open›')" = "rc=1 |GOLF: cannot open w.txt/q (ENOTDIR)" ] \
+  && [ "$(w111b '0⍳“no/f“⊃‹writefile›')" = "rc=1 |GOLF: cannot create no/f (ENOENT)" ] \
+  && ok "errors name the verb and path: EISDIR on read and create, ENOTDIR, ENOENT on create" || no "path error messages"
+[ "$(w111b '99‹close›')" = "rc=1 |GOLF: cannot close fd 99 (EBADF)" ] \
+  && [ "$(w111b '99 4‹fread›')" = "rc=1 |GOLF: cannot read fd 99 (EBADF)" ] \
+  && [ "$(w111b '“ab“⊃99‹fwrite›')" = "rc=1 |GOLF: cannot write fd 99 (EBADF)" ] \
+  && ok "fd words name the fd: close, fread, fwrite on fd 99 (EBADF)" || no "fd error messages"
+[ "$(w111b '1‹_1b_ename›⊐ 13‹_1b_ename›⊐ 17‹_1b_ename›⊐ 21‹_1b_ename›⊐ 20‹_1b_ename›⊐ 99‹_1b_ename›⊐')" = "rc=0 EPERMEACCESEEXISTEISDIRENOTDIRerrno 99|" ] \
+  && ok "errno names: EPERM EACCES EEXIST EISDIR ENOTDIR, and the 'errno N' fallback" || no "errno names"
+[ "$(w111b '5179712⊙Ṅ')" = "rc=0 0|" ] && grep -q '"5179712\\store‹_1b_ename›' lib/prelude.golfj \
+  && ok "the errno goes in the 1B cell 5179712 before the throw (0 until a failure)" || no "errno cell"
+[ "$(w111b '“w.txt“⊃‹open›"4‹fread›⊐␤"4‹fread›⊐␤"4‹fread›⊐␤"4‹fread›≢Ṅ"0‹fread›≢Ṅ‹close›')" = "rc=0 hell
+o, f
+ile
+00|" ] && ok "‹fread›: chunks of n bytes, a short last one, then empty at EOF" || no "fread chunks"
+[ "$(w111b '“w.txt“⊃‹create›"“ab“⊃&‹fwrite›"“cd“⊃&‹fwrite›‹close›“w.txt“⊃‹readfile›⊐ 0⍳“z.txt“⊃‹writefile›“z.txt“⊃‹readfile›"≢Ṅ T Ṅ')" = "rc=0 abcd00|" ] \
+  && [ -e "$TMP/w111b/z.txt" ] && [ ! -s "$TMP/w111b/z.txt" ] \
+  && ok "‹create› truncates and ‹fwrite›s append; an empty file reads back as an empty tagged list" || no "create/fwrite/empty"
+[ "$(w111b ':‹m›255$;300000⍳′‹m›€“b.txt“⊃‹writefile›“b.txt“⊃‹readfile›"≢Ṅ␤∑Ṅ')" = "rc=0 300000
+38246416|" ] && [ "$(wc -c < "$TMP/w111b/b.txt")" = 300000 ] \
+  && ok "a 300000-byte file (past the 64 KB first block) round-trips byte for byte" || no "big file"
+[ "$(w111b '7Ṅ“ab“⊃1‹fwrite›8Ṅ')" = "rc=0 7ab8|" ] \
+  && ok "‹fwrite› to fd 1 drains the 1C buffer first: buffered and direct bytes stay in order" || no "fwrite/buffer order"
+
+# === W11-1C ===
+echo "W11-1C: buffered output — Ṅ ⍕ ␤ 🗲 ⊐ through an 8 KB buffer, ‹flush›, flush at every exit"
+# Byte-identical output for the big case, then the write count (strace when it
+# is installed; the counts are exact: ceil(bytes / 8192) writes, and none for a
+# program that prints nothing).
+printf '%s' '1000000⍳⍕' | gc > "$TMP/w111c.out"; cp "$TMP/p" "$TMP/w111c.big"
+python3 -c "import sys; sys.stdout.write(' '.join(map(str, range(10**6))) + ' ')" > "$TMP/w111c.exp"
+cmp -s "$TMP/w111c.out" "$TMP/w111c.exp" \
+  && ok "1000000⍳⍕ prints the same 6,888,890 bytes" || no "1000000⍳⍕ output"
+printf '%s' ':a_65; 20000⍳′a€⊐' | gc > "$TMP/w111c.20k"
+[ "$(wc -c < "$TMP/w111c.20k")" = 20000 ] && [ "$(tr -d A < "$TMP/w111c.20k" | wc -c)" = 0 ] \
+  && ok "⊐ of 20000 bytes crosses the 8192-byte buffer twice, nothing lost" || no "buffer wrap"
+cp "$TMP/p" "$TMP/w111c.wrap"
+if command -v strace >/dev/null 2>&1; then
+  w111cw(){ strace -f -e trace=write -o "$TMP/w111c.st" "$@" > /dev/null 2>&1; grep -c '^[0-9]* *write(' "$TMP/w111c.st"; }
+  printf '%s' '1 2+_' | gc > /dev/null; cp "$TMP/p" "$TMP/w111c.none"
+  [ "$(w111cw "$TMP/w111c.big")" = 841 ] && [ "$(w111cw "$TMP/w111c.wrap")" = 3 ] \
+    && [ "$(w111cw "$TMP/w111c.none")" = 0 ] \
+    && ok "write(2) calls (strace): 1000000⍳⍕ 841 (was 6,888,890), 20000 bytes 3, no output 0" \
+    || no "write counts: $(w111cw "$TMP/w111c.big") $(w111cw "$TMP/w111c.wrap") $(w111cw "$TMP/w111c.none")"
+  # ‹readline› flushes before it reads, so a prompt is out before the program blocks.
+  printf '%s' '“> “🗲‹readline›_⊐' | gc > /dev/null; cp "$TMP/p" "$TMP/w111c.rl"
+  echo hi | strace -e trace=read,write -o "$TMP/w111c.st" "$TMP/w111c.rl" > /dev/null 2>&1
+  grep -E '^(read\(0|write\(1)' "$TMP/w111c.st" | head -1 | grep -q '^write(1, "> "' \
+    && ok "‹readline› flushes a pending prompt before its first read(2)" || no "prompt before read"
+else ok "write counts: strace not installed, skipped"; ok "prompt before read: strace not installed, skipped"; fi
+# Every exit flushes: falling off the end, `.` with a status, the ÷ / % divide
+# guards, ‹throw› (index error) — and the message lands AFTER the output.
+w111c(){ printf '%s' "$1" | gc > "$TMP/w111c.o" 2>&1; echo "rc=$? $(cat "$TMP/w111c.o")"; }
+[ "$(w111c '42Ṅ␤')" = "rc=0 42" ] && [ "$(w111c '42Ṅ3.99Ṅ')" = "rc=3 42" ] \
+  && [ "$(w111c '7Ṅ␤3⍳9⊇')" = "$(printf 'rc=1 7\nGOLF: index out of range')" ] \
+  && [ "$(w111c '7Ṅ␤“boom“⊃‹throw›')" = "$(printf 'rc=1 7\nGOLF: boom')" ] \
+  && [ "$(w111c '7Ṅ␤5 0÷')" = "$(printf 'rc=1 7\nGOLF: divide by zero')" ] \
+  && [ "$(w111c '7Ṅ␤5 0%')" = "$(printf 'rc=1 7\nGOLF: divide by zero')" ] \
+  && ok "flush on exit, on ‘.’, and before ‹throw›/divide-by-zero messages (output first)" || no "exit flush: $(w111c '7Ṅ␤3⍳9⊇')"
+[ "$( { printf '%s7Ṅ␤' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | gc 2>&1)" = "$(printf '7\nGOLF: spill stack exhausted')" ] \
+  && ok "X's spill-stack error flushes too: the 7 printed before it comes first" || no "spill error flush order"
+# `)` and `(` stay raw (one write/read per byte) but flush the buffer first, so
+# mixing them with the printers keeps program order; ⎈ does not, hence ‹flush›.
+[ "$(printf '%s' '65)66Ṅ67)“d“🗲69)' | gc)" = "A66CdE" ] \
+  && ok "raw ‘)’ between buffered printers keeps program order (it flushes first)" || no "mixed ) order"
+[ "$(printf '%s' '5Ṅ1“b“4+1 1⎈_' | gc)" = "b5" ] && [ "$(printf '%s' '5Ṅ‹flush›1“b“4+1 1⎈_' | gc)" = "5b" ] \
+  && ok "raw ⎈ write overtakes the buffer unless the program calls ‹flush›" || no "‹flush› + ⎈"
+[ "$(printf '%s' '2 5179784⊛5Ṅ' | gc 2>&1 >/dev/null)" = "5" ] \
+  && ok "the buffer's fd cell (0x4F0988) redirects the printers (fd 2)" || no "buffer fd cell"
+# The flush hook is BSS, filled only by the prelude: a bare program (the compiler
+# itself) never calls it — and the oracle compiles the same exit/flush path.
+[ "$(printf '%s' '72)73)10)' | atom)" = "HI" ] && [ "$(printf '%s' '5⍳⍕␤7Ṅ' | gref)" = "$(printf '0 1 2 3 4 \n7')" ] \
+  && ok "no prelude: ‘)’ is still a raw write; golfref.py flushes at exit too" || no "bare ) / oracle flush"
+
+# === W11-1D ===
+echo "W11-1D: text words ‹fmt› ‹hex› ‹parsehex› ‹split› ‹trim› ‹startswith› ‹joinwith› ‹pad›"
+# Code lists in, code lists out; every list result is a new list.  124) prints
+# `|` so padding and trimming show their edges.
+[ "$(printf '%s' '“a, b,c“⊃44‹split›′‹trim›€"≢Ṅ␤"0⊇⊐␤"1⊇⊐␤2⊇⊐␤255‹hex›⊐' | gc)" = "$(printf '3\na\nb\nc\nff')" ] \
+  && ok "the done-when pair: “a, b,c“⊃44‹split›′‹trim›€ gives a b c; 255‹hex›⊐ prints ff" || no "w11-1d done-when"
+[ "$(printf '%s' '0‹fmt›⊐␤123‹fmt›⊐␤0 45-‹fmt›⊐␤0 1-‹fmt›⊐␤1 63≪‹fmt›⊐␤1 63≪⊖‹fmt›⊐␤10‹fmt›"≢Ṅ⍕' | gc)" \
+   = "$(printf '0\n123\n-45\n-1\n-9223372036854775808\n9223372036854775807\n249 48 ')" ] \
+  && ok "‹fmt›: 0, positive, negative, -1, INT64_MIN, INT64_MAX; a real code list" || no "w11-1d fmt"
+[ "$(printf '%s' '0‹hex›⊐␤3054‹hex›⊐␤0 1-‹hex›⊐␤1 63≪‹hex›⊐␤15‹hex›⊐16‹hex›⊐' | gc)" \
+   = "$(printf '0\nbee\nffffffffffffffff\n8000000000000000\nf10')" ] \
+  && ok "‹hex›: lowercase, no prefix, negatives as unsigned two's complement" || no "w11-1d hex"
+[ "$(printf '%s' '“ff“⊃‹parsehex›Ṅ␤“  -1A“⊃‹parsehex›Ṅ␤“+deadBEEFx9“⊃‹parsehex›Ṅ␤“zz“⊃‹parsehex›Ṅ␤0⍳‹parsehex›Ṅ␤“0x1f“⊃‹parsehex›Ṅ␤“ffffffffffffffff“⊃‹parsehex›Ṅ' | gc)" \
+   = "$(printf '255\n-26\n3735928559\n0\n0\n0\n-1')" ] \
+  && ok "‹parsehex›: case-blind digits, whitespace and sign, stops at a non-hex byte, bad/empty -> 0, wraps" || no "w11-1d parsehex"
+[ "$(printf '%s' '1 63≪"‹hex›‹parsehex›≡Ṅ 0 1-"‹hex›‹parsehex›≡Ṅ 48879"‹hex›‹parsehex›≡Ṅ 0 77-"‹fmt›‹num›≡Ṅ' | gc)" = "-1-1-1-1" ] \
+  && ok "‹hex›‹parsehex› and ‹fmt›‹num› round-trip (INT64_MIN, -1, 0xbeef, -77)" || no "w11-1d round trip"
+[ "$(printf '%s' '0⍳44‹split›"≢Ṅ0⊇≢Ṅ␤“,a,,b,“⊃44‹split›"≢Ṅ′≢€⍕␤“abc“⊃44‹split›"≢Ṅ0⊇⊐␤“k=v“⊃61‹split›⍕' | gc)" \
+   = "$(printf '10\n50 1 0 1 0 \n1abc\n[107] [118] ')" ] \
+  && ok "‹split›: empty fields kept (Python str.split), the empty list is one empty field, no sep is one field" || no "w11-1d split"
+[ "$(printf '%s' '2⍳9+“ hi  there “⊃⧺2⍳12+⧺‹trim›"≢Ṅ124)⊐124)␤“   “⊃‹trim›≢Ṅ0⍳‹trim›≢Ṅ“x“⊃‹trim›⊐“ab“⊃‹trim›⊐' | gc)" \
+   = "$(printf '9|hi  there|\n00xab')" ] \
+  && ok "‹trim›: tabs/newlines/CR/spaces both ends, inner kept; all-blank and empty give empty" || no "w11-1d trim"
+[ "$(printf '%s' '“abc“⊃“ab“⊃‹startswith›Ṅ“abc“⊃“abc“⊃‹startswith›Ṅ“abc“⊃0⍳‹startswith›Ṅ“ab“⊃“abc“⊃‹startswith›Ṅ“abc“⊃“b“⊃‹startswith›Ṅ0⍳0⍳‹startswith›Ṅ0⍳“a“⊃‹startswith›Ṅ“abc“⊃“ab“⊃‹startswith›[124)]' | gc)" = "0001101|" ] \
+  && ok "‹startswith›: 0 on a prefix (zero-is-true like ∊), the empty prefix always, longer prefix 1" || no "w11-1d startswith"
+[ "$(printf '%s' '“x,y,z“⊃44‹split›“ - “⊃‹joinwith›⊐␤“a b“⊃32‹split›44‹joinwith›⊐␤0⍳44‹joinwith›≢Ṅ␤“a“⊃32‹split›“--“⊃‹joinwith›⊐␤“,,“⊃44‹split›44‹joinwith›⊐␤3⍳′‹fmt›€0⍳‹joinwith›⊐' | gc)" \
+   = "$(printf 'x - y - z\na,b\n0\na\n,,\n012')" ] \
+  && ok "‹joinwith›: list or int sep, empty list of lists, one element, inverse of ‹split›" || no "w11-1d joinwith"
+[ "$(printf '%s' '42‹fmt›5‹pad›⊐124)␤“abcdef“⊃3‹pad›⊐124)␤0⍳2‹pad›⍕124)“ab“⊃0 3-‹pad›⊐124)' | gc)" = "$(printf '   42|\nabcdef|\n32 32 |ab|')" ] \
+  && ok "‹pad›: left-pads with spaces, never truncates, negative width is a copy" || no "w11-1d pad"
+# The input is never written, and the words nest inside a map (X/Y frames).
+[ "$(printf '%s' '“ a “⊃"‹trim›_"⊐124)"32‹split›_"5‹pad›_"0⍳‹startswith›_⊐124)3⍳′‹fmt›€⍕' | gc)" = "$(printf ' a | a |[48] [49] [50] ')" ] \
+  && ok "the text words leave their input unchanged and nest inside €" || no "w11-1d purity/nesting"
+# The Python oracle compiles the prelude to the same behaviour.
+w111d='“ x,ff , -1A“⊃44‹split›′‹trim›€"′‹parsehex›€⍕"124‹joinwith›⊐0 255-‹fmt›⊐1 63≪‹hex›⊐'
+[ "$(printf '%s' "$w111d" | gref)" = "$(printf '%s' "$w111d" | gc)" ] && [ "$(printf '%s' "$w111d" | gc)" = "0 255 -26 x|ff|-1A-2558000000000000000" ] \
+  && ok "oracle: boot/golfref.py runs the text words identically" || no "w11-1d oracle"
+# REFERENCE.md's Text examples print what the doc says.
+w111dbad=""
+while IFS= read -r w111dl; do
+  w111dp=${w111dl%%  ->*}; w111dp=${w111dp%"${w111dp##*[! ]}"}; w111dw=${w111dl##*->  }
+  [ "$(printf '%s' "$w111dp" | gc)" = "$w111dw" ] || w111dbad="$w111dbad [$w111dp]"
+done < <(sed -n '/^### Text$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w111dbad" ] && [ "$(sed -n '/^### Text$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Text examples print what they say" || no "REFERENCE Text examples:$w111dbad"
+
+# === W11-1E ===
+echo "W11-1E: the program-size cap is 192 KB (196608 bytes), checked; p_filesz is the image's size"
+# Until W11-1E every program was one PT_LOAD with v1's fixed 64 KB p_filesz and
+# nothing checked it: a bigger one compiled and then crashed.  Now p_filesz is
+# the file's true size and both compilers refuse an image past 0x430000 (the
+# W11-1C output buffer, the lowest runtime region; REGISTRY §3).
+w11e(){ cat "$TMP/pre.gb" - > "$TMP/e.src"; "$1" < "$TMP/e.src" > "$TMP/e.out" 2>"$TMP/e.err"; echo "$?"; }
+w11efsz(){ python3 -c 'import sys; b=open(sys.argv[1],"rb").read(); print(int.from_bytes(b[96:104],"little"), len(b))' "$1"; }
+# P(a,b) = `0 0`, a x ⊕ (4 bytes each), b x `&_` (5 bytes), `Ṅ`: any size from
+# P(0,0) up is reachable, so the test lands on the cap exactly.
+w11eprog(){ python3 -c 'import sys; a,b=int(sys.argv[1]),int(sys.argv[2]); sys.stdout.write("0 0"+"⊕"*a+"&_"*b+"Ṅ")' "$1" "$2" | python3 tools/codepage.py encode; }
+[ "$(w11eprog 0 0 | w11e "$TMP/golf2")" = 0 ] && w11e0=$(stat -c%s "$TMP/e.out") || w11e0=0
+w11ed=$((196608 - w11e0)); w11eb=$((w11ed % 4)); w11ea=$(((w11ed - 5*w11eb) / 4))
+w11eprog "$w11ea" "$w11eb" > "$TMP/e.cap.g2"
+[ "$(w11e "$TMP/golf2" < "$TMP/e.cap.g2")" = 0 ] && [ "$(w11efsz "$TMP/e.out")" = "196608 196608" ] \
+  && chmod +x "$TMP/e.out" && [ "$("$TMP/e.out")" = "$w11ea" ] \
+  && ok "a program of exactly 196608 bytes (image up to 0x430000) compiles, p_filesz = 196608, runs and prints $w11ea" \
+  || no "program at the cap ($w11e0 base, $(cat "$TMP/e.err"))"
+cp "$TMP/e.out" "$TMP/e.cap.bin"
+python3 boot/golfref.py < "$TMP/e.src" > "$TMP/e.cap.ref" 2>/dev/null
+cmp -s "$TMP/e.cap.bin" "$TMP/e.cap.ref" && ok "oracle: golfref emits the same 196608 bytes" || no "oracle at the cap"
+[ "$(w11e "$TMP/seed" < "$TMP/e.cap.g2")" = 0 ] && cmp -s "$TMP/e.out" "$TMP/e.cap.bin" \
+  && ok "... and so does seed" || no "seed at the cap"
+w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
+[ "$(w11e "$TMP/golf2" < "$TMP/e.over.g2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
+  && ok "4 bytes over the cap: GOLF: program too large on fd 2, exit 2, nothing on fd 1" || no "over the cap: $(cat "$TMP/e.err")"
+[ "$(w11e "$TMP/seed" < "$TMP/e.over.g2")" = 2 ] && [ ! -s "$TMP/e.out" ] && [ ! -s "$TMP/e.err" ] \
+  && ok "... seed exits 2 silently, as for an undefined word" || no "seed over the cap"
+[ "$(python3 boot/golfref.py < "$TMP/e.src" 2>"$TMP/e.err" > "$TMP/e.out"; echo $?)" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] \
+  && ok "... and golfref says the same" || no "golfref over the cap"
+# Far over (a 1 MB program): refused while compiling, before the buffer can
+# reach the compiler's own state.
+[ "$(w11eprog 262144 0 | w11e "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
+  && ok "a 1 MB program is refused the same way" || no "far over the cap"
+# Between the old 64 KB and the new cap, with real work in it: one word of
+# 2000 store/load/increment statements, then the list heap and the printers.
+w11es=""; for k in $(seq 1 2000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
+w11es=":‹f›0$w11es←‹x›⊕;‹f›Ṅ 100⍳"'"*∑Ṅ'
+[ "$(printf '%s' "$w11es" | python3 tools/codepage.py encode | w11e "$TMP/golf2")" = 0 ] && chmod +x "$TMP/e.out" \
+  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "2002328350" ] \
+  && ok "a $(stat -c%s "$TMP/e.out")-byte program (> 64 KB) runs: the list heap and the output buffer above the image still work" \
+  || no "program past 64 KB: $(cat "$TMP/e.err")"
+w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
+  && ok "golf2's own p_filesz is its size, under the 64 KB its data base (0x410000) needs" || no "golf2 p_filesz"
+
+# === W11-2A ===
+echo "W11-2A: ⎘“path“ includes a file (fd-0 swap, nested, include-once, . then lib/)"
+# Every include test runs in its own directory: paths resolve against the
+# compiler's cwd, then lib/.  w112a <compiler> compiles prelude + stdin there,
+# leaving $TMP/inc/p (binary), $TMP/inc/err and the exit status on stdout.
+mkdir -p "$TMP/inc/lib" "$TMP/inc/sub"
+w112enc(){ python3 tools/codepage.py encode; }
+w112a(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && "$1" < src > p 2>err; echo $?); }
+w112run(){ chmod +x "$TMP/inc/p" && "$TMP/inc/p"; }
+printf '%s' ':‹sq›"*;'                 | w112enc > "$TMP/inc/sq.g2"
+printf '%s' '⎘“sq.g2“:‹cube›"‹sq›*;'   | w112enc > "$TMP/inc/lib/cube.g2"
+printf '%s' '12'                        > "$TMP/inc/twelve.g2"
+printf '%s' '# a comment with no newline at the end' > "$TMP/inc/c.g2"
+[ "$(printf '%s' '⎘“sq.g2“5‹sq›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 25 ] \
+  && ok "a program uses a word defined in an included file" || no "include a word: $(cat "$TMP/inc/err")"
+cp "$TMP/inc/p" "$TMP/inc/p.one"
+printf '%s' ':‹sq›"*;5‹sq›Ṅ' | w112a "$TMP/golf2" > /dev/null
+cmp -s "$TMP/inc/p" "$TMP/inc/p.one" && ok "... and compiles to exactly the bytes of the same source written in place" || no "include is not textual"
+[ "$(printf '%s' '⎘“sq.g2“⎘“sq.g2“5‹sq›Ṅ⎘“sq.g2“' | w112a "$TMP/golf2")" = 0 ] && cmp -s "$TMP/inc/p" "$TMP/inc/p.one" \
+  && ok "a file included three times compiles once (include-once; same bytes as one include)" || no "double include"
+[ "$(printf '%s' '⎘“cube.g2“⎘“sq.g2“3‹cube›Ṅ␤4‹sq›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "$(printf '27\n16')" ] \
+  && ok "nested: lib/cube.g2 (found through lib/) includes sq.g2, which is then not included again" || no "nested include: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⎘“nope.g2“1Ṅ' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include nope.g2 at line 1" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "a missing file: GOLF: cannot include nope.g2 on fd 2, exit 2, nothing on fd 1" || no "missing include: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⎘“nope.g2“1Ṅ' | w112a "$TMP/seed")" = 2 ] && [ ! -s "$TMP/inc/err" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "... the seed exits 2 silently, as for every compile error" || no "seed missing include"
+[ "$(printf '%s' '⎘“twelve.g2“3+Ṅ⎘“c.g2“7Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "157" ] \
+  && ok "a file's end ends its last token: 12 then 3, and a final comment does not eat the includer" || no "token boundary at end of include"
+printf '%s' ':‹sq›0;' | w112enc > "$TMP/inc/lib/sq.g2"
+[ "$(printf '%s' '⎘“sq.g2“5‹sq›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 25 ] \
+  && ok "search order: the path as written (cwd) before lib/" || no "search order"
+printf '%s' '⎘“sub/me.g2“:‹me›9;' | w112enc > "$TMP/inc/sub/me.g2"
+[ "$(printf '%s' '⎘“sub/me.g2“‹me›Ṅ' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 9 ] \
+  && ok "a file that includes itself is compiled once; a path with a directory works" || no "self include"
+for k in 1 2 3 4 5 6 7 8 9; do printf '%s' "⎘“d$((k + 1)).g2“" | w112enc > "$TMP/inc/d$k.g2"; done
+printf '%s' '7)' > "$TMP/inc/d8.g2"
+[ "$(printf '%s' '⎘“d1.g2“8)' | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = "$(printf '\007\010')" ] \
+  && ok "includes nest 8 deep" || no "8-deep include: $(cat "$TMP/inc/err")"
+printf '%s' '⎘“d9.g2“' | w112enc > "$TMP/inc/d8.g2"; : > "$TMP/inc/d10.g2"
+[ "$(printf '%s' '⎘“d1.g2“' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: includes nested too deeply d9.g2 at d8.g2 line 1" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "a 9th level: GOLF: includes nested too deeply d9.g2, exit 2" || no "9-deep include: $(cat "$TMP/inc/err")"
+w112many=""; for k in $(seq 1 61); do : > "$TMP/inc/e$k.g2"; w112many="$w112many⎘“e$k.g2“"; done
+[ "$(printf '%s' "${w112many%⎘“e61.g2“}1Ṅ" | w112a "$TMP/golf2")" = 0 ] && [ "$(w112run)" = 1 ] \
+  && [ "$(printf '%s' "${w112many}" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: too many includes e61.g2 at line 1" ] \
+  && ok "60 distinct files may be included; the 61st: GOLF: too many includes e61.g2" || no "include table bound: $(cat "$TMP/inc/err")"
+w112long=$(printf 'x%.0s' $(seq 1 251))
+[ "$(printf '%s' "⎘“$w112long“" | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include ${w112long%x} at line 1" ] \
+  && [ "$(printf '%s' '⎘5' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include  at line 1" ] \
+  && [ "$(printf '%s' '⎘“sq.g2' | w112a "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/inc/err")" = "GOLF: cannot include sq.g2 at line 1" ] \
+  && ok "a path over 250 bytes, ⎘ without “, an unclosed path: GOLF: cannot include …, exit 2" || no "bad include syntax: $(cat "$TMP/inc/err")"
+w112p='⎘“cube.g2“⎘“twelve.g2“‹cube›Ṅ⎘“d1.g2“'
+printf '%s' '7)' > "$TMP/inc/d8.g2"
+[ "$(printf '%s' "$w112p" | w112a "$TMP/golf2")" = 0 ] && cp "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && [ "$(printf '%s' "$w112p" | w112a "$TMP/seed")" = 0 ] && cmp -s "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && (cd "$TMP/inc" && python3 "$EXP/boot/golfref.py" < src > p.ref 2>/dev/null) && cmp -s "$TMP/inc/p.ref" "$TMP/inc/p.g2" \
+  && [ "$("$TMP/inc/p.g2")" = "$(printf '1728\007')" ] \
+  && ok "seed, golf2 and boot/golfref.py emit the same bytes for nested and repeated includes" || no "include parity (seed/golf2/golfref)"
+[ "$(printf '%s' '⎘“nope.g2“' | w112a "$TMP/golf2")" = 2 ] && (cd "$TMP/inc" && python3 "$EXP/boot/golfref.py" < src > p.ref 2>err.ref; [ $? = 2 ]) \
+  && [ "$(cat "$TMP/inc/err.ref")" = "GOLF: cannot include nope.g2 at line 1" ] \
+  && ok "golfref: the same missing-file message and status" || no "golfref missing include"
+[ "$(printf '%s' '\import\strx.g2\str ⎘“y“' | w112enc | od -An -tx1 | tr -d ' \n')" = "b68e782e67328e20b68e798e" ] \
+  && [ "$(printf '\266\216a#b\216' | python3 tools/codepage.py decode)" = "⎘“a#b“" ] \
+  && ok "⎘ and \\import encode to 0xB6; the encoder leaves the path (a “…“ literal) alone; decode shows ⎘" || no "⎘ encode/decode"
+# tools/golfc: an included .golfj is glyph source, so golfc encodes it on the
+# way (recursively, one copy per real file); a .g2 include is read raw.
+mkdir -p "$TMP/incj/lib"
+printf '%s\n' '# squares: glyph source, a comment and a \mnemonic' ':‹sq›"\rmul;' > "$TMP/incj/lib/sqj.golfj"
+printf '%s\n' '⎘“sqj.golfj“' ':‹quad›‹sq›‹sq›;   # x^4' > "$TMP/incj/util.golfj"
+printf '%s\n' '⎘“util.golfj“⎘“sqj.golfj“⎘“lib/sqj.golfj“⎘“raw.g2“' '3‹quad›Ṅ␤5‹sq›Ṅ␤‹r›Ṅ' > "$TMP/incj/main.golfj"
+printf '%s' ':‹r›6;' | w112enc > "$TMP/incj/raw.g2"
+printf '%s' '⎘“gone.golfj“1Ṅ' > "$TMP/incj/bad.golfj"
+(cd "$TMP/incj" && "$EXP/tools/golfc" -j main.golfj m >/dev/null 2>&1) && [ "$("$TMP/incj/m")" = "$(printf '81\n25\n6')" ] \
+  && ok "golfc -j: nested .golfj includes (via lib/) are encoded, a .g2 one read raw, the same file once" || no "golfc -j with .golfj includes"
+[ "$(cd "$TMP/incj" && "$EXP/tools/golfc" -j bad.golfj b 2>&1 >/dev/null; echo "rc=$?")" = "$(printf 'GOLF: cannot include gone.golfj at line 1\nrc=2')" ] \
+  && ok "golfc -j: a missing .golfj include is reported under its own name, exit 2" || no "golfc missing .golfj include"
+# REFERENCE.md's Modules example, cut out of the doc and run as it says.
+mkdir -p "$TMP/incr/lib"
+sed -n '/^### Modules$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' > "$TMP/incr/ex"
+sed -n '/^# lib\/geom.golfj$/,/^$/p' "$TMP/incr/ex" > "$TMP/incr/lib/geom.golfj"
+sed -n '/^# main.golfj/,/^```$/p' "$TMP/incr/ex" | grep -v '^```$' > "$TMP/incr/main.golfj"
+(cd "$TMP/incr" && "$EXP/tools/golfc" -j main.golfj main >/dev/null 2>&1) && [ "$("$TMP/incr/main")" = 25 ] \
+  && grep -q 'prints 25' "$TMP/incr/main.golfj" && grep -q '‹hyp2›' "$TMP/incr/lib/geom.golfj" \
+  && ok "REFERENCE.md's Modules example builds with golfc -j and prints 25" || no "REFERENCE Modules example"
+
+# === W11-2B ===
+echo "W11-2B: dict and set — ‹hash› ‹dict› ‹put› ‹get› ‹has› ‹del› ‹keys› ‹vals› ‹set› ‹add›"
+# A compact (insertion-ordered) open-addressing dict, keys compared with ≣.
+# d is changed in place, so `"…‹put›` leaves the same d twice; the tests keep
+# one copy with `"` and let the extras pile up.
+[ "$(printf '%s' '‹dict›"1 10‹put›_"2 20‹put›_"1 11‹put›_"1‹get›Ṅ32)"2‹get›Ṅ␤"‹keys›⍕␤"‹vals›⍕␤"3‹has›Ṅ"1‹has›Ṅ␤‹keys›≢Ṅ' | gc)" \
+   = "$(printf '11 20\n1 2 \n11 20 \n10\n2')" ] \
+  && ok "put / get / overwrite in place / has (zero-is-true) / keys / vals" || no "w11-2b basics"
+# ‹hash› is FNV-1a 64 over an int's 8 bytes (low first), or over a list's
+# elements with inner lists hashed first; Python computes the same numbers.
+w112bh=$(python3 -c '
+M=2**64; B=0xcbf29ce484222325
+def f(h,x):
+  for i in range(8): h=((h^((x>>(8*i))&255))*0x100000001b3)%M
+  return h
+def H(v):
+  if isinstance(v,int): return f(B,v%M)
+  h=B
+  for e in v: h=f(h,H(e) if isinstance(e,list) else e%M)
+  return h
+s=lambda v: v-M if v>=2**63 else v
+print(" ".join(str(s(H(v))) for v in [5,0,-1,[],[0,1,2],[[],[0],[0,1]],[97,98]]))')
+[ "$(printf '%s' '5‹hash›Ṅ32)0‹hash›Ṅ32)0 1-‹hash›Ṅ32)0⍳‹hash›Ṅ32)3⍳‹hash›Ṅ32)3⍳′⍳€‹hash›Ṅ32)“ab“⊃‹hash›Ṅ' | gc)" = "$w112bh" ] \
+  && ok "‹hash›: FNV-1a 64 of ints, flat and nested lists matches Python" || no "w11-2b hash: $w112bh"
+[ "$(printf '%s' '3⍳′⍳€‹hash›3⍳′⍳€‹hash›≡Ṅ“ab“⊃‹hash›“ab“⊃‹hash›≡Ṅ3⍳‹hash›4⍳‹hash›≡Ṅ' | gc)" = "-1-10" ] \
+  && ok "‹hash›: ≣-equal (distinct) lists hash equal; different lists differ" || no "w11-2b hash eq"
+# Delete, reinsert (goes to the end), delete of a missing key, and churn: 100k
+# put+del of distinct keys only ever compacts, so the table stays at cap 8.
+[ "$(printf '%s' '‹dict›"5 1‹put›_"6 2‹put›_"7 3‹put›_"6‹del›_"‹keys›⍕"‹vals›⍕"6‹has›Ṅ"9‹del›_"6 4‹put›_"‹keys›⍕‹vals›⍕' | gc)" = "5 7 1 3 15 7 6 1 3 4 " ] \
+  && ok "‹del›: removes, a reinserted key goes last, deleting a missing key is a no-op" || no "w11-2b del"
+[ "$(printf '%s' '‹dict›→‹d›0→‹i›{←‹d›←‹i›←‹i›‹put›_←‹d›←‹i›‹del›_←‹i›⊕"→‹i›100000≡}←‹d›1⊇Ṅ32)←‹d›‹keys›≢Ṅ32)←‹d›42 1‹put›42‹get›Ṅ' | gc)" = "8 0 1" ] \
+  && ok "100k put+del: tombstones are compacted away, the table never grows" || no "w11-2b churn"
+# Growth: 1000 keys double the table to 2048 (load <= 1/2), keep insertion
+# order and every value.
+[ "$(printf '%s' '‹dict›→‹d›0→‹i›{←‹d›←‹i›←‹i›²‹put›_←‹i›⊕"→‹i›1000≡}←‹d›1⊇Ṅ32)←‹d›‹keys›1000⍳≣Ṅ32)←‹d›‹vals›1000⍳"*≣Ṅ32)←‹d›999‹get›Ṅ' | gc)" = "2048 -1 -1 998001" ] \
+  && ok "growth: 1000 keys, cap 2048, keys in insertion order, values intact" || no "w11-2b growth"
+# List keys: code lists made separately find each other; nested keys; [5] and
+# 5 are different keys though they hash alike; the empty list is a key.
+[ "$(printf '%s' '‹dict›"“ab“⊃1‹put›_"3⍳′⍳€2‹put›_"5 3‹put›_"5 1⍳+4‹put›_"0⍳5‹put›_"“ab“⊃‹get›Ṅ"3⍳′⍳€‹get›Ṅ"5‹get›Ṅ"1⍳5+‹get›Ṅ"0⍳‹get›Ṅ"2⍳′⍳€‹has›Ṅ"“abc“⊃‹has›Ṅ‹keys›⍕' | gc)" = "1234511[97 98] [[] [0] [0 1]] 5 [5] [] " ] \
+  && ok "list keys: ≣ equality, nested lists, [5] vs 5, the empty list" || no "w11-2b list keys"
+# Sets on top: ‹add› twice is one member; ‹has› ‹del› ‹keys› work on sets.
+[ "$(printf '%s' '‹set›"4‹add›_"2‹add›_"4‹add›_"“x“⊃‹add›_"‹keys›⍕"2‹has›Ṅ"3‹has›Ṅ"2‹del›_"2‹has›Ṅ"‹keys›≢Ṅ‹vals›⍕' | gc)" = "4 2 [120] 01120 0 " ] \
+  && ok "sets: ‹set› ‹add› (idempotent), ‹has› ‹del› ‹keys› on a set" || no "w11-2b sets"
+w112be(){ printf '%s' "$1" | gc > "$TMP/w112b.out" 2> "$TMP/w112b.err"; echo "rc=$? $(cat "$TMP/w112b.out") $(cat "$TMP/w112b.err")"; }
+[ "$(w112be '7Ṅ‹dict›"1 1‹put›_"2‹get›Ṅ')" = "rc=1 7 GOLF: key not found" ] && [ "$(w112be '‹dict›"1 1‹put›_"1‹del›_1‹get›')" = "rc=1  GOLF: key not found" ] \
+  && ok "‹get› of a missing (or deleted) key throws: GOLF: key not found, exit 1" || no "w11-2b missing key"
+# The done-when pair.  Word count over stdin (two of this repo's docs) matches
+# sort | uniq -c once both are sorted the same way.
+w112bwc=':‹bump›→‹k›←‹d›←‹k›1←‹d›←‹k›‹has›[_←‹d›←‹k›‹get›⊕]‹put›;:‹show›→‹k›←‹d›←‹k›‹get›Ṅ“ “🗲←‹k›⊐␤0;‹dict›→‹d›‹readall›‹words›′‹bump›€_←‹d›‹keys›′‹show›€_'
+printf '%s' "$w112bwc" | gc > /dev/null; cp "$TMP/p" "$TMP/w112bwc"
+cat REFERENCE.md DESIGN.md > "$TMP/w112b.in"
+"$TMP/w112bwc" < "$TMP/w112b.in" | LC_ALL=C sort > "$TMP/w112b.got"
+tr -s ' \t\n\r\v\f' '\n' < "$TMP/w112b.in" | grep -v '^$' | LC_ALL=C sort | uniq -c | awk '{print $1, $2}' | LC_ALL=C sort > "$TMP/w112b.want"
+[ -s "$TMP/w112b.want" ] && cmp -s "$TMP/w112b.got" "$TMP/w112b.want" \
+  && ok "word count of stdin ($(wc -l < "$TMP/w112b.want") distinct words) matches sort | uniq -c" || no "w11-2b word count"
+[ "$("$TMP/w112bwc" < "$TMP/w112b.in" | head -1 | cut -d' ' -f2-)" = "$(tr -s ' \t\n\r\v\f' '\n' < "$TMP/w112b.in" | grep -v '^$' | head -1)" ] \
+  && ok "... keys come out in order of first appearance" || no "w11-2b word count order"
+# 100,000 int inserts then 100,000 lookups (sum of the values 3i): well under
+# 1 s (about 0.05 s here; the bound is generous for slow machines).
+printf '%s' '‹dict›→‹d›0→‹i›{←‹d›←‹i›←‹i›3*‹put›_←‹i›⊕"→‹i›100000≡}0→‹s›0→‹i›{←‹s›←‹d›←‹i›‹get›+→‹s›←‹i›⊕"→‹i›100000≡}←‹s›Ṅ32)←‹d›‹keys›≢Ṅ' | gc > /dev/null
+cp "$TMP/p" "$TMP/w112bt"; w112bt0=$(date +%s%N); w112bto=$("$TMP/w112bt"); w112bt1=$(date +%s%N)
+w112bms=$(( (w112bt1 - w112bt0) / 1000000 ))
+[ "$w112bto" = "14999850000 100000" ] && [ "$w112bms" -lt 1000 ] \
+  && ok "100k int inserts + 100k lookups: right sum, ${w112bms} ms (< 1000)" || no "w11-2b 100k ($w112bto, ${w112bms} ms)"
+# The Python oracle compiles the prelude to the same behaviour.
+w112bo='‹dict›"“ab“⊃1‹put›_"3⍳′⍳€2‹put›_"7 3‹put›_"7‹del›_"9 4‹put›_"“ab“⊃‹get›Ṅ"3⍳′⍳€‹get›Ṅ‹keys›⍕7‹hash›Ṅ'
+[ "$(printf '%s' "$w112bo" | gref)" = "$(printf '%s' "$w112bo" | gc)" ] && [ "$(printf '%s' "$w112bo" | gc)" = "12[97 98] [[] [0] [0 1]] 9 5465015992139406178" ] \
+  && ok "oracle: boot/golfref.py runs the dict words identically" || no "w11-2b oracle"
+# REFERENCE.md's "Dicts and sets" examples print (stdout + stderr) what they
+# say, trailing spaces aside.
+w112bbad=""
+while IFS= read -r w112bl; do
+  w112bp=${w112bl%%  ->*}; w112bp=${w112bp%"${w112bp##*[! ]}"}; w112bw=${w112bl##*->  }
+  w112bg=$(printf '%s' "$w112bp" | gc 2>&1); w112bg=${w112bg%"${w112bg##*[! ]}"}
+  [ "$w112bg" = "$w112bw" ] || w112bbad="$w112bbad [$w112bp]"
+done < <(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w112bbad" ] && [ "$(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Dicts and sets examples print what they say" || no "REFERENCE Dicts examples:$w112bbad"
+
+# === W11-2C ===
+echo "W11-2C: ⊸ bind, closures by value (x ′f ⊸ -> ′g; g pushes the captured x, calls f)"
+# The done-when line: the VALUE of n is captured when ⊸ runs, so k still adds 10
+# after n becomes 99.  (GAPS §2.2's `:f←k+;` reads k at call time instead.)
+[ "$(printf '%s' '10→n ←n′+⊸→k 99→n 3⍳←k€⍕' | gc)" = "10 11 12 " ] \
+  && ok "10→n ←n′+⊸→k 99→n 3⍳←k€⍕ prints 10 11 12 (value captured, not the variable)" || no "w11-2c capture"
+[ "$(printf '%s' '10→k :f←k+; 3⍳′f€⍕ 99→k 3⍳′f€⍕' | gc)" = "10 11 12 99 100 101 " ] \
+  && ok "... while a word reading ←k follows the global (the contrast)" || no "w11-2c global contrast"
+# x sits ABOVE the element when f runs, so ′- binds the right operand.
+[ "$(printf '%s' '3⍳5′-⊸€⍕ 4⍳2′⊇⊸⍎Ṅ' | gc)" = "-5 -4 -3 2" ] \
+  && ok "partial application of a binary word: e-5 per element; ′⊇ bound to an index" || no "w11-2c partial"
+# A captured LIST: the tagged 64-bit value goes into the thunk whole.
+[ "$(printf '%s' '3⍳′⧺⊸→c 2⍳←c⍎⍕ 0⍳←c⍎⍕ 3⍳10+′+⊸→a 3⍳←a⍎⍕ 0⍳′⧺⊸→p 2⍳←p⍎⍕' | gc)" = "0 1 0 1 2 0 1 2 10 12 14 0 1 " ] \
+  && ok "binding a list: ⧺ appends the captured list (also the empty one); + adds it elementwise" || no "w11-2c list"
+[ "$(printf '%s' '5 1 63≪′+⊸⍎Ṅ 0 1-′⊕⊸⍎Ṅ 7 0 1-′+⊸⍎Ṅ' | gc)" = "-922337203685477580306" ] \
+  && ok "the full 64 bits are captured (INT64_MIN, -1)" || no "w11-2c 64-bit"
+# Composes with ∘ on either side, binds a composed quotation, binds a bound one.
+w112cc=':d⊗;3⍳10′+⊸′d∘€⍕ 3⍳′d10′+⊸∘€⍕ 5′⊗′⊕∘⊸⍎Ṅ 3 4′+⊸⊸⍎Ṅ'
+[ "$(printf '%s' "$w112cc" | gc)" = "20 22 24 10 12 14 117" ] \
+  && ok "bind composes with ∘ (either side), binds a composed quotation, and binds a bound one" || no "w11-2c compose"
+[ "$(printf '%s' "$w112cc" | gref)" = "20 22 24 10 12 14 117" ] \
+  && ok "oracle: boot/golfref.py runs ⊸ identically" || no "w11-2c oracle"
+# ⊸ inside a map: a fresh thunk per element (X/Y frames nest), each its own x.
+[ "$(printf '%s' ':b′⍳⊸;3⍳′b€′⍎€⍕' | gc)" = "[] [0] [0 1] " ] \
+  && ok "⊸ inside €: one thunk per element, each with its own x" || no "w11-2c in map"
+# A thunk is 38 bytes in ∘'s arena (∘'s is 39), on the same bump pointer.
+[ "$(printf '%s' '1′⊕⊸1′⊕⊸\rsub\negṄ ′⊕′⊕∘1′⊕⊸\rsub\negṄ' | gc)" = "3839" ] \
+  && ok "a bind thunk is 38 bytes, on the compose arena's bump pointer" || no "w11-2c thunk size"
+# The arena bound holds for ⊸ alone and for any mix of ⊸ and ∘.  1724 binds
+# (65512 bytes) fit, the 1725th would start past 65498; 851 ∘+⊸ pairs (77 bytes
+# each) end at 65527 and the 852nd ∘ would cross.  The canary v is a variable
+# the overrun would reach (the bank starts right after the arena).
+w112c(){ printf '1234→v 0→i{%s←i1+"→i%s\\rlt1+}%s←vṄ' "$1" "$2" "${3-}" | arena; }
+w112cb='0→i{1′⊕⊸_←i1+"→i698\rlt1+}'
+[ "$(w112c '1′⊕⊸_' 1724)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && [ "$(w112c '1′⊕⊸_' 1725)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
+  && ok "1724 binds fit the arena, the 1725th says compose arena exhausted (exit 1, stdout clean)" || no "w11-2c bind arena"
+[ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 851)" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && [ "$(w112c '′⊕′⊖∘_1′⊕⊸_' 852)" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] && [ ! -s "$TMP/ar.out" ] \
+  && ok "mixing ∘ and ⊸: 851 pairs fit with the canary intact, the next ∘ is diagnosed" || no "w11-2c mixed arena"
+[ "$(w112c '′⊕′⊖∘_' 1000 "$w112cb")" = 0 ] && [ "$(cat "$TMP/ar.out")" = 1234 ] \
+  && [ "$(w112c '′⊕′⊖∘_' 1000 "${w112cb/698/699}")" = 1 ] && [ "$(cat "$TMP/ar.err")" = "GOLF: compose arena exhausted" ] \
+  && ok "1000 composes then 698 binds fit; the 699th bind is diagnosed" || no "w11-2c compose-then-bind arena"
+# REFERENCE.md's Closures examples print what the doc says.
+w112cbad=""
+while IFS= read -r w112cl; do
+  w112cp=${w112cl%%  ->*}; w112cp=${w112cp%"${w112cp##*[! ]}"}; w112cw=${w112cl##*->  }
+  [ "$(printf '%s' "$w112cp" | gc | sed 's/ *$//')" = "$w112cw" ] || w112cbad="$w112cbad [$w112cp]"
+done < <(sed -n '/^### Closures$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w112cbad" ] && [ "$(sed -n '/^### Closures$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && ok "REFERENCE.md's Closures examples print what they say" || no "REFERENCE Closures examples:$w112cbad"
+
+# === W11-2D ===
+echo "W11-2D: use after free — ⌫ poisons the length cell, list words check it; ‹heapstats›"
+# ⌫ writes -559038737 into a freed block's length cell (the free-list link
+# moved to payload cell 1) and A writes 0 over it on reuse.  Every list word
+# enters through ‹_2d_chk› (I clamps a negative length), so a freed list that
+# reaches one dies with `GOLF: use after free`, exit 1, stdout flushed first.
+[ "$(w110 '7Ṅ5⍳"⌫∑Ṅ')" = "rc=1 1 GOLF: use after free" ] \
+  && ok "a freed list passed to ∑: GOLF: use after free, exit 1 (earlier output kept)" || no "uaf sum: $(w110 '7Ṅ5⍳"⌫∑Ṅ')"
+w112dbad=""
+for w in '≢Ṅ' '⍕' "′⊕€_" '0′+⇤_' '∏_' '2⊇_' '0⊇_' '⌽_' "′⊕⌿_" '⊐' '9⍳⧺_' '9⍳&⧺__' '2↑_' '2↓_' '⍋_' '3∊_' '9⍳≣_' '⍤_' \
+         '1+_' '1-_' '2*_' '9⍳+_' '1&-__' '9⍳&*__' "9⍳′+⊞_" '‹words›_' '1 2‹slice›_' '3‹indexof›_' '‹unique›_' '‹flatten›_'; do
+  r=$(w110 "5⍳\"⌫$w")
+  [ "$r" = "rc=1 0 GOLF: use after free" ] || w112dbad="$w112dbad [$w: $r]"
+done
+[ -z "$w112dbad" ] && ok "≢ ⍕ € ⇤ ∏ ⊇ ⌽ ⌿ ⊐ ⧺ ↑ ↓ ⍋ ∊ ≣ ⍤ ⊞, bare + - * (D, either side) and the W9 long words all refuse a freed list" \
+  || no "uaf entry points:$w112dbad"
+[ "$(w110 '3⍳′⍳€"2⊇⌫⍕')" = "rc=1 7 GOLF: use after free" ] \
+  && ok "a freed INNER list is caught when ⍕ recurses into it" || no "uaf nested: $(w110 '3⍳′⍳€"2⊇⌫⍕')"
+[ "$(w110 '3⍳"⌫⌫')" = "rc=1 0 GOLF: double free" ] && [ "$(w110 '3A"⌫⌫')" = "rc=1 0 GOLF: double free" ] \
+  && [ "$(w110 '3⍳9⊇')" = "rc=1 0 GOLF: index out of range" ] && [ "$(w110 '3⍳0 1-⊇')" = "rc=1 0 GOLF: index out of range" ] \
+  && ok "double free (list and raw block) and index out of range on a live list are unchanged" || no "uaf: other messages"
+[ "$(printf '%s' '5⍳"⌫ 5⍳"≢Ṅ␤"∑Ṅ␤ 3A"⌫ 3A\fetch Ṅ␤ 5⍳"→a⌫ 5⍳_ ←a∑Ṅ' | gc)" = "$(printf '5\n10\n0\n10')" ] \
+  && ok "a reused block is live again (A clears the poison, raw blocks too); a stale copy of it is NOT caught" || no "uaf reuse"
+[ "$(printf '%s' '‹heapstats›→b→n 5⍳ ‹heapstats›←b-Ṅ␤←n-Ṅ␤ ⌫ 1000⍳"⌫ ‹heapstats›←b-Ṅ␤←n-Ṅ␤' | gc)" = "$(printf '72\n1\n0\n0')" ] \
+  && ok "‹heapstats› -> blocks bytes: 5⍳ adds one 72-byte block ((8+1)*8), ⌫ takes it back, a class-7 block too" || no "heapstats basic"
+[ "$(printf '%s' ':d⊗;5⍳→l ‹heapstats›→b→n 100000→i{←l′d€"∑_⌫←i1-"→i0≡}‹heapstats›←b-Ṅ␤←n-Ṅ␤ 100→i{←l′d€_←i1-"→i0≡}‹heapstats›←b-Ṅ␤←n-Ṅ' | gc)" \
+    = "$(printf '0\n0\n7200\n100')" ] \
+  && ok "100,000 × (map, ∑, ⌫): live blocks stay flat; the same loop without ⌫ adds a block per pass" || no "heapstats flat loop"
+[ "$(printf '%s' '5⍳"⌫∑Ṅ' | gref; echo " $?")" = " 1" ] \
+  && [ "$(printf '%s' ':d⊗;5⍳→l 50→i{←l′d€⌫←i1-"→i0≡}‹heapstats›Ṅ␤Ṅ␤3A"⌫3A\fetch Ṅ' | gref)" \
+       = "$(printf '%s' ':d⊗;5⍳→l 50→i{←l′d€⌫←i1-"→i0≡}‹heapstats›Ṅ␤Ṅ␤3A"⌫3A\fetch Ṅ' | gc)" ] \
+  && ok "oracle: golfref runs the poison, the reuse and ‹heapstats› the same" || no "uaf oracle"
+# REFERENCE.md's Memory examples print what the doc says.
+w112dbad=""
+while IFS= read -r w112dl; do
+  w112dp=${w112dl%%  ->*}; w112dp=${w112dp%"${w112dp##*[! ]}"}; w112dw=${w112dl##*->  }
+  [ "$(printf '%s' "$w112dp" | gc)" = "$w112dw" ] || w112dbad="$w112dbad [$w112dp]"
+done < <(sed -n '/^### Memory$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w112dbad" ] && [ "$(sed -n '/^### Memory$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 4 ] \
+  && [ "$(w110 '5⍳"⌫∑Ṅ')" = "rc=1 0 GOLF: use after free" ] \
+  && ok "REFERENCE.md's Memory examples print what they say" || no "REFERENCE Memory examples:$w112dbad"
+
+# === W11-3A ===
+echo "W11-3A: ‹catch› / ‹throw› — a caught error is its message (a code list), 0 on success"
+# ‹catch› arms a handler record (a spill-stack frame: sp bp from ⊷, the old
+# chain head) and runs f; ‹throw› with one armed unlinks it and ⊶s back, so
+# ‹catch› returns with the message on the stack as it was at the call.
+w113(){ printf '%s' "$1" | gc 2>&1; echo " rc=$?"; }
+[ "$(printf '%s' '1 2⊷→b→s 3 4 5 ←s←b⊶ ṄṄ ⊷_⊷_\rsubṄ' | gc)" = "218" ] \
+  && ok "⊷ ⊶: a saved sp/bp pair drops what was pushed since; ⊷'s sp is rsp before the atom (8 apart)" || no "⊷ ⊶ atoms"
+[ "$(w113 ':‹bad›3⍳9⊇;1 2′‹bad›‹catch›⊐␤Ṅ␤Ṅ␤5180160⊙Ṅ5177392@Ṅ')" = "$(printf 'index out of range\n2\n1\n00 rc=0')" ] \
+  && ok "′‹bad›‹catch›: the index error comes back as its message, the program goes on (chain and spill stack empty after)" \
+  || no "catch index error: $(w113 ':‹bad›3⍳9⊇;1 2′‹bad›‹catch›⊐␤Ṅ␤Ṅ␤5180160⊙Ṅ5177392@Ṅ')"
+[ "$(w113 ':‹ok›5 6;1′‹ok›‹catch›ṄṄṄṄ5180160⊙Ṅ5177392@Ṅ')" = "065100 rc=0" ] \
+  && ok "success: 0 above f's results, the handler unlinked" || no "catch success"
+[ "$(w113 ':‹f›1 2 3“no“⊃‹throw›;7′‹f›‹catch›⊐Ṅ⊷_ ′‹f›‹catch›_ ⊷_\rsubṄ')" = "no78 rc=0" ] \
+  && ok "error path: what f pushed is discarded, the depth at ‹catch› restored" || no "catch depth"
+[ "$(w113 '7Ṅ“mine“⊃′‹throw›‹catch›⊐8Ṅ')" = "7mine8 rc=0" ] && [ "$(w113 '7Ṅ“mine“⊃‹throw›8Ṅ')" = "$(printf '7GOLF: mine\n rc=1')" ] \
+  && ok "a program's own ‹throw›: caught, or (none armed) GOLF: mine, exit 1, earlier output first" || no "user throw"
+[ "$(w113 ':‹in›“inner“⊃‹throw›;:‹out›′‹in›‹catch›⊐“outer“⊃‹throw›;′‹out›‹catch›⊐5180160⊙Ṅ')" = "innerouter0 rc=0" ] \
+  && ok "nesting: the inner ‹catch› handles, the outer stays armed for the next throw" || no "catch nesting"
+[ "$(w113 ':‹g›‹throw›;:‹h›“again“⊃′‹g›‹catch›‹throw›;′‹h›‹catch›⊐ ′‹h›‹catch›_ ‹h›9Ṅ')" = "$(printf 'againGOLF: again\n rc=1')" ] \
+  && ok "rethrow from a handler reaches the outer ‹catch›; with none left it prints and exits 1" || no "rethrow"
+# Unwinding: € (spill frames), ⇤, ⊡ frames, nested ⍕ — afterwards a deep op
+# works and the spill offset is back to 0.
+W113D='5177392@Ṅ␤3000⍳′⍳€′∑€∑Ṅ'
+[ "$(w113 ":‹f›\"7≡1+[“seven“⊃‹throw›]⊗;:‹g›10⍳′‹f›€;′‹g›‹catch›⊐␤$W113D")" = "$(printf 'seven\n0\n4495501000 rc=0')" ] \
+  && ok "a throw from inside € (map) unwinds its spill frame; a deep map/sum still works" || no "throw in map"
+[ "$(w113 ":‹f›\"5≡1+[“five“⊃‹throw›]+;:‹g›10⍳0′‹f›⇤;′‹g›‹catch›⊐␤$W113D")" = "$(printf 'five\n0\n4495501000 rc=0')" ] \
+  && ok "a throw from inside ⇤ (fold)" || no "throw in fold"
+[ "$(w113 ":‹r›\"0≡[1-1⍳+′‹r›€^]_“deep“⊃‹throw›;3000′‹r›‹catch›⊐␤$W113D")" = "$(printf 'deep\n0\n4495501000 rc=0')" ] \
+  && ok "a throw 3000 nested maps deep" || no "throw deep in maps"
+[ "$(w113 ":‹p›3⍳′⍳€\"2⊇⌫⍕;′‹p›‹catch›␤⊐␤$W113D")" = "$(printf '[] [0] \nuse after free\n0\n4495501000 rc=0')" ] \
+  && ok "a throw from inside a nested ⍕ (output before it kept)" || no "throw in nested print"
+[ "$(w113 '⊡‹d›⇒a⇒b ⇐a⇐b+ 3⍳9⊇;⊡‹e›⇒a 1 2‹d› ⇐a;⊡‹m›⇒a⇒b 5′‹e›‹catch›⊐ ⇐a⇐bṄṄ 4⍳′⍳€⍕;8 9‹m›')" = "index out of range89[] [0] [0 1] [0 1 2]  rc=0" ] \
+  && ok "a throw out of nested ⊡ words drops their frames; the catcher's own locals are intact" || no "throw through ⊡"
+[ "$(w113 ':‹s›“e“⊃‹throw›;:‹t›′‹s›‹catch›_;10⍳′‹t›€⍕')" = "0 1 2 3 4 5 6 7 8 9  rc=0" ] \
+  && ok "‹catch› inside a mapped word: the map's own scratch survives each caught throw" || no "catch inside map"
+[ "$(w113 ":‹r›1⍳′‹r›€;′‹r›‹catch›⊐␤$W113D")" = "$(printf 'spill stack exhausted\n0\n4495501000 rc=0')" ] \
+  && [ "$(w113 ':‹r›1⍳′‹r›€;‹r›')" = "$(printf 'GOLF: spill stack exhausted\n rc=1')" ] \
+  && ok "spill stack exhausted: catchable (unwound before its message is built); uncaught unchanged" || no "catch spill exhaustion"
+[ "$(w113 ':‹z›7 0/;1 2′‹z›‹catch›⊐ṄṄ:‹y›7 0÷;′‹y›‹catch›_:‹x›7 0∣;′‹x›‹catch›_:‹w›7 0%;′‹w›‹catch›⊐')" = "divide by zero21divide by zero rc=0" ] \
+  && [ "$(w113 '5Ṅ7 0÷')" = "$(printf '5GOLF: divide by zero\n rc=1')" ] && [ "$(w113 '5Ṅ7 0%')" = "$(printf '5GOLF: divide by zero\n rc=1')" ] \
+  && ok "/ % ÷ ∣ by zero: catchable through the 0x4F0B10 hook; uncaught unchanged" || no "catch divide by zero"
+[ "$(w113 ':‹r›"0≡[1-1⍳+′‹r›€^]_7 0÷;3000′‹r›‹catch›⊐')" = "divide by zero rc=0" ] \
+  && ok "a divide by zero 3000 maps deep is caught (unwound before its message is built)" || no "deep div0"
+w113o=':‹in›“inner“⊃‹throw›;:‹out›′‹in›‹catch›⊐“outer“⊃‹throw›;′‹out›‹catch›⊐:‹bad›3⍳9⊇;1 2′‹bad›‹catch›⊐ṄṄ:‹r›1⍳′‹r›€;′‹r›‹catch›⊐:‹z›7 0÷;′‹z›‹catch›⊐'
+[ "$(printf '%s' "$w113o" | gref)" = "$(printf '%s' "$w113o" | gc)" ] && [ "$(printf '%s' "$w113o" | gc)" = "innerouterindex out of range21spill stack exhausteddivide by zero" ] \
+  && ok "oracle: golfref compiles ⊷ ⊶ and runs ‹catch› / ‹throw› the same" || no "catch oracle"
+# REFERENCE.md's Errors examples print what the doc says (stderr merged).
+w113bad=""
+while IFS= read -r w113l; do
+  w113p=${w113l%%  ->*}; w113p=${w113p%"${w113p##*[! ]}"}; w113w=${w113l##*->  }
+  [ "$(printf '%s' "$w113p" | gc 2>&1 | sed 's/ *$//')" = "$w113w" ] || w113bad="$w113bad [$w113p]"
+done < <(sed -n '/^### Errors$/,/^## /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w113bad" ] && [ "$(sed -n '/^### Errors$/,/^## /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Errors examples print what they say" || no "REFERENCE Errors examples:$w113bad"
+
+# === W11-3B ===
+echo "W11-3B: compile errors say where (line, file); golf2 -g / golfc -g write a symbol map"
+# golf2 counts newlines as it reads (‹read>), per file, and a form feed between
+# tokens restarts the count — pre.gb ends with one, as golfc's input does, so
+# these lines are the program's own.  w113b <compiler> runs prelude + stdin in
+# $TMP/inc (w112a's directory, with its sq.g2), leaving "rc message".
+w113b(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && $1 < src > p 2>err; echo "$? $(cat err)"); }
+[ "$(printf '1Ṅ\n\n5qṄ\n' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 3" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "an undefined word on line 3: GOLF: undefined word q at line 3, exit 2, no binary" || no "undefined line: $(cat "$TMP/inc/err")"
+[ "$(printf ':‹a›b;\n\n:‹c›b;\n5‹a›Ṅ' | w113b "$TMP/golf2")" = "2 GOLF: undefined word b at line 1" ] \
+  && [ "$(printf '\n\n:f‹g›;\n‹g›\n' | w113b "$TMP/golf2")" = "2 GOLF: undefined word ‹g› at line 3" ] \
+  && [ "$(printf '\n\n3⍳′q€⍕' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 3" ] \
+  && [ "$(printf '\n⊚m\nq≢÷;5⍳mṄ' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 3" ] \
+  && ok "a forward reference never defined is reported at its FIRST use (call, ‹long›, ′, chain link)" || no "first-use line: $(cat "$TMP/inc/err")"
+[ "$(printf '\n\n‹a b›' | w113b "$TMP/golf2")" = "2 GOLF: bad long name ‹a› at line 3" ] \
+  && [ "$(printf '\n:g⇐‹x›;' | w113b "$TMP/golf2")" = "2 GOLF: local out of range ‹x› at line 2" ] \
+  && [ "$(printf '1\n⎘“sq.g2“\n\n⎘“nope.g2“' | w113b "$TMP/golf2")" = "2 GOLF: cannot include nope.g2 at line 4" ] \
+  && ok "immediate errors carry the line too (bad long name, local out of range, cannot include)" || no "immediate error lines: $(cat "$TMP/inc/err")"
+[ "$(printf '“a\nb“ # c\n`3 x\ny\n\n\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 7" ] \
+  && ok "newlines inside a string, a comment's end and a raw blob all count" || no "newline counting: $(cat "$TMP/inc/err")"
+w113bp=$(python3 tools/codepage.py encode < lib/prelude.golfj | tr -cd '\n' | wc -c | tr -d ' ')
+[ "$(python3 tools/codepage.py encode < lib/prelude.golfj | cat - <(printf '5qṄ') | "$TMP/golf2" 2>&1 >/dev/null)" \
+    = "GOLF: undefined word q at line $((w113bp + 1))" ] \
+  && [ "$(printf '1\n2\n\f3\nq' | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 2" ] \
+  && ok "without the form feed the prelude's $w113bp lines count; a form feed between tokens restarts at line 1" || no "form feed reset"
+# Includes: each file has its own count, saved and restored per level; inside
+# one the message names it as its ⎘ wrote it.
+printf '# a comment\n⎘“sq.g2“\n\n:‹cube›"‹sq›*;\n‹oops›\n' | w112enc > "$TMP/inc/w113cube.g2"
+printf '\n\n:‹bad›⇒z;\n' | w112enc > "$TMP/inc/w113loc.g2"
+[ "$(printf '1\n⎘“w113cube.g2“\n3‹cube›Ṅ\n' | w113b "$TMP/golf2")" = "2 GOLF: undefined word ‹oops› at w113cube.g2 line 5" ] \
+  && [ "$(printf '1\n⎘“sq.g2“\n⎘“w113loc.g2“' | w113b "$TMP/golf2")" = "2 GOLF: local out of range z at w113loc.g2 line 3" ] \
+  && ok "an error inside an included file: … at w113cube.g2 line 5 (its own line, its own name)" || no "include error names the file: $(cat "$TMP/inc/err")"
+printf '%s' '⎘“d9.g2“' | w112enc > "$TMP/inc/d8.g2"     # W11-2A's chain, 9 deep again
+[ "$(printf '1\n⎘“w113cube.g2“\n\n:‹oops›;\n\n\n‹z›' | w113b "$TMP/golf2")" = "2 GOLF: undefined word ‹z› at line 7" ] \
+  && [ "$(printf '%s' '⎘“d1.g2“' | w113b "$TMP/golf2")" = "2 GOLF: includes nested too deeply d9.g2 at d8.g2 line 1" ] \
+  && ok "the includer's count resumes after a (nested) include; a 9th level is reported inside d8.g2" || no "count across includes: $(cat "$TMP/inc/err")"
+w113bbad=""
+for w113bs in '1\n⎘“w113cube.g2“\n3‹cube›Ṅ\n' '1\n⎘“sq.g2“\n⎘“w113loc.g2“' '1\n⎘“w113cube.g2“\n\n:‹oops›;\n\n\n‹z›' \
+              '1\n⎘“sq.g2“\n\n⎘“nope.g2“' '\n\n‹a b›' '\n‹abc' '\n⊡f⇒a⇒z;' '1Ṅ\n\n5qṄ\n' '1\n2\n\f3\nq' '⎘“d1.g2“'; do
+  w113bg=$(printf "$w113bs" | w113b "$TMP/golf2")
+  w113br=$(printf "$w113bs" | w113b "python3 $EXP/boot/golfref.py")
+  [ "$w113bg" = "$w113br" ] || w113bbad="$w113bbad [$w113bs: $w113bg | $w113br]"
+done
+[ -z "$w113bbad" ] && ok "boot/golfref.py reports the same message, place and status for each" || no "golfref positions:$w113bbad"
+# golfc: a .golfj program and a .golfj include, through the prelude.
+mkdir -p "$TMP/w113/lib"
+printf '# helpers\n\n:‹sq›"*;\n‹nope›\n' > "$TMP/w113/lib/h.golfj"
+printf '1Ṅ\n⎘“h.golfj“\n5‹sq›Ṅ\n' > "$TMP/w113/a.golfj"
+printf '1Ṅ\n\n5qṄ\n' > "$TMP/w113/b.golfj"
+[ "$(cd "$TMP/w113" && "$EXP/tools/golfc" -j b.golfj b 2>&1; echo "rc=$?")" = "$(printf 'GOLF: undefined word q at line 3\nrc=2')" ] \
+  && [ "$(cd "$TMP/w113" && "$EXP/tools/golfc" -j a.golfj a 2>&1; echo "rc=$?")" = "$(printf 'GOLF: undefined word ‹nope› at h.golfj line 4\nrc=2')" ] \
+  && ok "golfc -j: the line is the user's file's (prelude not counted); an included .golfj is named, not its temp copy" || no "golfc lines"
+# -g: the map.  golf2 -g writes `name 0xaddr` lines to fd 2 after a good
+# compile, the binary unchanged; golfc -g turns that into OUT.map, glyphs and all.
+printf ':‹sq›"*;\n:f‹sq›;\n5fṄ\n' > "$TMP/w113/c.golfj"
+(cd "$TMP/w113" && "$EXP/tools/golfc" -j -g c.golfj c && "$EXP/tools/golfc" -j c.golfj c2) >/dev/null 2>&1
+[ "$("$TMP/w113/c")" = 25 ] && cmp -s "$TMP/w113/c" "$TMP/w113/c2" \
+  && ok "golfc -g: the binary is byte-identical with and without -g" || no "golfc -g binary"
+cat "$TMP/pre.gb" <(w112enc < "$TMP/w113/c.golfj") > "$TMP/w113/c.src"
+"$TMP/golf2" -g < "$TMP/w113/c.src" > "$TMP/w113/g.bin" 2> "$TMP/w113/g.map"
+"$TMP/seed" -g < "$TMP/w113/c.src" > "$TMP/w113/s.bin" 2>/dev/null
+cmp -s "$TMP/w113/g.bin" "$TMP/w113/c" && cmp -s "$TMP/w113/s.bin" "$TMP/w113/c" \
+  && [ "$(grep -c . "$TMP/w113/g.map")" = "$(grep -c . "$TMP/w113/c.map")" ] \
+  && ok "golf2 -g: the same binary as golf2 and the seed, the map on fd 2 ($(grep -c . "$TMP/w113/c.map") words)" || no "golf2 -g"
+python3 - "$TMP/w113/c" "$TMP/w113/c.map" "$EXP/boot" <<'PY' && ok "every c.map address is a word body in c (the prologue is there), f's call lands on ‹sq›, ⌫ is a glyph" || no "map vs binary"
+import re, sys
+sys.path.insert(0, sys.argv[3]); import v1
+img = open(sys.argv[1], "rb").read()
+words = {}
+for ln in open(sys.argv[2], encoding="utf-8"):
+    m = re.fullmatch(r"(\S+) 0x([0-9a-f]+)\n", ln)
+    assert m, ln
+    words[m.group(1)] = int(m.group(2), 16) - 0x400000
+pro = bytes(v1.PROLOGUE)
+assert all(img[a:a + len(pro)] == pro for a in words.values()), "a body without the prologue"
+f = words["f"] + len(pro)                       # f's body: prologue, then call ‹sq›
+assert img[f] == 0xE8
+assert f + 5 + int.from_bytes(img[f + 1:f + 5], "little", signed=True) == words["‹sq›"]
+assert "⌫" in words and "‹throw›" in words and "A" in words
+PY
+printf '%s' ':‹sq›"*;3‹sq›48+)' > "$TMP/w113/d.g2.src"; w112enc < "$TMP/w113/d.g2.src" > "$TMP/w113/d.g2"
+w113bd=$(python3 -c 'import sys; sys.path.insert(0, "tools"); import mkblob2; print("%x" % (0x400000 + 120 + len(mkblob2.STARTUP2) + 5))')
+(cd "$TMP/w113" && "$EXP/tools/golfc" -n -g d.g2 d) && [ "$(cat "$TMP/w113/d.map")" = "‹sq› 0x$w113bd" ] && [ "$("$TMP/w113/d")" = 9 ] \
+  && ok "golfc -n -g, no prelude: one word, ‹sq› 0x$w113bd (header, startup stub, the jmp over the body)" || no "golfc -n -g: $(cat "$TMP/w113/d.map")"
+[ "$(printf '%s' '5qṄ' | w113b "$TMP/golf2 -g")" = "2 GOLF: undefined word q at line 1" ] \
+  && ok "a failed compile with -g writes the diagnostic only, no map" || no "-g on error"
+# REFERENCE.md's Compile errors example says what golf2 says.
+w113bex=$(sed -n '/^### Compile errors$/,/^### /p' REFERENCE.md | grep -m1 -B1 'stderr: GOLF: undefined word q at line 2' | sed 's/ *#.*//')
+[ "$(printf '%s' "$w113bex" | w113b "$TMP/golf2")" = "2 GOLF: undefined word q at line 2" ] && grep -q '^### Debugging$' REFERENCE.md \
+  && ok "REFERENCE.md's Compile errors example is what golf2 reports; ### Debugging documents -g" || no "REFERENCE compile errors example"
+
+# === W11-3C ===
+echo "W11-3C: checked arithmetic — ‹cadd› ‹csub› ‹cmul› throw 'integer overflow'; the bare ops still wrap"
+# The literal 9223372036854775807 is fine in a USER program (golf2 reads 64-bit
+# literals); INT64_MIN is spelled `1 63\shl`.  The bare - on INT64_MAX would
+# list-dispatch (top 16 bits 0x7FFF), so negatives are built with \neg.
+[ "$(w110 '7Ṅ9223372036854775807 1‹cadd›Ṅ')" = "rc=1 1 GOLF: integer overflow" ] \
+  && [ "$(w110 '9223372036854775807 1‹cadd›Ṅ')" = "rc=1 0 GOLF: integer overflow" ] \
+  && ok "INT64_MAX 1 ‹cadd›: GOLF: integer overflow, exit 1 (earlier output flushed)" || no "cadd MAX+1: $(w110 '9223372036854775807 1‹cadd›Ṅ')"
+w113cbad=""
+for w in '9223372036854775807 1‹cadd›' '1 63\shl 1\neg‹cadd›' '1 63\shl"‹cadd›' '9223372036854775807"‹cadd›' \
+         '1 63\shl 1‹csub›' '9223372036854775807 1\neg‹csub›' '0 1 63\shl‹csub›' '1\neg 9223372036854775807‹csub›\neg 2‹csub›' \
+         '1\neg 1 63\shl‹cmul›' '1 63\shl 1\neg‹cmul›' '9223372036854775807 2‹cmul›' '3037000500"‹cmul›' \
+         '3037000500"\neg‹cmul›' '1 32\shl"‹cmul›' '1 62\shl 2‹cmul›' '1 62\shl\neg 2\neg‹cmul›' '1 63\shl"‹cmul›'; do
+  r=$(w110 "$w")
+  [ "$r" = "rc=1 0 GOLF: integer overflow" ] || w113cbad="$w113cbad [$w: $r]"
+done
+[ -z "$w113cbad" ] && ok "boundary overflows: MAX+1, MIN-1, MIN+MIN, MAX+MAX, MIN-1 (sub), MAX-(-1), 0-MIN, -1×MIN, MIN×-1, MAX×2, 3037000500², 2^32², 2^62×2" \
+  || no "checked boundary overflows:$w113cbad"
+[ "$(printf '%s' '9223372036854775807 0‹cadd›Ṅ␤1 63\shl 1‹cadd›Ṅ␤9223372036854775807 1\neg‹cadd›Ṅ␤9223372036854775807"\neg‹cadd›Ṅ␤1 63\shl 1\neg‹csub›Ṅ␤9223372036854775807 1‹csub›Ṅ␤1\neg 9223372036854775807‹csub›Ṅ␤0 9223372036854775807‹csub›Ṅ␤0 1 63\shl‹cmul›Ṅ␤1 63\shl 0‹cmul›Ṅ␤1 63\shl 1‹cmul›Ṅ␤1\neg 9223372036854775807‹cmul›Ṅ␤3037000499"‹cmul›Ṅ␤3037000499"\neg‹cmul›Ṅ␤1 62\shl\neg 2‹cmul›Ṅ␤4611686018427387903 2‹cmul›Ṅ' | gc)" \
+    = "$(printf '9223372036854775807\n-9223372036854775807\n9223372036854775806\n0\n-9223372036854775807\n9223372036854775806\n-9223372036854775808\n-9223372036854775807\n0\n0\n-9223372036854775808\n-9223372036854775807\n9223372030926249001\n-9223372030926249001\n-9223372036854775808\n9223372036854775806')" ] \
+  && ok "boundary non-overflows: MAX+0, MIN+1, MIN-(-1), -1-MAX = MIN, 0×MIN, MIN×1, 3037000499², -2^62×2 = MIN" || no "checked boundary non-overflows"
+# Differential against Python over 20 values × 20 values × 3 ops: every pair that
+# fits gives Python's exact result (and the same as the bare op, where the bare
+# op can be used: neither operand in the 0x7FFF list band); every pair that does
+# not fit dies with the message.  The programs are encoded once, in one Python.
+python3 - "$TMP" <<'PYEOF'
+import sys; sys.path.insert(0, "tools"); import codepage
+T = sys.argv[1]; M = 1 << 63
+V = [0, 1, -1, 2, -2, 7, -1000, 65536, 3037000499, -3037000499, 3037000500, -3037000500,
+     1 << 32, (1 << 32) - 1, 1 << 62, -(1 << 62), M - 1, -M, -M + 1, (32767 << 48) + 5]
+def lit(v):
+    return "1 63\\shl" if v == -M else (f"{-v}\\neg" if v < 0 else str(v))
+band = lambda v: (v & ((1 << 64) - 1)) >> 48 == 0x7FFF
+ops = [("‹cadd›", "+", lambda a, b: a + b), ("‹csub›", "-", lambda a, b: a - b), ("‹cmul›", "*", lambda a, b: a * b)]
+n = 0
+for k, (word, bare, f) in enumerate(ops):
+    src, want = [], []
+    for a in V:
+        for b in V:
+            r = f(a, b)
+            if -M <= r < M:
+                src.append(f"{lit(a)} {lit(b)}{word}Ṅ␤"); want.append(str(r))
+                if not band(a) and not band(b):
+                    src.append(f"{lit(a)} {lit(b)}{bare}Ṅ␤"); want.append(str(r))
+            else:
+                n += 1
+                open(f"{T}/w113c.ov{n}.g2", "wb").write(codepage.encode(f"{lit(a)} {lit(b)}{word}Ṅ"))
+    open(f"{T}/w113c.ok{k}.g2", "wb").write(codepage.encode("".join(src)))
+    open(f"{T}/w113c.ok{k}.want", "w").write("\n".join(want) + "\n")
+open(f"{T}/w113c.nov", "w").write(str(n))
+PYEOF
+w113cbad=""
+for k in 0 1 2; do
+  cat "$TMP/pre.gb" "$TMP/w113c.ok$k.g2" | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.got" 2>&1
+  cmp -s "$TMP/w113c.got" "$TMP/w113c.ok$k.want" || w113cbad="$w113cbad [op $k: $(diff "$TMP/w113c.got" "$TMP/w113c.ok$k.want" | head -3 | tr '\n' ' ')]"
+done
+w113cn=$(cat "$TMP/w113c.nov")
+for i in $(seq 1 "$w113cn"); do
+  cat "$TMP/pre.gb" "$TMP/w113c.ov$i.g2" | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.out" 2> "$TMP/w113c.err"
+  r="rc=$? $(wc -c < "$TMP/w113c.out") $(cat "$TMP/w113c.err")"
+  [ "$r" = "rc=1 0 GOLF: integer overflow" ] || w113cbad="$w113cbad [ov$i: $r]"
+done
+[ -z "$w113cbad" ] && [ "$w113cn" -gt 100 ] \
+  && ok "differential vs Python, 20×20 values × 3 ops: every fitting result exact (= the bare op where usable), all $w113cn overflows throw" \
+  || no "checked differential:$w113cbad"
+[ "$(printf '%s' '3 4‹cadd›Ṅ␤3 4‹csub›Ṅ␤3037000499"‹cmul›Ṅ␤1\neg 1 63\shl‹cmul›Ṅ' | gref; echo " $?")" = "$(printf '7\n-1\n9223372030926249001\n 1')" ] \
+  && ok "oracle: golfref runs ‹cadd› ‹csub› ‹cmul› and the overflow exit the same" || no "checked oracle"
+# REFERENCE.md's Checked arithmetic examples print what the doc says.
+w113cbad=""
+while IFS= read -r w113cl; do
+  w113cp=${w113cl%%  ->*}; w113cp=${w113cp%"${w113cp##*[! ]}"}; w113cw=${w113cl##*->  }
+  [ "$(printf '%s' "$w113cp" | gc 2>&1)" = "$w113cw" ] || w113cbad="$w113cbad [$w113cp]"
+done < <(sed -n '/^### Checked arithmetic$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w113cbad" ] && [ "$(sed -n '/^### Checked arithmetic$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 4 ] \
+  && ok "REFERENCE.md's Checked arithmetic examples print what they say" || no "REFERENCE Checked arithmetic examples:$w113cbad"
+
+# === W11-3 integration ===
+echo "W11-3 integration: ‹catch› across 3A/3C (overflow caught) and 2A (catch in a program with ⎘)"
+[ "$(w110 ':‹f›9223372036854775807 1‹cadd›;′‹f›‹catch›⊐“|“⊃⊐5Ṅ')" = "rc=0 18 " ] && [ "$(cat "$TMP/w110.out")" = "integer overflow|5" ] \
+  && ok "′‹f›‹catch› around INT64_MAX 1 ‹cadd› returns 'integer overflow' and the program continues" \
+  || no "caught overflow: $(w110 ':‹f›9223372036854775807 1‹cadd›;′‹f›‹catch›⊐“|“⊃⊐5Ṅ')"
+printf '%s' ':‹boom›3⍳9⊇;:‹safe›′‹boom›‹catch›;' | w112enc > "$TMP/inc/w113i.g2"
+[ "$(printf '%s' '⎘“w113i.g2“′‹boom›‹catch›⊐7Ṅ‹safe›⊐8Ṅ' | w112a "$TMP/golf2")" = 0 ] \
+  && [ "$(w112run 2>&1; echo " $?")" = "index out of range7index out of range8 0" ] \
+  && ok "‹catch› works in a program that ⎘-includes a file (around an included word, and inside one)" \
+  || no "catch with include: $(cat "$TMP/inc/err") $(w112run 2>&1)"
+
+# === W11-4A ===
+
+echo "W11-4A: ⊜ records (constructor, accessors, setters over a plain list); vendor/ as the third include place"
+# w114a <compiler> compiles prelude + stdin in $TMP/inc (W11-2A's directory),
+# leaving "rc message" and the binary in $TMP/inc/p; w112run runs it.
+w114a(){ cat "$TMP/pre.gb" <(w112enc) > "$TMP/inc/src"; (cd "$TMP/inc" && $1 < src > p 2>err; echo "$? $(cat err)"); }
+[ "$(printf '%s' '⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ' | gc)" = 4 ] \
+  && ok "⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ prints 4" || no "record accessor"
+[ "$(printf '%s' '⊜‹point›‹x›‹y›; 3 4‹point›"‹point-x›Ṅ␤9‹set-point-x›"⍕␤"‹point-x›Ṅ␤"≢Ṅ␤‹point-y›Ṅ' | gc)" = "$(printf '3\n9 4 \n9\n2\n4')" ] \
+  && ok "‹set-point-x› stores in place and leaves the record; ⍕ prints its fields; ≢ is the field count" || no "record setter / ⍕"
+[ "$(printf '%s' '⊜p a ‹b›
+  c ;:‹q›"‹p-c›\\‹p-a›-;1 2 3p"‹q›Ṅ␤"7‹set-p-b›‹p-b›Ṅ␤⍕' | gc)" = "$(printf '2\n7\n1 7 3 ')" ] \
+  && ok "one-byte record and field names, whitespace and a newline between fields, mixed with ‹long› ones" || no "one-byte record names"
+[ "$(printf '%s' ':‹len2›"‹v-x›²\\‹v-y›²+;⊚‹both›‹v-x›‹v-y›+;⊜‹v›‹x›‹y›;3 4‹v›"‹len2›Ṅ␤‹both›Ṅ␤2⍳′‹mk›€′‹v-y›€⍕:‹mk›"‹v›;' | gc)" = "$(printf '25\n7\n0 1 ')" ] \
+  && ok "the words are ordinary: called and chained before the ⊜ (forward references), quoted with ′" || no "record words as names"
+[ "$(printf '1Ṅ\n⊜‹point›‹x›‹y›; 3 4‹point›‹point-z›Ṅ' | w114a "$TMP/golf2")" = "2 GOLF: undefined word ‹point-z› at line 2" ] && [ ! -s "$TMP/inc/p" ] \
+  && ok "a wrong field: GOLF: undefined word ‹point-z› at line 2, exit 2, no binary" || no "wrong field: $(cat "$TMP/inc/err")"
+w114bad=""
+for w114c in '⊜‹point›;|2 GOLF: record without fields ‹point› at line 1' \
+             '\n⊜‹point›‹x› ‹y›|2 GOLF: record without ; ‹point› at line 2' \
+             '⊜p‹x›(;|2 GOLF: bad record field ( at line 1' \
+             '⊜(xy;|2 GOLF: bad record name ( at line 1' \
+             "⊜‹$(printf 'a%.0s' $(seq 1 55))›‹x›;|2 GOLF: bad long name ‹set-$(printf 'a%.0s' $(seq 1 55))-› at line 1"; do
+  w114g=$(printf "${w114c%%|*}" | w114a "$TMP/golf2")
+  [ "$w114g" = "${w114c#*|}" ] && [ ! -s "$TMP/inc/p" ] || w114bad="$w114bad [$w114g]"
+  w114s=$(printf "${w114c%%|*}" | w114a "$TMP/seed")
+  [ "$w114s" = "2 " ] && [ ! -s "$TMP/inc/p" ] || w114bad="$w114bad [seed: $w114s]"
+  w114r=$(printf "${w114c%%|*}" | w114a "python3 $EXP/boot/golfref.py")
+  [ "$w114r" = "${w114c#*|}" ] || w114bad="$w114bad [golfref: $w114r]"
+done
+[ -z "$w114bad" ] \
+  && ok "malformed ⊜ (no fields, no ;, bad field, bad name, a 61-byte invented name): golf2 and golfref say so with the line, exit 2; the seed exits 2" \
+  || no "malformed ⊜:$w114bad"
+w114many=$(python3 -c 'print("⊜‹r›" + "".join("‹f%d›" % k for k in range(256)) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-f255›Ṅ␤\"‹r-f0›Ṅ␤≢Ṅ")')
+[ "$(printf '%s' "$w114many" | gc)" = "$(printf '355\n100\n256')" ] \
+  && [ "$(printf '%s' "${w114many/;/‹f256›;}" | w114a "$TMP/golf2")" = "2 GOLF: too many record fields ‹r› at line 1" ] \
+  && ok "256 fields (512 invented names) work; a 257th: GOLF: too many record fields ‹r›" || no "record field bound: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⊜‹p›‹x›;5‹p›"⌫‹p-x›' | gc 2>&1)" = "GOLF: use after free" ] \
+  && [ "$(printf '%s' '⊜‹p›‹x›‹y›;3⍳9‹set-p-y›⍕␤1⍳‹p-y›' | gc 2>&1)" = "$(printf '0 9 2 \nGOLF: index out of range')" ] \
+  && ok "accessors and setters go through ⊇: use after free and index out of range still apply" || no "record checks"
+printf '%s' '⊜‹p›‹x›‹y›;' | w112enc > "$TMP/w114.rec.g2"
+printf '%s' ':‹p›2⍳\\&16≪16>16﹢⊛\\&16≪16>8﹢⊛;:‹p-x›0⊇;:‹set-p-x›&0⊇_&16≪16>8﹢⊛;:‹p-y›1⊇;:‹set-p-y›&1⊇_&16≪16>16﹢⊛;' | w112enc > "$TMP/w114.hand.g2"
+cat "$TMP/pre.gb" "$TMP/w114.rec.g2" | "$TMP/golf2" > "$TMP/w114.rec" 2>/dev/null
+cat "$TMP/pre.gb" "$TMP/w114.hand.g2" | "$TMP/golf2" > "$TMP/w114.hand" 2>/dev/null
+cmp -s "$TMP/w114.rec" "$TMP/w114.hand" && [ -s "$TMP/w114.rec" ] \
+  && ok "⊜‹p›‹x›‹y›; compiles to exactly the bytes of its five definitions written out (REFERENCE.md, Records)" || no "record expansion is not textual"
+# Includes: a record declared in an included file; vendor/ searched after the
+# path as written and lib/.
+mkdir -p "$TMP/inc/vendor/pkg"
+printf '%s' '⊜‹pt›‹x›‹y›;:‹norm2›"‹pt-x›²\\‹pt-y›²+;' | w112enc > "$TMP/inc/vendor/pkg/pt.g2"
+printf '%s' ':‹who›1;' | w112enc > "$TMP/inc/vendor/who.g2"
+printf '%s' ':‹who›2;' | w112enc > "$TMP/inc/lib/who.g2"
+printf '%s' ':‹vend›3;' | w112enc > "$TMP/inc/vendor/vend.g2"
+[ "$(printf '%s' '⎘“pkg/pt.g2“3 4‹pt›"‹norm2›Ṅ␤5‹set-pt-x›‹norm2›Ṅ' | w114a "$TMP/golf2")" = "0 " ] && [ "$(w112run)" = "$(printf '25\n41')" ] \
+  && ok "a record declared in an included file (found in vendor/) works in the includer" || no "record in include: $(cat "$TMP/inc/err")"
+[ "$(printf '%s' '⎘“who.g2“⎘“vend.g2“‹who›Ṅ‹vend›Ṅ' | w114a "$TMP/golf2")" = "0 " ] && [ "$(w112run)" = 23 ] \
+  && [ "$(printf '%s' '⎘“nope.g2“' | w114a "$TMP/golf2")" = "2 GOLF: cannot include nope.g2 at line 1" ] \
+  && ok "search order: as written, lib/, then vendor/; in none of them: GOLF: cannot include nope.g2" || no "vendor search order: $(cat "$TMP/inc/err")"
+w114p='⎘“pkg/pt.g2“⎘“vend.g2“⊜q a ‹b›;3 4‹pt›‹norm2›Ṅ‹vend›Ṅ7 8q9‹set-q-b›"‹q-a›+⍕'
+[ "$(printf '%s' "$w114p" | w114a "$TMP/golf2")" = "0 " ] && cp "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && [ "$(printf '%s' "$w114p" | w114a "$TMP/seed")" = "0 " ] && cmp -s "$TMP/inc/p" "$TMP/inc/p.g2" \
+  && (cd "$TMP/inc" && python3 "$EXP/boot/golfref.py" < src > p.ref 2>/dev/null) && cmp -s "$TMP/inc/p.ref" "$TMP/inc/p.g2" \
+  && [ "$(chmod +x "$TMP/inc/p.g2"; "$TMP/inc/p.g2")" = "25314 16 " ] \
+  && ok "seed, golf2 and boot/golfref.py emit the same bytes for records and a vendor/ include" || no "record parity (seed/golf2/golfref)"
+[ "$(printf '%s' '\rec\lnamep\rname xy;' | w112enc | od -An -tx1 | tr -d ' \n')" = "b7b470b52078793b" ] \
+  && [ "$(printf '\267\264p\265xy;' | python3 tools/codepage.py decode)" = "⊜‹p›xy;" ] \
+  && ok "⊜ and \\rec encode to 0xB7; decode shows ⊜" || no "⊜ encode/decode"
+# tools/golfc: a .golfj package in vendor/ is encoded on the way, like lib/'s.
+mkdir -p "$TMP/w114g/vendor"
+printf '%s\n' '# a package' '⊜‹pt›‹x›‹y›;' ':‹sum›"‹pt-x›\\‹pt-y›+;' > "$TMP/w114g/vendor/geo.golfj"
+printf '%s\n' '⎘“geo.golfj“' '3 4‹pt›‹sum›Ṅ' > "$TMP/w114g/main.golfj"
+(cd "$TMP/w114g" && "$EXP/tools/golfc" -j main.golfj m >/dev/null 2>&1) && [ "$("$TMP/w114g/m")" = 7 ] \
+  && ok "golfc -j: a .golfj include found in vendor/ is encoded and compiled (a record inside)" || no "golfc vendor .golfj"
+# REFERENCE.md's Records examples print what the doc says.
+w114bad=""
+while IFS= read -r w114l; do
+  w114q=${w114l%%  ->*}; w114q=${w114q%"${w114q##*[! ]}"}; w114w=${w114l##*->  }
+  [ "$(printf '%s' "$w114q" | gc 2>&1)" = "$w114w" ] || w114bad="$w114bad [$w114q]"
+done < <(sed -n '/^### Records$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w114bad" ] && [ "$(sed -n '/^### Records$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
+  && ok "REFERENCE.md's Records examples print what they say" || no "REFERENCE Records examples:$w114bad"
+
+# === W11-4B ===
+echo "W11-4B: ‹assert› ‹expect›, exit status 1 after a failure, tools/golftest"
+# w114b PROG -> "rc=N" ; stdout+stderr in $TMP/w114b.out
+w114b(){ printf '%s' "$1" | gc > "$TMP/w114b.out" 2>&1; echo "rc=$?"; }
+[ "$(w114b '1 1≡“a“⊃‹assert›3⍳3⍳“b“⊃‹expect›3⍳′⍳€3⍳′⍳€“c“⊃‹expect›7 7“d“⊃‹expect›')" = "rc=0" ] && [ ! -s "$TMP/w114b.out" ] \
+  && ok "passing ‹assert›/‹expect› (ints, lists, nested lists) print nothing and exit 0" || no "passing checks: $(cat "$TMP/w114b.out")"
+[ "$(w114b '1 2≡“one is two“⊃‹assert›“after“⊃⊐␤')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: one is two\nafter')" ] \
+  && ok "a failing ‹assert› prints FAIL: <msg>, the program carries on, and the end-of-program exit becomes 1" || no "failing assert: $(cat "$TMP/w114b.out")"
+[ "$(w114b '0“z“⊃‹assert›1“o“⊃‹assert›2“t“⊃‹assert›5180416⊙Ṅ')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: z\nFAIL: o\nFAIL: t\n3')" ] \
+  && ok "‹assert› passes only on -1: 0, 1 (zero-is-true true) and 2 fail; the failure count cell 5180416 counts them" || no "assert convention: $(cat "$TMP/w114b.out")"
+[ "$(w114b '3⍳⌽3⍳“r“⊃‹expect›6 7“s“⊃‹expect›0⍳1⍳“e“⊃‹expect›2⍳′⍳€0⍳“n“⊃‹expect›')" = "rc=1" ] \
+  && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: r: expected [0 1 2] got [2 1 0]\nFAIL: s: expected 7 got 6\nFAIL: e: expected [0] got []\nFAIL: n: expected [] got [[] [0]]')" ] \
+  && ok "a failing ‹expect› prints expected/got (ints by Ṅ, lists in brackets via ⍕, empty and nested)" || no "failing expect: $(cat "$TMP/w114b.out")"
+[ "$(w114b '0“x“⊃‹assert›0.')" = "rc=1" ] && [ "$(w114b '0“x“⊃‹assert›3.')" = "rc=3" ] && [ "$(w114b '1 1≡“x“⊃‹assert›0.')" = "rc=0" ] \
+  && ok "after a failure '0.' exits 1, '3.' keeps 3; with no failure '0.' still exits 0" || no "explicit exit after failure"
+[ "$(w114b '0“x“⊃‹assert›65)66)␤(Ṅ“y“⊃⊐')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: x\nAB\n0y')" ] \
+  && ok "raw ) and ( after a failure still just flush (the exit hook leaves them alone)" || no "raw io after failure: $(cat "$TMP/w114b.out")"
+[ "$(w114b ':‹t›0“in“⊃‹assert›“boom“⊃‹throw›;′‹t›‹catch›⊐␤5180416⊙Ṅ')" = "rc=1" ] && [ "$(cat "$TMP/w114b.out")" = "$(printf 'FAIL: in\nboom\n1')" ] \
+  && ok "a failure inside a caught ‹catch› still counts and still makes the exit 1" || no "assert in catch: $(cat "$TMP/w114b.out")"
+# REFERENCE.md's Testing examples print what the doc says (and exit 1 exactly when they print FAIL:).
+w114bbad=""
+while IFS= read -r w114bl; do
+  w114bp=${w114bl%%  ->*}; w114bp=${w114bp%"${w114bp##*[! ]}"}; w114bw=${w114bl##*->  }
+  w114brc=$(w114b "$w114bp"); w114bexp=rc=0; case "$w114bw" in FAIL:*) w114bexp=rc=1;; esac
+  [ "$(cat "$TMP/w114b.out")" = "$w114bw" ] && [ "$w114brc" = "$w114bexp" ] || w114bbad="$w114bbad [$w114bp]"
+done < <(sed -n '/^### Testing$/,/^## /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w114bbad" ] && [ "$(sed -n '/^### Testing$/,/^## /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 6 ] \
+  && ok "REFERENCE.md's Testing examples print what they say" || no "REFERENCE Testing examples:$w114bbad"
+# tools/golftest on the shipped passing example and the failing fixture.
+w114bgt(){ tools/golftest "$@" > "$TMP/w114b.gt" 2>&1; echo "rc=$?"; }
+[ "$(w114bgt examples/tests)" = "rc=0" ] && [ "$(cat "$TMP/w114b.gt")" = "$(printf 'PASS examples/tests/lists_test.golfj\n1 passed, 0 failed')" ] \
+  && ok "golftest examples/tests: PASS examples/tests/lists_test.golfj, exit 0" || no "golftest pass: $(cat "$TMP/w114b.gt")"
+[ "$(w114bgt test/fixtures/golftest/fail_test.golfj examples/tests)" = "rc=1" ] \
+  && [ "$(cat "$TMP/w114b.gt")" = "$(printf 'FAIL test/fixtures/golftest/fail_test.golfj (exit 1)\n  FAIL: one is two\n  FAIL: reverse is identity: expected [0 1 2] got [2 1 0]\n  FAIL: six: expected 7 got 6\nPASS examples/tests/lists_test.golfj\n1 passed, 1 failed')" ] \
+  && ok "golftest on the failing fixture: FAIL (exit 1) with its FAIL lines, then the summary; exits 1" || no "golftest fail: $(cat "$TMP/w114b.gt")"
+mkdir -p "$TMP/w114b/sub"
+printf '1Ṅ\n5qṄ\n' > "$TMP/w114b/sub/bad_test.golfj"
+printf '“FAIL: by hand“⊃⊐␤‹flush›0 0 0 60⎈' > "$TMP/w114b/raw_test.golfj"
+printf '3⍳9⊇' > "$TMP/w114b/err_test.golfj"
+printf '0“never run“⊃‹assert›' > "$TMP/w114b/helper.golfj"
+[ "$(w114bgt "$TMP/w114b")" = "rc=1" ] \
+  && [ "$(sed "s#$TMP/##" "$TMP/w114b.gt")" = "$(printf 'FAIL w114b/err_test.golfj (exit 1)\n  GOLF: index out of range\nFAIL w114b/raw_test.golfj (exit 0)\n  FAIL: by hand\nFAIL w114b/sub/bad_test.golfj (compile error)\n  GOLF: undefined word q at line 2\n0 passed, 3 failed')" ] \
+  && ok "golftest DIR recurses, takes only *_test.golfj; runtime error, FAIL: with exit 0 and compile error all fail" || no "golftest cases: $(cat "$TMP/w114b.gt")"
+mkdir -p "$TMP/w114b/none"
+[ "$(w114bgt "$TMP/w114b/none")" = "rc=1" ] && grep -q 'no \*_test.golfj found' "$TMP/w114b.gt" \
+  && ok "golftest with no test files: 'no *_test.golfj found', exit 1" || no "golftest none: $(cat "$TMP/w114b.gt")"
+
+# === W11-4C ===
+echo "W11-4C: ‹stack› prints the data stack non-destructively; tools/golfi is a replay REPL"
+[ "$(printf '%s' '‹stack›1 2 3⍳‹stack›⍕‹stack›Ṅ‹stack›' | gc)" = "$(printf '<0>\n<3> 1 2 [0 1 2]\n0 1 2 <2> 1 2\n2<1> 1')" ] \
+  && ok "‹stack›: <depth> then bottom to top, a list via ⍕'s bracketed form, and the stack is left as it was" || no "w11-4c stack basic"
+[ "$(printf '%s' '0 1 63\shl 5\neg 3⍳′⍳€0⍳‹stack›' | gc)" = "<5> 0 -9223372036854775808 -5 [[] [0] [0 1]] []" ] \
+  && ok "‹stack›: zero, INT64_MIN, negatives, nested and empty lists" || no "w11-4c stack values"
+# Inside a word the data stack is the same (return addresses live on the rbp
+# stack); inside € the mapped element sits on top of the caller's values; a ⊡
+# word's locals frame is not on it either.
+[ "$(printf '%s' ':‹s›9‹stack›_;1 2‹s›‹stack›1 2⍳′‹stack›€_⊡‹g›⇒‹a›7‹stack›_;‹g›‹stack›' | gc)" \
+    = "$(printf '<3> 1 2 9\n<2> 1 2\n<4> 1 2 1 0\n<4> 1 2 1 1\n<3> 1 2 7\n<2> 1 2')" ] \
+  && ok "‹stack› inside a : word, inside €, inside a ⊡ word: the one data stack" || no "w11-4c stack in words"
+[ "$(printf '%s' '5 6′‹stack›‹catch›‹stack›' | gc)" = "$(printf '<2> 5 6\n<3> 5 6 0')" ] \
+  && ok "‹stack› under ‹catch›" || no "w11-4c stack catch"
+w114c='1 2 3⍳3⍳′⍳€‹stack›:‹s›‹stack›;4 ‹s›'
+[ "$(printf '%s' "$w114c" | gref)" = "$(printf '%s' "$w114c" | gc)" ] && [ "$(printf '%s' "$w114c" | gc | head -1)" = "<4> 1 2 [0 1 2] [[] [0] [0 1]]" ] \
+  && ok "oracle: golfref runs ‹stack› identically" || no "w11-4c stack oracle"
+# tools/golfi: a scripted session.  A word defined on line 1 is used two lines
+# later; the stack shows after each entry; an undefined word (compile error)
+# and an index error (runtime) are reported and dropped, and the session goes
+# on as if they never happened; a definition spans two lines; stdin is
+# /dev/null (‹readall› gets nothing, no hang); :show :reset :quit.
+w114cin=':‹sq›"*;
+3 4
+‹sq›+
+oops
+3⍳9⊇
+2 3⍳
+‹sq›
+“sq: “🗲∑Ṅ
+:f
+1+;
+f
+‹readall›≢_
+:show
+:reset
+‹stack›
+:quit
+7'
+w114cwant='<0>
+<2> 3 4
+<1> 19
+GOLF: undefined word o
+(not kept)
+GOLF: index out of range
+(not kept)
+<3> 19 2 [0 1 2]
+<3> 19 2 [0 1 4]
+sq: 5
+<2> 19 2
+<2> 19 2
+<2> 19 3
+<2> 19 3
+:‹sq›"*;
+3 4
+‹sq›+
+2 3⍳
+‹sq›
+“sq: “🗲∑Ṅ
+:f
+1+;
+f
+‹readall›≢_
+session cleared
+<0>
+<0>'
+w114cgot=$(printf '%s\n' "$w114cin" | timeout 60 tools/golfi 2>&1)
+[ "$w114cgot" = "$w114cwant" ] && ok "golfi: scripted session (define, use 2 lines later, stack each entry, errors dropped, multi-line def, :show :reset :quit)" \
+  || no "w11-4c golfi session: $(diff <(printf '%s\n' "$w114cwant") <(printf '%s\n' "$w114cgot") | head -8 | tr '\n' '|')"
+# An entry left open at end of input is not run; an error inside a two-line
+# entry names its line; -t times every entry.
+[ "$(printf ':g\nzz;\n1[2\n' | tools/golfi 2>&1)" = "$(printf 'GOLF: undefined word z at line 2 of this entry\n(not kept)\nincomplete entry at end of input\n(not kept)')" ] \
+  && ok "golfi: an error's line within a multi-line entry; an unfinished entry at EOF is dropped" || no "w11-4c golfi open/line"
+w114ct=$(printf '1\n2\n' | tools/golfi -t | grep -c '^([0-9.]* s)$')
+[ "$w114ct" = 2 ] && ok "golfi -t: one timing line per entry" || no "w11-4c golfi -t ($w114ct)"
+# REFERENCE.md's REPL examples print what the doc says.
+w114cbad=""
+while IFS= read -r w114cl; do
+  w114cp=${w114cl%%  ->*}; w114cp=${w114cp%"${w114cp##*[! ]}"}; w114cw=${w114cl##*->  }
+  [ "$(printf '%s' "$w114cp" | gc 2>&1)" = "$w114cw" ] || w114cbad="$w114cbad [$w114cp]"
+done < <(sed -n '/^### REPL$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w114cbad" ] && [ "$(sed -n '/^### REPL$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 3 ] \
+  && ok "REFERENCE.md's REPL examples print what they say" || no "REFERENCE REPL examples:$w114cbad"
+
+# === W11-4D ===
+echo "W11-4D: tools/golfgdb — gdb by word name (golf-break, golf-bt, golf-stack, golf-where)"
+# REFERENCE.md's Debugging walkthrough: its program block (`# deb.golfj`) is
+# compiled with golfc -g, its `(gdb) ` lines are the commands, and its golf-*
+# output lines (golf:, #N, data stack, [k]) must come out of gdb -batch in the
+# same order — with addresses masked, since they move with the prelude.
+mkdir -p "$TMP/w114d"
+sed -n '/^### Debugging$/,/^## /p' REFERENCE.md | awk -v d="$TMP/w114d" '
+  /^```/ { if (inb) { inb = 0; f = "" } else { inb = 1; first = 1 } next }
+  inb && first { first = 0; if ($0 == "# deb.golfj") f = d "/deb.golfj"; else if ($0 ~ /tools\/golfgdb/) f = d "/session" }
+  inb && f != "" { print > f }'
+grep '^(gdb) ' "$TMP/w114d/session" | sed 's/^(gdb) //' | grep -v '^continue$' > "$TMP/w114d/cmds"
+w114dm(){ grep -E '^(golf:|#[0-9]|data stack|  \[)' | sed 's/0x[0-9a-f]*/0x…/g'; }
+w114dg=$(cd "$TMP/w114d" && "$EXP/tools/golfc" -j -g deb.golfj deb 2>&1 && "$EXP/tools/golfgdb" --emit deb.gdb deb 2>&1)
+"$EXP/tools/golfgdb" "$TMP/w114d/nomap" > /dev/null 2> "$TMP/w114d/nomap.err"; w114drc=$?
+[ -z "$w114dg" ] && [ "$("$TMP/w114d/deb")" = 72 ] \
+  && grep -q 'GOLF_WORDS = \[.*‹inner›' "$TMP/w114d/deb.gdb" \
+  && [ "$(grep -c 'super().__init__("golf-\(break\|bt\|stack\|where\|words\)"' "$TMP/w114d/deb.gdb")" = 5 ] \
+  && [ "$w114drc" = 1 ] && grep -q 'no .*nomap.map (compile with' "$TMP/w114d/nomap.err" \
+  && ok "golfgdb --emit writes a gdb script holding the map and golf-break/bt/stack/where/words; no .map -> a clear error" \
+  || no "golfgdb --emit: $w114dg $(cat "$TMP/w114d/nomap.err")"
+if command -v gdb >/dev/null 2>&1 && [ "$(gdb -nx -batch -ex 'python print(4*4)' 2>/dev/null)" = 16 ]; then
+  w114dgot=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script cmds ./deb 2>&1)
+  [ -s "$TMP/w114d/cmds" ] && [ "$(echo "$w114dgot" | w114dm)" = "$(w114dm < "$TMP/w114d/session")" ] \
+    && [ "$(echo "$w114dgot" | grep -E '^#[0-9]' | sed 's/.* in //; s/+.*//' | tr '\n' ' ')" = "‹inner› ‹mid› ‹outer› (top level) " ] \
+    && echo "$w114dgot" | grep -qx '  \[0\] 6' \
+    && ok "gdb -batch: golf-break inner stops in ‹inner›; golf-bt ‹inner› ‹mid› ‹outer› (top level); golf-stack shows the 6 (= REFERENCE walkthrough)" \
+    || no "golfgdb walkthrough: $w114dgot"
+  # Stopped on the word's FIRST byte (inside the prologue, the return address
+  # still on rsp) with plain `break *ADDR`; the caller is a ⊡ word whose local
+  # shares the return stack; a list argument; the named break in a ⊡ word.
+  printf ':‹inner›"*;\n⊡‹g›⇒a⇐a⇐a+‹inner›;\n:‹f›∑‹g›;\n5⍳‹f›Ṅ\n' > "$TMP/w114d/u.golfj"
+  (cd "$TMP/w114d" && "$EXP/tools/golfc" -j -g u.golfj u) > /dev/null 2>&1
+  printf '%s\n' 'golf-break f' run golf-stack delete "break *$(sed -n 's/^‹inner› //p' "$TMP/w114d/u.map")" continue \
+    golf-bt golf-stack stepi stepi golf-where golf-bt golf-stack > "$TMP/w114d/ucmds"
+  w114du=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script ucmds ./u 2>&1)
+  [ "$(echo "$w114du" | w114dm | tr '\n' '|')" = "golf: 0x… in ‹f›+7|data stack: depth 1|  [0] list @0x… len 5 [0 1 2 3 4]|golf: 0x… in ‹inner›+0|#0  0x… in ‹inner›+0|#1  0x… in ‹g›+77|#2  0x… in ‹f›+17|#3  0x… in (top level)|data stack: depth 1|  [0] 20|golf: 0x… in ‹inner›+4|golf: 0x… in ‹inner›+7|golf: 0x… in ‹inner›+7|#0  0x… in ‹inner›+7|#1  0x… in ‹g›+77|#2  0x… in ‹f›+17|#3  0x… in (top level)|data stack: depth 1|  [0] 20|" ] \
+    && ok "inside a prologue (break *ADDR, stepi) golf-bt / golf-stack stay right; a ⊡ caller's local is skipped; a list shows its elements" \
+    || no "golfgdb prologue/locals: $w114du"
+  printf '%s\n' 'golf-break nosuch' > "$TMP/w114d/bad"; printf '%s\n' 'golf-break ‹inner›' run continue > "$TMP/w114d/cont"
+  w114db=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script bad ./deb 2>&1)
+  w114dc=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script cont ./deb 2>&1)
+  echo "$w114db" | grep -q 'golf-break: no word nosuch in the map' \
+    && echo "$w114dc" | grep -q '^72\[Inferior 1 (process [0-9]*) exited normally\]$' \
+    && ok "golf-break ‹inner› (bracketed) then continue: the program finishes and prints 72; an unknown name is an error" \
+    || no "golfgdb continue/unknown: $w114db | $w114dc"
+else
+  ok "golfgdb walkthrough: gdb (with Python) not installed, skipped"
+  ok "golfgdb prologue/locals: gdb (with Python) not installed, skipped"
+  ok "golfgdb continue/unknown name: gdb (with Python) not installed, skipped"
+fi
+
+# === W11-4E ===
+echo "W11-4E: tools/golfdeps — golf.deps pins packages (name git-url tag sha256), fetched into vendor/"
+# The package is a local git repo made here (no network): mathx.golfj defines
+# ‹pkgcube›.  Each project is its own directory holding golf.deps + vendor/.
+w114e="$TMP/deps"; w114gd="$EXP/tools/golfdeps"; w114n=11
+w114z=0000000000000000000000000000000000000000000000000000000000000000
+w114bad=1111111111111111111111111111111111111111111111111111111111111111
+# w114 DIR ARGS... — run golfdeps in DIR; stdout+stderr to $w114e/out, status on stdout
+w114(){ w114d=$1; shift; (cd "$w114d" && "$w114gd" "$@" > "$w114e/out" 2>&1; echo $?); }
+mkdir -p "$w114e/src/sub" "$w114e/p1" "$w114e/p2" "$w114e/p3"
+printf '%s\n' '# mathx: a test package' ':‹pkgcube›""**;' > "$w114e/src/mathx.golfj"
+printf 'not golf\n' > "$w114e/src/sub/notes.txt"
+if command -v git >/dev/null 2>&1 && (cd "$w114e/src" && git init -q && git add . \
+     && git -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -qm pkg \
+     && git -c tag.gpgsign=false tag v1.0) >/dev/null 2>&1; then
+  w114h=$("$w114gd" hash "$w114e/src")
+  # The definition, computed independently: sha256 over "<sha256> <path>\n", paths sorted, .git/ left out.
+  w114py=$(python3 -c '
+import hashlib, os, sys
+r = sys.argv[1]; fs = []
+for d, ds, ns in os.walk(r):
+    if d == r and ".git" in ds: ds.remove(".git")
+    fs += [os.path.relpath(os.path.join(d, n), r) for n in ns]
+print(hashlib.sha256(b"".join(b"%s %s\n" % (hashlib.sha256(open(os.path.join(r, f), "rb").read()).hexdigest().encode(), f.encode())
+      for f in sorted(fs, key=os.fsencode))).hexdigest())' "$w114e/src")
+  echo "mathx  $w114e/src  v1.0  $w114z   # not pinned yet" > "$w114e/p1/golf.deps"
+  [ "$(w114 "$w114e/p1" fetch)" = 1 ] && grep -q "has no sha256 pin yet" "$w114e/out" && grep -q "got  $w114h" "$w114e/out" \
+    && [ ! -e "$w114e/p1/vendor/mathx" ] && [ -z "$(ls -A "$w114e/p1/vendor")" ] \
+    && ok "an all-zero pin is refused (exit 1, nothing in vendor/), printing the hash the tag has" || no "zero pin: $(cat "$w114e/out")"
+  [ -n "$w114h" ] && [ "$w114h" = "$w114py" ] \
+    && ok "golfdeps hash = sha256 of sorted '<sha256> <path>' lines, .git/ excluded (as REFERENCE.md defines it)" || no "package hash '$w114h' vs '$w114py'"
+  printf '# mathx, pinned\nmathx file://%s v1.0 %s  # the test package\n' "$w114e/src" "$w114h" > "$w114e/p1/golf.deps"
+  [ "$(w114 "$w114e" fetch -f p1/golf.deps)" = 0 ] && grep -q "fetched into vendor/mathx" "$w114e/out" \
+    && cmp -s "$w114e/src/mathx.golfj" "$w114e/p1/vendor/mathx/mathx.golfj" && [ ! -e "$w114e/p1/vendor/mathx/.git" ] \
+    && [ "$(ls -A "$w114e/p1/vendor")" = mathx ] && [ ! -e "$w114e/vendor" ] \
+    && ok "fetch clones the tag into vendor/mathx/ next to the manifest (-f), without .git/ or leftovers" || no "fetch: $(cat "$w114e/out")"
+  printf '%s\n' '⎘“vendor/mathx/mathx.golfj“' '3‹pkgcube›Ṅ' > "$w114e/p1/main.golfj"
+  (cd "$w114e/p1" && "$EXP/tools/golfc" -j main.golfj main > /dev/null 2>&1) && [ "$("$w114e/p1/main")" = 27 ] \
+    && ok "a program includes the fetched package (⎘“vendor/mathx/mathx.golfj“) and uses its word: 27" || no "use a package"
+  [ "$(w114 "$w114e/p1" fetch)" = 0 ] && [ "$(cat "$w114e/out")" = "golfdeps: mathx v1.0: up to date" ] \
+    && [ "$(w114 "$w114e/p1" verify)" = 0 ] && [ "$(w114 "$w114e/p1" list)" = 0 ] && [ "$(cat "$w114e/out")" = "mathx v1.0 ok" ] \
+    && ok "fetch again is a no-op (up to date); verify exits 0; list says 'mathx v1.0 ok'" || no "re-fetch: $(cat "$w114e/out")"
+  printf 'tampered\n' >> "$w114e/p1/vendor/mathx/sub/notes.txt"
+  [ "$(w114 "$w114e/p1" verify)" = 1 ] && grep -q "vendor/mathx does not match its sha256 pin" "$w114e/out" \
+    && [ "$(w114 "$w114e/p1" list)" = 0 ] && [ "$(cat "$w114e/out")" = "mathx v1.0 modified" ] \
+    && [ "$(w114 "$w114e/p1" fetch)" = 0 ] && [ "$(w114 "$w114e/p1" verify)" = 0 ] \
+    && cmp -s "$w114e/src/sub/notes.txt" "$w114e/p1/vendor/mathx/sub/notes.txt" \
+    && ok "verify catches a tampered vendor file (exit 1, list: modified); fetch restores it" || no "tamper: $(cat "$w114e/out")"
+  cp -R "$w114e/p1/vendor" "$w114e/p2/"
+  printf 'mathx %s v1.0 %s\n' "$w114e/src" "$w114bad" > "$w114e/p2/golf.deps"
+  [ "$(w114 "$w114e/p2" fetch)" = 1 ] && grep -q "does not match the sha256 pinned in golf.deps; refusing it" "$w114e/out" \
+    && grep -q "want $w114bad" "$w114e/out" && grep -q "got  $w114h" "$w114e/out" \
+    && [ ! -e "$w114e/p2/vendor/mathx" ] && [ -z "$(ls -A "$w114e/p2/vendor")" ] \
+    && ok "a wrong hash is refused: exit 1, want/got printed, vendor/mathx (even an old copy) removed" || no "wrong hash: $(cat "$w114e/out")"
+  printf 'mathx %s v9.9 %s\n' "$w114e/src" "$w114h" > "$w114e/p3/golf.deps"
+  [ "$(w114 "$w114e/p3" fetch)" = 1 ] && grep -q "mathx: cannot clone tag v9.9" "$w114e/out" && [ -z "$(ls -A "$w114e/p3/vendor")" ] \
+    && [ "$(w114 "$w114e/p3" verify)" = 1 ] && grep -q "mathx v9.9: missing from vendor/" "$w114e/out" \
+    && ok "a tag that does not exist: cannot clone, exit 1, nothing left; verify: missing, exit 1" || no "bad tag: $(cat "$w114e/out")"
+  w114m=""
+  for w114l in "mathx $w114e/src v1.0" "../up $w114e/src v1.0 $w114h" ".hid $w114e/src v1.0 $w114h" "m x v1.0 ABC" \
+               "m x v1.0 $w114h|m y v1.0 $w114h"; do
+    printf '# header\n\n%s\n' "$w114l" | tr '|' '\n' > "$w114e/p3/bad.deps"
+    [ "$(w114 "$w114e/p3" list -f bad.deps)" = 2 ] && grep -q "^golfdeps: bad.deps line [34]: " "$w114e/out" || w114m="$w114m [$w114l]"
+  done
+  [ -z "$w114m" ] && [ "$(w114 "$w114e/p3" fetch -f none.deps)" = 2 ] && [ "$(w114 "$w114e/p3" frob)" = 2 ] \
+    && ok "manifest errors exit 2 naming the line: 3 fields, ../ or . names, a short hash, a name twice; no manifest" || no "manifest errors:$w114m"
+  sed -n '/^### Packages$/,/^### /p' REFERENCE.md | awk '/^```$/{n++; next} n==1' > "$w114e/p3/golf.deps"
+  [ "$(w114 "$w114e/p3" list)" = 0 ] && [ "$(cat "$w114e/out")" = "$(printf 'mathx v1.2 missing\ntextx v0.3 missing')" ] \
+    && ok "REFERENCE.md's golf.deps example parses (golfdeps list: two packages, missing)" || no "REFERENCE golf.deps example: $(cat "$w114e/out")"
+  # The bare ⎘“<name>/<file>“ form goes through W11-4A's vendor/ search path
+  # (merged in wave 4), so it must pass: no skip branch.
+  sed -n '/^### Packages$/,/^### /p' REFERENCE.md | awk '/^```$/{n++; next} n==5' > "$w114e/p1/bare.golfj"
+  (cd "$w114e/p1" && "$EXP/tools/golfc" -j bare.golfj bare > /dev/null 2>&1) && [ "$("$w114e/p1/bare")" = 27 ] \
+    && grep -q '^⎘“mathx/mathx.golfj“' "$w114e/p1/bare.golfj" \
+    && ok "REFERENCE.md's ⎘“mathx/mathx.golfj“ example finds the package through vendor/ and prints 27" || no "bare package include"
+else
+  for k in $(seq 1 "$w114n"); do ok "golfdeps: git not available, skipped"; done
+fi
+
+# === W11-4 integration ===
+echo "W11-4 integration: one program over ⎘ + ⊜ + dict + ⊸ + ‹catch› + ‹fmt› + files + ‹expect›; golfi with records"
+w114x="$TMP/w114x"; rm -rf "$w114x"; mkdir -p "$w114x"
+cat > "$w114x/geom.golfj" <<'GOLF'
+⊜‹point›‹x›‹y›;
+:‹norm2›"‹point-x›²&‹point-y›²+;
+GOLF
+cat > "$w114x/main_test.golfj" <<'GOLF'
+⎘“geom.golfj“
+⎘“geom.golfj“
+3 4‹point›→p
+←p‹norm2›→n
+←n 25“norm2 via record“⊃‹expect›
+←p 9‹set-point-x›‹point-x› 9“setter“⊃‹expect›
+‹dict›“norm“⊃←n‹put›→d
+←d“norm“⊃‹get› 25“dict get“⊃‹expect›
+3⍳10′+⊸€→l
+←l∑ 33“bound add“⊃‹expect›
+:‹bad›←l9⊇;
+′‹bad›‹catch›→e
+←e“index out of range“⊃“caught“⊃‹expect›
+←n‹fmt›“n.txt“⊃‹writefile›
+“n.txt“⊃‹readfile›→r
+←r“25“⊃“file round trip“⊃‹expect›
+“caught: “⊃⊐←e⊐␤
+“norm2 = “⊃⊐←r⊐␤
+←l⍕␤
+GOLF
+sed 's/←l∑ 33/←l∑ 34/' "$w114x/main_test.golfj" > "$w114x/bad_test.golfj"
+(cd "$w114x" && "$EXP/tools/golfc" -j main_test.golfj main > /dev/null 2>&1 && ./main > out 2>&1; echo $? > rc)
+[ "$(cat "$w114x/rc")" = 0 ] && [ "$(cat "$w114x/out")" = "$(printf 'caught: index out of range\nnorm2 = 25\n10 11 12 ')" ] \
+  && [ "$(cat "$w114x/n.txt")" = 25 ] \
+  && ok "one program: ⎘ (twice, once), ⊜ record + setter, dict, ⊸, caught index error, ‹fmt› → ‹writefile›/‹readfile›, every ‹expect› passes" \
+  || no "W11 smoke program: rc=$(cat "$w114x/rc") $(cat "$w114x/out")"
+(cd "$w114x" && "$EXP/tools/golftest" . > gt 2>&1; echo $? > rc)
+[ "$(cat "$w114x/rc")" = 1 ] && grep -q '^PASS ./main_test.golfj$\|^PASS main_test.golfj$' "$w114x/gt" \
+  && grep -q '^  FAIL: bound add: expected 34 got 33$' "$w114x/gt" && grep -q '^1 passed, 1 failed$' "$w114x/gt" \
+  && ok "golftest on it: the program PASSes, the one-check variant FAILs with expected/got, exit 1" \
+  || no "golftest smoke: $(cat "$w114x/gt")"
+[ "$(printf '%s\n' '⊜‹point›‹x›‹y›;' '3 4‹point›' '"‹point-y›' | (cd "$w114x" && "$EXP/tools/golfi" 2>&1) | tail -3)" = "$(printf '<0>\n<1> [3 4]\n<2> [3 4] 4')" ] \
+  && ok "golfi keeps a ⊜ record across lines (constructor and accessor in later entries)" || no "golfi records"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

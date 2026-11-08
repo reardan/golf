@@ -17,6 +17,31 @@ cited; where it is *not* queued, that is called out — those are the useful row
 
 ---
 
+## After W11 — Python and Rust
+
+The W11 round (four waves, sixteen tasks) took the Python-shaped gaps below and
+the ones a Rust programmer would name first. Per area, what a program has now
+and what is still missing; *refused* means a non-goal (DESIGN.md), *queued*
+means it is on [`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+| Area | Now exists | Remains |
+|---|---|---|
+| Types | one 64-bit word; lists tagged exactly (`addr \| 0x7FFF<<48`, W11-1A), so only integers in `[0x7FFF<<48, 2^63)` read as lists; checked `‹cadd› ‹csub› ‹cmul›` (W11-3C) | refused: floats, bignums, static types. Records and dicts are lists, not shapes of their own |
+| Data structures | lists, nested lists, code-list strings, dicts and sets over `‹hash›` (W11-2B), `⊜` records with accessors and setters (W11-4A) | no tuples or enums as distinct values; a record is not type-checked (any list of the right length passes) |
+| Modules | `⎘“path“` textual includes, include-once, nested, searched in cwd, `lib/`, `vendor/` (W11-2A, 4A); pinned git packages via `golf.deps` and `tools/golfdeps` (W11-4E) | queued: lexical scope / namespaces (every name is global), transitive dependencies (a package's own `golf.deps` is not read); no registry or version solving |
+| Errors | `′f‹catch›` returns `0` or the message, `‹throw›` raises (W11-3A); every runtime error the prelude raises is catchable; compile errors carry the line and file (W11-3B) | one error value (a message string), no typed exceptions or `Result`; a return-stack overflow is still a SIGSEGV; one compile error per run |
+| I/O | file words with errno-named failures (W11-1B), an 8 KB stdout buffer (W11-1C), line/number input (W9-4C), argv, raw `⎈` syscalls | no sockets, processes or directory listing beyond raw syscalls |
+| Stdlib | the prelude: list words, text words `‹fmt› ‹hex› ‹split› ‹trim› ‹joinwith› ‹pad›…` (W11-1D), dicts, `⊸` closures by value (W11-2C) | no regex, JSON, dates or math library; `⍋` sorts ascending only (no key or comparator) |
+| Memory | a `brk` heap with size-class free lists, manual `⌫`, poisoned frees that make use after free a catchable error, `‹heapstats›` (W11-2D) | refused: a GC or a borrow checker. A stale copy of a freed-then-reused block and interior pointers are not caught |
+| Tooling | `tools/golftest` + `‹assert› ‹expect›` (W11-4B), the replaying REPL `tools/golfi` + `‹stack›` (W11-4C), `golfc -g` symbol maps (W11-3B) and `tools/golfgdb` (break, backtrace, data stack by word name; W11-4D), `tools/golfdeps` (W11-4E) | no formatter or LSP; the REPL replays the whole session per line; no source-line stepping in gdb |
+| Performance | single-pass template compiler, implicit vectorization, buffered output; 100k dict inserts+lookups well under a second | queued: M7 (a relocation pass, then register-based codegen); no optimizer today |
+| Platforms | x86-64 Linux, static ELF64, no libc; programs up to 192 KB (W11-1E) | queued: M9 (C backend or object files, arm64); refused: threads and async |
+
+The rest of this file is the audit as it was written, with each gap's closing
+line added as the waves landed.
+
+---
+
 ## 0. The three languages are not trying to do the same thing
 
 | | GOLF/2 | Jelly | Python |
@@ -52,7 +77,7 @@ inner lists as raw heap addresses, and M-VEC's five operators dispatched on the
 shapes of their two operands once, never recursing into elements.
 
 A GOLF list is a heap block `[len, e0, …]` of 64-bit cells, and an inner list is
-a tagged value (`addr | 2^48`, M-TAG2), so "is this element a list?" is an exact
+a tagged value (`addr | 0x7FFF<<48` since W11-1A; `addr | 2^48` from M-TAG2), so "is this element a list?" is an exact
 shift-and-compare. W9-3B asks it of every element:
 
 ```
@@ -79,6 +104,13 @@ one type, and it wraps:
 9223372036854775807⊕Ṅ  ->  -9223372036854775808     # silent 64-bit wrap
 7 2÷Ṅ                  ->  3                        # truncating; no rationals
 ```
+
+**Overflow detection — CLOSED (W11-3C), opt-in.** The bare ops still wrap,
+but `‹cadd›` `‹csub›` `‹cmul›` (`a b -> a op b`, scalars only) are Rust's
+checked ops: `9223372036854775807 1‹cadd›` stops with `GOLF: integer
+overflow` (exit 1, or caught by `‹catch›`, W11-3A, which returns the message) instead of
+printing `-9223372036854775808`. Still no bignums: overflow is an error, never
+a promotion (REFERENCE.md, "Checked arithmetic").
 
 No floats, no bignums, no complex, no rationals — and no *characters* either.
 Jelly distinguishes a character from an integer, which is how it prints
@@ -126,6 +158,17 @@ seeded with the first element, `"0⊇′⌈⇤` (`′⌊` for the min):
 5⍳"⧺‹unique›⍕  ->  0 1 2 3 4    # W9-4B part 2: unique, first occurrences
 3⍳′⍳€‹flatten›⍕ -> 0 0 1        # W9-4B part 2: flatten
 3⍳3⍳≡Ṅ   ->  0          # ≡ compares the two ADDRESSES, not the contents
+```
+
+**String ops and base conversion — CLOSED (W11-1D).** Text is still a code
+list, but the everyday string kit now exists as prelude words: `‹fmt›` (int to
+decimal text), `‹hex›` / `‹parsehex›` (base 16 both ways), `‹split›` (keeps
+empty fields, like Python's `str.split(sep)`), `‹joinwith›`, `‹trim›`,
+`‹startswith›` (zero-is-true, like `∊`) and `‹pad›` (see REFERENCE.md, Text):
+
+```
+“a, b,c“⊃44‹split›′‹trim›€124‹joinwith›⊐   ->  a|b|c
+255‹hex›⊐                                  ->  ff
 ```
 
 The blocker is named in [`REGISTRY.md`](REGISTRY.md) §2 and it is real: the
@@ -178,6 +221,20 @@ names, so no letter was spent: `‹readall›`, `‹readline›`, `‹getc›`,
 the program's *shape*: no implicit `main`, no auto-print, and the command line
 arrives as code lists the program must parse itself (`‹args›′‹num›€`).
 
+**Closed (W11-1C): output was one `write(2)` per byte.** Python buffers
+stdout; GOLF's printers made a system call for every byte, so `1000000⍳⍕` cost
+6,888,890 writes (0.75 s). They now share an 8 KB buffer with `‹flush›`,
+drained at every exit, before every `GOLF:` message, before the input words
+read, and before a raw `)` or `(`: 841 writes (0.07 s), the same bytes
+(REFERENCE.md, "Output"; DESIGN.md, known limits).
+
+**Files — closed by W11-1B.** A user program could not open a file at all:
+`⎈` was there, but the file words lived only in the tools' `lib/tio.golfj`.
+The prelude now has `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›`
+`‹readfile›` `‹writefile›` (REFERENCE.md, "Files"), taking paths and contents
+as code lists, and a failure is a message, not a negative number to forget:
+`GOLF: cannot open x.txt (ENOENT)`, exit 1.
+
 ---
 
 ## 2. Gaps to Python
@@ -194,13 +251,44 @@ structure that makes most Python programs short, and GOLF has no hashing
 primitive to build one on. Strings are not values (§1.2); there is nothing to
 key on but integers.
 
+**Dict and set — CLOSED (W11-2B).** The prelude now has a hash dict:
+`‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›`, with `‹set›` and
+`‹add›` on top and `‹hash›` (FNV-1a 64) underneath. Keys are ints or lists,
+nested to any depth, compared with `≣`, so a code list read at run time is a
+usable string key. It is a compact, insertion-ordered dict with
+open-addressing, and 100,000 int inserts plus lookups take about 0.05 s
+(REFERENCE.md, "Dicts and sets"). Objects and classes are still missing;
+records (named fields) are closed below.
+
+```
+‹dict›"“ab“⊃7‹put›"“ab“⊃‹get›Ṅ    ->  7
+```
+
+**Structs / records — CLOSED (W11-4A).** `⊜‹point›‹x›‹y›;` declares a
+record: the compiler defines a constructor `‹point›` (`x y -> rec`),
+accessors `‹point-x›` (`rec -> x`) and setters `‹set-point-x›`
+(`rec v -> rec`, in place). It is a Rust tuple struct with named accessors,
+or a Python namedtuple that may be mutated: a plain list underneath, so `⍕`
+prints it and every list word works on it, and a wrong field name is an
+undefined word at compile time (REFERENCE.md, "Records"). The accessor is
+spelled `‹point-x›`, not `‹point.x›` (`.` is not a long-name byte). Not
+covered: types (any list long enough passes for a point), methods, and
+inheritance.
+
+```
+⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ    ->  4
+```
+
 ### 2.2 Names and scope
 
 - **Single-byte identifiers.** 256 word slots in a flat byte-indexed table, and
   the readable letters are gone (§1.3). **Fixed by M2 (W9-3A):** `‹name›` adds
   long names, usable as words, quotations, chain links, variables and (since
   W9-4D) locals — 256 per program at first, 1024 since W10-A.
-- **No lexical scope, and no closures.** The variable bank is one global cell per
+- **No lexical scope, and no closures.** **Closures by value — CLOSED (W11-2C):**
+  `x ′f⊸` captures the value of `x` in a new quotation, so
+  `10→n ←n′+⊸→k 99→n 3⍳←k€⍕` prints `10 11 12` (REFERENCE.md, Closures).
+  Lexical scope is still absent. The variable bank is one global cell per
   name. The "closure" idiom in `examples/legacy_capstone.golfj`
   (`10→k:f←k+;… ′f€`) is a global read at call time, not a capture:
 
@@ -269,11 +357,32 @@ exactly-`len` index; `INT64_MIN ÷ -1` is defined as `INT64_MIN`, `∣ -1` as 0)
 Still a signal: v1's unsigned `/` and `%` divided by zero — they are frozen v1
 templates. Still no `try`; a runtime error ends the program.
 
+**No `try`: closed by W11-3A.** `′f‹catch›` runs `f` and leaves `0` above
+its results, or — if anything under it calls `‹throw›` — the error's message
+as a code list, with the data stack back at its depth at the call (`f`'s
+pushes discarded) and the return and spill stacks unwound. Every runtime
+check raises through `‹throw›`, so index, use after free, key not found, file
+errors, the compose arena, double free, the spill stack and divide by zero
+(`/ % ÷ ∣`) are all catchable; catches nest
+and a handler can rethrow. Against Python: there are no exception types (the
+message is the whole value, so dispatch is by comparing text with `≣`), no
+`finally`, and nothing is rolled back — variables, memory and output stay as
+`f` left them. Still uncatchable: a return-stack overflow (SIGSEGV), `.`, and
+compile errors.
+
 The compiler is the same: bad source does not produce a diagnostic, it produces
 a bad binary. For a language whose whole test discipline is byte-identical
 differential comparison, "no diagnostics at all" is a defensible cost — but it is
 the single biggest difference in *what it feels like* to write GOLF versus
 Python, and it appears nowhere in DESIGN.md's limits.
+
+**Compile-error positions — closed by W11-3B.** Every compile diagnostic but
+`program too large` now ends with where it happened, in the user's terms:
+`GOLF: undefined word b at line 3`, or `… at x.golfj line 3` inside an
+included file (lines counted per file; golfc's form feed after the prelude
+restarts the count, and golfc names an included `.golfj` by its own path). An
+undefined word is reported at the line of its first use. Still no column, and
+still one error per compile.
 
 ### 2.5 Memory
 
@@ -282,17 +391,74 @@ Python, and it appears nowhere in DESIGN.md's limits.
   forever. **Since W9-3C (M-MEM2)** `⌫` hands a block back to a size-classed
   free list that `A` checks first, so a loop that frees what it maps keeps the
   break flat. It is explicit — nothing frees on its own, there is no GC and no
-  ownership, and a use after `⌫` is undefined — so against Python this is
-  C's `free`, not reference counting.
+  ownership — so against Python this is C's `free`, not reference counting.
+- **A use after `⌫` is caught (was: undefined).** **Closed by W11-2D:** `⌫`
+  poisons the freed list's length cell and every list word checks it on entry,
+  so `5⍳"⌫∑` stops with `GOLF: use after free` (exit 1) instead of summing a
+  recycled block; `‹heapstats›` (`-> blocks bytes`) shows what is live, so a
+  test can assert that a map-and-free loop stays flat. Still open, as in C
+  with a debug allocator: a stale copy of a block that was freed and then
+  reallocated is not caught (the new owner's list is live), nor is an
+  interior pointer.
 - **The `∘` compose arena has no bounds check, and overruns into user data.**
   See §3 below — this one is a live defect, not a design limit.
 
 ### 2.6 Everything around the language
 
-No modules or imports (`include` is listed under "as needed", M9), no standard
-library beyond the prelude, no package ecosystem, no REPL, no debugger, no
-introspection, no threads or async, and one target: x86-64 Linux, ELF64,
-statically laid out. A retargetable IR is also M9.
+No modules or namespaces (textual includes: W11-2A, below), no standard
+library beyond the prelude and no introspection; the package
+ecosystem is pinned git packages (W11-4E), the REPL is a replaying one
+(W11-4C), the debugger is gdb by word name (W11-4D) and tests run under
+`tools/golftest` (W11-4B), all below. There are no threads or async, and one
+target: x86-64 Linux, ELF64, statically laid out. A retargetable IR is also M9.
+
+**Symbols — closed by W11-3B (the debugger itself is W11-4D).** `golfc -g`
+writes `OUT.map`, one `name 0xaddr` line per defined word (the address of its
+body in the running program), so a crash address or a gdb `break *0x…` can be
+tied to a word name; the binary is unchanged by `-g`.
+
+**Debugger — closed by W11-4D (tooling).** `tools/golfgdb prog` runs gdb with
+a script generated from `prog.map`: `golf-break NAME` breaks in a word by
+name, `golf-bt` walks the rbp return stack into a backtrace of word names,
+`golf-stack [N]` shows the data stack (rsp) with lists expanded, `golf-where`
+names the word at `$pc` (REFERENCE.md "Debugging"). Still open: no source
+lines (the map is per word, not per token), no single-step by GOLF word or
+token (gdb's `stepi` steps machine instructions), no view of the X/Y spill
+stack or `→x` variables by name, and it needs gdb with Python.
+
+**Includes — closed by W11-2A.** `⎘“path“` compiles that file's bytes in
+place: nested (8 deep), include-once, searched as written, then in `lib/`, then
+in `vendor/` (W11-4A, for fetched packages) (REFERENCE.md "Modules"). It is textual inclusion, like C's `#include` with
+an include guard, not Python's modules: there are no namespaces, so an
+included file's names are the includer's names.
+
+**Tooling: test runner — closed by W11-4B.** `‹assert›` (`f msg`, passes on
+`-1`) and `‹expect›` (`actual expected msg`, `≣`) print `FAIL: msg` (with
+`expected … got …`), keep going, and make the exit status 1; `tools/golftest
+[DIR|FILE…]` compiles and runs every `*_test.golfj`, prints `PASS`/`FAIL` per
+file and a summary, and exits non-zero on any failure (REFERENCE.md
+"Testing"). Unlike pytest there are no line numbers (the message names the
+check), no fixtures, and one process per file.
+
+**REPL — closed by W11-4C.** `tools/golfi` reads `.golfj` a line at a time
+and shows each line's output and then the data stack (`<2> 19 [0 1 4]`, from
+the new prelude word `‹stack›`, which any program can call). It replays: the
+whole session is recompiled and rerun for every line (about 0.11 s each), so
+definitions, variables, includes and the stack persist; a line that fails to
+compile or run is reported and dropped (REFERENCE.md "REPL"). Not a true
+incremental REPL — earlier lines' side effects rerun, silently, every time,
+and stdin is `/dev/null`.
+
+**Package manager — closed by W11-4E.** A project's `golf.deps` pins each
+package as `name git-url tag sha256`, shaped like the root `SEEDS` file.
+`tools/golfdeps fetch` clones each tag into `vendor/<name>/`. It refuses a
+package whose content hash differs from the pin and leaves nothing behind when
+it does. The hash is a sha256 over the sorted files' own hashes, so the clone's
+metadata does not affect it. `verify` catches a modified vendor copy
+(REFERENCE.md "Packages"). Programs include package files as
+`⎘“<name>/<file>.golfj“` through W11-4A's `vendor/` search path. There is no
+registry, no version solving and no transitive dependencies: a package's own
+`golf.deps` is not read, so the project pins everything it needs.
 
 ---
 
@@ -364,6 +530,32 @@ silently, as above). Chain links go through `X`, so they are covered too.
 gap that most limited what could be written. The tag bit (M-TAG2, W9-2A) was its
 prerequisite; W9-3B then made `⍕` recursive, made the bare `+ - *` recurse like
 `⌈ ⌊`, and added `≣` (structural equality) and `⍤` (depth).
+
+### 3.4 Integers in `[2^48, 2^49)` were lists — FIXED (W11-1A)
+
+M-TAG2's tag was bit 48 (`addr | 2^48`), so every integer from 281 to 562
+trillion was shape-tested as a list: `16777216 16777216* 1+Ṅ` segfaulted, and a
+sum of squares such as `100000⍳"*∑Ṅ` broke once it passed 2^48. W11-1A moved the
+tag to the top 16 bits `0x7FFF` (`addr | 0x7FFF<<48`); both programs now print
+`281474976710657` and `333328333350000`. The band sacrificed is now
+`[0x7FFF<<48, 2^63)` — the 2^48 integers just below `INT64_MAX` (DESIGN.md, known
+limits); negatives (top bits `0xFFFF`) stay ints as before.
+
+### 3.5 A program past 64 KB compiled cleanly and then crashed — FIXED (W11-1E)
+
+Found during W11 wave 1. Every binary was one `PT_LOAD` with v1's fixed
+`p_filesz` of `0x10000`, and the compilers' output buffer at `m+4096` held
+64 KB, so bytes past 64 KB were written to the file but never mapped: no
+diagnostic, then SIGSEGV or SIGILL at run time. The prelude alone had reached
+~33 KB, and the 1024-long-name tests (every name a word and a variable, ~66 KB)
+were the first to fall over.
+
+**Fixed.** The compilers' buffer moved to `0x494000` (REGISTRY §3), `p_filesz`
+is now written as the image's true size, and the cap is 196608 bytes (192 KB),
+where the image would meet the 1C output buffer at `0x430000`. Past it `golf2`
+says `GOLF: program too large` (fd 2, exit 2, nothing on fd 1) and the seed exits
+2 silently; `run2.sh` pins a program of exactly 196608 bytes that runs, one 4
+bytes over, and the 1024-name tests are back to their all-words form.
 
 Already recorded and confirmed accurate: the `T` range-test misclassification
 (queue §1 — **fixed** by M-TAG2, W9-2A), the global-bank recursion footgun (queue §2),

@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""golfi — an interactive GOLF/2 REPL (W11-4C).
+
+    tools/golfi [-t]        # read glyph/.golfj source from stdin, line by line
+
+Model: REPLAY.  The session is the list of entries accepted so far.  Each new
+entry E is compiled as one whole program with tools/golfc -j
+
+    <session entries>           (their output is discarded)
+    “@golfi:1@“🗲               marker: what follows is E's output
+    E
+    “@golfi:2@“🗲‹stack›        marker, then the data stack (‹stack›)
+    “@golfi:3@“🗲               marker: the program reached the end
+
+and run with stdin from /dev/null.  golfi prints what E printed (plus a newline
+if it did not end with one), then the stack line `<n> a b …`.  Because
+everything replays, definitions (`:` `⊡` `⊚` `⊜`), includes (`⎘`), variables
+(→x) and the data stack all carry over to the next entry — and so does every
+side effect, re-run silently each time (a slow or huge-output entry slows
+every later one; `:reset` starts over).
+
+An entry is one line, or several: while a line leaves a `:` `⊡` `⊚` `⊜`
+definition, a `[` or `{`, or a “string open, golfi reads the next line into
+the same entry (prompt `....> `).  The scan runs on the encoded bytes, so
+comments are ignored and the name after `:` / `′` / `→` / `←` / `⇒` / `⇐` and
+the byte after `'` are skipped.
+
+E is NOT kept (so the session stays a program that compiles and runs) when:
+  * the compile fails (the `GOLF: … at line N` message is shown, with ` at
+    line N` dropped when N is E's only line);
+  * the run exits non-zero, e.g. `GOLF: index out of range` (what E printed
+    before the error is shown first), or is killed by a signal;
+  * the run exceeds GOLFI_TIMEOUT seconds (default 10);
+  * the end marker never prints (E swallowed the markers some other way).
+
+Commands (a whole line, exactly): `:quit` (or end of input) leaves, `:reset`
+empties the session, `:show` prints the session's source.  A blank line does
+nothing.  `-t` prints each entry's wall time (compile + run) as `(0.123 s)`.
+Prompts are shown only when stdin is a terminal.  Everything golfi prints goes
+to stdout, so a piped session reads in order.
+"""
+import os, re, shutil, signal, subprocess, sys, tempfile, time
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # expanded/
+GOLFC = os.path.join(HERE, "tools", "golfc")
+sys.path.insert(0, os.path.join(HERE, "tools"))
+import codepage  # noqa: E402
+
+M1, M2, M3 = (b"@golfi:%d@" % i for i in (1, 2, 3))
+TIMEOUT = float(os.environ.get("GOLFI_TIMEOUT", "10"))
+STR, LONG_OPEN, LONG_CLOSE, CHAR = 0x8E, 0xB4, 0xB5, 0x27
+NAMED = {0x8C, 0x8F, 0x90, 0xB2, 0xB3}          # ′ → ← ⇒ ⇐ take a name
+DEFS = {0x3A, 0xB0, 0xB1, 0xB7}                 # : ⊚ ⊡ ⊜ take a name, end at ;
+CLOSE = {0x5B: 0x5D, 0x7B: 0x7D}                # [ ] and { }
+
+out = sys.stdout.buffer
+
+
+def say(b):
+    if isinstance(b, str):
+        b = b.encode("utf-8", "surrogateescape")
+    out.write(b)
+    out.flush()
+
+
+def is_open(text):
+    """True when text leaves a definition, [ , { or string unclosed."""
+    try:
+        code = codepage.encode(text)
+    except SystemExit:                     # unknown mnemonic: golfc says so
+        return False
+    i, n, want = 0, len(code), []
+
+    def name(i):                           # skip one name: ‹long› or one byte
+        if i < n and code[i] == LONG_OPEN:
+            j = code.find(bytes([LONG_CLOSE]), i)
+            return n if j < 0 else j + 1
+        return i + 1
+
+    while i < n:
+        b = code[i]
+        if b == STR:
+            j = code.find(bytes([STR]), i + 1)
+            if j < 0:
+                return True
+            i = j + 1
+        elif b == CHAR:
+            i += 2
+        elif b in NAMED:
+            i = name(i + 1)
+        elif b in DEFS:
+            want.append(0x3B)
+            i = name(i + 1)
+        else:
+            if b in CLOSE:
+                want.append(CLOSE[b])
+            elif want and b == want[-1]:
+                want.pop()
+            i += 1
+    return bool(want)
+
+
+def nl(b):
+    return b + b"\n" if b and not b.endswith(b"\n") else b
+
+
+def after(o, m):
+    i = o.rfind(m)
+    return o[i + len(m):] if i >= 0 else None
+
+
+def run(session, entry, tmp):
+    """Compile and run session + entry.  Returns (ok, text to show)."""
+    src = "".join(s + "\n" for s in session)
+    first = src.count("\n") + 2                 # entry's first line number
+    src += "“%s“🗲\n%s\n“%s“🗲‹stack›\n“%s“🗲\n" % (
+        M1.decode(), entry, M2.decode(), M3.decode())
+    prog, exe = os.path.join(tmp, "s.golfj"), os.path.join(tmp, "s")
+    with open(prog, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(src)
+    c = subprocess.run([GOLFC, "-j", prog, exe], stdin=subprocess.DEVNULL,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if c.returncode:
+        err = c.stdout + c.stderr
+        lines = entry.count("\n") + 1
+
+        def where(m):
+            k = int(m.group(1)) - first + 1
+            if not 1 <= k <= lines:
+                return m.group(0)
+            return b"" if lines == 1 else b" at line %d of this entry" % k
+        err = re.sub(rb" at line (\d+)", where, err)
+        if not err.startswith(b"GOLF:"):        # e.g. a crash, no diagnostic
+            err = b"compile failed (status %d)\n" % c.returncode
+        return False, nl(err)
+    try:
+        r = subprocess.run([exe], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=TIMEOUT)
+    except subprocess.TimeoutExpired as e:
+        new = after(e.stdout or b"", M1) or b""
+        return False, nl(new) + b"timed out after %g s\n" % TIMEOUT
+    new = after(r.stdout, M1)
+    j = new.find(M2) if new is not None else -1
+    if r.returncode:
+        new = (new or b"")[:j] if j >= 0 else (new or b"")
+        if r.returncode < 0:
+            try:
+                sig = signal.Signals(-r.returncode).name
+            except ValueError:
+                sig = "signal %d" % -r.returncode
+            err = b"killed by %s\n" % sig.encode()
+        else:
+            err = nl(r.stderr) if r.stderr.strip() else (
+                b"exit status %d\n" % r.returncode)
+        return False, nl(new) + err
+    k = new.find(M3, j + 1) if j >= 0 else -1
+    if k < 0:
+        return False, b"incomplete entry: the end of the program never ran\n"
+    return True, nl(new[:j]) + new[j + len(M2):k]
+
+
+def main():
+    timing = "-t" in sys.argv[1:]
+    tty = sys.stdin.isatty()
+    if tty:
+        try:
+            import readline  # noqa: F401  (line editing + history)
+        except ImportError:
+            pass
+
+    def read(prompt):
+        if tty:
+            try:
+                return input(prompt)
+            except EOFError:
+                return None
+        line = sys.stdin.readline()
+        return None if line == "" else line.rstrip("\n")
+
+    session = []
+    tmp = tempfile.mkdtemp(prefix="golfi.")
+    try:
+        while True:
+            line = read("golf> ")
+            if line is None:
+                break
+            line = line.rstrip("\r")
+            cmd = line.strip()
+            if cmd == ":quit":
+                break
+            if cmd == ":reset":
+                session = []
+                say("session cleared\n")
+                continue
+            if cmd == ":show":
+                say("".join(s + "\n" for s in session))
+                continue
+            if not cmd:
+                continue
+            entry = line
+            while entry is not None and is_open(entry):
+                more = read("....> ")
+                entry = None if more is None else (
+                    entry + "\n" + more.rstrip("\r"))
+            if entry is None:
+                say("incomplete entry at end of input\n(not kept)\n")
+                break
+            t0 = time.monotonic()
+            ok, text = run(session, entry, tmp)
+            dt = time.monotonic() - t0
+            if ok:
+                session.append(entry)
+                say(text)
+            else:
+                say(text + b"(not kept)\n")
+            if timing:
+                say("(%.3f s)\n" % dt)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    if tty:
+        say("\n")
+
+
+if __name__ == "__main__":
+    main()

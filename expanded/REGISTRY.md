@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **36** are now spent, leaving **75** free. It is partitioned as follows
+space; **41** are now spent, leaving **70** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -53,11 +53,17 @@ so waves never contend:
 | `0xA0`–`0xA7` | M4 atoms (wave 1) — signed compare, shifts, 64-bit fetch/store, `brk` |
 | `0xB0`–`0xBF` | Future compiler-logic ops (prefixes/tokens handled in golf2's `t`, like `ref`/`str`/`→`/`←`) — since M-SELF written in `self/golf2.golfj`, and mirrored into `mkblob2.py`'s v1-GOLF seed |
 | `0xC0`–`0xCF` | High-byte prelude words (wave 2) — words that need a byte of their own instead of a scarce ASCII letter |
-| `0xD0`–`0xEF` | Reserved: chain syntax / M4c                               |
+| `0xD0`–`0xD7` | High-byte prelude words, continued (W11-0 opened it: `0xC0`–`0xCF` is full) — still only for a word that earns a byte of its own; the default for a new prelude word is a long name |
+| `0xD8`–`0xEF` | Reserved: chain syntax / M4c (chain syntax itself shipped at `0xB0`) |
 | `0xF0`–`0xFF` | User extension space — never allocated by the language      |
 
 Gaps between the ranges (`0x98`–`0x9F`, `0xA8`–`0xAF`) are deliberate headroom
 for the range immediately above them; do not fill them opportunistically.
+W11-0 spent the first of that headroom deliberately: `0xA8`–`0xAB` continue
+the M4 atom range (`0xA0`–`0xA7` is full) for W11-3A's stack-pointer atoms
+(§1.3). The budget line above counts only what the tables in
+`tools/mkblob2.py` / `tools/codepage.py` hold, so a `reserved` row in §1.3
+moves it when it ships, not before.
 
 ### 1.1 Shipped today
 
@@ -149,6 +155,58 @@ growth primitive wants a dedicated one-argument op, not a raw number and three
 pushes, and the prelude — which must never pay for what it does not use — calls
 it on every allocation that outgrows the break.
 
+### 1.3 W11 assignments — reserved in W11-0, do not re-pick
+
+Allocated up front for the W11 waves (round 3, Python/Rust gaps). None of these
+is in `mkblob2.ATOMS` / `codepage.COMPILER` / `codepage.LIB` yet: each row is
+added there — and flipped to `shipped` here — by the task named, in the same
+commit as its implementation. W11-0 ran `python3 tools/codepage.py check` with
+the five rows below added to the tables temporarily, and it passed: no byte
+reuse, no mnemonic prefix pair (`\spr` `\spw` `\import` `\rec` `\bind` are
+prefix-free against the 75 mnemonics of the three tables and each other), no glyph reuse.
+
+| Byte | Mnemonic | Glyph | Meaning | Wave | Status |
+|------|----------|-------|---------|------|--------|
+| `0xA8` | `\spr` | `⊷` | atom: push the data-stack pointer and the return-stack pointer, `-> sp bp` (rsp as it was before the atom pushed anything, then rbp; template `push rsp; push rbp`) — what `‹catch›` saves | W11-3A | shipped |
+| `0xA9` | `\spw` | `⊶` | atom: `sp bp ->` set rbp, then rsp (pops both first, so the values are consumed before rsp moves; template `pop rbp; pop rsp`) — what `‹throw›` restores | W11-3A | shipped |
+| `0xAA`, `0xAB` | — | — | spare, **W11-3A only** (e.g. if the read/set split wants four atoms); anyone else asks. W11-3A did not need them (two atoms were enough) | W11-3A | reserved |
+| `0xB6` | `\import` | `⎘` | compiler op, include prefix: `⎘“path“` compiles that file's source in place (fd-0 swap, include-once, search `.` then `lib/` then `vendor/` — the last added by W11-4A) — see the decision below; `codepage.COMPILER` row, cases in `self/golf2.golfj`, the seed and `boot/golfref.py` | W11-2A | shipped |
+| `0xB7` | `\rec` | `⊜` | compiler op, record definition header: `⊜‹point›‹x›‹y›;` defines a constructor `‹point›` and per-field accessors `‹point-x›` / setters `‹set-point-x›` over a plain list, synthesized at compile time from `⍳ ⊇ & \ _ ≪ > ﹢ ⊛`; `codepage.COMPILER` row, cases in `self/golf2.golfj`, the seed and `boot/golfref.py` | W11-4A | shipped |
+| `0xB8` | — | — | spare compiler op, for the W11 front-end owners (2A / 3B / 4A) | W11-2A/3B/4A | reserved |
+| `0xD0` | `\bind` | `⊸` | prelude word at a high byte: `x ′f ⊸ -> ′g`, `g` = push x, call f (a thunk in the `∘` arena, bound-checked like `∘`) | W11-2C | shipped |
+
+The atom semantics in the table are W11-0's intent, not a spec: W11-3A owns the
+two templates (and their `boot/golfref.py` mirror) and may refine the order of
+the two values, provided the row here is updated in the same commit. **W11-3A
+shipped `0xA8`/`0xA9`** with the order as allocated: `⊷` is `push rsp; push rbp`
+(x86 `push rsp` stores rsp's value before that push, so `sp` is the stack
+exactly as it was before the atom) and `⊶` is `pop rbp; pop rsp`. The oracle
+inherits both from `mkblob2.ATOMS`.
+
+**`‹include›` decision (W11-0).** Include is a **compiler op byte** (`0xB6`),
+not a long name the compiler recognises. Reasons: every other compiler-level
+construct (`′ “ → ← ⊚ ⊡ ⇒ ⇐ ‹ ›`) is a byte the tokenizer `t` dispatches on,
+so this is one more case there and in the seed; recognising the text
+`include` would mean either pre-interning a name at compiler start (one of the
+1024 long-name slots gone from every program, and the name numbering shifted
+for every existing test) or comparing the bytes of every *new* long name
+against `include`, in both compilers. Spelled `⎘“path“` (glyph) or
+`\import“path“` (mnemonic) — `\include` is impossible, since `\inc` exists
+and the prefix rule forbids a mnemonic that extends it. `‹include›` is **not**
+reserved and stays an ordinary user name. **Records (`⊜`, W11-4A)** follow the
+same reasoning: an op byte in the compiler-logic range.
+
+**Codepage rows are deferred.** No `codepage.LIB` row for `⊸` exists before
+W11-2C ships the word: a LIB row would put the word in REFERENCE.md's generated
+table (run2.sh requires it to match `codepage.py reference`) and make the
+encoder accept `⊸` while the byte compiles to an undefined word — documented
+but not real. W11-2C adds the row, the REFERENCE regeneration and the prelude
+definition together; likewise W11-3A for `0xA8`/`0xA9` (ATOMS) and
+W11-2A / W11-4A for `0xB6` / `0xB7` (COMPILER). **W11-2C shipped `0xD0`:** the
+LIB row, the generated REFERENCE row and the `⊸` definition (prelude section
+`# === W11-2C bind ===`) landed together; its thunk is 38 bytes in the `∘`
+arena, on `∘`'s bump pointer and bound.
+
 ---
 
 ## 2. Prelude word letters
@@ -187,6 +245,30 @@ Prelude long names in use (all **shipped**):
 | names | wave | anchor |
 |---|---|---|
 | `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›`, and the helper `‹_inread›` (names starting `‹_in` are reserved for it) | W9-4C | `W9-4C-INPUT` |
+| `‹throw›` | W11-0 (the stub; W11-3A rewrites it in place) | `W11-0` — defined right after `H`, ahead of `X` |
+| `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›`, and the helpers `‹_1b_tobytes›` `‹_1b_tolist›` `‹_1b_dec›` `‹_1b_ename›` `‹_1b_fail›` `‹_1b_wr›` | W11-1B (**shipped**) | `W11-1B Files` |
+| `‹flush›`, and the helpers `‹_1c_put›` `‹_1c_init›` | W11-1C (**shipped**) | `W11-1C buffered output` |
+| `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›`, and the helpers `‹_1d_utoa›` `‹_1d_sub›` `‹_1d_put›` | W11-1D (**shipped**) | `W11-1D Text` |
+| `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›`, and the helpers `‹_2b_h8›` `‹_2b_zero›` `‹_2b_find›` `‹_2b_grow›` `‹_2b_col›` | W11-2B (**shipped**) | `W11-2B dict and set` |
+| `‹heapstats›`, and the helpers `‹_2d_chk›` `‹_2d_ix›` (defined up by `L`/`I`, ahead of their callers) | W11-2D (**shipped**) | `W11-2D use after free` |
+| `‹catch›`, and the helpers `‹_3a_raise›` `‹_3a_spill›` `‹_3a_div0›` `‹_3a_init›` (`‹_3a_pop›` is defined up by `‹throw›`, ahead of it) | W11-3A (**shipped**; `‹throw›` above is 3A's too) | `W11-3A catch` |
+| `‹cadd›` `‹csub›` `‹cmul›` | W11-3C (**shipped**) | `W11-3C checked arithmetic` |
+| `‹assert›` `‹expect›`, and the helpers `‹_4b_show›` `‹_4b_exit›` `‹_4b_fail›` | W11-4B (**shipped**) | `W11-4B test words` |
+| `‹stack›` | W11-4C (**shipped**) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
+
+The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
+and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
+prelude long names). **W11 helper names:** a W11 task that
+needs a private helper word names it `‹_<id>…›` with its lowercase task id,
+e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
+`‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers
+few: every prelude long name (helpers included) is one of the 1024 a user
+program has. **4A decision (shipped):** `.` is not a long-name byte, and W11-4A
+did not add it — the plan's accessor spelling `‹point.x›` is `‹point-x›`, and
+the setter `‹set-point-x›`, `-` joining the parts. These names are invented by
+the compiler at each `⊜` (not prelude names, no rows here); each one, like the
+record and field names themselves, is one of the program's 1024. W11-1B's `“…“` messages and errno names are
+data, not names, and need no row.
 
 > **Rule: the prelude must NEVER use `→x` / `←x`.** The variable bank at
 > `0x4E0000` is user space — one global cell per name — so a prelude word that
@@ -304,7 +386,8 @@ both forms are given here and the decimal is the one you type.
 
 | Address (hex) | Decimal | Use | Status |
 |---------------|---------|-----|--------|
-| `0x410000` | 4259840 | compiler data base `D` (`m`) | shipped |
+| `0x400000`–`0x42FFFF` | 4194304–4390911 | **a compiled program's image**: the ELF header and code, one `PT_LOAD` whose `p_filesz` is the file's true size (W11-1E; v1's fixed `0x10000` before), at most **196608 bytes = 192 KB** (`mkblob2.PROGRAM_CAP`) — the image may not reach `0x430000`, the lowest address a compiled program uses at run time. Both compilers refuse a bigger one (`GOLF: program too large`, exit 2). Everything from here down to `0x43FFFF` is **compiler-process-only** state: it lives above the compiler's own image (~12 KB, which must stay under 64 KB so it ends below `m`) and is never touched by a compiled program, so a user image may cover it | shipped (W11-1E) |
+| `0x410000` | 4259840 | compiler data base `D` (`m`), **compiler-only** | shipped |
 | `m+4` … `m+16` | | v1 compiler scratch (`P`, `S`, `Q`) | shipped |
 | `m+20`, `m+24`, `m+28` | | golf2 compiler scratch: `′` jmp-site / thunk addr, `“` len-site / count | shipped |
 | `m+32`, `m+36` | | M-CHAIN2 chain state in the **seed** only: the in-a-chain flag, the link count | shipped |
@@ -314,14 +397,22 @@ both forms are given here and the decimal is the one you type.
 | `m+60`…`m+84` | 4259900–4259924 | M2 long-name state in the **seed** only, seven 4-byte cells: name count · length being read · entry being read into · entry compared against · compare countdown · table index · a body address (`self/golf2.golfj` keeps the same state in its variable bank, under long names) (W9-3A) | shipped |
 | `m+88`, `m+92` | 4259928 · 4259932 | M-FRAME2 in the **seed** only: the current `⊡` word's local count · the head of its frame-size patch list (`self/golf2.golfj` keeps both in its variable bank, as `‹locals›` and `‹frame›`) (W9-4D) | shipped |
 | `m+96`…`m+159` | 4259936–4259999 | M-FRAME2 slot table, **both** compilers: the name number of the current `⊡` word's local `i` (`i` < 16) at `m+96+4*i`, in order of first appearance. Compiler-only (W9-4D) | shipped |
-| `m+160` | | **first free compiler scratch** | free |
+| `m+160`…`m+172` | 4260000 · 4260004 · 4260008 · 4260012 | **W11-2A** include state in the **seed** only: open-include depth · include-once table count · the fd being entered or left · the table-copy countdown. The path's length is M2's `m+64`. (`self/golf2.golfj` keeps the first three in its variable bank, as `‹depth›` `‹includes›` `‹fd›`) | shipped (W11-2A) |
+| `m+176`…`m+188` | 4260016 · 4260020 · 4260024 · 4260028 | **W11-3B** compiler scratch, four 4-byte cells — **unused**: W11-3B shipped without them. Source positions and the `-g` flag live in `self/golf2.golfj`'s variable bank (`‹pos›` = line·64 + file, `‹debug›`, `‹at›`), the saved position of include level `k` (0–7) in the bank cell of the unspellable name `k` (`0x4E0000 + 8k`, golf2's process only), and a forward reference's first-use `‹pos›` in the last placeholder of its pending-site list (where `0` used to end it). The seed reports no messages, so it keeps none of this. Spare for a later front-end owner | spare (W11-3B) |
+| `m+192`…`m+204` | 4260032 · 4260036 · 4260040 · 4260044 | **W11-4A** record state in the **seed** only, four 4-byte cells: the record's name number · its field count · the field being emitted · the spelling copy's byte pointer (`self/golf2.golfj` keeps them in its variable bank, as `‹record›` `‹fields›` `‹field›` `‹from›`, plus `‹upto›`) | shipped (W11-4A) |
+| `m+208` | 4260048 | **first free compiler scratch** | free |
 | `m+2048`–`m+4095` | 0x410800–0x410FFF | **RETIRED** (W10-A) — v1's dictionary (`m+2048 + 4*name`; M2 ran its long names into `m+3072`…). Neither `golf2` nor `seed` touches it any more (v1c, a frozen binary, still uses it in its own process); do not encroach anyway, it is what v1 documents | free |
-| `m+4096` | 0x411000 | the output buffer, at most `p_filesz` = 64 KB | shipped |
-| `0x430000`–`0x43FFFF` | 4390912– | **RETIRED** (W10-A) — M2's long-name region (the 256-name table and its heads), moved up below | free |
-| `0x440000`–`0x47FFFF` | 4456448–4718591 | **scratch spill stack** (the region `X`/`Y` push and pop; offset in `0x4F0030`) — 4096 frames of 64 bytes (8 cells × 8 bytes) = 256 KB; it was 28 frames at `0x4F0900` until W10-C, 56 × 32 before W4A. `X` checks the bound (offset 262144 = full): `GOLF: spill stack exhausted` on fd 2, exit 1. BSS that is never touched costs no RAM (W10-C) | shipped |
+| `m+4096`–`0x42FFFF` | 0x411000 | **RETIRED** (W11-1E) — the compilers' old output buffer (64 KB, to `0x420FFF`); it moved to `0x494000` below so a program may be 192 KB. Free in the compiler's process; part of a big program's image in a compiled one | free |
+| `0x430000`–`0x43FFFF` | 4390912– | **RETIRED** (W10-A) — M2's long-name region (the 256-name table and its heads), moved up below. W11-0 re-allocated parts of it (next three rows); the rest stays free | free |
+| `0x430000`–`0x431FFF` | 4390912–4399103 | **W11-1C output buffer**, 8192 bytes, compiled programs only: `Ṅ ⍕ ␤ 🗲 ⊐` (and `‹fmt›`-based printers) append here; the pending-byte count is `0x4F0980` below. BSS, so untouched it costs no RAM | shipped (W11-1C) |
+| `0x432000`–`0x437FFF` | 4399104–4423679 | free (headroom, e.g. if 1C's buffer grows) | free |
+| `0x438000`–`0x43BFFF` | 4423680–4440063 | **W11-2A include state, compiler-only**, both compilers. `0x438000` (4423680): the path being included as `[len:4][≤250 bytes][0]`; `open` takes the C string at `0x438004`, and for the `lib/` retry the length cell is overwritten with the bytes `lib/`, making `0x438000` the C string `lib/path`. `0x438100` (4423936): the saved `dup(0)` of each open include level, 4 bytes each, 8 levels. `0x438200` (4424192): the include-once table, 60 entries of 256 bytes, path `k` at `0x438200 + 256*k` in the same `[len:4][bytes]` form; ends `0x43BE00`. `mkblob2.IMPORT_*` names them | shipped (W11-2A) |
+| `0x43C000`–`0x43FFFF` | 4440064–4456447 | **W11-4A record state, compiler-only**, both compilers. `0x43C000` (4440064): the field table of the `⊜` being read, field `k`'s name number at `0x43C000 + 4*k`, 256 fields (to `0x43C3FF`). `0x43F000` (4452352): the C string `vendor/path` for the third include try — `vendor/` then the path and its NUL copied from `0x438004` (≤ 258 bytes). `0x43FF00` (4456192): the seed's spelling-copy countdown. The rest is free. `mkblob2.REC_FIELDS` / `REC_MAX` / `VENDOR_PATH` name them | shipped (W11-4A) |
+| `0x440000`–`0x47FFFF` | 4456448–4718591 | **scratch spill stack** (the region `X`/`Y` push and pop; offset in `0x4F0030`) — 4096 frames of 64 bytes (8 cells × 8 bytes) = 256 KB; it was 28 frames at `0x4F0900` until W10-C, 56 × 32 before W4A. `X` checks the bound (offset 262144 = full): `GOLF: spill stack exhausted` on fd 2, exit 1 — or, with a `‹catch›` armed, that message thrown to it (W11-3A; a handler record is one frame here). BSS that is never touched costs no RAM (W10-C) | shipped |
 | `0x47C000`+ | 4702208 + 64*E | M2 long-name table, **compiler-only**: name `E` (256–1279) has a 64-byte entry at `0x47C000 + 64*E`, `[len:4][≤60 bytes]`, so the entries fill `0x480000`–`0x48FFFF` (E < 256 has no entry: nothing below `0x480000` is touched, which is W10-C's spill-stack range); `0x490000`–`0x49003F` (E = 1280) is scratch — `‹readname›` reads every name into the next free entry before it knows the name is new. 1024 names (W10-A; 256 at `0x430000` before) | shipped |
-| `0x490400`–`0x4917FF` | 4785152 + 4*N | forward-reference heads, **compiler-only**: the last unpatched `call`/`jmp rel32` site for ANY name `N` (0–1279, one-byte names included since W10-A), each placeholder holding the next (M2, W9-3A) | shipped |
+| `0x490400`–`0x4917FF` | 4785152 + 4*N | forward-reference heads, **compiler-only**: the last unpatched `call`/`jmp rel32` site for ANY name `N` (0–1279, one-byte names included since W10-A), each placeholder holding the next (M2, W9-3A); the last one holds the first use's source position in `self/golf2.golfj` (W11-3B; `0` before, and still `0` in the seed) — a value below `0x494000`, so it ends the list either way | shipped |
 | `0x492000`–`0x4933FF` | 4792320 + 4*N | the compiler's **dictionary**, **compiler-only**: the body address of name `N` (0–1279). Moved here from `m+2048` by W10-A — that table had room for 512 names before it met the output buffer | shipped |
+| `0x494000`–`0x4C3FFF` | 4800512–4997119 | the compilers' **output buffer** `B`, **compiler-only** (W11-1E; it was `m+4096`): the byte at file offset `f` is at `B+f`, so a target address is `bufaddr - 606208`. 196608 bytes, the cap; `a` (the one word that moves the cursor, in both compilers) refuses a cursor past `B+196608` (it tests `< 4997121`), and `0x4C4000`–`0x4CFFFF` is slack for the at most 255-byte template written before that test | shipped (W11-1E) |
 | `0x4D0000`–`0x4DFFFF` | 5046272– | M-CHAIN runtime-thunk code arena — `∘` bump-allocates 39 bytes of machine code per call (1680 thunks; never freed) | shipped |
 | `0x4E0000`–`0x4E07FF` | 5111808–5113855 | user variable bank (`→x`/`←x`), **8 bytes per name** (M3W; it was 4), 256 names = 2 KB — **user space** | shipped |
 | `0x4E0800`–`0x4E27FF` | 5113856–5121023 | long-named variables (`→‹name›`/`←‹name›`): the bank above, continued by its own formula `0x4E0000 + 8*name` for name numbers 256–1279 — **user space** (W9-3A; W10-A extended it from `0x4E0FFF`, so no long-named variable moved) | shipped |
@@ -339,7 +430,8 @@ both forms are given here and the decimal is the one you type.
 | `0x4F00A0`–`0x4F00B8` | 5177504 · 5177512 · 5177520 · 5177528 | `lib/tio.golfj` state, **stride 8**: output-buffer base (a heap address, allocated by the library's init line) · bytes pending in it · the fd `f`/`g` write to (1 until a tool stores another) · `a`'s staging cell (the message address, then the byte holding its newline) | shipped |
 | `0x4F00C0`–`0x4F00F8` | 5177536 · 5177544 · … · 5177592 | **free-list heads** for `A`/`⌫` (W9-3C, M-MEM2), **stride 8**, one per size class: class `k` = 0…6 at `5177536+8k` holds blocks of exactly `4<<k` cells (4, 8, … 256); class 7 at 5177592 holds every larger block (`max(c, 512)` cells, popped only when the head fits). Each head is a raw payload address or 0 (BSS) = empty; a free block's payload cell 0 links to the next. See the note below on the block header | shipped |
 | `0x4F0100`–`0x4F08FF` | 5177600–5179647 | M-VEC hook table: 256 entries × 8 bytes, stride 8, indexed by op byte. Cell for byte `B` is `0x4F0100 + 8*B`; non-zero = the polymorphic template for `B` calls it. Installed by the prelude's last line: `+` 5177944 → `∔` · `-` 5177960 → `∸` · `*` 5177936 → `⨰` · `⌈` 5178688 → `⩌` · `⌊` 5178696 → `⩍` | shipped |
-| `0x4F0900`–`0x4F0FFF` | 5179648–5181439 | **RETIRED** — the old scratch spill stack (28 frames of 64 bytes); W10-C moved it to `0x440000`. Nothing reads it any more | free |
+| `0x4F0900`–`0x4F0CFF` | 5179648–5180671 | **W11 runtime cells** (W11-0): the old spill stack's first 1 KB, re-allocated as sixteen 64-byte slots, one per W11 task, eight 8-byte cells each (stride 8, read with `⊙`, written with `⊛`). Slot of task `t` = `0x4F0900 + 64*t`, t = 0…15 for 1A 1B 1C 1D 2A 2B 2C 2D 3A 3B 3C 4A 4B 4C 4D 4E. Named cells are listed in the W11 table below; every other cell of a task's slot is that task's **spare** and nobody else's | reserved (W11) |
+| `0x4F0D00`–`0x4F0FFF` | 5180672–5181439 | **RETIRED** — the rest of the old scratch spill stack (28 frames of 64 bytes); W10-C moved it to `0x440000`. Nothing reads it any more | free |
 | `0x4F1000`–`0x4F1FFF` | 5181440–5185535 | **return-stack guard page** — `PROT_NONE`, set by `STARTUP2`'s `mprotect` (`mkblob2.GUARD_LO`); the return stack bottoms out at `0x4F2000` (`mkblob2.RSTACK_FLOOR`), so overflow faults here instead of corrupting the bank below. Not in `seed` (built by v1c with v1's startup) (W9-2C) | shipped |
 | `0x600000` | 6291456 | **return-stack top and BSS end** — one number, `mkblob2.RSTACK_TOP` (= `golf0.BASE + MEMSZ`, `p_memsz` = `0x200000`); grows **down**, and nothing grows up to meet it | shipped |
 | the `brk` | — | **the list heap**, above the whole load segment, grown by `⌸`. Not a fixed address: the kernel ASLR-shifts the initial break, which is why it lives in the two cells above | shipped |
@@ -367,7 +459,7 @@ Notes:
   that are < 2^31 in practice, and plain `@`/`!` on them is therefore exact.
   Until M-TAG2 `0x4F0034` was also baked into every M-VEC template as a 32-bit
   compare operand; it no longer is — the templates test a value's high word for
-  the list tag (`addr | 2^48`) and read no cell but their hook — so the base and
+  the list tag (`addr | 0x7FFF<<48` since W11-1A) and read no cell but their hook — so the base and
   span are now private to `A`, and widening them would touch only the prelude.
   The **user variable bank at `0x4E0000` was 4 bytes per name for the same
   reason and is now 8** (M3W): unlike the four fixed cells, no template hard-codes
@@ -403,13 +495,48 @@ Notes:
   needs both it and the span to know when to move the break.
   **Do not add a fixed heap-base row to this table.**
 - **A list value is tagged (M-TAG2).** What a list word hands user code is
-  `addr | 2^48` — the heap address with bit 48 set, so `v >> 48 == 1` — and
+  `addr | 0x7FFF<<48` — the heap address with the top 16 bits `0x7FFF`, so
+  `v >> 48 == 0x7FFF` (W11-1A; it was `addr | 2^48` through W10) — and
   every list word masks it back off (`(v<<16)>>16`, idempotent, so a raw `A`
   block is accepted too). The tag is a property of the *value*, not an address:
   it needs no cell, and nothing in this table records it.
 - The M-VEC hook table is at stride 8 (not 4) so it stayed correct when M4
   widened list cells to 64 bits — which W4A has now done, with no change to the
   templates, the hook cells or the seed.
+
+### 3.1 W11 runtime cells (reserved in W11-0)
+
+Slot base per task, then the named cells. A task may use the unnamed cells of
+**its own** slot as spares without asking; anything beyond its slot goes back
+to the integrator. Decimals are what you type.
+
+| Task | Slot (hex) | Slot base (dec) | Named cells | Spare cells (dec) |
+|------|------------|-----------------|-------------|-------------------|
+| 1A | `0x4F0900`–`0x4F093F` | 5179648 | — | 5179648 … 5179704 (all eight) |
+| 1B | `0x4F0940`–`0x4F097F` | 5179712 | `0x4F0940` 5179712: last errno, positive, stored before the throw (never cleared) · shipped, private to the file words: 5179720 the errno-name list · 5179728 the message's path (0 = an fd word) · 5179736 the message's fd · 5179744 the path buffer, then `‹_1b_dec›`'s n · 5179752 / 5179760 `‹_1b_dec›`'s buffer / cursor | 5179768 |
+| 1C | `0x4F0980`–`0x4F09BF` | 5179776 | `0x4F0980` 5179776: bytes pending in the output buffer at `0x430000` (0 = empty, BSS) · `0x4F0988` 5179784: the buffer's fd (0 = use fd 1) · `0x4F0990` 5179792: the **flush hook** — the address of `‹flush›`, stored by the prelude's init; `.` `)` `(`, the end-of-program exit and the divide-by-zero exit call it when non-zero (`tools/mkblob2.FLUSH_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0998` 5179800: `‹flush›`'s drain offset (shipped) | 5179808 … 5179832 |
+| 1D | `0x4F09C0`–`0x4F09FF` | 5179840 | — | 5179840 … 5179896 (all eight) |
+| 2A | `0x4F0A00`–`0x4F0A3F` | 5179904 | — (compiler work; its state is in `m+160` and `0x438000`) | 5179904 … 5179960 |
+| 2B | `0x4F0A40`–`0x4F0A7F` | 5179968 | dict scratch (shipped, private to the dict words): `0x4F0A40` 5179968 `‹_2b_h8›`'s byte source · `0x4F0A48` 5179976 / `0x4F0A50` 5179984 / `0x4F0A58` 5179992 short-lived temps (entry address, probe slot, new entry) · spares used: 5180000 / 5180008 / 5180016 `‹_2b_zero›`'s address, count, index | 5180024 |
+| 2C | `0x4F0A80`–`0x4F0ABF` | 5180032 | — (`⊸` uses the `∘` arena pointer `0x4F003C`) | 5180032 … 5180088 (all eight) |
+| 2D | `0x4F0AC0`–`0x4F0AFF` | 5180096 | shipped: `0x4F0AC0` 5180096: live blocks · `0x4F0AC8` 5180104: live bytes, each block `(cap+1)*8` (header included); `A` adds, `⌫` subtracts, `‹heapstats›` reads; BSS 0 | 5180112 … 5180152 |
+| 3A | `0x4F0B00`–`0x4F0B3F` | 5180160 | shipped: `0x4F0B00` 5180160: **catch handler chain head** — the address of the newest handler record, a 64-byte spill-stack frame `[sp][bp][previous head]…` (0 = no handler: `‹throw›` prints and exits) · `0x4F0B08` 5180168: the message in flight · `0x4F0B10` 5180176: the **divide-by-zero hook** — the address of `‹_3a_div0›`, stored by the prelude's init; the `/ % ÷ ∣` zero exit calls it first when non-zero (`tools/mkblob2.DIV0_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0B18` 5180184: `‹_3a_pop›`'s record address | 5180192 … 5180216 |
+| 3B | `0x4F0B40`–`0x4F0B7F` | 5180224 | — (compiler work; `m+176`) | 5180224 … 5180280 |
+| 3C | `0x4F0B80`–`0x4F0BBF` | 5180288 | shipped, private to the checked words: `0x4F0B80` 5180288 a · `0x4F0B88` 5180296 b · `0x4F0B90` 5180304 the wrapped result (short-lived; the words call nothing but `‹throw›`) | 5180312 … 5180344 |
+| 4A | `0x4F0BC0`–`0x4F0BFF` | 5180352 | — (compiler work; `m+192`, `0x43C000`) | 5180352 … 5180408 |
+| 4B | `0x4F0C00`–`0x4F0C3F` | 5180416 | shipped: `0x4F0C00` 5180416: failure count (`‹assert›`/`‹expect›`; BSS 0) · spares used: `0x4F0C08` 5180424 the flush hook (`‹flush›`) saved when the first failure installs `‹_4b_exit›` in the 1C hook cell 5179792 · 5180432 / 5180440 / 5180448 `‹expect›`'s actual, expected, msg (`‹assert›` uses 5180448 too) · 5180456 `‹_4b_exit›`'s rbp | 5180464 … 5180472 |
+| 4C | `0x4F0C40`–`0x4F0C7F` | 5180480 | shipped: `0x4F0C40` 5180480: the data-stack base `‹stack›` prints from (rsp at the end of prelude init) · `0x4F0C48` 5180488 sp · `0x4F0C50` 5180496 depth · `0x4F0C58` 5180504 index (‹stack›'s loop state) | 5180512 … 5180536 |
+| 4D | `0x4F0C80`–`0x4F0CBF` | 5180544 | — | 5180544 … 5180600 (all eight) |
+| 4E | `0x4F0CC0`–`0x4F0CFF` | 5180608 | — | 5180608 … 5180664 (all eight) |
+
+**The W11-2D poison value** is a constant, not a cell: **`-559038737`**
+(`0xFFFFFFFFDEADBEEF` as a 64-bit word), spelled `559038737±` (the literal is
+under `2^31`, so the seed can compile it). `⌫` writes it into a freed list's
+**length cell** (payload cell 0); no live list has a negative length.
+**Shipped (W11-2D):** a freed block is `[-cap][poison][link][…]` — the
+free-list link moved to payload cell 1 (every block has at least 4 cells), `A`'s
+pop reads it there and writes `0` over the poison, and the list words check
+cell 0 on entry through `‹_2d_chk›` (`I` clamps a negative length instead).
 
 ---
 
@@ -422,7 +549,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 12 of the long-name slots — 1024 since W10-A, so 1012 are left
+prelude now uses 73 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5 and W11-4C 1, helpers included) — 1024 since W10-A, so 951 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

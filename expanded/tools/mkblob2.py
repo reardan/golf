@@ -55,8 +55,43 @@ import v1       # the frozen v1 substrate: templates, ELF header, blob helpers
 # per use, and most programs use ÷/∣ once or never.  The data stack is rsp, so
 # push/pop imm8 are the short way to load the syscall registers; nothing on it
 # matters any more once we are on the way out.
+#
+# W11-1C: the flush hook.  The prelude's printers (Ṅ ⍕ ␤ 🗲 ⊐) append to an 8 KB
+# buffer (0x430000, REGISTRY.md §3) instead of writing one byte per write(2).
+# What is still pending must reach its fd before the process exits and before
+# anything touches the fds raw, so every template that exits or does raw I/O —
+# `.` `)` `(`, the end-of-program exit (AUTOEXIT2) and the divide-by-zero exit
+# below — first calls through ONE hook cell: the 1C runtime cell 0x4F0990
+# (5179792), which the prelude's init fills with the address of `‹flush›`.
+# Like the M-VEC hooks it is BSS, so a program without the prelude (the
+# compiler itself among them) sees 0 and runs what it ran before plus a load, a
+# test and a not-taken jump.  Absolute addressing, no rip: the sequence is
+# copied inline into templates, ′-thunks and chain links.  rax is the only
+# register it touches (the callee is a GOLF word: data stack rsp and return
+# stack rbp are preserved), and every user reloads rax afterwards.
+FLUSH_HOOK = 0x4F0990
+def _hook_call(cell):
+    """`call [cell]` when the cell is non-zero: 15 bytes, absolute, rax only."""
+    return ([0x48, 0x8B, 0x04, 0x25] + list(cell.to_bytes(4, "little"))
+            + [0x48, 0x85, 0xC0]                 # mov rax,[hook]; test rax,rax
+            + [0x74, 0x02, 0xFF, 0xD0])          # jz .no; call rax; .no:
+_FLUSH_CALL = _hook_call(FLUSH_HOOK)
+assert len(_FLUSH_CALL) == 15
+# W11-3A: the divide-by-zero hook.  A second cell of the same shape, the 3A
+# runtime cell 0x4F0B10 (5180176), which the prelude's init fills with the
+# address of ‹_3a_div0›.  It is called FIRST, before the flush: with a ‹catch›
+# armed, ‹_3a_div0› raises `divide by zero` through ‹throw›'s unwinding and
+# never comes back; with none it returns at once and the template goes on to
+# flush, print and exit exactly as before.  So ÷ ∣ / % are catchable at 15
+# bytes per use, and a program without the prelude (every compiler binary)
+# sees 0 and falls through.
+DIV0_HOOK = 0x4F0B10
+_DIV0_CALL = _hook_call(DIV0_HOOK)
+
 DIV0_MSG = b"GOLF: divide by zero\n"
-_DIV0 = ([0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+19]
+_DIV0 = (_DIV0_CALL                               # W11-3A: a ‹catch› takes it
+         + _FLUSH_CALL                            # W11-1C: prior output first
+         + [0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+19]
          + [0x6A, 0x02, 0x5F]                     # push 2;  pop rdi   fd 2
          + [0x6A, len(DIV0_MSG), 0x5A]            # push n;  pop rdx   length
          + [0x6A, 0x01, 0x58]                     # push 1;  pop rax   write
@@ -65,7 +100,7 @@ _DIV0 = ([0x48, 0x8D, 0x35] + list((19).to_bytes(4, "little"))  # lea rsi,[rip+1
          + [0x6A, 0x3C, 0x58]                     # push 60; pop rax   exit
          + [0x0F, 0x05]                           # syscall
          + list(DIV0_MSG))                        # (19 bytes of code above)
-assert len(_DIV0) == 7 + 19 + len(DIV0_MSG)
+assert len(_DIV0) == 15 + 15 + 7 + 19 + len(DIV0_MSG) < 128   # jnz rel8 skips it
 
 # pop rcx (b); pop rax (a); b == 0 -> _DIV0.  The common head of all four
 # checked division templates (÷ ∣ and, since W10-B, v1's / %).
@@ -180,17 +215,31 @@ ATOMS = [
     # on it), and rbp — the return-stack pointer — is untouched by the kernel.
     (0xA7, "sys", "⎈", [0x58, 0x5A, 0x5E, 0x5F, 0x0F, 0x05, 0x50],
                                                           "a1 a2 a3 num -> result: raw syscall"),
+    # W11-3A: the two stack-pointer atoms behind ‹catch› / ‹throw› — the
+    # runtime's setjmp/longjmp.  The data stack IS rsp and the return stack is
+    # rbp (a word's prologue parks the `call`'s return address at [rbp], so
+    # inside a word body rsp holds only data).  `push rsp` stores the value rsp
+    # had BEFORE that push, so ⊷'s `sp` is exactly "the stack as it was before
+    # the atom": `⊷ … sp bp ⊶` puts both stacks back where they were at ⊷,
+    # dropping everything pushed since.  ⊶ pops bp first, then `pop rsp` loads
+    # rsp from [rsp] (the pop's own increment is overwritten), so both values
+    # are consumed before rsp moves.  After ⊶ the CURRENT word's epilogue
+    # returns through [rbp] — the return address of whichever word ran ⊷ —
+    # which is what makes ‹throw› come back out of ‹catch›'s helper
+    # (lib/prelude.golfj, W11-3A section).
+    (0xA8, "spr", "⊷", [0x54, 0x55],                      "-> sp bp: push rsp (as before the atom), then rbp"),
+    (0xA9, "spw", "⊶", [0x5D, 0x5C],                      "sp bp ->: set rbp, then rsp (both stacks jump)"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
 # These five op bytes keep their v1/atom scalar body but get a shape-dispatch
-# preamble in front of it.  Layout (36 bytes + the untouched scalar body):
+# preamble in front of it.  Layout (38 bytes + the untouched scalar body):
 #
 #     48 83 3C 25 <hook> 00     cmp qword [hook], 0     ; per-op hook cell
-#     74 19                     je  .scalar             ; no dispatcher -> scalar
-#     66 83 7C 24 06 01         cmp word [rsp+6], 1     ; b's tag  (TOS)
-#     74 08                     je  .call
-#     66 83 7C 24 0E 01         cmp word [rsp+14], 1    ; a's tag
+#     74 1B                     je  .scalar             ; no dispatcher -> scalar
+#     66 81 7C 24 06 FF 7F      cmp word [rsp+6], 0x7FFF  ; b's tag  (TOS)
+#     74 09                     je  .call
+#     66 81 7C 24 0E FF 7F      cmp word [rsp+14], 0x7FFF ; a's tag
 #     75 09                     jne .scalar             ; neither is a list
 #   .call:
 #     FF 14 25 <hook>           call qword [hook]       ; (a b) still on the stack
@@ -210,13 +259,14 @@ ATOMS = [
 #     that divergence is absorbed at the v1c -> seed rung, which is never
 #     compared against anything.)
 #   * **The filter is EXACT (M-TAG2).**  A list value is its heap address with
-#     bit 48 set — `addr | 2^48`, so `v >> 48 == 1` — and the top 16 bits of a
-#     little-endian qword are the word at byte offset 6.  So `cmp word [rsp+6],1`
-#     is exactly `T`, with no cell to read: an operand is a list iff its high
-#     word is 0x0001.  Negative integers (high word 0xFFFF) and everything below
-#     2^48 (high word 0) take the scalar path without ever reaching the prelude;
-#     the only integers that dispatch are those in [2^48, 2^49), the range the
-#     tag sacrifices.  Until M-TAG2 this was a conservative `(a|b) <u heap base`
+#     top 16 bits 0x7FFF — `addr | 0x7FFF<<48`, so `v >> 48 == 0x7FFF` (W11-1A;
+#     it was bit 48, `addr | 2^48`, through W10) — and the top 16 bits of a
+#     little-endian qword are the word at byte offset 6.  So
+#     `cmp word [rsp+6],0x7FFF` is exactly `T`, with no cell to read: an operand
+#     is a list iff its high word is 0x7FFF.  Negative integers (high word
+#     0xFFFF) and everything below 0x7FFF<<48 take the scalar path without ever
+#     reaching the prelude; the only integers that dispatch are those in
+#     [0x7FFF<<48, 2^63), the band the tag sacrifices.  Until M-TAG2 this was a conservative `(a|b) <u heap base`
 #     against the 32-bit cell 0x4F0034 — a range test that sent a -1 flag to the
 #     prelude and let an integer that happened to equal a heap address in.
 #   * **Stack-neutral.**  `call` pushes its return address on the DATA stack and
@@ -224,7 +274,7 @@ ATOMS = [
 #     exactly (a b) and leaves one result — the scalar path's net effect.
 HOOK_BASE = 0x4F0100       # hook table (REGISTRY.md §3), 256 entries
 HOOK_STRIDE = 8            # 8, not 4: `call qword [disp32]` reads 64 bits
-LIST_TAG = 1 << 48         # M-TAG2: a list value is addr | LIST_TAG (lib/prelude.golfj)
+LIST_TAG = 0x7FFF << 48    # M-TAG2/W11-1A: a list value is addr | LIST_TAG (lib/prelude.golfj)
 
 def hook_addr(byte):
     """The hook cell for op `byte`."""
@@ -234,20 +284,24 @@ def hook_addr(byte):
 def _u32(v):
     return list(v.to_bytes(4, "little"))
 
+def _u16(v):
+    return list(v.to_bytes(2, "little"))
+
 def _poly(byte, scalar):
     """Wrap a scalar template in the hook-cell shape dispatch shown above."""
     hook, scalar = _u32(hook_addr(byte)), list(scalar)
     assert len(scalar) < 128, "scalar body too long to jump over with a rel8"
     call = [0xFF, 0x14, 0x25] + hook + [0xEB, len(scalar)]   # call [hook]; jmp .done
-    b_tag = [0x66, 0x83, 0x7C, 0x24, 0x06, 0x01]   # cmp word [rsp+6], 1   (b: TOS)
-    a_tag = [0x66, 0x83, 0x7C, 0x24, 0x0E, 0x01]   # cmp word [rsp+14], 1  (a)
+    # W11-1A: imm16 (66 81 /7 iw), since 0x7FFF does not fit cmp's sign-extended imm8.
+    b_tag = [0x66, 0x81, 0x7C, 0x24, 0x06] + _u16(LIST_TAG >> 48)   # cmp word [rsp+6], 0x7FFF  (b: TOS)
+    a_tag = [0x66, 0x81, 0x7C, 0x24, 0x0E] + _u16(LIST_TAG >> 48)   # cmp word [rsp+14], 0x7FFF (a)
     fast = (b_tag + [0x74, len(a_tag) + 2]          # je  .call
             + a_tag + [0x75, len(call)]             # jne .scalar
             + call)
     tpl = ([0x48, 0x83, 0x3C, 0x25] + hook + [0x00]   # cmp qword [hook], 0
            + [0x74, len(fast)]                        # je  .scalar
            + fast + scalar)
-    assert len(tpl) == 36 + len(scalar) <= 255, (byte, len(tpl))
+    assert len(tpl) == 38 + len(scalar) <= 255, (byte, len(tpl))
     return tpl
 
 # --- M-FRAME: every definition gets a private slab of locals ----------------
@@ -324,6 +378,14 @@ def _udivchk(scalar):
     assert scalar[:2] == [0x59, 0x58] and scalar[2:7] == [0x31, 0xD2, 0x48, 0xF7, 0xF1]
     return _DIV0_GUARD + scalar[2:]              # .ok: xor edx,edx; div rcx; push
 OVERRIDES.update({b: _udivchk(v1.TEMPLATES[chr(b)]) for b in map(ord, "/%")})
+# W11-1C: v1's `.` (exit), `)` (write one byte) and `(` (read one byte) call the
+# flush hook first (_FLUSH_CALL, above), so buffered printer output is never
+# lost at an explicit exit and never reordered against a raw `)` byte or behind
+# a `(` read.  `)` and `(` themselves stay raw and unbuffered — one write(2) or
+# read(2) per byte, as in v1.  The end-of-program exit (blob record 5) gets the
+# same prefix as AUTOEXIT2.
+OVERRIDES.update({b: _FLUSH_CALL + list(v1.TEMPLATES[chr(b)]) for b in map(ord, ".)(")})
+AUTOEXIT2 = bytes(_FLUSH_CALL) + v1.AUTOEXIT
 
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
@@ -353,6 +415,20 @@ LSET_BYTE = 0xB2    # ⇒x pop TOS into a local slot
 LGET_BYTE = 0xB3    # ⇐x push a local slot
 LNAME_BYTE = 0xB4   # ‹  opens a long name: ‹name› (M2, W9-3A)
 RNAME_BYTE = 0xB5   # ›  closes it
+IMPORT_BYTE = 0xB6  # ⎘  ⎘“path“ compiles that file's bytes in place (W11-2A)
+# W11-2A's compiler-only memory (../REGISTRY.md §3; layout in self/golf2.golfj):
+IMPORT_PATH = 0x438000    # [len:4][path][0]; the len cell becomes `lib/` to retry
+IMPORT_FDS = 0x438100     # saved dup() of fd 0 per include level, 4 bytes each
+IMPORT_TABLE = 0x438200   # include-once table, 256 bytes per path: [len:4][bytes]
+IMPORT_DEPTH = 8          # includes nest at most this deep
+IMPORT_FILES = 60         # distinct files one compile may include
+IMPORT_LEN = 250          # the longest include path, in bytes
+IMPORT_DIRS = (b"", b"lib/", b"vendor/")  # where a path is looked for, in order (vendor/: W11-4A)
+REC_BYTE = 0xB7     # ⊜  ⊜‹point›‹x›‹y›; defines constructor/accessors/setters (W11-4A)
+# W11-4A's compiler-only memory (../REGISTRY.md §3; layout in self/golf2.golfj):
+REC_FIELDS = 0x43C000     # field k's name number at REC_FIELDS + 4*k
+REC_MAX = 256             # fields one record may have
+VENDOR_PATH = 0x43F000    # the C string `vendor/path` the third include try opens
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).
@@ -387,7 +463,11 @@ assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime
 # The list heap is brk-grown now (atom 0xA6 ⌸, driven by lib/prelude.golfj), so
 # v2 binaries reserve only what is *statically addressed* (../REGISTRY.md §3):
 #
-#   0x400000..0x421000   image: code, compiler data base 0x410000, output buffer
+#   0x400000..0x430000   image: header + code, at most PROGRAM_CAP (W11-1E);
+#                        the compiler's own data base m = 0x410000 is BSS
+#                        above ITS image, which must stay under 64 KB
+#   0x430000..0x432000   W11-1C output buffer (the lowest runtime region)
+#   0x494000..0x4C4000   the compiler's output buffer, compiler-only (W11-1E)
 #   0x4D0000..0x4E0000   M-CHAIN runtime-thunk code arena
 #   0x440000..0x480000   X/Y scratch spill stack, 4096 frames (W10-C)
 #   0x4E0000..0x4E2800   →x/←x variable bank, 8 bytes per name: 256 one-byte
@@ -417,6 +497,32 @@ assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime
 MEMSZ = 0x200000                    # v2 p_memsz (v1: 0x800000)
 RSTACK_TOP = v1.BASE + MEMSZ        # 0x600000: return-stack top AND heap floor
 MEMSZ_OFF = 64 + 40                 # Phdr at file offset 64; p_memsz at +40
+
+# --- W11-1E: the program-size cap ---------------------------------------------
+# A compiled program is ONE PT_LOAD at 0x400000.  Until W11-1E its p_filesz was
+# v1's fixed 0x10000 and nothing checked it: bytes past 64 KB were in the file
+# but never mapped, so a big program compiled cleanly and then crashed.  Now
+# both compilers (self/golf2.golfj and the seed) write the image's TRUE size into
+# p_filesz at the end (record 4 below still carries v1's 0x10000; it is
+# overwritten), so the kernel maps exactly the file and BSS starts right after
+# it — and they refuse an image past PROGRAM_CAP (golf2: `GOLF: program too
+# large` on fd 2, exit 2; seed: exit 2).  The cap is where the image would meet
+# the lowest region a compiled program addresses at run time, W11-1C's output
+# buffer at 0x430000.  The regions below it (m = 0x410000, the old output
+# buffer, W11-2A's/4A's compiler-only state at 0x438000/0x43C000) belong to the
+# compiler's process only, where the image is the compiler's own (~12 KB).
+# The compiler's buffer had to leave m+4096 (64 KB to 0x421000) for the free
+# span between the dictionary and the thunk arena.  Both compilers spell these
+# as literals (no constant import in GOLF): B = 4800512, the cap test 4997121
+# (= OUTBUF + PROGRAM_CAP + 1) and the vaddr bias 606208 (= OUTBUF - BASE).
+PROGRAM_CAP = 0x30000                # 196608 bytes = 192 KB, header included
+OUTBUF = 0x494000                    # 4800512: the compilers' output buffer B
+RUNTIME_FLOOR = 0x430000             # W11-1C output buffer: lowest runtime region
+FILESZ_OFF = v1.FILESZ_OFF           # 96: where the compilers patch the size
+assert v1.BASE + PROGRAM_CAP <= RUNTIME_FLOOR, "image cap overlaps runtime state"
+assert OUTBUF >= NAME_DICT + 4 * NAME_END, "output buffer overlaps the dictionary"
+assert OUTBUF + PROGRAM_CAP + 0x1000 <= 0x4D0000, "output buffer (+slack) runs into the thunk arena"
+assert OUTBUF + PROGRAM_CAP + 1 == 4997121 and OUTBUF - v1.BASE == 606208
 
 def header_pairs2():
     """v1's ELF header with p_memsz overridden, as (offset, value) pairs.
@@ -512,7 +618,7 @@ def build_blob2():
     b += v1.rec(2, v1.COND)
     b += v1.rec(3, STARTUP2)                     # M-TOOL stash + W9-2C guard + M-MEM rbp
     b += v1.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
-    b += v1.rec(5, v1.AUTOEXIT)
+    b += v1.rec(5, AUTOEXIT2)                    # W11-1C: flush hook, then exit(0)
     used = set()
     def emit(key, tpl):
         """One record per op byte — the M-VEC override REPLACES the scalar one."""
@@ -539,6 +645,15 @@ def blob_escape():
     return b"`" + str(len(blob)).encode() + b" " + blob
 
 BLOB_MARKER = b"@BLOB@"          # where both sources want the blob spliced in
+# W11-2A: the seed's syscall.  v1 GOLF has no syscall op, and include needs
+# open/dup/dup2/close, so self/seed.golfv1's word K carries one as a raw blob
+# escape spliced in at @SYS@: ⎈'s template, then `jmp +5` over the `push imm32`
+# the blob escape emits after its data.  The seed's main zeroes the rel32 of
+# the escape's own jmp-over once (v1's code segment is RWX), so K falls into
+# these bytes from then on.  Replaced in the stripped source, before the
+# template blob goes in, so the blob's raw bytes are never searched.
+SYS_MARKER = b"@SYS@"
+SEED_SYS = bytes(_ATOM_TPL[0xA7]) + bytes([0xEB, 0x05])   # ⎈; jmp +5
 GOLFV1 = os.path.join(HERE, "..", "self", "seed.golfv1")
 GOLFJ = os.path.join(HERE, "..", "self", "golf2.golfj")
 
@@ -561,8 +676,13 @@ def build_seed():
     if n != 1:
         raise SystemExit(f"mkblob2: expected exactly one {BLOB_MARKER.decode()} "
                          f"marker in self/seed.golfv1, found {n}")
-    pre, post = src.split(BLOB_MARKER.decode())
-    return pre.encode() + blob_escape() + post.encode()
+    if src.count(SYS_MARKER.decode()) != 1:
+        raise SystemExit(f"mkblob2: expected exactly one {SYS_MARKER.decode()} "
+                         f"marker in self/seed.golfv1")
+    sys_esc = b"`" + str(len(SEED_SYS)).encode() + b" " + SEED_SYS
+    pre, post = (s.encode().replace(SYS_MARKER, sys_esc)
+                 for s in src.split(BLOB_MARKER.decode()))
+    return pre + blob_escape() + post
 
 def build_golf2():
     """self/golf2.golf — the compiler proper, logic in v2 GOLF.

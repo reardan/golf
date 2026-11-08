@@ -29,7 +29,8 @@
 # Everything up to the `#` in each line is one v1-GOLF word or token case, in
 # definition-before-use order.  The single-letter accessor words defined on the
 # first line (P B S Q U Y Z, and L below) are the size-reducing rewrites v1's
-# own build applied: P = m4+@ the output pointer, B = m4096+ the output buffer,
+# own build applied: P = m4+@ the output pointer, B = 4800512 the output buffer
+# (0x494000 since W11-1E, 192 KB of program; v1's m4096+ held only 64 KB),
 # S = m12+ scratch, Q = m16+ the pushed-back char, U = 48-10< the is-digit test,
 # Y = 4*4792320+ the dict slot for the key on top (0x492000 + 4*name since
 # W10-A; v1's was m2048+\4*+, which had room for 512 names), Z = 48-\10*+ fold a decimal
@@ -39,8 +40,8 @@
 # features go in self/golf2.golfj, and only reach here when they must (a case
 # the seed has to understand to compile golf2.golf).  See ../DESIGN.md.
 
-:m4259840;:Pm4+@;:Bm4096+;:Sm12+;:Qm16+;:U48-10<;:Y4*4792320+;:Z48-\10*+; # m: data base D, then the accessors
-:am4+\&@+\!;                                            # a: advance P by n
+:m4259840;:Pm4+@;:B4800512;:Sm12+;:Qm16+;:U48-10<;:Y4*4792320+;:Z48-\10*+; # m: data base D, then the accessors
+:am4+\&@+\!P4997121<[2.];                               # a: advance P by n -- past the 192 KB cap (P > B+196608): exit 2 (W11-1E)
 :oP!1a;:L104o;                                          # o: emit byte  ·  L: emit push-imm32 (0x68)
 :wP!4a;                                                 # w: emit dword
 :k"P\-4-\!;                                             # k: backpatch pop site
@@ -70,11 +71,52 @@
 # it among the names so far, else claim that entry.  -> its name number.  A name
 # byte must be 0-9 A-Z a-z _ or - : the five range tests sum to -1 for exactly
 # one of them and to 0 for anything else, EOF included.
-:Nm60+@256+64*4702208+m68+!0m64+!{("181-[_m64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@1024<[2.]m60+@"1+m60+!256+^]m80+@256+64*4702208+m72+!x[m80+@256+^]m80+@1+m80+!0}]"48-10<&65-26<+&97-26<+&95-1<+&45-1<+[2.]m64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!0};
+# W11-4A split N into the pieces ⊜ needs too, since a record invents names
+# (‹point-x›, ‹set-point-x›) and interns them as if read: n starts a name in the
+# next free entry, d is the name-byte test (ch -> ch sum: -1 legal, 0 not), b
+# appends a byte (past 60: exit 2), i interns the finished name -> its number.
+:nm60+@256+64*4702208+m68+!0m64+!;                       # n: start a name in the next free entry
+:d"48-10<&65-26<+&97-26<+&95-1<+&45-1<+;                 # d: ch -> ch f, f = -1 for 0-9 A-Z a-z _ -
+:bm64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!;                # b: ch -> ; append it to the name
+:im64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@1024<[2.]m60+@"1+m60+!256+^]m80+@256+64*4702208+m72+!x[m80+@256+^]m80+@1+m80+!0}; # i: -> the built name's number, interned
+:Nn{("181-[_i^]d[2.]b0};
 :G("180-[_N];                                           # G: a prefix's operand -- one byte, or a whole ‹long name›
 :F\o4*4785152+"@P\w\!;                                  # F: op name -> emit `op rel32`, the site joining name's pending list
 :R"Y@m84+!4*4785152+"@\0\!{"[_^]"@\"m84+@\-4-\!0};       # R: name -> patch its pending sites to its (just stored) body
 :z0m80+!{m80+@m60+@256+-[^]m80+@4*4785152+@1<[2.]m80+@1+m80+!0}; # z: end of input -- any name (one-byte or long) still pending is undefined
+# ---------------------------------------------------------------------------
+# W11-2A — include, ⎘“path“ (0xB6).  The compiler reads the file's bytes as if
+# they stood where the ⎘ is, by swapping fd 0: dup(0) saves the includer's
+# input, open + dup2 puts the file on fd 0, and at its end j dup2s the saved fd
+# back (J).  Search: the path as written, then lib/path, then vendor/path (W11-4A).  Include-once: a path
+# already included (same bytes) is skipped.  At most 8 deep, 60 files.  Layout
+# (compiler-only, ../REGISTRY.md §3): 0x438000 [len:4][path][0] (the len cell
+# becomes `lib/` for the retry) · 0x438100 the saved-fd stack, 4 bytes a level
+# · 0x438200 the table, 256 bytes an entry, [len:4][bytes] so x compares them.
+# Seed-side scratch: m160 depth · m164 table count · m168 the fd · m172 the
+# copy countdown; the path's length is m64 and x's entries m68/m72, M2's
+# scratch, idle between tokens.  (self/golf2.golfj: ‹depth› ‹includes› ‹fd›.)
+#
+# v1 GOLF has no syscall op, so K is one: its body is a raw blob escape holding
+# ⎈'s template plus `jmp +5` (tools/mkblob2.py splices SEED_SYS in at @SYS@).
+# As compiled, K jumps over the blob and returns the blob's address; main calls
+# it once at startup and zeroes that jmp's rel32 (the code segment is RWX), and
+# from then on K falls into the blob: a1 a2 a3 num -> result, like ⎈.  O is K
+# with a2 = a3 = 0, V the path's address.  Every failure exits 2 silently; golf2
+# says `GOLF: cannot include <path>` (and the like) on fd 2.
+# ---------------------------------------------------------------------------
+:K@SYS@;:O0\0\K;:V4423684;                              # K: syscall (armed at startup) · O: a1 num -> r · V: the path
+:Jm160+@1-m160+!m160+@4*4423936+@m168+!m168+@33O_m168+@3O_; # J: leave an include -- dup2(saved,0), close(saved)
+:j0{_("[m160+@[^]J]"};                                  # j: the next input byte; an included file's end resumes its includer
+:r0m64+!{("142-[_^]"[2.]m64+@250<[2.]m64+@V+,m64+@1+m64+!0}; # r: read the path up to the closing “ (EOF, or past 250 bytes: exit 2)
+# W: W11-4A's third place, vendor/path.  `vendor/` is 7 bytes, more than the
+# length cell holds, so the C string is built at 0x43F000 (W11-4A's region):
+# `vend` and `or/`, then the path and its NUL copied from V (m172 counts).
+:W1684956534m192512+!3109487m192516+!0m172+!{Vm172+@+?m192519+m172+@+,m172+@1+"m172+!m64+@1+-1<}m192512+2O"1048576<[2.];
+# I: the ⎘ case.  “ must follow; read the path, NUL-terminate it, give it its
+# length cell; skip it if the table has it; else check depth and count, copy it
+# into the table, open it (or lib/path, or vendor/path), save fd 0 and dup2 the file onto it.
+:I(142-1<[2.]r0m64+@V+,m64+@V4-!V4-m68+!0m80+!{m80+@m164+@-1<"[m80+@256*4424192+m72+!x[_^]m80+@1+m80+!]}m160+@8<[2.]m164+@60<[2.]m164+@256*4424192+m72+!m64+@4+m172+!{m172+@1-m172+!V4-m172+@+?m72+@m172+@+,m172+@1<}m164+@1+m164+!V2O"1048576<[_794978668V4-!V4-2O"1048576<[_W]]m168+!0""32Km160+@4*4423936+!m160+@1+m160+!m168+@33O_m168+@3O_;
 # e — the default: emit a table op, or compile a call to a user word.
 #
 # v1's `e` emitted `call rel32` with rel32 = dict[name] - (P+4) and never looked
@@ -102,7 +144,7 @@
 # since W10-A; z rejects whatever is still pending at end of input.
 :e"f"?[_"Y@"[_232\F^]\_232oP4+-w^]\_C;                 # e: table op or call (undefined word -> forward, checked by z)
 :D0{("U[_^]Z0};                                         # D: read decimal
-:gQ@"[_(^]0Q!;                                          # g: get char (pending Q)
+:gQ@"[_j^]0Q!;                                          # g: get char (pending Q); a fresh one through j (W11-2A)
 :h{("10-[_^]"[_^]_0};                                   # h: skip comment line
 # X — push the address of the word or atom named by the byte on top.
 #
@@ -123,7 +165,7 @@
 # the name's pending list; ⍎ on the thunk tail-jumps into the word.  If it never
 # comes (`′typo`), z rejects it at end of input with exit(2).  Before W9-1C it
 # was wrapped like an atom, around a template that does not exist (SIGILL).
-:X"Y@"[_"f?[233o5wPm24+!233&FLm24+@69632-w_^]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@69632-w_^]\_69632-Lw; # X: emit a push of a word's address
+:X"Y@"[_"f?[233o5wPm24+!233&FLm24+@606208-w_^]233oPm20+!0wPm24+!1E"E94EPm20+@4+-m20+@!Lm24+@606208-w_^]\_606208-Lw; # X: emit a push of a word's address
 # l — M-FRAME2: the rbp displacement of a local, from its name number.  A
 # one-byte local must be a..h.  Outside a ⊡ word (m56 clear) it keeps M-FRAME's
 # fixed slot name-'a', and a long name is refused.  Inside, the definition's
@@ -132,6 +174,22 @@
 # displacement is a disp8.  m80 is the walking index (M2's, idle by now).  golf2
 # names the offending local on fd 2; the seed can only exit(2).
 :l"256<1+["97-8<[2.]]m56+@["256<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
+# ---------------------------------------------------------------------------
+# W11-4A — records, ⊜‹point›‹x›‹y›; (0xB7).  At compile time the header becomes
+# the words golf2's ‹defrecord› emits (see self/golf2.golfj, Records):
+#     :‹point› n⍳ then per field k, last first: \&16≪16>(8k+8)﹢⊛ ;
+#     :‹point-x› k⊇;    :‹set-point-x› &k⊇_&16≪16>(8k+8)﹢⊛;
+# Seed-side scratch (../REGISTRY.md §3): m192 the record's name number · m196
+# the field count · m200 the field being emitted · m204 u's byte pointer; u's
+# countdown at 0x43FF00 and the field table (4 bytes a name) at 0x43C000, the
+# W11-4A region.  Every malformed header is golf2's `GOLF: record …` / `bad
+# record …`; the seed exits 2.
+# ---------------------------------------------------------------------------
+:u"256<[64*4702208+"4+m204+!@4456192!{m204+@?bm204+@1+m204+!4456192@1-"4456192!1<}^]b; # u: name -> ; append its spelling
+:q"233oP4+\Y!RP0w1E;                                     # q: name -> site; `:name`'s header
+:s38e16Lw162e16Lw62e1+8*Lw145e165e;                      # s: k -> ; emit &16≪16>(8k+8)﹢⊛
+:v0m196+!{("59-[_m196+@[2.]^]"[2.]"33<["180-[_N]"256<1+[d[2.]]m196+@256<[2.]m196+@4*4440064+!m196+@1+m196+!0]_0}; # v: read the fields up to ;
+:yG"256<1+[d[2.]]m192+!vm192+@qm196+@Lw82em196+@m200+!{m200+@1-"m200+!92esm200+@1<}94Ek0m200+!{nm192+@u45bm200+@4*4440064+@uiqm200+@Lw73e94Ekn115b101b116b45bm192+@u45bm200+@4*4440064+@uiq38em200+@Lw73e95em200+@s94Ekm200+@1+"m200+!m196+@-1<}; # y: the ⊜ case
 :t"33<1+[_^]                                            # whitespace
 "35-[_h^]                                               # '#' comment
 "U1+[48-{("U[Q!Lw^]Z0}]                                 # digit -> number
@@ -146,7 +204,7 @@
 "93-[_k^]                                               # ']' end if
 "'{-[_P^]                                               # '{' loop start ('{ = 123)
 "'}-[_2E132oP4+-w^]                                     # '}' loop end  ('} = 125)
-"96-[_D233o"wP69632-S!{(o1-"1<}_LS@w^]                  # '`' blob
+"96-[_D233o"wP606208-S!{(o1-"1<}_LS@w^]                  # '`' blob
 # ---------------------------------------------------------------------------
 # Everything from here to the `e;` fallthrough is v2's, not v1's: the compiler
 # cases the seed has to understand because self/golf2.golfj uses them.  Each is
@@ -165,7 +223,7 @@
 # block; `chars` converts it to a list of codes so every list op applies.
 # Compiler scratch: m20 jmp-site, m24 len-site, S push-VA, m28 count.
 # golf2's own source never uses this — it is here for the programs golf2 compiles.
-"142-[_233oPm20+!0wPm24+!P69632-S!0w0m28+!{("142-[_m28+@m24+@!Pm20+@4+-m20+@!LS@w^]om28+@1+m28+!0}] # 0x8E  “  string literal -> inline byte block
+"142-[_233oPm20+!0wPm24+!P606208-S!0w0m28+!{("142-[_m28+@m24+@!Pm20+@4+-m20+@!LS@w^]om28+@1+m28+!0}] # 0x8E  “  string literal -> inline byte block
 
 # →x (0x8F) / ←x (0x90) — named variables.  Compiler prefixes: read the name
 # byte and emit an absolute 64-bit store/load against a per-program variable
@@ -246,6 +304,8 @@
 # ‹ (0xB4) as a TOKEN: read and intern the long name, and let its number take
 # the char's place and fall through — so the LINK case and `e` below treat it
 # exactly like a one-byte name.
+"182-[_I^]                                              # 0xB6  ⎘  include a file (W11-2A)
+"183-[_y^]                                              # 0xB7  ⊜  a record header (W11-4A)
 "180-[_N]                                               # 0xB4  ‹  a long name used as a token
 
 # A token inside a chain is a LINK.  This case must sit LAST, just before the
@@ -260,7 +320,9 @@ e;                                                      # default: e
 # The template blob, spliced in here by tools/mkblob2.py.
 @BLOB@
 
-# main: store the blob address, write the ELF header, set P = B+120, emit
+# main: store the blob address, arm K (zero the rel32 of its jmp over the
+# syscall blob, W11-2A), write the ELF header, set P = B+120, emit
 # the startup stub, run the token loop, check no long name is left undefined
-# (z), exit, then flush the output buffer.
-m8+!HB120+m4+!3E{g"m!tm@1<}z5EB{"?)1+"P<1+}_
+# (z), exit, write the image size into p_filesz (header offset 96, W11-1E),
+# then flush the output buffer.
+m8+!K4-0\!HB120+m4+!3E{g"m!tm@1<}z5EPB-B96+!B{"?)1+"P<1+}_

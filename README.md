@@ -55,7 +55,7 @@ space, shown as glyphs; `tools/codepage.py` converts glyph/mnemonic source ⇄ r
 bytes and the compiler dispatches any byte in its template table. What it can do
 now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
 
-- **32 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
+- **34 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
   div/mod, shifts, 64-bit fetch/store, `brk`, negate/inc/dec/square/double/halve.
 - a **list type** on a `brk`-grown heap (`[len, e0, …]`, 64-bit cells) with a
   GOLF standard library (`lib/prelude.golfj`): range, len, index, sum, product,
@@ -89,6 +89,39 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
   byte-identical output over the repo's real sources. `mkblob | encode |
   mkgolf2` regenerates the compiler's own source with no Python in the pipeline,
   and that source still reaches the `golf2 == golf2'` fixpoint.
+
+What the W11 round added, closing the gaps against Python and Rust that
+[`expanded/GAPS.md`](expanded/GAPS.md) lists (each word is in REFERENCE.md):
+
+- **a list tag out of the integers' way** — a list is `addr | 0x7FFF<<48`, so
+  only integers within 2^48 of INT64_MAX look like lists (`16777216 16777216*
+  1+Ṅ` prints `281474976710657`).
+- **file I/O** — `‹open› ‹create› ‹close› ‹fread› ‹fwrite› ‹readfile›
+  ‹writefile›`; a failure says what and why: `GOLF: cannot open x.txt (ENOENT)`.
+- **buffered output** — the printers go through an 8 KB buffer, flushed at exit,
+  before errors and by `‹flush›`.
+- **text words** — `‹fmt› ‹hex› ‹parsehex› ‹split› ‹trim› ‹startswith›
+  ‹joinwith› ‹pad›`.
+- **programs up to 192 KB** (was an unchecked 64 KB), refused cleanly past it.
+- **includes** — `⎘“path“` compiles a file in place, once, looked up as written,
+  then in `lib/`, then in `vendor/`.
+- **dicts and sets** — `‹dict› ‹put› ‹get› ‹has› ‹del› ‹keys› ‹vals› ‹set›
+  ‹add›` over `‹hash›`, keys compared structurally.
+- **closures by value** — `x ′f⊸` captures `x` now, not at call time.
+- **use-after-free detection** — a freed list's length cell is poisoned, and
+  the list words throw `use after free`; `‹heapstats›` counts live blocks.
+- **catchable errors** — `′f‹catch›` returns `0` or the error message, and
+  `‹throw›` raises one: `:‹bad›3⍳9⊇;′‹bad›‹catch›⊐` prints `index out of range`.
+- **compile errors with line numbers** (`GOLF: undefined word b at line 3`) and
+  a `-g` symbol map, one `name address` line per word.
+- **checked arithmetic** — `‹cadd› ‹csub› ‹cmul›` throw `integer overflow`.
+- **records** — `⊜‹point›‹x›‹y›;` defines `‹point›`, `‹point-x›`,
+  `‹set-point-x›` …, plain lists underneath.
+- **tooling** — `‹assert› ‹expect›` and `tools/golftest` (a test runner),
+  `tools/golfi` (a replaying REPL that shows the stack via `‹stack›`),
+  `tools/golfgdb` (gdb by word name: break, backtrace, data stack), and
+  `tools/golfdeps` (packages pinned by sha256 in `golf.deps`, fetched into
+  `vendor/`).
 
 So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J` — which
 before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both
@@ -124,7 +157,7 @@ result:
 GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
-`bash test/run2.sh` is **494 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **698 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

@@ -41,7 +41,8 @@ letter, usually), or a **long name** written `‹name›` (see "Long names" at t
 end of section 3). Writing `x` later calls it. A one-byte word must be
 **defined before it is used**: the compiler makes one pass and looks a name up
 when it meets it. A call to a name that was never defined stops the compile with
-`GOLF: undefined word x` on stderr and exit status 2. A long name may be used
+`GOLF: undefined word x at line 3` on stderr and exit status 2 (see "Compile
+errors" at the end of section 3). A long name may be used
 before its definition, which is how mutual recursion is written. A word may call
 itself, because its name is bound when its body starts. `^` returns early from
 the current word. `;` returns at the end.
@@ -195,6 +196,8 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0xA5` | `⊛` | `\store` | v addr -> ; full 64-bit cell |
 | `0xA6` | `⌸` | `\brk` | addr -> break; brk(2) |
 | `0xA7` | `⎈` | `\sys` | a1 a2 a3 num -> result: raw syscall |
+| `0xA8` | `⊷` | `\spr` | -> sp bp: push rsp (as before the atom), then rbp |
+| `0xA9` | `⊶` | `\spw` | sp bp ->: set rbp, then rsp (both stacks jump) |
 
 ### Compiler ops
 
@@ -212,6 +215,8 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xB3` | `⇐` | `\lget` | prefix: ⇐x pushes local x (a..h or ‹name›) |
 | `0xB4` | `‹` | `\lname` | opens a long name: ‹name› stands wherever a one-byte name can |
 | `0xB5` | `›` | `\rname` | closes a long name |
+| `0xB6` | `⎘` | `\import` | prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/) |
+| `0xB7` | `⊜` | `\rec` | prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec) |
 
 ### Library words
 
@@ -252,6 +257,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xCA` | `⌫` | `\free` | — | free(list\|block): release an A block to the free list |
 | `0xCE` | `⍋` | `\sort` | — | sort: list -> new list, ascending signed (stable merge sort) |
 | `0xCF` | `∊` | `\memb` | — | member: list x -> 0 if x is an element, else 1 |
+| `0xD0` | `⊸` | `\bind` | — | bind: x ′f -> ′g; g pushes the captured x, then calls f |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -269,7 +275,8 @@ A few notes on what the tables leave out:
   list ops work on text, and `⊐` prints such a list back as text.
 - **Quotations.** `′x` pushes the address of word `x`. For an atom, it pushes a
   small wrapper around the atom. `⍎` calls the address it pops. `€ ⇤ ⌿ ⊞` take
-  such an address as their function argument. `∘ ⇉ ⑂` combine them.
+  such an address as their function argument. `∘ ⇉ ⑂` combine them, and `⊸`
+  binds a value into one (see Closures below).
 - **Variables.** `→x` / `←x` store and load one global 64-bit cell per name
   byte. They are global, so a recursive word should use `⊡` locals instead:
   `⇒x` / `⇐x` reach local `x` in the current call's frame (see Locals below).
@@ -326,8 +333,9 @@ definition. That is all mutual recursion needs:
 ```
 
 A name that is called but never defined stops the compile at end of input with
-`GOLF: undefined word ‹name›` (or `GOLF: undefined word q` for a one-byte name)
-and exit status 2, and no binary is written. Only a name not defined *yet*
+`GOLF: undefined word ‹name› at line N` (or `GOLF: undefined word q at line N`
+for a one-byte name), N being the line of its first use, and exit status 2,
+and no binary is written. Only a name not defined *yet*
 goes forward: a byte that is an atom is always its template, and once a word
 is defined a call binds to that definition, so redefining a word later
 changes only the calls after the redefinition (the forward calls made before
@@ -339,6 +347,28 @@ Anything else between `‹` and `›` (a space, a glyph, an empty name, or a
 missing `›`) stops the compile with `GOLF: bad long name ‹…›`, and a 1025th
 name with `GOLF: too many long names ‹…›`, both exit status 2. Locals take long
 names inside a `⊡` word (M-FRAME2), up to 16 per word.
+
+### Output
+
+The prelude's printers `Ṅ ⍕ ␤ 🗲 ⊐` write through one 8 KB output buffer
+(W11-1C). It drains to fd 1 when it fills, when the program ends, at `.`,
+before every `GOLF:` error message (so prior output comes first), before
+`‹readline›`/`‹getc›`/`‹readall›` read stdin (so a prompt shows), and before
+every raw `)` or `(`. `)` and `(` themselves are not buffered: still one
+`write`/`read` per byte.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹flush›` | `->` | write the buffered output now. Needed only before raw output that bypasses it, i.e. a `⎈` write |
+
+```
+1000000⍳⍕                # 6.9 MB of output in about 840 write(2) calls
+5Ṅ‹flush›1“b“4+1 1⎈_     # prints 5b; without ‹flush› the raw ⎈ write comes first: b5
+```
+
+Output still pending when the process dies of a signal (a kill, or the
+return-stack guard page's SIGSEGV) is lost. The cell `0x4F0988` (`5179784`)
+holds the fd the buffer drains to; `0` means fd 1.
 
 ### Input
 
@@ -366,6 +396,41 @@ The stdin words share one 8 KB buffer, so `‹readline›`, `‹getc›` and
 `‹readall›` may be mixed freely. The raw `(` reads around that buffer: do not
 use it in a program that uses these words. Names that start with `‹_in` are
 the prelude's own helpers. See `examples/input.golfj`.
+
+### Files
+
+The file words (W11-1B) are long names too, built on `⎈`. A path is a **code
+list**, the shape `“x.txt“⊃` and `‹args›` give, and so is a file's contents:
+one element per byte, `0`–`255`. Writing stores each element's low byte.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹open›` | `path -> fd` | open a file for reading |
+| `‹create›` | `path -> fd` | open a file for writing: create it (mode `0644`) or truncate it |
+| `‹close›` | `fd ->` | close a file descriptor |
+| `‹fread›` | `fd n -> list` | one `read(2)` of up to `n` bytes. It may return fewer. The empty list means end of file. A negative `n` counts as `0` |
+| `‹fwrite›` | `list fd ->` | write every byte of `list` to `fd`, retrying short writes. Writes to one fd follow each other; the output buffer (`‹flush›`) is drained first, so `7Ṅ“ab“⊃1‹fwrite›8Ṅ` prints `7ab8` |
+| `‹readfile›` | `path -> list` | the whole file as a code list. An empty file gives the empty list |
+| `‹writefile›` | `list path ->` | create or truncate `path`, write `list` to it, close it |
+
+```
+“hi“⊃“x.txt“⊃‹writefile›          # x.txt now holds the two bytes 'hi'
+“x.txt“⊃‹readfile›⊐               # prints hi
+‹args›0⊇‹readfile›⊐               # ./cat f   prints the file f
+“x.txt“⊃‹open›"5‹fread›⊐‹close›   # the first 5 bytes
+```
+
+**A failure throws** through `‹throw›`. The message names what was being done,
+the path, and the errno: `GOLF: cannot open x.txt (ENOENT)`, exit status 1.
+The verb is `open`, `create`, `read`, `write` or `close`. The fd words, which
+have no path, name the fd instead: `GOLF: cannot read fd 9 (EBADF)`. Named
+errnos are `EPERM ENOENT EIO EBADF EACCES EEXIST ENOTDIR EISDIR EINVAL EMFILE
+EFBIG ENOSPC EROFS ENAMETOOLONG ELOOP`; any other shows as `errno N`. Before it
+throws, the word stores the positive errno in the cell `5179712`
+(`5179712⊙`), which is never cleared. Opening a directory works, but reading it
+fails, so `“d“⊃‹readfile›` is `GOLF: cannot read d (EISDIR)`. Files are written
+directly with `write(2)`, not through the stdout printers. Names that start
+with `‹_1b` are the file words' helpers.
 ### More list words
 
 The prelude's newer list words have long names, because the high bytes ran
@@ -389,7 +454,678 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 12 in all), so a program has 1012 for itself.
+has 73 in all after W11-4B and W11-4C, helpers included), so a program has 951 for itself.
+
+### Text
+
+The text words (W11-1D) work on **code lists**, the one-code-per-cell lists
+that `⊃`, `‹readall›` and `‹readline›` make and `⊐` prints. Each one that
+returns a list returns a NEW list and never writes its input. A flag is
+zero-is-true, like `∊` and `T`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹fmt›` | `n -> list` | `n` in signed decimal, with a `-` first when `n < 0`. INT64_MIN works. `‹num›` reads it back |
+| `‹hex›` | `n -> list` | `n` in lowercase hex, with no `0x` prefix. `n` is read as **unsigned** 64-bit (two's complement, like Rust's `{:x}`), so `-1` gives sixteen `f`s and nothing gets a sign |
+| `‹parsehex›` | `list -> n` | parse hex: skip leading whitespace, one optional `+` or `-`, then the digits `0-9 a-f A-F` up to the first other byte. It never fails: no digits gives `0`, a `0x` prefix stops at the `x` (so it gives `0`), and overflow wraps at 64 bits, so `‹hex›‹parsehex›` gives back any int |
+| `‹split›` | `list sep -> lists` | split on every element equal to `sep` (one element, such as `44` for a comma; `≡` equality). Empty fields are kept, as in Python's `str.split(sep)`: `k` separators always give `k+1` fields, and the empty list gives one empty field |
+| `‹trim›` | `list -> list` | drop ASCII whitespace (tab, `\n`, `\v`, `\f`, `\r`, space) from both ends |
+| `‹startswith›` | `list prefix -> f` | `0` if `prefix` is a prefix of `list`, else `1` (zero-is-true, like `∊`). The empty prefix always matches. Elements are compared with `≡` |
+| `‹joinwith›` | `lists sep -> list` | concatenate the inner lists with `sep` between each pair. `sep` is a list, or an int taken as a one-element list. An empty `lists` gives the empty list. Every element of `lists` must be a list |
+| `‹pad›` | `list width -> list` | left-pad with spaces (32) to `width` (right-justify, like Python's `str.rjust`). It never truncates: a list already `width` long or longer, or a negative `width`, gives a copy |
+
+```
+“a, b,c“⊃44‹split›′‹trim›€124‹joinwith›⊐  ->  a|b|c
+“,a,,“⊃44‹split›≢Ṅ                         ->  4
+0 42-‹fmt›⊐                                ->  -42
+255‹hex›⊐                                  ->  ff
+“  -ff“⊃‹parsehex›Ṅ                        ->  -255
+“ hi “⊃‹trim›≢Ṅ                            ->  2
+“golf“⊃“go“⊃‹startswith›Ṅ                  ->  0
+3⍳′‹fmt›€“, “⊃‹joinwith›⊐                  ->  0, 1, 2
+7‹fmt›3‹pad›⊐                              ->    7
+```
+
+Names that start with `‹_1d` are these words' helpers.
+
+### Records
+
+`⊜‹point›‹x›‹y›;` (byte `0xB7`, mnemonic `\rec`) declares a record: a name,
+then its fields, up to `;` (W11-4A). The compiler turns the header into
+ordinary words at compile time. Nothing runs at the `⊜` itself:
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹point›` | `x y -> rec` | constructor: pops one value per field, the first field deepest, and returns a new list of that length |
+| `‹point-x›` | `rec -> x` | accessor: field *k* is element *k*, read with `⊇`, so `index out of range` and `use after free` still apply |
+| `‹set-point-x›` | `rec v -> rec` | setter: stores `v` in the field **in place** and leaves the record |
+
+A record is a plain list underneath, so every list word works on it: `⍕`
+prints its fields, `≢` counts them, `⊇` indexes them, `≣` compares two, and
+`⌫` frees one. A word that takes a "point" takes any list long enough.
+
+```
+⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ                         ->  4
+⊜‹point›‹x›‹y›; 3 4‹point›9‹set-point-x›⍕                    ->  9 4 
+⊜‹point›‹x›‹y›; 3 4‹point›"‹point-x›²&‹point-y›²+Ṅ           ->  25
+⊜‹pair›a b; 1 2‹pair›"≢Ṅ 1 2‹pair›≣Ṅ                         ->  2-1
+⊜p‹first›‹rest›; 7 3⍳p‹p-rest›⍕                              ->  0 1 2 
+```
+
+- **Names.** The accessor and setter names join the parts with `-`. `.` is
+  not a long-name byte, so the plan's `‹point.x›` is spelled `‹point-x›`.
+  The record name and each field are either a long name or one byte that may
+  stand in a long name (`0-9 A-Z a-z _ -`), because that byte becomes part of
+  `‹p-x›`. Whitespace may separate the fields. The record name follows `⊜`
+  directly. At most 256 fields.
+- **They are just words.** You can call them before the `⊜` (forward
+  references), quote them (`′‹point-x›`), and use them as chain links. A field
+  that does not exist is an ordinary undefined word:
+  `GOLF: undefined word ‹point-z› at line N`, exit 2. A record declared in an
+  included file works the same way.
+- **Limits.** Every invented name counts against the 1024 long names, two
+  per field, and so do the record and field names themselves. A name that
+  would pass 60 bytes (`‹set-…›` is 4 longer than the record name plus the
+  field) is `GOLF: bad long name ‹…›`.
+- **Errors** (exit 2): `GOLF: record without fields ‹point›` (`⊜‹point›;`),
+  `GOLF: record without ; ‹point›` (end of input first),
+  `GOLF: bad record field (` (a byte that is not a name), `GOLF: bad record
+  name (`, and `GOLF: too many record fields ‹point›`. Each ends with
+  ` at line N`.
+
+They compile to exactly what these definitions would (`8k+8` is field *k*'s
+cell, past the length cell):
+
+```golfj
+:‹point› 2⍳ \\&16≪16>16﹢⊛ \\&16≪16>8﹢⊛ ;   # last field first
+:‹point-x› 0⊇;
+:‹set-point-x› &0⊇_ &16≪16>8﹢⊛;
+```
+
+### Modules
+
+`⎘“path“` (byte `0xB6`, mnemonic `\import“path“`) includes a file (W11-2A).
+The compiler reads that file's bytes as if they stood where the `⎘` is, then
+goes on after the closing `“`. It is textual, like C's `#include`: the file's
+definitions become the program's, and there are no namespaces. It may stand
+anywhere a token may, but by convention the includes come first.
+
+- **Search order:** the path as written, relative to the directory the
+  compiler runs in, then `lib/` + path, then `vendor/` + path (W11-4A; where
+  packages are fetched). An absolute path is used as it is.
+- **Include-once:** a path that was already included is skipped, so a file
+  included twice compiles once, and a file that includes itself is harmless.
+  Paths are compared byte for byte as written, so `x.g2` and `lib/x.g2` count
+  as two paths. The main program is not in the table.
+- **Nesting:** an included file may include others, 8 levels deep. At most 60
+  distinct files may be included, and a path may be at most 250 bytes.
+- **Boundaries:** a file's end also ends its last token. So a number, a name or
+  a `#` comment at the very end of a file never runs into the includer.
+- **Form:** the compiler reads the bytes raw. That is code-page bytes, the form
+  `golf2` reads on stdin (`.g2`). `tools/golfc` encodes every included `.golfj`
+  file on the way, as it encodes the program itself (`-j`). So glyph source may
+  include glyph source.
+
+```
+# lib/geom.golfj
+:‹sq›"*;
+:‹hyp2›‹sq›→a‹sq›←a+;          # a b -> a²+b²
+
+# main.golfj — tools/golfc -j main.golfj main && ./main   prints 25
+⎘“geom.golfj“⎘“geom.golfj“      # found in lib/; the second one is skipped
+3 4‹hyp2›Ṅ
+```
+
+A missing file stops the compile: `GOLF: cannot include <path>` on stderr,
+exit status 2, and no binary. So do a 9th level of nesting
+(`GOLF: includes nested too deeply <path>`), a 61st file
+(`GOLF: too many includes <path>`), and a path that is too long, unclosed, or
+not a `“…“` literal (`GOLF: cannot include …`).
+
+### Packages
+
+A project pins the GOLF packages it uses in **`golf.deps`**, and
+`tools/golfdeps` fetches them into **`vendor/<name>/`** next to that file
+(W11-4E). The manifest is shaped like the repo's root `SEEDS` file. A `#`
+starts a comment, at the start of a line or after a blank, and blank lines are
+ignored. Every other line is one package with four fields:
+
+```
+# golf.deps — name  git-url                                 tag    sha256
+mathx   https://github.com/example/golf-mathx.git    v1.2   3f1c8a0e5b2d4c6f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7
+textx   file:///srv/git/textx                        v0.3   0000000000000000000000000000000000000000000000000000000000000000
+```
+
+- **name** is the directory under `vendor/`. It may use letters, digits, `_`,
+  `-` and `.`, and may not start with `.`.
+- **git-url** is anything `git clone` accepts: `https://`, ssh, `file://` or a
+  local path.
+- **tag** is cloned with `--depth 1 --branch <tag>`.
+- **sha256** is the package hash (below), 64 lowercase hex digits. An all-zero
+  pin asks for the hash: `fetch` refuses the package and prints the hash it
+  got, as `SEEDS` does before a release.
+
+```
+tools/golfdeps fetch  [-f golf.deps]   # clone, check, install into vendor/<name>/
+tools/golfdeps verify [-f golf.deps]   # re-hash vendor/<name>/; exit 1 if missing or modified
+tools/golfdeps list   [-f golf.deps]   # name tag ok|missing|modified, one per line
+tools/golfdeps hash   DIR              # the package hash of DIR, to fill in a pin
+```
+
+**The package hash** covers the files only, not git's metadata. So it is the
+same for any clone, depth, git version or mirror. Take every regular file under
+the package directory except the top-level `.git/`, by its relative path. Sort
+the paths bytewise (`LC_ALL=C`). Write one line per file:
+`<sha256 of its bytes> <path>` and a newline. The package hash is the sha256 of
+those lines. File modes, timestamps and empty directories do not count. A
+symlink, a device or a file name with a newline in it is refused.
+
+`fetch` leaves alone a package whose `vendor/<name>/` already matches its pin,
+so running it again does nothing ("up to date"). Any other package is cloned
+into a temporary `vendor/.<name>.tmp/` and its `.git/` is removed. Then it is
+hashed. On a match it replaces `vendor/<name>/`. On a mismatch, `fetch` removes
+the clone and any old `vendor/<name>/`, prints the wanted and the computed
+hash, and exits 1. So nothing unpinned is left in `vendor/` to be included.
+`verify` changes nothing, and `fetch` puts a modified package back. The exit
+status is 0 when all is well, 1 when a package failed (clone, hash or verify),
+and 2 for a usage or manifest error (the message names the line).
+
+**Using a package.** A package is plain GOLF source. A program in the
+project directory includes its files through the include search path, which
+W11-4A extends with `vendor/` after the path as written and `lib/`:
+
+```
+⎘“mathx/mathx.golfj“            # found as vendor/mathx/mathx.golfj (W11-4A)
+3‹pkgcube›Ṅ                     # prints 27, with mathx.golfj holding :‹pkgcube›""**;
+```
+
+To be explicit, the same file can also be spelled
+`⎘“vendor/mathx/mathx.golfj“`, its path as written. Inside a package, a file includes its siblings the same way, as
+`⎘“<name>/<file>.golfj“`. Include-once compares paths as written, so a program
+should spell a package's files one way only.
+
+### Memory
+
+`⌫` gives a list (or an `A` block) back to the allocator, and the next
+allocation of the same size class reuses it. Since W11-2D a freed list is
+**poisoned**: `⌫` writes `-559038737` into its length cell, and every list
+word checks that cell on entry (`∑ ≢ ⍕ € ⇤ ∏ ⊇ ⌽ ⌿ ⊐ ⊞ ⧺ ↑ ↓ ⍋ ∊ ≣ ⍤`, the
+bare `+ - *` on lists, and the long-named list and text words built on them).
+A freed list that reaches one stops the program with `GOLF: use after free`
+(exit 1). Freeing it again is still `GOLF: double free`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹heapstats›` | `-> blocks bytes` | the number of allocator blocks now live (allocated and not yet freed) and their total size in bytes. A block counts whole: its header cell plus its size class, so `5⍳` (6 cells, class 8) is `(8+1)*8 = 72` bytes. The prelude's own blocks count too, so compare two readings |
+
+```
+‹heapstats›_→n 5⍳‹heapstats›_←n-Ṅ                          ->  1
+‹heapstats›→b_ 5⍳‹heapstats›←b-Ṅ                           ->  72
+:d⊗;5⍳→l‹heapstats›_→n 1000→i{←l′d€⌫←i1-"→i0≡}‹heapstats›_←n-Ṅ  ->  0
+5⍳"⌫ 5⍳"≢Ṅ                                                 ->  5
+5⍳"⌫∑Ṅ      # stderr: GOLF: use after free     exit status 1
+```
+
+In the fourth example the second `5⍳` gets the freed block back, and it is an
+ordinary live list: `A` clears the poison when it hands a block out again.
+That is also what is **not** caught: a stale copy of a list that was freed and
+then reused reads (or frees) the new owner's list without an error. A value
+pointing into the middle of a block is not checked either. Names that start
+with `‹_2d` are helpers.
+
+### Dicts and sets
+
+A **dict** (W11-2B) maps keys to values. A key is an int or a list, nested
+to any depth. Keys are compared with `≣` (structural equality), so a code
+list made at run time finds the entry that another, equal code list made.
+Values can be anything. A **set** is a dict whose values are all `0`. It
+uses the same words.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹hash›` | `v -> h` | FNV-1a, 64-bit. An int hashes its 8 bytes, low byte first. A list starts from the FNV basis and hashes each element's 8 bytes in turn. An inner list is replaced by its own `‹hash›`, so values that are `≣`-equal always hash equal |
+| `‹dict›` | `-> d` | a new, empty dict |
+| `‹put›` | `d k v -> d` | set key `k` to `v`. This inserts a new key or overwrites an existing one |
+| `‹get›` | `d k -> v` | the value of `k`. A missing key throws `GOLF: key not found` (exit 1). Test with `‹has›` first if a key may be missing |
+| `‹has›` | `d k -> f` | `0` if `k` is a key, else `1`. This is zero-is-true, like `∊`, so `‹has›[…]` runs on a hit |
+| `‹del›` | `d k -> d` | remove `k`. Nothing happens if `k` is not a key |
+| `‹keys›` | `d -> list` | the keys, in **insertion order**. A key that is deleted and then put again moves to the end. On a set, this lists the members. `‹keys›≢` is the count |
+| `‹vals›` | `d -> list` | the values, in the same order as `‹keys›` |
+| `‹set›` | `-> s` | a new, empty set (a dict) |
+| `‹add›` | `s k -> s` | add `k` to the set. This is the same as `k 0‹put›`. `‹has›`, `‹del›` and `‹keys›` work on sets |
+
+```
+‹dict›"1 10‹put›"2 20‹put›"1‹get›Ṅ                ->  10
+‹dict›"“ab“⊃7‹put›"“ab“⊃‹get›Ṅ                    ->  7
+‹dict›"3⍳3‹put›"3⍳‹has›Ṅ"4⍳‹has›Ṅ                 ->  01
+‹dict›"5 1‹put›"6 2‹put›"5‹del›"5 3‹put›‹keys›⍕   ->  6 5
+‹dict›"5 1‹put›"6 2‹put›‹vals›⍕                   ->  1 2
+‹set›"4‹add›"2‹add›"4‹add›‹keys›⍕                 ->  4 2
+3⍳′⍳€‹hash›3⍳′⍳€‹hash›≡Ṅ                          ->  -1
+‹dict›9‹get›Ṅ                                     ->  GOLF: key not found
+```
+
+The last example prints its message on stderr, not stdout, and exits with
+status 1.
+
+**A dict is changed in place.** `‹put›`, `‹del›` and `‹add›` hand back the
+same `d`, so you can drop the result (`‹put›_`) or chain from it. A dict is
+a tagged list of 6 cells, so `≢d` is 6, not the number of keys. Its contents
+are internal. Keys that are lists are stored **by reference**, not copied:
+do not change or `⌫` a list while it is a key. The table is a compact dict, as
+in CPython: an insertion-ordered entry array plus an open-addressing index
+(power-of-two size, linear probing, load at most 1/2, tombstones for deleted
+keys). It grows by doubling and gives the old blocks back with `⌫`. Inserts,
+lookups and deletes take O(1) expected time. 100,000 int inserts plus 100,000
+lookups take about 0.05 s.
+
+A word count over stdin:
+
+```
+:‹bump›→‹k›←‹d›←‹k›1←‹d›←‹k›‹has›[_←‹d›←‹k›‹get›⊕]‹put›;
+:‹show›→‹k›←‹d›←‹k›‹get›Ṅ“ “🗲←‹k›⊐␤0;
+‹dict›→‹d›‹readall›‹words›′‹bump›€_←‹d›‹keys›′‹show›€_
+```
+
+It prints `count word` once for each distinct word, in order of first
+appearance. Names that start with `‹_2b` are these words' helpers. With them
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`), the prelude has 73 long
+names, which leaves 951 for a program.
+
+### Closures
+
+`⊸` (bind, W11-2C) makes a closure **by value**. `x ′f⊸` returns a new
+quotation that pushes the `x` it captured and then calls `f`. Use it wherever
+a quotation goes: `⍎ € ⇤ ⌿ ⊞`, or `∘` and `⊸` themselves.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `⊸` | `x ′f -> ′g` | `g` pushes `x`, then calls `f`. `x` is any 64-bit value, a list included. Since `x` lands above `g`'s own argument, `5′-⊸` is "subtract 5" (partial application of the right operand) |
+
+The value is copied when `⊸` runs, so the variable it came from can change
+afterwards. A word that reads a variable reads it at call time instead:
+
+```
+10→n ←n′+⊸→k 99→n 3⍳←k€⍕         ->  10 11 12
+10→k :f←k+; 99→k 3⍳′f€⍕           ->  99 100 101
+3⍳5′-⊸€⍕                          ->  -5 -4 -3
+3⍳′⧺⊸→c 2⍳←c⍎⍕                    ->  0 1 0 1 2
+:d⊗;3⍳10′+⊸′d∘€⍕                  ->  20 22 24
+3 4′+⊸⊸⍎Ṅ                         ->  7
+```
+
+`⊸` builds its quotation like `∘` does: a 38-byte machine-code thunk in the
+same code arena (`0x4D0000`–`0x4DFFFF`, `∘`'s thunks are 39 bytes). Nothing
+in the arena is ever freed, so a program can make about 1700 composed or
+bound quotations in all. One more prints `GOLF: compose arena exhausted` and
+exits 1, whichever of the two words asks.
+
+### Checked arithmetic
+
+The bare `+ - *` (and `﹢ ﹣ ﹡`) wrap at 64 bits, silently. The checked words
+(W11-3C) are Rust's `checked_add` / `checked_sub` / `checked_mul` turned into
+errors: the exact signed result when it fits in 64 bits, otherwise
+`GOLF: integer overflow` through `‹throw›` (exit 1; `′f‹catch›` catches it and
+returns the message, like any other error: `:‹f›9223372036854775807 1‹cadd›;′‹f›‹catch›⊐`
+prints `integer overflow` and the program goes on).
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹cadd›` | `a b -> a+b` | signed add; overflow (`INT64_MAX 1`, `INT64_MIN -1`, …) throws `integer overflow` |
+| `‹csub›` | `a b -> a-b` | signed subtract; overflow (`INT64_MIN 1`, `0 INT64_MIN`, …) throws `integer overflow` |
+| `‹cmul›` | `a b -> a*b` | signed multiply; overflow (`-1 INT64_MIN`, `3037000500 3037000500`, …) throws `integer overflow`; `0` times anything is `0` |
+
+They are **scalar only**: no shape test, no broadcasting. They work through
+the raw atoms, so a number whose top 16 bits are `0x7FFF` (which the bare ops
+would take for a list, see Known limits in `DESIGN.md`) is just a number here,
+`INT64_MAX` included — and a list passed to them is likewise just its tagged
+64-bit address, never an error. Map them over a list with `€` or `⊞`.
+`INT64_MIN` is `1 63≪`; a negative is `n±`.
+
+```
+3 4‹cadd›Ṅ                                ->  7
+1 63≪ 1‹cadd›Ṅ                            ->  -9223372036854775807
+3 10‹csub›Ṅ                               ->  -7
+3037000499"‹cmul›Ṅ                        ->  9223372030926249001
+0 1 63≪‹cmul›Ṅ                            ->  0
+9223372036854775807⊕Ṅ                     ->  -9223372036854775808
+9223372036854775807 1‹cadd›Ṅ              ->  GOLF: integer overflow
+1± 1 63≪‹cmul›Ṅ                           ->  GOLF: integer overflow
+```
+
+The last two exit with status 1 (the message is on stderr). The sixth shows
+the bare increment wrapping. Overflow is found from the wrapped result `r`:
+for `‹cadd›` when `(a^r)&(b^r)` is negative, for `‹csub›` when `(a^b)&(a^r)`
+is, and for `‹cmul›` when `a≠0` and either `r÷a ≠ b` or `a = -1, b = INT64_MIN`
+(the one case the divide test misses, since `÷` defines `INT64_MIN÷-1` as
+`INT64_MIN`).
+
+### Errors
+
+A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
+with status 1; stdout gets nothing more — unless a `‹catch›` is armed, in which
+case the error comes back to it as a value. The prelude raises its errors
+through one word, which a program may call too:
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹throw›` | `msg ->` | raise an error whose message is the code list `msg`. With no `‹catch›` armed: print `GOLF: `, `msg` as text and a newline on fd 2, exit 1. Never returns |
+| `‹catch›` | `… ′f -> … results 0` or `… msg` | run `f`. If it returns, push `0` above its results. If anything it runs throws, `‹catch›` returns at once with the message (a code list, never `0`) |
+
+On the error path the data stack is put back to its depth at the `‹catch›`
+call (`′f` dropped) and the message pushed on top: whatever `f` pushed is
+discarded. Values below that depth that `f` did not touch are intact; a cell
+`f` consumed holds whatever `f` last stored there (as with Forth's `CATCH`,
+the depth is restored, not the contents), so keep anything you need after an
+error out of `f`'s arguments, in a variable or below them. The return stack
+is unwound too (the `⊡` frames of every word in between are dropped), and so
+is the spill stack the list words nest on, so `€ ⇤ ⌿ ⍕ …` interrupted
+mid-loop leave nothing behind and the caller's own loop state is restored.
+Not undone: stores to variables and memory, allocations, and output — what
+`f` printed before the error stays printed. Catches nest: an error goes to
+the newest armed `‹catch›`; a handler that calls `‹throw›` again (a rethrow)
+reaches the next one out, and one with none left prints and exits as usual.
+`‹throw›` uses the atoms `⊷` (`-> sp bp`) and `⊶` (`sp bp ->`), which read and
+set the two stack pointers.
+
+```
+:‹bad›3⍳9⊇;′‹bad›‹catch›⊐  ->  index out of range
+:‹ok›5 6;1′‹ok›‹catch›ṄṄṄṄ  ->  0651
+“oops“⊃′‹throw›‹catch›⊐  ->  oops
+:‹f›1 2 3“no“⊃‹throw›;7′‹f›‹catch›⊐Ṅ  ->  no7
+:‹in›“inner“⊃‹throw›;:‹out›′‹in›‹catch›⊐“outer“⊃‹throw›;′‹out›‹catch›⊐  ->  innerouter
+:‹g›‹throw›;:‹h›“again“⊃′‹g›‹catch›‹throw›;′‹h›‹catch›⊐  ->  again
+:‹d›7 0÷;′‹d›‹catch›⊐  ->  divide by zero
+:‹r›1⍳′‹r›€;′‹r›‹catch›⊐ 3⍳′⍳€⍕  ->  spill stack exhausted[] [0] [0 1]
+“no input“⊃‹throw›  ->  GOLF: no input
+```
+
+(The last line goes to stderr, with exit status 1.)
+
+Everything the runtime checks raises through `‹throw›`, so all of it is
+catchable: `⊇` (`index out of range`), `∘` and `⊸` (`compose arena
+exhausted`), `⌫` (`free of a non-heap value`, `double free`), `‹get›` (`key
+not found`), `‹cadd›` `‹csub›` `‹cmul›` (`integer overflow`, see Checked
+arithmetic above), every list word (`use after free`, see Memory above), the file
+words (`cannot open x.txt (ENOENT)` …), the spill stack (`spill stack
+exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
+÷ ∣` (`divide by zero`). Not catchable: a return-stack overflow (a recursion
+past ~138k plain calls dies of SIGSEGV on the guard page), any other signal,
+`.` (exit is exit), and compile errors (`GOLF: undefined word x at line 3` …,
+below), which exit 2. So does a program whose binary would pass 192 KB
+(196608 bytes, the prelude's ~43 KB included): `GOLF: program too large`, and no binary.
+
+### Compile errors
+
+A compile error prints one line on stderr, exits with status 2, and writes no
+binary. Since W11-3B the line says where the error is:
+
+```
+GOLF: undefined word b at line 3          # in the program
+GOLF: undefined word ‹sq2› at geom.golfj line 7   # in an included file
+```
+
+The line is a line of **your** file. The compiler counts newlines as it reads,
+per file: an included file starts at its line 1, and the includer's count
+resumes after it. `tools/golfc` puts a form feed (byte 12) between the prelude
+and the program, and a form feed between tokens restarts the count at line 1,
+so the prelude's lines are not counted. (Feeding `golf2` by hand works the same
+way: put `\f` after the prelude.) An included `.golfj` is named as its `⎘`
+wrote it, not by the encoded copy `golfc` hands the compiler.
+
+| message | when |
+|---|---|
+| `undefined word x at …` | a name was called (or quoted with `′`, or used as a chain link) and never defined. Reported at end of input, at the line of the **first** use |
+| `bad long name ‹…› at …` | a byte that may not be in a long name, an empty `‹›`, a name over 60 bytes, or a missing `›` |
+| `too many long names ‹…› at …` | the 1025th long name |
+| `local out of range x at …` | `⇒`/`⇐` of a one-byte name outside `a`…`h`, or a long-named local outside a `⊡` word |
+| `too many locals ‹…› at …` | a 17th local in one `⊡` word |
+| `cannot include <path> at …` | a missing file, a path over 250 bytes, `⎘` without `“…“`, an unclosed path (the place is the `⎘`'s, in the includer) |
+| `includes nested too deeply <path> at …` · `too many includes <path> at …` | a 9th level of nesting · a 61st file |
+| `program too large` | the binary would pass 192 KB. No place: it is the size of the whole image |
+
+```
+1Ṅ
+5qṄ                  # stderr: GOLF: undefined word q at line 2   exit status 2
+```
+
+### REPL
+
+`tools/golfi` (W11-4C) is an interactive loop: type a line of `.golfj`
+source, see what it printed and then the data stack. Words, variables,
+includes and the stack carry over from line to line. The stack line comes
+from the prelude word `‹stack›`, which any program can call:
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹stack›` | `->` | print the data stack bottom to top without changing it: `<depth>`, then each value (an int as `Ṅ` prints it, a list in brackets as `⍕` prints an inner one), then a newline |
+
+```
+1 2 3⍳‹stack›                    ->  <3> 1 2 [0 1 2]
+‹stack›                          ->  <0>
+3⍳′⍳€ 5±‹stack›                  ->  <2> [[] [0] [0 1]] -5
+:‹s›9‹stack›_;1 2‹s›             ->  <3> 1 2 9
+```
+
+The data stack is the machine stack, and calls keep their return addresses
+on a separate stack, so `‹stack›` shows the same values inside a word (the
+last example), inside `€` (the element on top of the caller's values) or
+under `‹catch›`. Its base is where the stack stood at the end of the
+prelude's own start-up, recorded in cell 5180480. A value whose top 16 bits
+are `0x7FFF` prints as a list (DESIGN.md, known limits).
+
+A session (`golf> ` is the prompt; `....> ` continues an entry):
+
+```text
+golf> :‹sq›"*;
+<0>
+golf> 3 4
+<2> 3 4
+golf> ‹sq›+
+<1> 19
+golf> oops
+GOLF: undefined word o
+(not kept)
+golf> 3⍳9⊇
+GOLF: index out of range
+(not kept)
+golf> “sq: “🗲3⍳‹sq›∑Ṅ
+sq: 5
+<1> 19
+golf> :f
+....> 1+;
+<1> 19
+golf> f
+<1> 20
+golf> :quit
+```
+
+**How it works: replay.** golfi keeps the session, the entries accepted so
+far. For each new entry it compiles one whole program with `tools/golfc -j`
+(the session, a marker, the entry, a marker, `‹stack›`, an end marker), runs
+it with stdin from `/dev/null`, and shows only what came after the first
+marker. So every side effect of earlier entries runs again, silently, each
+time (a slow entry slows all later ones; `:reset` starts over), and a program
+that reads stdin sees end of input rather than waiting. Each entry takes
+about 0.11 s (compile and run), nearly all of it in `golfc`.
+
+An entry is kept only if it compiles, runs, exits 0 and reaches the end
+marker, so the session is always a valid program. An entry that fails
+prints the compiler's or the runtime's `GOLF:` line (` at line N` is
+dropped for a one-line entry, or given as `at line K of this entry`), or
+`killed by SIGSEGV`, `exit status N`, `timed out after 10 s`
+(`GOLFI_TIMEOUT`), and then `(not kept)`.
+
+An entry spans lines while a `:` `⊡` `⊚` `⊜` definition, a `[` or `{`, or a
+`“` string is still open. Commands, as a whole line: `:show` prints the
+session's source, `:reset` empties it, `:quit` (or end of input) leaves.
+`golfi -t` adds each entry's time as `(0.110 s)`. Prompts appear only on a
+terminal and everything goes to stdout, so `golfi < script` gives a clean,
+ordered transcript (test/run2.sh's W11-4C block checks one).
+
+### Debugging
+
+`tools/golfc -g prog.golfj prog` (with `-j`, `-n` as usual) also writes
+**`prog.map`**, the symbol map: one line per defined word,
+
+```
+NAME 0xADDR
+```
+
+NAME is the word as source spells it: a glyph (`⌫`), an ASCII byte (`f`) or a
+long name with its brackets (`‹sq›`). ADDR is the runtime virtual address of
+the word's body in hex, where a `call` to the word lands. The program is one
+`PT_LOAD` at `0x400000`, so the body's file offset is ADDR - `0x400000`. Lines
+come in name-number order: one-byte names by byte value, then long names in
+order of first appearance. The prelude's words are listed too, and a word
+defined twice shows its last body. The binary is byte-identical with and
+without `-g`. The map comes from `golf2 -g`, which writes it to stderr after a
+successful compile, with one-byte names as raw bytes (`golfc` turns them into
+glyphs).
+
+```
+:‹sq›"*;:f‹sq›;5fṄ   # prog.map has, among the prelude's words:
+                     #   f 0x40…       (its address)
+                     #   ‹sq› 0x40…    (and ‹sq›'s, where f's call lands)
+```
+
+Every word body starts with the same prologue (`sub rbp,8; pop [rbp]`, bytes
+`48 83 ED 08 8F 45 00`), so a map line is easy to check against the binary.
+
+**gdb by word name (W11-4D).** A GOLF binary has no symbols, and its stacks
+are not C's: `rsp` is the data stack and `rbp` the return stack (the prologue
+parks each call's return address at `[rbp]`), so gdb's own `break NAME` and
+`bt` see nothing. `tools/golfgdb prog [args…]` reads `prog.map` and the
+binary, writes a gdb script, and starts `gdb -q -x script --args prog args…`.
+The script adds five commands, and prints `golf-where` at every stop:
+
+| Command | What it does |
+|---|---|
+| `golf-break NAME…` | break in each word just after its prologue, so its arguments are on the data stack. NAME as the map spells it (`⌫`, `f`, `‹sq›`), or a long name without brackets (`sq`) |
+| `golf-bt` | backtrace by word name, innermost first: `#0` is the word `$pc` is in, then one frame per return address on the return stack (rbp up to its top, `0x600000`) |
+| `golf-stack [N]` | the data-stack depth and the top N cells (default 8), top first; a list shows as `list @addr len n [elements…]` |
+| `golf-where` | the word `$pc` is in, as `NAME+offset` |
+| `golf-words [TEXT]` | the map's words (names containing TEXT) with their address ranges |
+
+A word's range comes from the `jmp` that skips its body (`E9 rel32` just
+before ADDR); code in no word is `(top level)`, code in the `∘` thunk arena
+`(thunk)`. A return-stack cell counts as a return address only when the bytes
+before it are a `call`, so `⊡` locals (which share the return stack) are
+skipped. Plain gdb still works alongside: `stepi`, `x/8gx $rsp`,
+`break *0x…`, `info registers` (and `golf-bt` / `golf-stack` are right even
+when stopped inside a prologue). `tools/golfgdb --emit FILE prog` only writes
+the script (use it with `gdb -x FILE prog`); `--batch-script CMDS prog` runs
+`gdb -batch` with the script and then the commands in CMDS, which is how the
+suite tests it. It needs gdb with Python (any distribution gdb).
+
+Walkthrough: a word reached through two nested calls.
+
+```
+# deb.golfj
+:‹inner›"*;
+:‹mid›1+‹inner›;
+:‹outer›‹mid›2*;
+5‹outer›Ṅ
+```
+
+```
+$ tools/golfc -j -g deb.golfj deb && tools/golfgdb deb
+(gdb) golf-break inner
+Breakpoint 1 at 0x40a32e
+golf-break: inner at 0x40a32e
+(gdb) run
+Starting program: /home/me/deb
+
+Breakpoint 1, 0x000000000040a32e in ?? ()
+golf: 0x40a32e in ‹inner›+7
+(gdb) golf-bt
+#0  0x40a32e in ‹inner›+7
+#1  0x40a3a7 in ‹mid›+60
+#2  0x40a3c0 in ‹outer›+12
+#3  0x40a404 in (top level)
+(gdb) golf-stack
+data stack: depth 1
+  [0] 6
+(gdb) continue
+Continuing.
+72[Inferior 1 (process 4242) exited normally]
+```
+
+`‹inner›` was called by `‹mid›`, called by `‹outer›`, called from the
+program's top level, and is about to square the 6 that `‹mid›` left (5 1+);
+`‹outer›` doubles the 36. The addresses move whenever the prelude changes
+(the suite compares this transcript with them masked).
+
+### Testing
+
+Two prelude words check values (W11-4B), and `tools/golftest` runs test files.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹assert›` | `f msg ->` | passes when `f` is exactly `-1`, the "true" that the comparisons `≡ ≣ ≺ ≻ < »` push, so `a b≡“msg“⊃‹assert›` says what it checks. **Every other value fails**: `0`, and also `1` and any zero-is-true flag (`∊ ‹has› ‹startswith› T`, a difference `a b-`), so a flag of the other convention can never pass by accident. Turn one into a `-1` first with `0≡`: `l x∊0≡“has x“⊃‹assert›` |
+| `‹expect›` | `actual expected msg ->` | passes when `actual ≣ expected` (structural equality, so ints, lists and nested lists alike) |
+
+`msg` is a code list, `“text“⊃` (plain ASCII: a glyph inside `“…“` is
+encoded to its byte). A check that passes prints nothing. One that fails
+prints one line through the buffered printers, so on stdout and in order with
+the program's own output:
+
+```
+FAIL: <msg>                              ‹assert›
+FAIL: <msg>: expected <e> got <a>        ‹expect›
+```
+
+where an int shows as `Ṅ` prints it and a list as `[0 1 2]` (`⍕`'s elements in
+brackets, nested lists as `⍕` shows them, no trailing space; `[]` when empty).
+Then the program **carries on**: every check in a file runs. The failures are
+counted in the cell `0x4F0C00` (`5180416⊙` reads it), and once one has failed
+the program's **exit status becomes 1**: the end of the program exits 1
+instead of 0, and an explicit `0.` exits 1 too (any other `.` status is kept;
+an uncaught error still exits 1). There is no closing word to call. (How: the
+first failure wraps the output-flush hook that every exit runs, W11-1C, in a
+word that flushes and then turns the exit status 0 into 1.)
+
+There are no line numbers: the compiler's line count exists only at compile
+time, so **the message is the check's name** — make each one distinct.
+
+```
+1 1≡“one is one“⊃‹assert›“ok“⊃⊐  ->  ok
+1 2≡“one is two“⊃‹assert›  ->  FAIL: one is two
+0“zero is not true here“⊃‹assert›  ->  FAIL: zero is not true here
+5⍳3∊0≡“3 in 0..4“⊃‹assert›“ok“⊃⊐  ->  ok
+3⍳⌽ 3⍳“reversed“⊃‹expect›  ->  FAIL: reversed: expected [0 1 2] got [2 1 0]
+6 7“six“⊃‹expect›  ->  FAIL: six: expected 7 got 6
+2⍳′⍳€ 0⍳“nested“⊃‹expect›  ->  FAIL: nested: expected [] got [[] [0]]
+2 3≺“signed less“⊃‹assert›“ok“⊃⊐  ->  ok
+```
+
+Each example that prints `FAIL:` exits with status 1. A program that goes on
+after a failure keeps printing: `1 2≡“a“⊃‹assert›“still here“⊃⊐␤5180416⊙Ṅ`
+prints `FAIL: a`, `still here` and `1` on three lines, and exits 1.
+
+**`tools/golftest [DIR|FILE …]`** finds every `*_test.golfj` under each DIR
+(recursively; the current directory when no argument is given) plus each FILE
+named, compiles each with `tools/golfc -j` from the current directory (so `⎘`
+includes resolve as usual), runs it with stdin from `/dev/null`, and prints
+one line per file, then a summary:
+
+```
+PASS examples/tests/lists_test.golfj
+FAIL test/fixtures/golftest/fail_test.golfj (exit 1)
+  FAIL: one is two
+  FAIL: reverse is identity: expected [0 1 2] got [2 1 0]
+  FAIL: six: expected 7 got 6
+1 passed, 1 failed
+```
+
+A file fails when it does not compile (`FAIL f (compile error)` and the
+compiler's message, e.g. `GOLF: undefined word q at line 2`), when it exits
+non-zero (`FAIL f (exit N)`, then its `FAIL:` lines and its stderr, such as a
+`GOLF:` runtime error), when it prints a line starting `FAIL: ` even with exit
+0, or when it runs past `GOLFTEST_TIMEOUT` seconds (default 60; `FAIL f
+(timeout)`). `golftest` exits 0 when every file passed and 1 when any failed
+or none was found. A test file is an ordinary program: it may define words,
+`⎘` the code under test, and print.
 
 ## 4. Tutorial
 

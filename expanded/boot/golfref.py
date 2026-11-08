@@ -9,10 +9,15 @@ This is a full oracle, not a shim:
 
   * **Atoms are auto-inherited** from tools/mkblob2.ATOMS, the single source of
     truth for the code-page atom templates.  Adding an atom there makes it work
-    here with no edit to this file.
+    here with no edit to this file.  (W11-3A's ⊷ ⊶ stack-pointer atoms, and the
+    divide-by-zero hook call in the ÷ ∣ / % templates, arrive that way: the
+    oracle's binaries run ‹catch› / ‹throw› exactly as golf2's do, which
+    test/run2.sh's W11-3A block checks.)
   * **Compiler ops are implemented natively** here: ′ ref (0x8C), “ str (0x8E),
     → set (0x8F), ← get (0x90), ⊚ chain (0xB0), ⊡ ⇒ ⇐ (0xB1-0xB3) and the
-    M2 long-name brackets ‹ › (0xB4/0xB5).  These change the compiler's
+    M2 long-name brackets ‹ › (0xB4/0xB5), and W11-2A's include ⎘ (0xB6),
+    spliced in place here, and W11-4A's record header ⊜ (0xB7), expanded into
+    the same words golf2 emits.  These change the compiler's
     *logic*, not just its template table, so they cannot be inherited — they are
     transcribed from the authoritative cases in self/seed.golfv1 and
     self/golf2.golfj, whose byte allocations tools/mkblob2.py owns.
@@ -36,7 +41,7 @@ import v1        # frozen v1: ELF header, prologue/epilogue, v1 op templates
 import mkblob2   # v2: the atom table (byte -> template) and v2's STARTUP2
 
 BASE = v1.BASE          # ELF load address; file offset f maps to VA BASE+f
-FILESZ = v1.FILESZ      # fixed p_filesz (binary must stay under this)
+CAP = mkblob2.PROGRAM_CAP   # W11-1E: largest image (192 KB); p_filesz = its size
 
 # v1's op templates plus every v2 atom.  A local copy: the frozen module is read
 # from, never written to.
@@ -61,6 +66,8 @@ LSET_BYTE = mkblob2.LSET_BYTE    # ⇒  pop TOS into a local slot
 LGET_BYTE = mkblob2.LGET_BYTE    # ⇐  push a local slot
 LNAME_BYTE = mkblob2.LNAME_BYTE  # ‹  opens a long name (M2)
 RNAME_BYTE = mkblob2.RNAME_BYTE  # ›  closes it
+IMPORT_BYTE = mkblob2.IMPORT_BYTE  # ⎘  ⎘“path“ includes a file (W11-2A)
+REC_BYTE = mkblob2.REC_BYTE  # ⊜  ⊜‹point›‹x›‹y›; a record header (W11-4A)
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -88,10 +95,36 @@ def compile_bytes(src: bytes) -> bytes:
     longs = []          # M2: long names in order of first appearance; name
                         # number LONG_BASE + i, exactly as golf2 interns them
     pending = {}        # M2/W10-A: name -> call/jmp sites awaiting its body
+    included = []       # W11-2A: include-once table, the paths as written
+    # W11-2A: the open includes, innermost last.  W11-3B made each a record of
+    # where its spliced bytes start and end, which file it is (k+1 for
+    # `included[k]`; the program is file 0, `top`), where its line count starts
+    # (its start, or just past a form feed between tokens) and the ranges its
+    # own closed includes were spliced into, whose lines are not its own.
+    top = {"start": 0, "end": None, "file": 0, "reset": 0, "holes": []}
+    segs = []
+    pending_at = {}     # W11-3B: name -> where() of its first forward use
     i, n = 0, len(src)
 
     def emit(bs):
         out.extend(bs)
+
+    def where(at):
+        """W11-3B: golf2's ‹where› — ` at [path ]line N` for source offset `at`,
+        N counted in the file that is being read there."""
+        seg = segs[-1] if segs else top
+        lo = seg["reset"]
+        nl = src.count(b"\n", lo, at)
+        for a, b in seg["holes"]:
+            if b > lo:
+                nl -= src.count(b"\n", max(a, lo), min(b, at))
+        name = included[seg["file"] - 1] + b" " if seg["file"] else b""
+        return b" at " + name + b"line " + str(nl + 1).encode()
+
+    def die(msg):
+        """A golf2-format compile error at the current offset, exit 2."""
+        sys.stderr.buffer.write(b"GOLF: " + msg + where(i) + b"\n")
+        raise SystemExit(2)
 
     def patch32(at, target):
         """Store the rel32 that jumps from just-after-`at` to `target`.  Both are
@@ -146,28 +179,41 @@ def compile_bytes(src: bytes) -> bytes:
         patches the site (golf2 threads the same sites through the placeholders,
         so once patched the bytes are identical)."""
         emit([op]); pending.setdefault(name, []).append(len(out))
+        pending_at.setdefault(name, where(i))
         emit(b"\0\0\0\0")
 
     def define(name):
         """Bind `name` to the body starting here, and patch its forward sites."""
         dict_[name] = len(out)
+        pending_at.pop(name, None)
         for site in pending.pop(name, []):
             patch32(site, dict_[name])
 
+    def shown(name):
+        """A name number as golf2's diagnostics show it: the byte, or ‹name›."""
+        if name < mkblob2.LONG_BASE:
+            return bytes([name])
+        return "‹".encode() + longs[name - mkblob2.LONG_BASE] + "›".encode()
+
     def read_long():
-        """M2: the bytes after ‹ up to ›, interned to a name number."""
+        """M2: the bytes after ‹ up to ›, interned to a name number.  Checked
+        byte by byte in golf2's order, so a bad name is reported as golf2 does
+        (W11-3B): what was read before the offending byte, at that byte."""
         nonlocal i
         start = i
-        while i < n and src[i] != RNAME_BYTE:
-            i += 1
-        name = src[start:i]
-        ok = all(chr(b).isascii() and (chr(b).isalnum() or b in b"_-") for b in name)
-        if i >= n or not ok or not name or len(name) > mkblob2.LONG_LEN:
-            raise SystemExit(f"golfref: bad long name at byte {start}")
-        i += 1
+        while True:
+            eof = i >= n                               # golf2 reads 0 there
+            b = 0 if eof else src[i]
+            i += 0 if eof else 1
+            if b == RNAME_BYTE and i - 1 > start:
+                break
+            if (b == RNAME_BYTE or not (chr(b).isascii() and (chr(b).isalnum() or b in b"_-"))
+                    or i - 1 - start >= mkblob2.LONG_LEN):
+                die("bad long name ‹".encode() + src[start:i if eof else i - 1] + "›".encode())
+        name = src[start:i - 1]
         if name not in longs:
             if len(longs) >= mkblob2.LONG_MAX:
-                raise SystemExit("golfref: too many long names")
+                die("too many long names ‹".encode() + name + "›".encode())
             longs.append(name)
         return mkblob2.LONG_BASE + longs.index(name)
 
@@ -195,10 +241,131 @@ def compile_bytes(src: bytes) -> bytes:
         b = src[i]; i += 1
         return b
 
+    def include():
+        """W11-2A: ⎘“path“ — golf2 swaps the file onto fd 0; here its bytes
+        are spliced in at i, with a newline after them so that no token runs
+        across the file's end (golf2's reader sees end of file there).  Same
+        search (as written, then lib/), include-once on the path's bytes, depth
+        and table bounds, and the same diagnostics, exit 2."""
+        nonlocal src, n
+        path = b""
+        def bad(what):
+            die(what + b" " + path)
+        if i >= n or src[i] != STR_BYTE:
+            bad(b"cannot include")
+        j = i + 1
+        while j < n and src[j] != STR_BYTE and j - i - 1 < mkblob2.IMPORT_LEN:
+            j += 1
+        path = src[i + 1:j]
+        if j >= n or src[j] != STR_BYTE:
+            bad(b"cannot include")
+        rest = j + 1                                 # just past the closing “
+        if path in included:
+            return rest, b""
+        if len(segs) >= mkblob2.IMPORT_DEPTH:
+            bad(b"includes nested too deeply")
+        if len(included) >= mkblob2.IMPORT_FILES:
+            bad(b"too many includes")
+        included.append(path)
+        for cand in (d + path for d in mkblob2.IMPORT_DIRS):  # ., lib/, vendor/
+            try:
+                with open(cand, "rb") as f:
+                    return rest, f.read() + b"\n"
+            except IsADirectoryError:                # golf2 reads it as empty
+                return rest, b"\n"
+            except OSError:
+                pass
+        bad(b"cannot include")
+
+    def legal(b):
+        """golf2's ‹legal›: may byte b stand in a long name (0-9 A-Z a-z _ -)?"""
+        return b < 128 and (chr(b).isalnum() or b in b"_-")
+
+    def intern(name):
+        """golf2's ‹intern›: a name's number, claiming the next one if new."""
+        if name not in longs:
+            if len(longs) >= mkblob2.LONG_MAX:
+                die("too many long names ‹".encode() + name + "›".encode())
+            longs.append(name)
+        return mkblob2.LONG_BASE + longs.index(name)
+
+    def record():
+        """W11-4A: ⊜‹point›‹x›‹y›; — golf2's ‹defrecord›.  The header expands to
+        the words golf2 emits, token for token (see self/golf2.golfj, Records):
+            :‹point› n⍳ (per field k, last first) \\&16≪16>(8k+8)﹢⊛ ;
+            :‹point-x› k⊇;   :‹set-point-x› &k⊇_&16≪16>(8k+8)﹢⊛;
+        with the names interned in that order, so the numbers match too."""
+        nonlocal i
+        def rbyte():                                 # golf2's ‹read›: 0 at the
+            nonlocal i                               # end of the file (here,
+            end = segs[-1]["end"] - 1 if segs else n  # the newline include()
+            if i >= end:                             # appends is past it)
+                return 0
+            i += 1
+            return src[i - 1]
+        b = rbyte()
+        rec = read_long() if b == LNAME_BYTE else b
+        if rec < mkblob2.LONG_BASE and not legal(rec):
+            die(b"bad record name " + bytes([rec]))
+        fields = []
+        while True:
+            b = rbyte()
+            if b == ord(';'):
+                if not fields:
+                    die(b"record without fields " + shown(rec))
+                break
+            if b == 0:
+                die(b"record without ; " + shown(rec))
+            if b < 33:
+                continue
+            if b == LNAME_BYTE:
+                b = read_long()
+            if b < mkblob2.LONG_BASE and not legal(b):
+                die(b"bad record field " + bytes([b]))
+            if len(fields) >= mkblob2.REC_MAX:
+                die(b"too many record fields " + shown(rec))
+            fields.append(b)
+        def spelled(name):
+            return bytes([name]) if name < mkblob2.LONG_BASE else longs[name - mkblob2.LONG_BASE]
+        def invent(*parts):
+            name = b"".join(parts)
+            if len(name) > mkblob2.LONG_LEN:         # ‹badname›: what fitted
+                die("bad long name ‹".encode() + name[:mkblob2.LONG_LEN] + "›".encode())
+            return intern(name)
+        def header(name):                            # ':'s header
+            emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
+            define(name)
+            emit(v1.PROLOGUE)
+            return patch
+        def end(patch):
+            emit(v1.EPILOGUE); patch32(patch, len(out))
+        def store(k):                                # &16≪16>(8k+8)﹢⊛
+            call_or_template(ord('&')); emit_lit(16); call_or_template(0xA2)
+            emit_lit(16); call_or_template(ord('>')); emit_lit(8 * k + 8)
+            call_or_template(0x91); call_or_template(0xA5)
+        patch = header(rec)
+        emit_lit(len(fields)); call_or_template(ord('R'))
+        for k in reversed(range(len(fields))):
+            call_or_template(ord('\\')); store(k)
+        end(patch)
+        for k, f in enumerate(fields):
+            patch = header(invent(spelled(rec), b"-", spelled(f)))
+            emit_lit(k); call_or_template(ord('I'))
+            end(patch)
+            patch = header(invent(b"set-", spelled(rec), b"-", spelled(f)))
+            call_or_template(ord('&')); emit_lit(k); call_or_template(ord('I'))
+            call_or_template(ord('_')); store(k)
+            end(patch)
+
     while i < n:
+        while segs and i >= segs[-1]["end"]:         # W11-2A: left an include
+            done = segs.pop()
+            (segs[-1] if segs else top)["holes"].append((done["start"], done["end"]))
         c = src[i]; i += 1
         ch = chr(c)
         if c <= 32:
+            if c == 12:                              # W11-3B: a form feed
+                (segs[-1] if segs else top)["reset"] = i   # restarts the count
             continue
         if ch == '#':                                # comment to end of line
             while i < n and src[i] != 10:
@@ -317,15 +484,15 @@ def compile_bytes(src: bytes) -> bytes:
         if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
             name = take_name()                       # a..h, or a ‹long name›
             if name < 256 and not 0 <= name - ord('a') < 8:
-                raise SystemExit(f"golfref: local out of range at byte {i-1}")
+                die(b"local out of range " + shown(name))
             if not frame:                            # outside ⊡: M-FRAME's fixed
                 if name >= 256:                      # a..h slot; a long name has
-                    raise SystemExit(f"golfref: local out of range at byte {i-1}")
+                    die(b"local out of range " + shown(name))
                 slot = name - ord('a')               # nowhere to go
             else:                                    # M-FRAME2: first appearance
                 if name not in flocals:              # claims the next slot
                     if len(flocals) >= mkblob2.FRAME_MAX_LOCALS:
-                        raise SystemExit(f"golfref: too many locals at byte {i-1}")
+                        die(b"too many locals " + shown(name))
                     flocals.append(name)
                 slot = flocals.index(name)
             if c == LSET_BYTE:                       # pop rax; mov [rbp+d],rax
@@ -334,6 +501,18 @@ def compile_bytes(src: bytes) -> bytes:
                 emit([0x48, 0x8B, 0x45, 8 * slot, 0x50])
             continue
 
+        if c == IMPORT_BYTE:                         # W11-2A: ⎘“path“
+            i, data = include()
+            if data:
+                src = src[:i] + data + src[i:]; n = len(src)
+                for seg in segs:
+                    seg["end"] += len(data)
+                segs.append({"start": i, "end": i + len(data), "reset": i,
+                             "file": len(included), "holes": []})
+            continue
+        if c == REC_BYTE:                            # W11-4A: ⊜‹point›‹x›‹y›;
+            record()
+            continue
         if c == CHAIN_BYTE:                          # ⊚name … ; : a tacit chain
             name = take_name()                       # the header is ':'s
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
@@ -364,15 +543,23 @@ def compile_bytes(src: bytes) -> bytes:
 
     if stack:
         raise SystemExit(f"golfref: unbalanced blocks: {stack}")
+    def undefined(shown, name):                      # W11-3B: golf2's message,
+        sys.stderr.buffer.write(b"GOLF: undefined word " + shown  # at the
+                                + pending_at[name] + b"\n")       # first use
+        raise SystemExit(2)
     for b in range(mkblob2.LONG_BASE):               # W10-A: a one-byte name
         if b in pending:                             # called, never defined
-            raise SystemExit(f"golfref: undefined word 0x{b:02x}")
+            undefined(bytes([b]), b)
     for k, name in enumerate(longs):                 # M2: called, never defined
         if mkblob2.LONG_BASE + k in pending:
-            raise SystemExit(f"golfref: undefined word ‹{name.decode()}›")
-    emit(v1.AUTOEXIT)
-    if len(out) >= FILESZ:
-        raise SystemExit(f"golfref: output {len(out)} bytes exceeds p_filesz {FILESZ}")
+            undefined("‹".encode() + name + "›".encode(), mkblob2.LONG_BASE + k)
+    emit(mkblob2.AUTOEXIT2)                          # W11-1C: flush hook, exit(0)
+    if len(out) > CAP:                               # W11-1E: golf2's diagnostic
+        sys.stderr.write("GOLF: program too large\n")
+        raise SystemExit(2)
+    # W11-1E: p_filesz is the image's true size (golf2 and the seed patch it
+    # the same way), so the kernel maps exactly the file and BSS starts after it.
+    out[v1.FILESZ_OFF:v1.FILESZ_OFF + 8] = len(out).to_bytes(8, "little")
     return bytes(out)
 
 

@@ -1,0 +1,8 @@
+# A FAILING test file, on purpose (W11-4B): test/run2.sh's W11-4B block runs
+# tools/golftest on it and expects exit 1 with these FAIL lines.  Every check
+# runs; the program carries on after a failure and its exit status becomes 1.
+2 2≡“two is two“⊃‹assert›
+1 2≡“one is two“⊃‹assert›
+3⍳⌽ 3⍳“reverse is identity“⊃‹expect›
+6 7“six“⊃‹expect›
+“still running“⊃⊐␤

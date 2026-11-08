@@ -120,6 +120,7 @@ both fizz examples/v1/fizzbuzz.golf
 
 echo "It compiles the v2 language (prelude + examples, via the code page)"
 python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"
+printf '\f' >> "$TMP/pre.gb"   # as tools/golfc does: diagnostics count lines from the program (W11-3B)
 for ex in lists strings vars vectorize capstone chaindef locals; do
   cat "$TMP/pre.gb" <(python3 tools/codepage.py encode < "examples/$ex.golfj") > "$TMP/src.$ex"
   both "$ex" "$TMP/src.$ex"
@@ -161,11 +162,44 @@ both names1k "$TMP/src.names1k"
 [ "$("$TMP/new.names1k" 2>/dev/null)" = "$((1024 - w10p))" ] \
   && ok "prelude + 1024 long names in all runs (W10-A)" || no "1024 long-name program output"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k; do
+# W11-2A: ⎘“path“ includes — nested, repeated (include-once) and a file that
+# includes itself — through both source forms.  The seed reaches open/dup/dup2
+# through its K word (a syscall blob), golf2 through ⎈.
+printf '%s' ':‹sq›"*;' | python3 tools/codepage.py encode > "$TMP/inc.sq.g2"
+printf '%s' "⎘“$TMP/inc.sq.g2“⎘“$TMP/inc.cube.g2“:‹cube›\"‹sq›*;12" | python3 tools/codepage.py encode > "$TMP/inc.cube.g2"
+printf '%s' "⎘“$TMP/inc.cube.g2“‹cube›Ṅ⎘“$TMP/inc.sq.g2“3‹sq›Ṅ" \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.include"
+both include "$TMP/src.include"
+[ "$("$TMP/new.include" 2>/dev/null)" = "17289" ] \
+  && ok "prelude + nested, repeated and self includes run (W11-2A)" || no "include program output"
+
+# W11-4A: ⊜ records — long and one-byte names, a forward call to an accessor,
+# a setter — and an include found through vendor/ (the third search place),
+# through both source forms.
+mkdir -p "$TMP/rec/vendor"
+printf '%s' '⊜‹pt›‹x›‹y›;:‹n2›"‹pt-x›²&‹pt-y›²+;' | python3 tools/codepage.py encode > "$TMP/rec/vendor/rpt.g2"
+printf '%s' ':‹fy›‹q-b›;⎘“rpt.g2“⊜q a ‹b›;3 4‹pt›‹n2›Ṅ7 8q9‹set-q-a›"‹fy›\\‹q-a›+Ṅ7→‹v›←‹v›Ṅ' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.records"
+( cd "$TMP/rec" && "$TMP/seed" < "$TMP/src.records" > "$TMP/old.records" 2>/dev/null; chmod +x "$TMP/old.records"
+  "$TMP/golf2" < "$TMP/src.records" > "$TMP/new.records" 2>/dev/null; chmod +x "$TMP/new.records" )
+[ "$("$TMP/new.records" 2>/dev/null)" = "25177" ] \
+  && ok "prelude + records and a vendor/ include run (W11-4A)" || no "records program output: $("$TMP/new.records" 2>&1)"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k include records; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
 done
+
+# W11-3B: `golf2 -g` only adds the symbol map on fd 2, so it still emits the
+# seed's bytes (the seed ignores argv) — over the same corpus.
+w113b=""
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k include; do
+  case $t in hello) s=examples/v1/hello.golf;; fizz) s=examples/v1/fizzbuzz.golf;; *) s="$TMP/src.$t";; esac
+  "$TMP/golf2" -g < "$s" > "$TMP/g.$t" 2> "$TMP/g.$t.map" && cmp -s "$TMP/g.$t" "$TMP/old.$t" || w113b="$w113b $t"
+done
+[ -z "$w113b" ] && [ "$(grep -c '^‹sq› 0x40' "$TMP/g.include.map")" = 1 ] \
+  && ok "golf2 -g == seed on every input above, and the map names the included ‹sq› (W11-3B)" || no "golf2 -g differs from seed on:$w113b"
 
 echo "Both compilers reject an undefined word, with the same status"
 # This is the ONE place the two source forms deliberately differ, so it is
@@ -185,7 +219,7 @@ cat "$TMP/pre.gb" <(printf '%s' '5qN' | python3 tools/codepage.py encode) > "$TM
   || no "undefined-word status differs (seed $sst, golf2 $gst)"
 [ ! -s "$TMP/bad.old" ] && [ ! -s "$TMP/bad.new" ] \
   && ok "neither leaves a partial binary on fd 1" || no "partial binary on rejection"
-[ "$(cat "$TMP/bad.newerr")" = "GOLF: undefined word q" ] && [ ! -s "$TMP/bad.olderr" ] \
+[ "$(cat "$TMP/bad.newerr")" = "GOLF: undefined word q at line 1" ] && [ ! -s "$TMP/bad.olderr" ] \
   && ok "golf2 explains it on fd 2; the seed, in v1 GOLF, cannot" || no "diagnostic text"
 # W9-1C: `′q` reaches the same rejection through X, which hands a name that is
 # neither a word nor an atom to `e` — in both source forms.
@@ -193,7 +227,7 @@ cat "$TMP/pre.gb" <(printf '%s' '3⍳′q€⍕' | python3 tools/codepage.py enc
 "$TMP/seed"  < "$TMP/badref.src" > "$TMP/badref.old" 2>/dev/null; sst=$?
 "$TMP/golf2" < "$TMP/badref.src" > "$TMP/badref.new" 2>"$TMP/badref.newerr"; gst=$?
 [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badref.old" ] && [ ! -s "$TMP/badref.new" ] \
-  && [ "$(cat "$TMP/badref.newerr")" = "GOLF: undefined word q" ] \
+  && [ "$(cat "$TMP/badref.newerr")" = "GOLF: undefined word q at line 1" ] \
   && ok "both reject ′ of an undefined name the same way (W9-1C)" \
   || no "′undefined rejection differs (seed $sst, golf2 $gst)"
 
@@ -203,7 +237,7 @@ cat "$TMP/pre.gb" <(printf '%s' ':‹f›‹g›;' | python3 tools/codepage.py e
 "$TMP/seed"  < "$TMP/badlong.src" > "$TMP/badlong.old" 2>/dev/null; sst=$?
 "$TMP/golf2" < "$TMP/badlong.src" > "$TMP/badlong.new" 2>"$TMP/badlong.newerr"; gst=$?
 [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badlong.old" ] && [ ! -s "$TMP/badlong.new" ] \
-  && [ "$(cat "$TMP/badlong.newerr")" = "GOLF: undefined word ‹g›" ] \
+  && [ "$(cat "$TMP/badlong.newerr")" = "GOLF: undefined word ‹g› at line 1" ] \
   && ok "both reject an undefined long name at end of input (M2)" \
   || no "undefined long name rejection differs (seed $sst, golf2 $gst)"
 
@@ -213,7 +247,7 @@ cat "$TMP/pre.gb" <(printf '%s' ':fq;′r_' | python3 tools/codepage.py encode) 
 "$TMP/seed"  < "$TMP/badone.src" > "$TMP/badone.old" 2>/dev/null; sst=$?
 "$TMP/golf2" < "$TMP/badone.src" > "$TMP/badone.new" 2>"$TMP/badone.newerr"; gst=$?
 [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badone.old" ] && [ ! -s "$TMP/badone.new" ] \
-  && [ "$(cat "$TMP/badone.newerr")" = "GOLF: undefined word q" ] \
+  && [ "$(cat "$TMP/badone.newerr")" = "GOLF: undefined word q at line 1" ] \
   && ok "both reject a one-byte name never defined, at end of input (W10-A)" \
   || no "undefined one-byte name rejection differs (seed $sst, golf2 $gst)"
 # W10-A: the 1025th long name is refused by both.
@@ -222,7 +256,7 @@ python3 -c 'import sys; sys.stdout.write("".join(":‹v%d›;" % k for k in rang
 "$TMP/seed"  < "$TMP/badmany.src" > "$TMP/badmany.old" 2>/dev/null; sst=$?
 "$TMP/golf2" < "$TMP/badmany.src" > "$TMP/badmany.new" 2>"$TMP/badmany.newerr"; gst=$?
 [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badmany.old" ] && [ ! -s "$TMP/badmany.new" ] \
-  && [ "$(cat "$TMP/badmany.newerr")" = "GOLF: too many long names ‹v$((1025 - w10p))›" ] \
+  && [ "$(cat "$TMP/badmany.newerr")" = "GOLF: too many long names ‹v$((1025 - w10p))› at line 1" ] \
   && ok "both refuse the 1025th long name (W10-A)" \
   || no "too-many-long-names rejection differs (seed $sst, golf2 $gst)"
 
@@ -233,9 +267,29 @@ cat "$TMP/pre.gb" <(printf '%s' "⊡f$w94d;" | python3 tools/codepage.py encode)
 "$TMP/seed"  < "$TMP/badloc.src" > "$TMP/badloc.old" 2>/dev/null; sst=$?
 "$TMP/golf2" < "$TMP/badloc.src" > "$TMP/badloc.new" 2>"$TMP/badloc.newerr"; gst=$?
 [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badloc.old" ] && [ ! -s "$TMP/badloc.new" ] \
-  && [ "$(cat "$TMP/badloc.newerr")" = "GOLF: too many locals ‹l17›" ] \
+  && [ "$(cat "$TMP/badloc.newerr")" = "GOLF: too many locals ‹l17› at line 1" ] \
   && ok "both reject a 17th local in one ⊡ word (M-FRAME2)" \
   || no "too-many-locals rejection differs (seed $sst, golf2 $gst)"
+
+# W11-2A: a missing include is refused by both; only golf2 can say which.
+cat "$TMP/pre.gb" <(printf '%s' "⎘“$TMP/inc.none.g2“1Ṅ" | python3 tools/codepage.py encode) > "$TMP/badinc.src"
+"$TMP/seed"  < "$TMP/badinc.src" > "$TMP/badinc.old" 2>"$TMP/badinc.olderr"; sst=$?
+"$TMP/golf2" < "$TMP/badinc.src" > "$TMP/badinc.new" 2>"$TMP/badinc.newerr"; gst=$?
+[ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badinc.old" ] && [ ! -s "$TMP/badinc.new" ] && [ ! -s "$TMP/badinc.olderr" ] \
+  && [ "$(cat "$TMP/badinc.newerr")" = "GOLF: cannot include $TMP/inc.none.g2 at line 1" ] \
+  && ok "both refuse a missing include, exit 2 (W11-2A)" \
+  || no "missing-include rejection differs (seed $sst, golf2 $gst)"
+
+# W11-4A: a malformed record header is refused by both; only golf2 can say how.
+w114a=""
+for w114s in '⊜‹p›;|record without fields ‹p›' '⊜‹p›‹x›|record without ; ‹p›' '⊜‹p›x(;|bad record field (' '⊜(x;|bad record name ('; do
+  cat "$TMP/pre.gb" <(printf '%s' "${w114s%%|*}" | python3 tools/codepage.py encode) > "$TMP/badrec.src"
+  "$TMP/seed"  < "$TMP/badrec.src" > "$TMP/badrec.old" 2>"$TMP/badrec.olderr"; sst=$?
+  "$TMP/golf2" < "$TMP/badrec.src" > "$TMP/badrec.new" 2>"$TMP/badrec.newerr"; gst=$?
+  [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badrec.old" ] && [ ! -s "$TMP/badrec.new" ] && [ ! -s "$TMP/badrec.olderr" ] \
+    && [ "$(cat "$TMP/badrec.newerr")" = "GOLF: ${w114s#*|} at line 1" ] || w114a="$w114a [${w114s%%|*}: seed $sst, golf2 $gst]"
+done
+[ -z "$w114a" ] && ok "both refuse a malformed ⊜ header, exit 2 (W11-4A)" || no "malformed-record rejection differs:$w114a"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

@@ -46,8 +46,9 @@
 #   0x410034   (m+52) a 4-byte staging cell: `e` builds the two bytes of its
 #              undefined-word diagnostic here (the name, then a newline), the
 #              only fixed address this compiler writes outside the three below
-#   0x411000   output buffer B: the byte at file offset f is stored at B+f
-#   0x4E0000   variable bank: cell for name x is at 0x4E0000+8*x  (→x / ←x)
+#   0x4E0000   variable bank: cell for name x is at 0x4E0000+8*x  (→x / ←x).
+#              The cells of names 0..7 (control bytes, never a variable here)
+#              hold W11-3B's saved ‹pos› per include level, written with `!`
 #   0x480000   long-name table (M2): the name with number E (256..1279) has
 #              a 64-byte entry at 0x47C000+64*E — [length:4][up to 60 bytes];
 #              E = 1280 (0x490000) is scratch: ‹readname› reads a name into
@@ -59,11 +60,14 @@
 #              0x492000+4*N, N = 0..1279 (W10-A moved it up from v1's D+2048,
 #              where 256 one-byte and 256 long slots were all that fit below
 #              the output buffer)
+#   0x494000   output buffer B: the byte at file offset f is stored at B+f;
+#              196608 bytes (192 KB, the program-size cap) plus slack up to
+#              the thunk arena at 0x4D0000 (W11-1E; it was v1's D+4096 =
+#              0x411000, which had room for 64 KB)
 #
-# The output buffer is the one v1 documents as D+4096 with D = 0x410000.  None
-# of these regions is ever seen by a compiled program, so moving one changes
-# no emitted byte.  A target virtual address is bufaddr - 69632 (= file offset
-# + 0x400000).
+# None of these regions is ever seen by a compiled program, so moving one
+# changes no emitted byte.  A target virtual address is bufaddr - 606208
+# (= file offset + 0x400000).
 #
 # The compiler's scalar state lives in the variable bank instead of v1's D+0..
 # D+28 cells.  It owns its whole process — user programs are *compiled*, never
@@ -117,6 +121,37 @@
 # and one compiler-only table outside the bank: the name number of local slot i
 # is the 4-byte cell at m+96+4*i = 4259936+4*i, i < 16 (../REGISTRY.md §3).
 #
+# W11-2A (include) adds three, live for the whole compile, and its own region
+# at 0x438000 (the path, the saved-fd stack, the include-once table — see the
+# Include section below).  It borrows ‹len› ‹ch› ‹entry› ‹other› ‹left› ‹idx›
+# from M2 while a ⎘ is read, when no long name is:
+#
+#   ‹depth›     how many included files are open (0 = reading the program)
+#   ‹includes›  how many paths the include-once table holds
+#   ‹fd›        the descriptor being entered or left
+#
+# W11-3B (source positions, `-g`) adds three more, also live for the whole
+# compile:
+#
+#   ‹pos›    where the reader is: line*64 + file (‹read›, ‹where›)
+#   ‹debug›  1 when the compiler was run as `golf2 -g` (the symbol map)
+#   ‹at›     a word's body address while ‹symbols› writes its line
+#
+# The seed has none of it: it reports no messages (see test/selfcheck.sh),
+# and positions and the map never change an emitted byte, so the seed needed
+# no edit for them.  REGISTRY.md's m+176..m+188 (3B's scratch) stay unused.
+#
+# W11-4A (records, ⊜) adds five, live for the span of one ⊜ header, and its
+# own region at 0x43C000 (the field table; see Records below):
+#
+#   ‹record›  the record's name number
+#   ‹fields›  how many fields it has
+#   ‹field›   the field whose words are being emitted
+#   ‹from›    ‹recname›'s byte pointer, ‹upto› one past its last byte
+#
+# It borrows ‹entry› ‹len› ‹ch› ‹idx› ‹other› ‹left› from M2 to build and
+# intern the names it invents, and ‹left› from W11-2A for ‹vendor›'s copy.
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -124,9 +159,12 @@
 # together, for exactly the span of one chain definition, and the seed holds the
 # same five in its own scratch at m32..m48 (../REGISTRY.md §3).
 #
-# Words, in definition-before-use order: B Y Z U a o L w W k c C f E ‹say› V
-# ‹die› ‹badname› ‹same› ‹readname› ‹getname› ‹forward› ‹resolve› ‹undefined›
-# e D g h X ‹badlocal› ‹slot› t H.  The M2 words have long names for the same reason their state
+# Words, in definition-before-use order: B Y Z U ‹read› ‹say› ‹put› ‹digits›
+# ‹hexits› ‹where› ‹toolarge› a o L w W k c C f E V ‹showname› ‹die› ‹badname›
+# ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹forward› ‹resolve›
+# ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
+# g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
+# ‹recstore› ‹recfields› ‹defrecord› t H.  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -164,8 +202,8 @@
 # ---------------------------------------------------------------------------
 
 :B          # B : the output buffer's base address              [ -> addr ]
-4263936     # 0x411000.  File offset f is held at B+f.
-;
+4800512     # 0x494000 (W11-1E; v1's D+4096 = 0x411000 held only 64 KB).
+;           # File offset f is held at B+f.
 
 :Y          # Y : the dictionary slot of a word name            [ name -> addr ]
 4*          # one 4-byte cell per name ...
@@ -184,15 +222,149 @@
 10<         # unsigned < 10, so a non-digit gives 0 (and `[` fires on 0)
 ;
 
+# W11-3B: source positions.  ‹pos› is the place the compiler is reading, packed
+# into one number: line*64 + file, where file is 0 for the program on fd 0 and
+# k+1 for the include-once table's entry k (an included file, see Include
+# below; 60 entries, so file < 64).  ‹read› is the ONLY reader of fd 0 — every
+# `(` the compiler used to write goes through it — so every newline (byte 10)
+# is counted, inside strings, comments and raw blobs too, and a diagnostic can
+# say `at line 3` or `at x.g2 line 3` (‹where›).  A form feed (byte 12) between
+# tokens restarts the count at line 1 (case 12 in `t`): tools/golfc puts one
+# between the prelude and the program, so the line is the user's.  None of
+# this reaches an emitted byte.
+
+:‹read›     # ‹read› : one byte from fd 0, counting lines          [ -> ch ]
+(
+"
+10﹣
+[           # a newline: the next line of the same file
+←‹pos›
+64﹢
+→‹pos›
+]
+;
+
 
 # ---------------------------------------------------------------------------
 # Emitting bytes into the output buffer
 # ---------------------------------------------------------------------------
 
+:‹say›      # ‹say› : write a “…“ block to fd 2                  [ msgblock -> ]
+→S          # park the block; its address is needed twice
+2           # fd 2
+←S
+4+          # the bytes start after the block's 4-byte length field ...
+←S
+@           # ... which is the length
+1⎈          # write(2, msg, len)
+_
+;
+
+:‹put›      # ‹put› : write one byte to fd 2, staged in m+52       [ ch -> ]
+4259892!
+2
+4259892
+1
+1⎈
+_
+;
+
+:‹digits›   # ‹digits› : write n > 0 in decimal to fd 2 (0 writes nothing) [ n -> ]
+"
+[
+_
+^
+]
+"
+10/         # the higher digits first ...
+‹digits›
+10%         # ... then this one
+48﹢
+‹put›
+;
+
+:‹hexits›   # ‹hexits› : write n > 0 in lower-case hex to fd 2      [ n -> ]
+"
+[
+_
+^
+]
+"
+16/
+‹hexits›
+15$
+"
+10<
+[           # a-f: '0'+10+39 = 'a'
+39﹢
+]
+48﹢
+‹put›
+;
+
+:‹where›    # ‹where› : ` at [path ]line N` + newline to fd 2, for ‹pos› [ -> ]
+“ at“       # Every compile diagnostic but `program too large` (a property of
+‹say›       # the whole image, not of a place) ends with this (W11-3B).
+←‹pos›
+63$         # the file: 0 is the program itself, k+1 include-table entry k
+"
+1<
+[           # an included file: name it, as its ⎘ wrote it
+32
+‹put›
+256﹡
+4423936﹢   # 0x438200 + 256*(file-1): [len:4][path bytes]
+→‹other›
+2
+←‹other›
+4﹢
+←‹other›
+@
+1⎈
+_
+0
+]
+_
+“ line “
+‹say›
+←‹pos›
+64/
+‹digits›
+10
+‹put›
+;
+
+# W11-1E: the program-size cap.  A compiled program is ONE PT_LOAD at
+# 0x400000 and its image may not reach 0x430000, the lowest address a compiled
+# program uses at run time (W11-1C's output buffer, ../REGISTRY.md §3): at most
+# 196608 bytes = 192 KB, header included.  `a` is the only word that moves the
+# cursor, so it is where the cap is checked — before the buffer can run past
+# B+192 KB into anything the compiler itself still needs (the largest single
+# advance is one 255-byte template, and 0x4C4000..0x4CFFFF is slack).
+
+:‹toolarge› # ‹toolarge› : the output passed the cap               [ -> !!! ]
+“GOLF: program too large“
+‹say›
+10          # a newline, staged in m+52
+4259892!
+2
+4259892
+1
+1⎈
+_
+2.          # exit(2); nothing has been written to fd 1
+;
+
 :a          # a : advance the write cursor by n                    [ n -> ]
 ←p
 +
+"
 →p
+4997121     # B + 196608 + 1: the cursor may stand AT the cap, not past it
+<
+[           # not below it: too large
+‹toolarge›
+]
 ;
 
 :o          # o : emit one byte                                    [ b -> ]
@@ -326,32 +498,16 @@ C
 # Compiling one ordinary token
 # ---------------------------------------------------------------------------
 
-:‹say›      # ‹say› : write a “…“ block to fd 2                  [ msgblock -> ]
-→S          # park the block; its address is needed twice
-2           # fd 2
-←S
-4+          # the bytes start after the block's 4-byte length field ...
-←S
-@           # ... which is the length
-1⎈          # write(2, msg, len)
-_
-;
-
 :V          # V : report a compile error and stop            [ msgblock -> !!! ]
-            # Writes `<msg> <the byte in b>` to fd 2 and exits 2.  fd 2, never
+            # Writes `<msg><the byte in b> at line N` to fd 2 and exits 2.  fd 2, never
             # fd 1: fd 1 is carrying the binary.  Every caller has already put
             # the offending byte in `b`, which is where the handlers keep the
             # name they are working on anyway.  A word rather than three copies
             # of the same fifteen ops — the compiler is small on purpose.
 ‹say›       # the message
 ←b
-2560+       # the offending byte, with a newline (10<<8) stacked above it
-4259892!    # staged in the compiler's own scratch cell at m+52
-2
-4259892
-2
-1⎈          # write(2, m+52, 2) — the byte, then the newline
-_
+‹put›       # the offending byte
+‹where›     # where it was (W11-3B), and the newline
 2.          # exit(2).  No output file is worth completing.
 ;
 
@@ -366,9 +522,8 @@ _
 # name N's forward-reference head is the cell at 0x490400 + 4*N.  Both regions
 # are compiler-only (../REGISTRY.md §3); a compiled program never sees them.
 
-:‹die›      # ‹die› : `<msg>‹name›` + newline to fd 2, exit 2   [ msg entry -> !!! ]
+:‹showname› # ‹showname› : write `‹name›` to fd 2          [ entry -> ]
 →‹other›    # the name's table entry
-‹say›
 12157154    # 0xB980E2: the three UTF-8 bytes of ‹, staged in m+52.  A string
 4259892!    # literal would put high bytes in this source that selfcheck.sh's
 2           # seed-compilability check (rightly) refuses, so they are a number
@@ -383,13 +538,21 @@ _
 @           # ... and its length
 1⎈
 _
-179994850   # 0x0ABA80E2: ›, then a newline
+12222690    # 0xBA80E2: the three UTF-8 bytes of ›
 4259892!
 2
 4259892
-4
+3
 1⎈
 _
+;
+
+:‹die›      # ‹die› : `<msg>‹name› at line N` + newline to fd 2, exit 2 [ msg entry -> !!! ]
+→‹site›     # (‹site› is free: ‹undefined› has read its last one)
+‹say›
+←‹site›
+‹showname›
+‹where›     # where it was (W11-3B), and the newline
 2.
 ;
 
@@ -430,7 +593,12 @@ _           # drop the last byte difference (0, or the dummy)
 }
 ;
 
-:‹readname› # ‹readname› : read a long name after ‹, intern it  [ -> 256+index ]
+# W11-4A split ‹readname› into the pieces ⊜ needs as well, because a record
+# INVENTS names (‹point-x›, ‹set-point-x›) and interns them exactly as if they
+# had been read: ‹fresh› starts a name in the next free entry, ‹legal› is the
+# name-byte test, ‹intern› looks the finished name up or claims its entry.
+
+:‹fresh›    # ‹fresh› : start a name in the next free table entry  [ -> ]
 ←‹count›
 256﹢
 64﹡
@@ -438,58 +606,10 @@ _           # drop the last byte difference (0, or the dummy)
 →‹entry›    # read it straight into the next free entry: a new name is then
 0           # interned just by counting it, with no copy
 →‹len›
-{
-(
-"
-181﹣
-[           # › : the name is complete
-_
-←‹len›
-←‹entry›
-!           #   its length goes in the entry's first cell
-←‹len›
-[           #   ‹› is not a name
-‹badname›
-]
-0
-→‹idx›
-{           #   look for it among the names seen so far
-←‹idx›
-←‹count›
-﹣
-[           #     not one of them: a new name
-←‹count›
-1024<
-[           #       1024 long names fill the table
-“GOLF: too many long names “
-←‹entry›
-‹die›
-]
-←‹count›
-"
-1﹢
-→‹count›    #       claim the entry it was read into
-256﹢
-^
-]
-←‹idx›
-256﹢
-64﹡
-4702208﹢
-→‹other›
-‹same›
-[           #     the same name: its number
-←‹idx›
-256﹢
-^
-]
-←‹idx›
-1﹢
-→‹idx›
-0
-}
-]
-→‹ch›       # an ordinary byte of the name
+;
+
+:‹legal›    # ‹legal› : may this byte stand in a long name?  [ ch -> -1 or 0 ]
+→‹ch›       # (‹ch› keeps the byte for the caller)
 ←‹ch›
 48﹣
 10<         # 0-9
@@ -508,8 +628,69 @@ _
 ←‹ch›
 45﹣
 1<          # -
-﹢
-[           # -1 for exactly one of those, 0 for anything else — EOF included
+﹢           # -1 for exactly one of those, 0 for anything else — EOF included
+;
+
+:‹intern›   # ‹intern› : the name built in ‹entry›, as a number  [ -> 256+index ]
+←‹len›
+←‹entry›
+!           # its length goes in the entry's first cell
+←‹len›
+[           # ‹› is not a name
+‹badname›
+]
+0
+→‹idx›
+{           # look for it among the names seen so far
+←‹idx›
+←‹count›
+﹣
+[           #   not one of them: a new name
+←‹count›
+1024<
+[           #     1024 long names fill the table
+“GOLF: too many long names “
+←‹entry›
+‹die›
+]
+←‹count›
+"
+1﹢
+→‹count›    #     claim the entry it was read into
+256﹢
+^
+]
+←‹idx›
+256﹢
+64﹡
+4702208﹢
+→‹other›
+‹same›
+[           #   the same name: its number
+←‹idx›
+256﹢
+^
+]
+←‹idx›
+1﹢
+→‹idx›
+0
+}
+;
+
+:‹readname› # ‹readname› : read a long name after ‹, intern it  [ -> 256+index ]
+‹fresh›
+{
+‹read›
+"
+181﹣
+[           # › : the name is complete
+_
+‹intern›
+^
+]
+‹legal›     # an ordinary byte of the name (‹legal› leaves it in ‹ch›)
+[
 ‹badname›
 ]
 ←‹len›
@@ -531,7 +712,7 @@ _
 ;
 
 :‹getname›  # ‹getname› : a prefix's operand                    [ -> name ]
-(           # one byte, as it always was ...
+‹read›      # one byte, as it always was ...
 "
 180﹣
 [           # ... unless it is ‹ : then the whole long name
@@ -549,6 +730,11 @@ o           # the opcode: 0xE8 call, or 0xE9 inside a ′ thunk
 ←p          # this site joins it: the placeholder holds the old head ...
 ←‹head›
 @
+"
+[           # ... or, for the name's FIRST pending site, where it is (W11-3B):
+_           # ‹pos› is always below B, so it also ends the list.  The
+←‹pos›      # placeholder is patched before a byte is written, so this never
+]           # reaches the binary — only ‹undefined›'s message
 w
 ←‹head›
 !           # ... and the head is now this site
@@ -567,6 +753,8 @@ w
 !           # the list is consumed
 {
 ←‹site›
+4800512<    # a site is an address in the buffer B; the last placeholder holds
+1﹢          # the first use's ‹pos›, a smaller number (W11-3B; it was 0)
 [
 ^           # the end of the list
 ]
@@ -604,6 +792,20 @@ Y
 @           # its pending-site list
 1<
 [           # not empty: called, but never defined
+←‹idx›      #   walk its list to the end, the first use, whose placeholder
+4﹡          #   holds the ‹pos› to report (W11-3B)
+4785152﹢
+@
+→‹site›
+{
+←‹site›
+@
+→‹site›
+←‹site›
+4800512<    #   until the value is not a site in B
+}
+←‹site›
+→‹pos›
 “GOLF: undefined word “
 ←‹idx›
 256<
@@ -618,6 +820,56 @@ V
 4702208﹢
 ‹die›
 ]
+←‹idx›
+1﹢
+→‹idx›
+0
+}
+;
+
+:‹symbols› # ‹symbols› : the `-g` map — `name 0xaddr` per defined word [ -> ]
+0           # Every name number, the 256 one-byte names then the long ones,
+→‹idx›      # in that order; a word defined twice shows its LAST body, the one
+{           # a later call binds to.  The name is the raw byte (tools/golfc
+←‹idx›      # turns it into its glyph) or `‹name›`; the address is the body's
+←‹count›    # runtime virtual address, buffer address - 606208 (W11-3B).
+256﹢
+﹣
+[           # every name listed
+^
+]
+←‹idx›
+Y
+@           # its body address, 0 if it is not a word
+"
+1<
+[
+→‹at›
+←‹idx›
+256<
+1﹢
+[           #   a one-byte name: the byte itself
+←‹idx›
+‹put›
+]
+←‹idx›
+256<
+[           #   a long name: ‹name›
+←‹idx›
+64﹡
+4702208﹢
+‹showname›
+]
+“ 0x“
+‹say›
+←‹at›
+606208﹣
+‹hexits›
+10
+‹put›
+0
+]
+_
 ←‹idx›
 1﹢
 →‹idx›
@@ -668,7 +920,7 @@ C           # a template: copy its body verbatim
 :D          # D : read a decimal number, consuming its terminator  [ -> n ]
 0           # the accumulator
 {
-(           # read one char
+‹read›      # read one char
 "
 U
 [           # not a digit ->
@@ -680,12 +932,302 @@ Z           # fold the digit in
 }
 ;
 
+# ---------------------------------------------------------------------------
+# Include (W11-2A): ⎘“path“
+# ---------------------------------------------------------------------------
+#
+# `⎘“path“` (byte 0xB6, then a “…“ string) makes the compiler read that file's
+# bytes as if they stood where the ⎘ is.  The reader never changes: `(` still
+# reads one byte from fd 0.  ‹import› dup()s fd 0 (the includer's input, at
+# its current offset), open()s the file and dup2()s it onto fd 0; when fd 0
+# reaches end of file inside an include, ‹inbyte› dup2()s the saved descriptor
+# back (‹unnest›) and goes on reading the includer from where it stopped.  So
+# includes nest — 8 deep — and a token never spans two files: a file's end
+# is its last token's end.
+#
+# Search: the path as written (relative to the compiler's cwd), then `lib/`
+# + path, then `vendor/` + path (W11-4A: where tools/golfdeps fetches
+# packages; ‹vendor›).  Include-once: a path already included (the same BYTES, as written)
+# is skipped, so a file included twice — or including itself — compiles once.
+# The bytes read are the compiler's input form: raw code-page bytes, exactly
+# what fd 0 carries (tools/golfc encodes an included .golfj first).
+#
+# Memory, compiler-only (../REGISTRY.md §3, the W11-2A region):
+#
+#   0x438000   [len:4][path bytes][0]: the path being included.  The C string
+#              open() takes starts at 0x438004; for the `lib/` retry, the
+#              length cell is overwritten with the 4 bytes `lib/`, making
+#              0x438000 the C string `lib/path`.  At most 250 bytes of path.
+#   0x438100   the saved-fd stack: the dup() of fd 0 for include level k at
+#              0x438100 + 4*k, k < 8
+#   0x438200   the include-once table: path k, k < 60, at 0x438200 + 256*k
+#              in the same [len:4][bytes] form, so ‹same› compares two
+#
+# State in the bank: ‹depth› (open includes), ‹includes› (table entries), ‹fd›
+# (the file being entered or left).  The seed holds the same three in its
+# scratch at m+160, m+164, m+168 (m+172 is its copy countdown).
+
+:‹badinclude› # ‹badinclude› : `<msg><path>` + newline to fd 2, exit 2 [ msg -> !!! ]
+‹say›
+2
+4423684     # the path's bytes, as far as they were read
+←‹len›
+1⎈
+_
+‹where›     # the ⎘'s place in the includer (W11-3B), and the newline
+2.          # exit(2); nothing has been written to fd 1
+;
+
+# W11-4A: `vendor/` is the third place a path is looked for (where
+# tools/golfdeps fetches packages).  It needs 7 bytes in front of the path, and
+# the `lib/` trick has only the 4 of the length cell, so the C string
+# `vendor/path` is built in W11-4A's own region instead: `vendor/` at
+# 0x43F000, then the path, NUL included, copied from 0x438004.
+
+:‹vendor›   # ‹vendor› : open vendor/path, or stop the compile     [ -> fd ]
+1684956534  # 0x646E6576: the bytes `vend`
+4452352!    # at 0x43F000
+3109487     # 0x002F726F: `or/` — its NUL byte is the path's first, below
+4452356!
+0
+→‹left›
+{           # the path and its NUL, 0x438004.. -> 0x43F007..
+4423684
+←‹left›
+﹢
+?
+4452359
+←‹left›
+﹢
+,
+←‹left›
+1﹢
+"
+→‹left›
+←‹len›
+1﹢
+﹣
+1<          # until len+1 bytes are copied
+}
+4452352     # open(vendor/path, O_RDONLY)
+0
+0
+2⎈
+"
+1048576<
+[           # not there either
+“GOLF: cannot include “
+‹badinclude›
+]
+;
+
+:‹import›   # ‹import› : the ⎘ case — enter the file named next [ -> ]
+0→‹len›
+‹read›
+142﹣
+1<
+[           # ⎘ must be followed by a “path“
+“GOLF: cannot include “
+‹badinclude›
+]
+{           # read the path, up to the closing “
+‹read›
+→‹ch›
+←‹ch›
+142﹣
+1<          # -1 at the closing “, which ends the loop
+"
+[           # an ordinary byte of the path
+←‹ch›
+[           #   end of input inside it
+“GOLF: cannot include “
+‹badinclude›
+]
+←‹len›
+250<
+[           #   longer than the 250 bytes the buffer holds
+“GOLF: cannot include “
+‹badinclude›
+]
+←‹ch›
+←‹len›
+4423684﹢
+,
+←‹len›
+1﹢
+→‹len›
+]
+}
+0           # NUL-terminate it for open()
+←‹len›
+4423684﹢
+,
+←‹len›
+4423680!    # and give it its length cell: [len][bytes], a table entry's form
+4423680
+→‹entry›
+0
+→‹idx›
+{           # include-once: is it in the table already?
+←‹idx›
+←‹includes›
+﹣
+1<          # -1 when every entry has been looked at
+"
+[
+←‹idx›
+256﹡
+4424192﹢
+→‹other›
+‹same›
+[           #   the same path: it has been compiled, so there is nothing to do
+_
+^
+]
+←‹idx›
+1﹢
+→‹idx›
+]
+}
+←‹depth›
+8<
+[           # a 9th nested include
+“GOLF: includes nested too deeply “
+‹badinclude›
+]
+←‹includes›
+60<
+[           # a 61st distinct file
+“GOLF: too many includes “
+‹badinclude›
+]
+←‹includes› # remember it, before the `lib/` retry clobbers its length cell
+256﹡
+4424192﹢
+→‹other›
+←‹len›
+4﹢
+→‹left›
+{
+←‹left›
+1﹣
+→‹left›
+4423680
+←‹left›
+﹢
+?
+←‹other›
+←‹left›
+﹢
+,
+←‹left›
+1<
+}
+←‹includes›
+1﹢
+→‹includes›
+4423684     # open(path, O_RDONLY)
+0
+0
+2⎈
+"
+1048576<    # a descriptor; a failure is a negative errno, huge unsigned
+[
+_
+794978668  #   0x2F62696C: the bytes `lib/`, over the length cell
+4423680!
+4423680     #   open(lib/path, O_RDONLY)
+0
+0
+2⎈
+"
+1048576<
+[           #   and then vendor/path (W11-4A)
+_
+‹vendor›
+]
+]
+→‹fd›
+0           # dup(0): the includer's input, saved at this level
+0
+0
+32⎈
+←‹depth›
+4﹡
+4423936﹢
+!
+←‹depth›
+1﹢
+→‹depth›
+←‹fd›       # dup2(fd, 0): fd 0 now reads the file
+0
+0
+33⎈
+_
+←‹fd›       # close(fd): fd 0 holds it
+0
+0
+3⎈
+_
+←‹pos›      # W11-3B: the includer's place is saved at this level, in the bank
+←‹depth›    # cell of the unspellable name depth-1 (0..7: control bytes, never
+8﹡          # a variable here) ...
+5111800﹢
+!
+←‹includes› # ... and the file starts at line 1, as file `entry + 1`
+64﹢
+→‹pos›
+;
+
+:‹unnest›   # ‹unnest› : leave the innermost include             [ -> ]
+←‹depth›
+1﹣
+→‹depth›
+←‹depth›
+4﹡
+4423936﹢
+@
+→‹fd›
+←‹fd›       # dup2(saved, 0): back to the includer, where it stopped
+0
+0
+33⎈
+_
+←‹fd›       # close(saved)
+0
+0
+3⎈
+_
+←‹depth›    # W11-3B: and back to the includer's place
+8﹡
+5111808﹢
+@
+→‹pos›
+;
+
+:‹inbyte›   # ‹inbyte› : one input byte, across include boundaries  [ -> ch ]
+0           # a dummy for the first `_` below
+{
+_
+‹read›
+"
+[           # 0: the end of this file
+←‹depth›
+[           #   of the outermost one: the real end of input
+^
+]
+‹unnest›    #   of an included one: go on with the includer
+]
+"
+}
+;
+
 :g          # g : the next input char, honouring the pushback      [ -> ch ]
 ←q
 "
 [           # nothing pushed back ->
 _
-(           #   read a fresh byte from stdin (0 at EOF)
+‹inbyte›    #   read a fresh byte (0 at the end of input)
 ^
 ]
 0
@@ -694,7 +1236,7 @@ _
 
 :h          # h : skip a comment — read to end of line or EOF      [ -> ]
 {
-(
+‹read›
 "
 10-
 [           # newline ->
@@ -745,7 +1287,7 @@ f
 ‹forward›
 L
 ←r
-69632﹣
+606208﹣
 w
 ^
 ]
@@ -764,11 +1306,11 @@ E           #   [the atom's own template]
 k           #   backpatch the jmp to land after the thunk
 L
 ←r
-69632-
+606208-
 w           #   emit `push imm32 <the thunk's address>`
 ^
 ]
-69632-      # a defined word: push its body address directly
+606208-      # a defined word: push its body address directly
 L
 w
 ;
@@ -870,6 +1412,281 @@ V
 
 
 # ---------------------------------------------------------------------------
+# Records (W11-4A): ⊜‹point›‹x›‹y›;
+# ---------------------------------------------------------------------------
+#
+# `⊜` (byte 0xB7) is a header the compiler expands, at compile time, into
+# ordinary words over a plain list — no runtime support, no new prelude word:
+#
+#   ‹point›        x y -> rec       n values, the first deepest, -> a new n-list
+#   ‹point-x›      rec -> x         field k is element k, read through ⊇ (I)
+#   ‹set-point-x›  rec v -> rec     field k := v, in place
+#
+# The record name and every field are names — a ‹long name› or one byte that
+# may stand in one (0-9 A-Z a-z _ -), since a field's byte is spelled into
+# `‹point-x›` — read up to `;`; whitespace between them is skipped.  The record
+# name follows the ⊜ directly.  The words are emitted exactly as if their
+# definitions had been written out, with `-` joining the parts (`.` is not a
+# long-name byte):
+#
+#   :‹point› 2⍳ \&16≪16>16﹢⊛ \&16≪16>8﹢⊛ ;          (one `\&…⊛` per field, last first)
+#   :‹point-x› 0⊇;   :‹set-point-x› &0⊇_&16≪16>8﹢⊛;   (k = 0; 8k+8 is its cell)
+#
+# — so ⊇ still checks the index and use after free on every access, a forward
+# call to ‹point-x› is patched like any other, and an unknown field
+# (‹point-z›) is just an undefined word.  Every invented name is interned like
+# a read one and counts against the 1024.
+#
+# Memory, compiler-only (../REGISTRY.md §3, the W11-4A region 0x43C000..):
+#
+#   0x43C000   the field table: field k's name number at 0x43C000 + 4*k, k < 256
+#   0x43F000   `vendor/path`, the C string ‹vendor› opens (Include, above)
+#
+# State in the bank: ‹record› (the record's name number), ‹fields› (how many),
+# ‹field› (the one being emitted), ‹from› / ‹upto› (‹recname›'s walk).  The
+# seed holds the first four at m+192..m+204 and its byte countdown at 0x43FF00.
+
+:‹badrecord› # ‹badrecord› : reject the record being read   [ msgblock -> !!! ]
+←‹record›
+→b
+‹badlocal›  # `<msg><the record's name> at line N`, exit 2
+;
+
+:‹recbyte›  # ‹recbyte› : append one byte to the name being built  [ ch -> ]
+←‹len›
+60<
+[           # an entry holds 60 bytes of name
+‹badname›
+]
+←‹entry›
+4﹢
+←‹len›
+﹢
+,
+←‹len›
+1﹢
+→‹len›
+;
+
+:‹recname›  # ‹recname› : append a name's spelling to it        [ name -> ]
+"
+256<
+1﹢
+[           # a one-byte name: the byte itself
+‹recbyte›
+^
+]
+64﹡         # a long name: the bytes of its table entry
+4702208﹢
+→‹from›
+←‹from›
+←‹from›
+@
+﹢
+4﹢
+→‹upto›     # one past its last byte
+←‹from›
+4﹢
+→‹from›
+{
+←‹from›
+?
+‹recbyte›
+←‹from›
+1﹢
+"
+→‹from›
+←‹upto›
+﹣
+1<
+}
+;
+
+:‹recdef›   # ‹recdef› : `:name`'s header, for a name number   [ name -> site ]
+→b          # exactly what the ':' case in `t` emits: jmp over the body,
+233o        # dict[name] = the body, patch the forward calls, the prologue
+←p
+4﹢
+←b
+Y
+!
+‹resolve›
+←p
+0
+w
+1E
+;
+
+:‹recstore› # ‹recstore› : emit `&16≪16>` 8k+8 `﹢⊛` — v into cell k [ k -> ]
+38e         # &  : rec v rec
+16W
+162e        # ≪
+16W
+62e         # >  : the list's address, untagged
+1﹢
+8﹡
+W
+145e        # ﹢  : + 8k+8, past the length cell
+165e        # ⊛  : rec
+;
+
+:‹recfields› # ‹recfields› : read the field names up to `;`    [ -> ]
+0
+→‹fields›
+{
+‹read›
+→b
+←b
+59﹣
+[           # ; : the header is complete
+←‹fields›
+[
+“GOLF: record without fields “
+‹badrecord›
+]
+^
+]
+←b
+[           # end of input first
+“GOLF: record without ; “
+‹badrecord›
+]
+←b
+33<
+[           # not whitespace: a field
+←b
+180﹣
+[
+‹readname›
+→b
+]
+←b
+256<
+1﹢
+[
+←b
+‹legal›
+[
+“GOLF: bad record field “
+V
+]
+]
+←‹fields›
+256<
+[
+“GOLF: too many record fields “
+‹badrecord›
+]
+←b
+←‹fields›
+4﹡
+4440064﹢
+!
+←‹fields›
+1﹢
+→‹fields›
+]
+0
+}
+;
+
+:‹defrecord› # ‹defrecord› : the ⊜ case                         [ -> ]
+‹getname›
+→‹record›
+←‹record›
+256<
+1﹢
+[           # a one-byte record name must be spellable in ‹point-x›
+←‹record›
+‹legal›
+[
+←‹record›
+→b
+“GOLF: bad record name “
+V
+]
+]
+‹recfields›
+←‹record›   # the constructor: `n⍳`, then each value into its cell, last first
+‹recdef›
+←‹fields›
+W
+82e         # ⍳ (R)
+←‹fields›
+→‹field›
+{
+←‹field›
+1﹣
+→‹field›
+92e         # \  : the list over the value below it
+←‹field›
+‹recstore›
+←‹field›
+1<
+}
+94E
+k
+0
+→‹field›
+{           # per field k: the accessor, then the setter
+‹fresh›
+←‹record›
+‹recname›
+45
+‹recbyte›
+←‹field›
+4﹡
+4440064﹢
+@
+‹recname›
+‹intern›    # ‹point-x›
+‹recdef›
+←‹field›
+W
+73e         # ⊇ (I)
+94E
+k
+‹fresh›
+115
+‹recbyte›
+101
+‹recbyte›
+116
+‹recbyte›
+45
+‹recbyte›
+←‹record›
+‹recname›
+45
+‹recbyte›
+←‹field›
+4﹡
+4440064﹢
+@
+‹recname›
+‹intern›    # ‹set-point-x›
+‹recdef›
+38e         # &
+←‹field›
+W
+73e         # ⊇ : the index and use-after-free checks
+95e         # _
+←‹field›
+‹recstore›
+94E
+k
+←‹field›
+1﹢
+"
+→‹field›
+←‹fields›
+﹣
+1<
+}
+;
+
+
+# ---------------------------------------------------------------------------
 # The token dispatcher
 # ---------------------------------------------------------------------------
 #
@@ -881,6 +1698,17 @@ V
 # stack *is* the compile-time backpatch stack.
 
 :t
+"
+12-
+[           # a form feed : whitespace that restarts the line count (W11-3B)
+_
+←‹pos›
+63$         #   the same file, at line 1
+64﹢
+→‹pos›
+^
+]
+
 "
 33<
 1+
@@ -903,7 +1731,7 @@ U
 [           # '0'..'9' : a decimal literal
 48-         #   seed the accumulator with this digit
 {
-(           #   read the next char
+‹read›      #   read the next char
 "
 U
 [           #   not a digit: the number ends here
@@ -920,7 +1748,7 @@ Z           #   fold the digit in
 39-
 [           # 39 is the quote: a char literal, emitted as push imm32 <next byte>
 _
-(
+‹read›
 L
 w
 ^
@@ -1047,10 +1875,10 @@ D           #   its length, in decimal, terminated by one space
 "
 w           #   the length is exactly the jmp displacement
 ←p
-69632-
+606208-
 →v          #   the data's virtual address, for the push below
 {
-(           #   copy that many bytes straight from stdin to the output
+‹read›      #   copy that many bytes straight from stdin to the output
 o
 1-
 "
@@ -1084,14 +1912,14 @@ w
 ←p
 →l          #   the block's 4-byte length field goes here
 ←p
-69632-
+606208-
 →v          #   ... and its address is the string's value
 0
 w           #   the length, as a placeholder for now
 0
 →x          #   no bytes copied yet
 {
-(           #   read one byte of the string
+‹read›      #   read one byte of the string
 "
 142-
 [           #   the closing “ :
@@ -1247,6 +2075,22 @@ w           #   ... emitted as a placeholder, and left on the stack for ';'
 ]
 
 "
+182-
+[           # 0xB6 ⎘ : include a file (W11-2A)
+_
+‹import›
+^
+]
+
+"
+183-
+[           # 0xB7 ⊜ : a record header, expanded into words (W11-4A)
+_
+‹defrecord›
+^
+]
+
+"
 180-
 [           # 0xB4 ‹ : a long name used as a token.  It is read and interned,
 _           #   and its NUMBER takes the char's place on the stack — then falls
@@ -1356,6 +2200,24 @@ B
 # ---------------------------------------------------------------------------
 
 →T          # the blob escape just pushed the template table's address
+64→‹pos›    # line 1 of the program (W11-3B)
+0→‹debug›   # `-g` (W11-3B): argv[1] is the 8-byte cell 16 past the entry rsp,
+5177408     # whose stash STARTUP2 left at 0x4F0040 (0 when there is none)
+⊙
+16﹢
+⊙
+"
+1<
+[           # an argument: is it exactly `-g`?
+@
+16777215$   #   its first three bytes: `-`, `g`, the NUL
+26413﹣      #   0x00672D
+"
+[
+1→‹debug›
+]
+]
+_
 H           # paint the ELF header into the (zeroed) buffer
 B
 120+
@@ -1373,7 +2235,19 @@ t           #   compile it
 
 ‹undefined› # a name called but never defined stops here, before a byte of
             # output exists (M2, W10-A)
+←‹debug›
+1-
+[           # `-g`: the symbol map, to fd 2 (W11-3B)
+‹symbols›
+]
 5E          # blob record 5: exit(0)
+
+←p          # W11-1E: p_filesz is the image's true size, not v1's fixed
+B           # 0x10000 (record 4 still carries that and H painted it): the
+-           # kernel maps exactly the file, and everything past it — m and this
+B           # buffer in the compiler's own process — is BSS
+96+         # p_filesz is the 8 bytes at header offset 64+32; the size is under
+!           # 2^31, so the 32-bit store writes it and zeroes the old 0x01 byte
 
 B
 →A          # flush the buffer to stdout, one byte at a time
