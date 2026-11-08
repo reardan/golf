@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""golfgdb — debug a GOLF program in gdb, by word name (W11-4D).
+
+    tools/golfc -j -g prog.golfj prog      # writes prog and prog.map
+    tools/golfgdb prog [args...]           # gdb -q -x <script> --args prog args...
+    tools/golfgdb --emit FILE prog         # only write the gdb script to FILE
+    tools/golfgdb --batch-script CMDS prog [args...]
+                                           # gdb -batch: the script, then CMDS
+
+A GOLF binary has no section headers and no symbols, and its calling
+convention is not the C one (rsp is the DATA stack, rbp the RETURN stack: a
+word's prologue `sub rbp,8; pop [rbp]` parks the call's return address at
+[rbp]), so gdb's own `break NAME`, `bt` and `info frame` know nothing.  This
+tool reads prog.map (from `golfc -g`) and the binary, and generates a gdb
+script whose embedded Python defines:
+
+    golf-break NAME...  break in each named word, just after its prologue (so
+                        the word's arguments are on the data stack and its
+                        return address is at [rbp]).  NAME is spelled as in the
+                        map — a glyph, an ASCII letter or `‹long›` — or a long
+                        name without its brackets (`golf-break sq`).
+    golf-bt             the return stack as a backtrace of word names, innermost
+                        first: #0 is the word $pc is in, then one frame per
+                        return address found on the return stack.
+    golf-stack [N]      the top N (default 8) data-stack cells, top first, as
+                        signed integers; a list value also shows its length and
+                        first elements.
+    golf-where          the word $pc is in, and the offset into it.
+    golf-words [TEXT]   the map's words (whose names contain TEXT), with ranges.
+
+and prints `golf-where` every time the program stops.
+
+A word's extent comes from the binary: every body is preceded by the `jmp`
+that skips it (`E9 rel32`), so the body is [ADDR, ADDR + rel32).  Code in no
+word is "(top level)" (the program's and the prelude's top-level code), and
+code in the M-CHAIN thunk arena 0x4D0000–0x4E0000 is "(thunk)".  The return
+stack runs from rbp up to the segment end (p_vaddr + p_memsz, 0x600000); a cell
+on it counts as a return address when the bytes just before it in memory are a
+call instruction (`E8 rel32`, `FF 14 25 abs32`, `FF /2` through a register), so
+the ⊡ locals that share the return stack are skipped.
+"""
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+
+BASE = 0x400000
+
+
+def load(prog):
+    """[(name, start, end)] sorted by start, and the return-stack top."""
+    mp = prog + ".map"
+    if not os.path.isfile(mp):
+        sys.exit("golfgdb: no %s (compile with `tools/golfc -g ...`)" % mp)
+    img = open(prog, "rb").read()
+    if img[:4] != b"\x7fELF":
+        sys.exit("golfgdb: %s is not an ELF binary" % prog)
+    vaddr, = struct.unpack_from("<Q", img, 64 + 16)
+    memsz, = struct.unpack_from("<Q", img, 64 + 40)
+    words = []
+    for ln in open(mp, encoding="utf-8"):
+        m = re.fullmatch(r"(\S+) 0x([0-9a-f]+)\n?", ln)
+        if not m:
+            sys.exit("golfgdb: bad map line in %s: %r" % (mp, ln))
+        start = int(m.group(2), 16)
+        off = start - vaddr
+        end = start + 1
+        if 5 <= off <= len(img) and img[off - 5] == 0xE9:
+            end = start + struct.unpack_from("<i", img, off - 4)[0]
+        words.append((m.group(1), start, end))
+    words.sort(key=lambda w: w[1])
+    return words, vaddr + memsz, vaddr, vaddr + len(img)
+
+
+GDB_PY = r'''
+import gdb, struct
+
+GOLF_WORDS = %(words)r          # (name, start, end), by start
+GOLF_RTOP = %(rtop)#x            # return-stack top (segment end)
+GOLF_IMG = (%(lo)#x, %(hi)#x)    # the image's mapped bytes
+GOLF_ARGV = 0x4F0040             # STARTUP's stash of the entry rsp
+GOLF_PRO = 7                     # prologue length: 48 83 ED 08 8F 45 00
+GOLF_BY = {}
+for _n, _s, _e in GOLF_WORDS:
+    GOLF_BY[_n] = _s
+    if _n.startswith("‹") and _n.endswith("›"):
+        GOLF_BY.setdefault(_n[1:-1], _s)
+
+def golf_u64(a):
+    return struct.unpack("<Q", bytes(gdb.selected_inferior().read_memory(a, 8)))[0]
+
+def golf_bytes(a, n):
+    try:
+        return bytes(gdb.selected_inferior().read_memory(a, n))
+    except gdb.MemoryError:
+        return b""
+
+def golf_reg(r):
+    return int(gdb.parse_and_eval("$" + r)) & 0xFFFFFFFFFFFFFFFF
+
+def golf_word(a):
+    """(name, start) of the word holding address a, or a region name."""
+    lo, hi = 0, len(GOLF_WORDS)
+    while lo < hi:                       # last word starting at or below a
+        mid = (lo + hi) // 2
+        if GOLF_WORDS[mid][1] <= a: lo = mid + 1
+        else: hi = mid
+    if lo and a < GOLF_WORDS[lo - 1][2]:
+        return GOLF_WORDS[lo - 1][0], GOLF_WORDS[lo - 1][1]
+    if 0x4D0000 <= a < 0x4E0000:
+        return "(thunk)", None
+    if GOLF_IMG[0] <= a < GOLF_IMG[1]:
+        return "(top level)", None
+    return "(outside the program)", None
+
+def golf_fmt(a):
+    n, s = golf_word(a)
+    return "%%#x in %%s" %% (a, n if s is None else "%%s+%%d" %% (n, a - s))
+
+def golf_is_ret(v):
+    if not (GOLF_IMG[0] <= v < GOLF_IMG[1] or 0x4D0000 <= v < 0x4E0000):
+        return False
+    b = golf_bytes(v - 7, 7)
+    if len(b) != 7:
+        return False
+    return (b[2] == 0xE8                                  # call rel32
+            or b[:3] == b"\xff\x14\x25"                   # call [abs32]
+            or (b[5] == 0xFF and 0xD0 <= b[6] <= 0xD7)    # call reg
+            or (b[4] == 0x41 and b[5] == 0xFF and 0xD0 <= b[6] <= 0xD7))
+
+def golf_entry():
+    """(ret, walk-from): in a prologue the return address is still at [rsp]."""
+    pc, sp, bp = golf_reg("pc"), golf_reg("rsp"), golf_reg("rbp")
+    n, s = golf_word(pc)
+    if s is not None and pc - s < GOLF_PRO:
+        return golf_u64(sp), (bp + 8 if pc - s >= 4 else bp), sp + 8
+    return None, bp, sp
+
+class GolfBreak(gdb.Command):
+    """golf-break NAME... : break in each GOLF word just after its prologue.
+NAME as in the .map (glyph, letter or ‹long›), or a long name without ‹›."""
+    def __init__(self): super().__init__("golf-break", gdb.COMMAND_BREAKPOINTS)
+    def invoke(self, arg, tty):
+        names = gdb.string_to_argv(arg)
+        if not names:
+            raise gdb.GdbError("golf-break: name a word (golf-words lists them)")
+        for nm in names:
+            if nm not in GOLF_BY:
+                raise gdb.GdbError("golf-break: no word %%s in the map" %% nm)
+        for nm in names:
+            gdb.Breakpoint("*%%#x" %% (GOLF_BY[nm] + GOLF_PRO))
+            print("golf-break: %%s at %%#x" %% (nm, GOLF_BY[nm] + GOLF_PRO))
+
+class GolfBt(gdb.Command):
+    """golf-bt : the GOLF return stack (rbp .. top) as word names, innermost first."""
+    def __init__(self): super().__init__("golf-bt", gdb.COMMAND_STACK)
+    def invoke(self, arg, tty):
+        ret, a, _ = golf_entry()
+        print("#0  " + golf_fmt(golf_reg("pc")))
+        i = 1
+        if ret is not None:
+            print("#%%d  %%s" %% (i, golf_fmt(ret))); i += 1
+        while a < GOLF_RTOP:
+            v = golf_u64(a)
+            if golf_is_ret(v):
+                print("#%%d  %%s" %% (i, golf_fmt(v))); i += 1
+            a += 8
+
+class GolfStack(gdb.Command):
+    """golf-stack [N] : the top N (default 8) GOLF data-stack cells, top first."""
+    def __init__(self): super().__init__("golf-stack", gdb.COMMAND_DATA)
+    def invoke(self, arg, tty):
+        n = int(gdb.parse_and_eval(arg)) if arg.strip() else 8
+        _, _, sp = golf_entry()
+        depth = (golf_u64(GOLF_ARGV) - sp) // 8
+        print("data stack: depth %%d" %% depth)
+        for k in range(min(n, depth)):
+            v = golf_u64(sp + 8 * k)
+            s = v - (1 << 64) if v >> 63 else v
+            note = ""
+            if v >> 48 == 0x7FFF:
+                p = v & 0xFFFFFFFFFFFF
+                try:
+                    ln = golf_u64(p)
+                    el = [golf_u64(p + 8 * (j + 1)) for j in range(min(ln, 8))]
+                    el = [str(e - (1 << 64) if e >> 63 else e) for e in el]
+                    note = "list @%%#x len %%d [%%s%%s]" %% (p, ln, " ".join(el), " ..." if ln > 8 else "")
+                except gdb.MemoryError:
+                    note = "list @%%#x (unreadable)" %% p
+            print("  [%%d] %%s" %% (k, note or s))
+
+class GolfWhere(gdb.Command):
+    """golf-where : the GOLF word $pc is in."""
+    def __init__(self): super().__init__("golf-where", gdb.COMMAND_STACK)
+    def invoke(self, arg, tty):
+        print("golf: " + golf_fmt(golf_reg("pc")))
+
+class GolfWords(gdb.Command):
+    """golf-words [TEXT] : the map's words (containing TEXT) with their ranges."""
+    def __init__(self): super().__init__("golf-words", gdb.COMMAND_SUPPORT)
+    def invoke(self, arg, tty):
+        for n, s, e in GOLF_WORDS:
+            if arg.strip() in n:
+                print("%%-24s %%#x-%%#x" %% (n, s, e))
+
+for _c in (GolfBreak, GolfBt, GolfStack, GolfWhere, GolfWords):
+    _c()
+
+def golf_on_stop(ev):
+    try:
+        gdb.execute("golf-where")
+    except gdb.error:
+        pass
+gdb.events.stop.connect(golf_on_stop)
+'''
+
+
+def script(prog):
+    words, rtop, lo, hi = load(prog)
+    py = GDB_PY % {"words": words, "rtop": rtop, "lo": lo + 120, "hi": hi}
+    return "set pagination off\npython\n" + py + "\nend\n"
+
+
+def main(argv):
+    emit = batch = None
+    while argv and argv[0] in ("--emit", "--batch-script"):
+        if len(argv) < 3:
+            break
+        if argv[0] == "--emit":
+            emit = argv[1]
+        else:
+            batch = argv[1]
+        argv = argv[2:]
+    if not argv:
+        sys.exit("usage: golfgdb [--emit FILE | --batch-script CMDS] PROG [args...]")
+    prog, args = argv[0], argv[1:]
+    text = script(prog)
+    if emit:
+        with open(emit, "w", encoding="utf-8") as f:
+            f.write(text)
+        return 0
+    gdb = shutil.which("gdb")
+    if not gdb:
+        sys.exit("golfgdb: gdb not found")
+    fd, path = tempfile.mkstemp(prefix="golfgdb.", suffix=".gdb")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    cmd = [gdb, "-q", "-nx", "-x", path]
+    if batch:
+        cmd[1:1] = ["-batch"]
+        cmd += ["-x", batch]
+    try:
+        return subprocess.call(cmd + ["--args", prog] + args)
+    finally:
+        os.unlink(path)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

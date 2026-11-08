@@ -801,6 +801,70 @@ glyphs).
 Every word body starts with the same prologue (`sub rbp,8; pop [rbp]`, bytes
 `48 83 ED 08 8F 45 00`), so a map line is easy to check against the binary.
 
+**gdb by word name (W11-4D).** A GOLF binary has no symbols, and its stacks
+are not C's: `rsp` is the data stack and `rbp` the return stack (the prologue
+parks each call's return address at `[rbp]`), so gdb's own `break NAME` and
+`bt` see nothing. `tools/golfgdb prog [args…]` reads `prog.map` and the
+binary, writes a gdb script, and starts `gdb -q -x script --args prog args…`.
+The script adds five commands, and prints `golf-where` at every stop:
+
+| Command | What it does |
+|---|---|
+| `golf-break NAME…` | break in each word just after its prologue, so its arguments are on the data stack. NAME as the map spells it (`⌫`, `f`, `‹sq›`), or a long name without brackets (`sq`) |
+| `golf-bt` | backtrace by word name, innermost first: `#0` is the word `$pc` is in, then one frame per return address on the return stack (rbp up to its top, `0x600000`) |
+| `golf-stack [N]` | the data-stack depth and the top N cells (default 8), top first; a list shows as `list @addr len n [elements…]` |
+| `golf-where` | the word `$pc` is in, as `NAME+offset` |
+| `golf-words [TEXT]` | the map's words (names containing TEXT) with their address ranges |
+
+A word's range comes from the `jmp` that skips its body (`E9 rel32` just
+before ADDR); code in no word is `(top level)`, code in the `∘` thunk arena
+`(thunk)`. A return-stack cell counts as a return address only when the bytes
+before it are a `call`, so `⊡` locals (which share the return stack) are
+skipped. Plain gdb still works alongside: `stepi`, `x/8gx $rsp`,
+`break *0x…`, `info registers` (and `golf-bt` / `golf-stack` are right even
+when stopped inside a prologue). `tools/golfgdb --emit FILE prog` only writes
+the script (use it with `gdb -x FILE prog`); `--batch-script CMDS prog` runs
+`gdb -batch` with the script and then the commands in CMDS, which is how the
+suite tests it. It needs gdb with Python (any distribution gdb).
+
+Walkthrough: a word reached through two nested calls.
+
+```
+# deb.golfj
+:‹inner›"*;
+:‹mid›1+‹inner›;
+:‹outer›‹mid›2*;
+5‹outer›Ṅ
+```
+
+```
+$ tools/golfc -j -g deb.golfj deb && tools/golfgdb deb
+(gdb) golf-break inner
+Breakpoint 1 at 0x40a32e
+golf-break: inner at 0x40a32e
+(gdb) run
+Starting program: /home/me/deb
+
+Breakpoint 1, 0x000000000040a32e in ?? ()
+golf: 0x40a32e in ‹inner›+7
+(gdb) golf-bt
+#0  0x40a32e in ‹inner›+7
+#1  0x40a3a7 in ‹mid›+60
+#2  0x40a3c0 in ‹outer›+12
+#3  0x40a404 in (top level)
+(gdb) golf-stack
+data stack: depth 1
+  [0] 6
+(gdb) continue
+Continuing.
+72[Inferior 1 (process 4242) exited normally]
+```
+
+`‹inner›` was called by `‹mid›`, called by `‹outer›`, called from the
+program's top level, and is about to square the 6 that `‹mid›` left (5 1+);
+`‹outer›` doubles the 36. The addresses move whenever the prelude changes
+(the suite compares this transcript with them masked).
+
 ## 4. Tutorial
 
 Each example below is a complete program. Compile it with

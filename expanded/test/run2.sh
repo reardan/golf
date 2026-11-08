@@ -2663,6 +2663,56 @@ printf '%s' ':‹boom›3⍳9⊇;:‹safe›′‹boom›‹catch›;' | w112enc
 # === W11-4C ===
 
 # === W11-4D ===
+echo "W11-4D: tools/golfgdb — gdb by word name (golf-break, golf-bt, golf-stack, golf-where)"
+# REFERENCE.md's Debugging walkthrough: its program block (`# deb.golfj`) is
+# compiled with golfc -g, its `(gdb) ` lines are the commands, and its golf-*
+# output lines (golf:, #N, data stack, [k]) must come out of gdb -batch in the
+# same order — with addresses masked, since they move with the prelude.
+mkdir -p "$TMP/w114d"
+sed -n '/^### Debugging$/,/^## /p' REFERENCE.md | awk -v d="$TMP/w114d" '
+  /^```/ { if (inb) { inb = 0; f = "" } else { inb = 1; first = 1 } next }
+  inb && first { first = 0; if ($0 == "# deb.golfj") f = d "/deb.golfj"; else if ($0 ~ /tools\/golfgdb/) f = d "/session" }
+  inb && f != "" { print > f }'
+grep '^(gdb) ' "$TMP/w114d/session" | sed 's/^(gdb) //' | grep -v '^continue$' > "$TMP/w114d/cmds"
+w114dm(){ grep -E '^(golf:|#[0-9]|data stack|  \[)' | sed 's/0x[0-9a-f]*/0x…/g'; }
+w114dg=$(cd "$TMP/w114d" && "$EXP/tools/golfc" -j -g deb.golfj deb 2>&1 && "$EXP/tools/golfgdb" --emit deb.gdb deb 2>&1)
+"$EXP/tools/golfgdb" "$TMP/w114d/nomap" > /dev/null 2> "$TMP/w114d/nomap.err"; w114drc=$?
+[ -z "$w114dg" ] && [ "$("$TMP/w114d/deb")" = 72 ] \
+  && grep -q 'GOLF_WORDS = \[.*‹inner›' "$TMP/w114d/deb.gdb" \
+  && [ "$(grep -c 'super().__init__("golf-\(break\|bt\|stack\|where\|words\)"' "$TMP/w114d/deb.gdb")" = 5 ] \
+  && [ "$w114drc" = 1 ] && grep -q 'no .*nomap.map (compile with' "$TMP/w114d/nomap.err" \
+  && ok "golfgdb --emit writes a gdb script holding the map and golf-break/bt/stack/where/words; no .map -> a clear error" \
+  || no "golfgdb --emit: $w114dg $(cat "$TMP/w114d/nomap.err")"
+if command -v gdb >/dev/null 2>&1 && [ "$(gdb -nx -batch -ex 'python print(4*4)' 2>/dev/null)" = 16 ]; then
+  w114dgot=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script cmds ./deb 2>&1)
+  [ -s "$TMP/w114d/cmds" ] && [ "$(echo "$w114dgot" | w114dm)" = "$(w114dm < "$TMP/w114d/session")" ] \
+    && [ "$(echo "$w114dgot" | grep -E '^#[0-9]' | sed 's/.* in //; s/+.*//' | tr '\n' ' ')" = "‹inner› ‹mid› ‹outer› (top level) " ] \
+    && echo "$w114dgot" | grep -qx '  \[0\] 6' \
+    && ok "gdb -batch: golf-break inner stops in ‹inner›; golf-bt ‹inner› ‹mid› ‹outer› (top level); golf-stack shows the 6 (= REFERENCE walkthrough)" \
+    || no "golfgdb walkthrough: $w114dgot"
+  # Stopped on the word's FIRST byte (inside the prologue, the return address
+  # still on rsp) with plain `break *ADDR`; the caller is a ⊡ word whose local
+  # shares the return stack; a list argument; the named break in a ⊡ word.
+  printf ':‹inner›"*;\n⊡‹g›⇒a⇐a⇐a+‹inner›;\n:‹f›∑‹g›;\n5⍳‹f›Ṅ\n' > "$TMP/w114d/u.golfj"
+  (cd "$TMP/w114d" && "$EXP/tools/golfc" -j -g u.golfj u) > /dev/null 2>&1
+  printf '%s\n' 'golf-break f' run golf-stack delete "break *$(sed -n 's/^‹inner› //p' "$TMP/w114d/u.map")" continue \
+    golf-bt golf-stack stepi stepi golf-where golf-bt golf-stack > "$TMP/w114d/ucmds"
+  w114du=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script ucmds ./u 2>&1)
+  [ "$(echo "$w114du" | w114dm | tr '\n' '|')" = "golf: 0x… in ‹f›+7|data stack: depth 1|  [0] list @0x… len 5 [0 1 2 3 4]|golf: 0x… in ‹inner›+0|#0  0x… in ‹inner›+0|#1  0x… in ‹g›+77|#2  0x… in ‹f›+17|#3  0x… in (top level)|data stack: depth 1|  [0] 20|golf: 0x… in ‹inner›+4|golf: 0x… in ‹inner›+7|golf: 0x… in ‹inner›+7|#0  0x… in ‹inner›+7|#1  0x… in ‹g›+77|#2  0x… in ‹f›+17|#3  0x… in (top level)|data stack: depth 1|  [0] 20|" ] \
+    && ok "inside a prologue (break *ADDR, stepi) golf-bt / golf-stack stay right; a ⊡ caller's local is skipped; a list shows its elements" \
+    || no "golfgdb prologue/locals: $w114du"
+  printf '%s\n' 'golf-break nosuch' > "$TMP/w114d/bad"; printf '%s\n' 'golf-break ‹inner›' run continue > "$TMP/w114d/cont"
+  w114db=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script bad ./deb 2>&1)
+  w114dc=$(cd "$TMP/w114d" && "$EXP/tools/golfgdb" --batch-script cont ./deb 2>&1)
+  echo "$w114db" | grep -q 'golf-break: no word nosuch in the map' \
+    && echo "$w114dc" | grep -q '^72\[Inferior 1 (process [0-9]*) exited normally\]$' \
+    && ok "golf-break ‹inner› (bracketed) then continue: the program finishes and prints 72; an unknown name is an error" \
+    || no "golfgdb continue/unknown: $w114db | $w114dc"
+else
+  ok "golfgdb walkthrough: gdb (with Python) not installed, skipped"
+  ok "golfgdb prologue/locals: gdb (with Python) not installed, skipped"
+  ok "golfgdb continue/unknown name: gdb (with Python) not installed, skipped"
+fi
 
 # === W11-4E ===
 
