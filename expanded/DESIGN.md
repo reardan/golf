@@ -146,9 +146,9 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1395** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **5115** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **16906** bytes |
-| assertions in the run2 suite | **936** |
+| assertions in the run2 suite | **992** |
 | assertions in the selfcheck suite | **69** |
-| assertions in the gtools differential suite | **44** |
+| assertions in the gtools differential suite | **57** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
 | the v2 p_memsz (`mkblob2.MEMSZ`) | **0x200000** |
@@ -755,7 +755,9 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   exits 2 silently. The whole prelude grew to about 123 KB by W13 wave 1, but
   since W13-I `tools/golfc` compiles only the definitions a program reaches
   (`1Ṅ` is 13,527 bytes; the whole prelude, `golfc -P`, is 125,566), so about
-  180 KB is left for a program's own code; an empty word costs 20 bytes. `p_filesz`
+  180 KB is left for a program's own code (after W14's scripting library the
+  whole prelude is 169,944 bytes and `1Ṅ` 13,587, so `-P` leaves about 26 KB;
+  run2.sh compiles its biggest generated programs pruned for that reason); an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).
   Raising the cap further means moving the 1C buffer and the spill stack up
