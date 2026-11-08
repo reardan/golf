@@ -269,9 +269,15 @@ Four tracks. Item ids are what the waves (section 4) schedule.
   - Allocate `∘` and `⊸` thunks from the heap (an executable size class) so
     `⌫` can release them.
   - Remove the 1,700-thunk lifetime cap.
+  - **Shipped (W12-O2).** Thunks are `5A` blocks; the prelude `mprotect`s the
+    brk heap RWX at startup and on each growth (prelude only, no compiler or
+    ELF change). `⌫` frees a thunk, double free is caught, the cap is gone.
+    See DESIGN.md, Known limits.
 - **O3. Priority queue.**
   - `‹pq› ‹pqpush› ‹pqpop›`: a binary heap over a `‹vec›`, keyed like A4.
   - It is the next LeetCode family: Dijkstra, merge-k, streaming top-k.
+  - **Shipped (W12-O3)**, plus `‹pqtop›`. Signed ints, no key function (pack
+    `priority<<32|payload`). REFERENCE.md, "Priority queues".
 - **O4. A byte-count regression check in the gate.**
   - `test/run2.sh` compiles `bench/leetcode/golf/*` on `gen.py 0.001`
     inputs.
