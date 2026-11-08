@@ -1977,6 +1977,40 @@ echo "W11-1A: the list tag is 0x7FFF<<48; [2^48, 2^49) are ordinary integers aga
   && ok "0x7FFE<<48 is an int; a list's top 16 bits are 0x7FFF" || no "w111a band edge"
 
 # === W11-1B ===
+echo "W11-1B: file I/O — ‹open› ‹create› ‹close› ‹fread› ‹fwrite› ‹readfile› ‹writefile›"
+# w111b compiles the program and runs it INSIDE a fresh temp dir, so relative
+# paths like “x.txt“ land there; it prints `rc=<status> <stdout>|<stderr>`.
+mkdir -p "$TMP/w111b/d"
+w111b(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w111b/p" 2>/dev/null \
+          && chmod +x "$TMP/w111b/p" && (cd "$TMP/w111b" && ./p > p.out 2> p.err; echo "rc=$? $(cat p.out)|$(cat p.err)"); }
+[ "$(w111b '“hello, file“⊃“w.txt“⊃‹writefile›“w.txt“⊃‹readfile›"⊐␤≢Ṅ')" = "rc=0 hello, file
+11|" ] && [ "$(cat "$TMP/w111b/w.txt")" = "hello, file" ] \
+  && ok "‹writefile› then ‹readfile›: the file holds the bytes and reads back" || no "writefile/readfile round trip"
+[ "$(w111b '7Ṅ“x.txt“⊃‹readfile›⊐')" = "rc=1 7|GOLF: cannot open x.txt (ENOENT)" ] \
+  && ok "missing file: GOLF: cannot open x.txt (ENOENT), exit 1" || no "missing file message"
+[ "$(w111b '“d“⊃‹readfile›')" = "rc=1 |GOLF: cannot read d (EISDIR)" ] \
+  && [ "$(w111b '“d“⊃‹create›')" = "rc=1 |GOLF: cannot create d (EISDIR)" ] \
+  && [ "$(w111b '“w.txt/q“⊃‹open›')" = "rc=1 |GOLF: cannot open w.txt/q (ENOTDIR)" ] \
+  && [ "$(w111b '0⍳“no/f“⊃‹writefile›')" = "rc=1 |GOLF: cannot create no/f (ENOENT)" ] \
+  && ok "errors name the verb and path: EISDIR on read and create, ENOTDIR, ENOENT on create" || no "path error messages"
+[ "$(w111b '99‹close›')" = "rc=1 |GOLF: cannot close fd 99 (EBADF)" ] \
+  && [ "$(w111b '99 4‹fread›')" = "rc=1 |GOLF: cannot read fd 99 (EBADF)" ] \
+  && [ "$(w111b '“ab“⊃99‹fwrite›')" = "rc=1 |GOLF: cannot write fd 99 (EBADF)" ] \
+  && ok "fd words name the fd: close, fread, fwrite on fd 99 (EBADF)" || no "fd error messages"
+[ "$(w111b '1‹_1b_ename›⊐ 13‹_1b_ename›⊐ 17‹_1b_ename›⊐ 21‹_1b_ename›⊐ 20‹_1b_ename›⊐ 99‹_1b_ename›⊐')" = "rc=0 EPERMEACCESEEXISTEISDIRENOTDIRerrno 99|" ] \
+  && ok "errno names: EPERM EACCES EEXIST EISDIR ENOTDIR, and the 'errno N' fallback" || no "errno names"
+[ "$(w111b '5179712⊙Ṅ')" = "rc=0 0|" ] && grep -q '"5179712\\store‹_1b_ename›' lib/prelude.golfj \
+  && ok "the errno goes in the 1B cell 5179712 before the throw (0 until a failure)" || no "errno cell"
+[ "$(w111b '“w.txt“⊃‹open›"4‹fread›⊐␤"4‹fread›⊐␤"4‹fread›⊐␤"4‹fread›≢Ṅ"0‹fread›≢Ṅ‹close›')" = "rc=0 hell
+o, f
+ile
+00|" ] && ok "‹fread›: chunks of n bytes, a short last one, then empty at EOF" || no "fread chunks"
+[ "$(w111b '“w.txt“⊃‹create›"“ab“⊃&‹fwrite›"“cd“⊃&‹fwrite›‹close›“w.txt“⊃‹readfile›⊐ 0⍳“z.txt“⊃‹writefile›“z.txt“⊃‹readfile›"≢Ṅ T Ṅ')" = "rc=0 abcd00|" ] \
+  && [ -e "$TMP/w111b/z.txt" ] && [ ! -s "$TMP/w111b/z.txt" ] \
+  && ok "‹create› truncates and ‹fwrite›s append; an empty file reads back as an empty tagged list" || no "create/fwrite/empty"
+[ "$(w111b ':‹m›255$;300000⍳′‹m›€“b.txt“⊃‹writefile›“b.txt“⊃‹readfile›"≢Ṅ␤∑Ṅ')" = "rc=0 300000
+38246416|" ] && [ "$(wc -c < "$TMP/w111b/b.txt")" = 300000 ] \
+  && ok "a 300000-byte file (past the 64 KB first block) round-trips byte for byte" || no "big file"
 
 # === W11-1C ===
 echo "W11-1C: buffered output — Ṅ ⍕ ␤ 🗲 ⊐ through an 8 KB buffer, ‹flush›, flush at every exit"

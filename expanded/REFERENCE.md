@@ -388,6 +388,41 @@ The stdin words share one 8 KB buffer, so `‹readline›`, `‹getc›` and
 `‹readall›` may be mixed freely. The raw `(` reads around that buffer: do not
 use it in a program that uses these words. Names that start with `‹_in` are
 the prelude's own helpers. See `examples/input.golfj`.
+
+### Files
+
+The file words (W11-1B) are long names too, built on `⎈`. A path is a **code
+list**, the shape `“x.txt“⊃` and `‹args›` give, and so is a file's contents:
+one element per byte, `0`–`255`. Writing stores each element's low byte.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹open›` | `path -> fd` | open a file for reading |
+| `‹create›` | `path -> fd` | open a file for writing: create it (mode `0644`) or truncate it |
+| `‹close›` | `fd ->` | close a file descriptor |
+| `‹fread›` | `fd n -> list` | one `read(2)` of up to `n` bytes. It may return fewer. The empty list means end of file. A negative `n` counts as `0` |
+| `‹fwrite›` | `list fd ->` | write every byte of `list` to `fd`, retrying short writes. Writes to one fd follow each other |
+| `‹readfile›` | `path -> list` | the whole file as a code list. An empty file gives the empty list |
+| `‹writefile›` | `list path ->` | create or truncate `path`, write `list` to it, close it |
+
+```
+“hi“⊃“x.txt“⊃‹writefile›          # x.txt now holds the two bytes 'hi'
+“x.txt“⊃‹readfile›⊐               # prints hi
+‹args›0⊇‹readfile›⊐               # ./cat f   prints the file f
+“x.txt“⊃‹open›"5‹fread›⊐‹close›   # the first 5 bytes
+```
+
+**A failure throws** through `‹throw›`. The message names what was being done,
+the path, and the errno: `GOLF: cannot open x.txt (ENOENT)`, exit status 1.
+The verb is `open`, `create`, `read`, `write` or `close`. The fd words, which
+have no path, name the fd instead: `GOLF: cannot read fd 9 (EBADF)`. Named
+errnos are `EPERM ENOENT EIO EBADF EACCES EEXIST ENOTDIR EISDIR EINVAL EMFILE
+EFBIG ENOSPC EROFS ENAMETOOLONG ELOOP`; any other shows as `errno N`. Before it
+throws, the word stores the positive errno in the cell `5179712`
+(`5179712⊙`), which is never cleared. Opening a directory works, but reading it
+fails, so `“d“⊃‹readfile›` is `GOLF: cannot read d (EISDIR)`. Files are written
+directly with `write(2)`, not through the stdout printers. Names that start
+with `‹_1b` are the file words' helpers.
 ### More list words
 
 The prelude's newer list words have long names, because the high bytes ran

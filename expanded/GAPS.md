@@ -185,6 +185,13 @@ drained at every exit, before every `GOLF:` message, before the input words
 read, and before a raw `)` or `(`: 841 writes (0.07 s), the same bytes
 (REFERENCE.md, "Output"; DESIGN.md, known limits).
 
+**Files — closed by W11-1B.** A user program could not open a file at all:
+`⎈` was there, but the file words lived only in the tools' `lib/tio.golfj`.
+The prelude now has `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›`
+`‹readfile›` `‹writefile›` (REFERENCE.md, "Files"), taking paths and contents
+as code lists, and a failure is a message, not a negative number to forget:
+`GOLF: cannot open x.txt (ENOENT)`, exit 1.
+
 ---
 
 ## 2. Gaps to Python
