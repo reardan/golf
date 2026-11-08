@@ -571,7 +571,7 @@ both forms are given here and the decimal is the one you type.
 
 | Address (hex) | Decimal | Use | Status |
 |---------------|---------|-----|--------|
-| `0x400000`–`0x42FFFF` | 4194304–4390911 | **a compiled program's image**: the ELF header and code, one `PT_LOAD` whose `p_filesz` is the file's true size (W11-1E; v1's fixed `0x10000` before), at most **196608 bytes = 192 KB** (`mkblob2.PROGRAM_CAP`) — the image may not reach `0x430000`, the lowest address a compiled program uses at run time. Both compilers refuse a bigger one (`GOLF: program too large`, exit 2). Everything from here down to `0x43FFFF` is **compiler-process-only** state: it lives above the compiler's own image (~12 KB, which must stay under 64 KB so it ends below `m`) and is never touched by a compiled program, so a user image may cover it | shipped (W11-1E) |
+| `0x400000`–`0x42FFFF` | 4194304–4390911 | **a compiled program's image**: the ELF header and code, one `PT_LOAD` whose `p_filesz` is the file's true size (W11-1E; v1's fixed `0x10000` before), at most **196608 bytes = 192 KB** (`mkblob2.PROGRAM_CAP`) — the image may not reach `0x430000`, the lowest address a compiled program uses at run time. Both compilers refuse a bigger one (`GOLF: program too large`, exit 2). Since W13-I `tools/golfc` prepends only the prelude a program reaches (`tools/golfprune.py`; `1Ṅ` is 13,527 bytes, the whole prelude 125,566 with `golfc -P`), so the cap stayed where it is: raising it would move the out buffer at `0x430000`, the spill stack at `0x440000` and the compilers' buffers at `0x494000`, all hard-coded in the prelude, the templates and both compilers. Everything from here down to `0x43FFFF` is **compiler-process-only** state: it lives above the compiler's own image (~12 KB, which must stay under 64 KB so it ends below `m`) and is never touched by a compiled program, so a user image may cover it | shipped (W11-1E) |
 | `0x410000` | 4259840 | compiler data base `D` (`m`), **compiler-only** | shipped |
 | `m+4` … `m+16` | | v1 compiler scratch (`P`, `S`, `Q`) | shipped |
 | `m+20`, `m+24`, `m+28` | | golf2 compiler scratch: `′` jmp-site / thunk addr, `“` len-site / count | shipped |
@@ -754,6 +754,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 
 | Task | Cells | Use |
 |---|---|---|
+| W13-I prelude pruning | none | a `tools/golfc` step only (`tools/golfprune.py`); the runtime and the compilers are unchanged |
 | W13-E LeetCode library | none | every W13-E word is a `⊡` word: its loop state is its own frame on the return stack, so it needs no scratch cell and no spill frame and is re-entrant. The streams (`‹perms›` `‹combs›` `‹subsets›` `‹cartesian›`) build their records with W12-A8's `‹_12a8_mk›`, which uses A8's cell 5181312 for a moment, as A8's own constructors do |
 
 ---
@@ -768,7 +769,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
 prelude now uses 377 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76 and W13-G 13, helpers and digraph names included) — 1024 since W10-A, so 647 are left
-for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
+for a program compiled with the whole prelude (`golfc -P`, and run2.sh's `cat` pipelines); since W13-I plain `golfc` interns only the prelude names the program reaches, so it leaves more (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 
 String literals (W9-1B): the encoder copies everything between two `“` as
@@ -790,6 +791,11 @@ either; the decoders copy a literal's bytes back out raw.
    `self/golf2.golfj` — the compiler's source since M-SELF — *and* mirror it
    into `tools/mkblob2.py`'s v1-GOLF seed cases, or `test/selfcheck.sh`'s
    byte-for-byte `seed == golf2` comparison will catch the drift.
+   A prelude word that compiled code reaches only through a hook cell must
+   have its address stored by **top-level** prelude code (an `‹_…_init›` word
+   called at top level, as every hook is today): `tools/golfprune.py` keeps all
+   top-level code and what it names, and drops definitions nothing names
+   (W13-I; REFERENCE "Prelude pruning").
 4. Flip `reserved` → `shipped` in the same commit.
 5. Regenerate: `cd expanded && python3 tools/mkblob2.py`, then commit both
    `self/seed.golf` and `self/golf2.golf` — they are generated, never edited.

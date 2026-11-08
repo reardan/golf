@@ -270,3 +270,29 @@ sends a list to `∔` … or `‹_12o1_nan›` exactly as the thunk would) and i
 what shipped. Four elements per pass instead of two was 0–10% faster and 6 KB
 bigger.
 
+
+## W13-I — prelude pruning (binary size, compile time)
+
+`tools/golfc` now compiles only the prelude definitions a program reaches
+(`tools/golfprune.py`). `-P` keeps the whole prelude and gives the old binary
+byte for byte. Sizes are in bytes, whole prelude → pruned. golfc wall time
+for `1Ṅ` went from about 175 ms to 100 ms (best of 5, with the encoded
+prelude cached).
+
+| program | whole | pruned |
+|---|---|---|
+| `1Ṅ` | 125,566 | 13,527 |
+| twosum | 125,887 | 28,945 |
+| parens | 125,835 | 23,228 |
+| stock | 125,768 | 24,348 |
+| longsub | 125,900 | 20,499 |
+| prodself | 125,749 | 22,040 |
+| topk | 125,726 | 33,356 |
+| islands | 126,201 | 25,218 |
+| trap | 125,839 | 23,134 |
+| slidemax | 125,671 | 20,991 |
+| queens | 125,994 | 17,825 |
+
+Run time does not change (`gen.py 1` inputs, best of 5, ms whole/pruned):
+twosum 53/53, parens 97/97, stock 59/58, longsub 74/73, prodself 104/102,
+topk 67/68, islands 86/84, trap 89/86, slidemax 139/136, queens 18/17.

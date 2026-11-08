@@ -57,7 +57,9 @@ helpers such as `D` `G` `H` `K` `T` `X` `Y`), and the high bytes `0xC0`–`0xC7`
 Name your own words with lowercase letters. The prelude also runs a few
 instructions first. They find the heap (`⌸ brk`) and switch on the list
 dispatch of `+ - * ⌈ ⌊`. Without the prelude (`golfc -n`) those five ops work
-on integers only.
+on integers only. `golfc` compiles only the prelude words your program can
+reach, so a program pays for what it uses (`1Ṅ` is 13.5 KB; see "Prelude
+pruning" in section 3; `golfc -P` keeps the whole prelude).
 
 **Ending.** Running off the end of the program calls `exit(0)`. `.` exits
 earlier with the status it pops. With the prelude loaded, running off the end
@@ -1990,6 +1992,54 @@ them all. The streams read their input lists in place and do not own them.
   `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
   0.52 s. Names that start with `‹_13e` are these words' helpers.
 
+### Prelude pruning
+
+`tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your
+program can reach. The whole prelude compiles to about 125 KB of the 192 KB
+image cap; pruned, `1Ṅ` is a 13,527-byte binary and the ten
+`bench/leetcode/golf/` programs are 17–33 KB (24 KB on average; each was about
+125.7 KB). Compiling is faster too (about 100 ms instead of 170 ms for `1Ṅ`).
+
+| flag | prelude |
+|---|---|
+| (none) | the definitions the program reaches, plus all top-level code |
+| `-P` (or `GOLFC_FULL=1`) | the whole prelude: the binary is byte-identical to the pre-W13-I one |
+| `-n` | none |
+
+The rule (`tools/golfprune.py`, between encoding and `golf2`):
+
+- The encoded prelude is cut into **definitions** (`:x … ;`, `⊚x … ;`,
+  `⊡x … ;` at top level) and **top-level code** (everything between them: the
+  startup instructions that find the heap and install the M-VEC, not-a-number,
+  divide-by-zero, flush and end hooks). Top-level code is always kept.
+- A name is **reached** when it occurs in the program, in any file it includes
+  (`⎘“…“`, `.golfj` or raw), in top-level prelude code, or in a kept
+  definition: as a one-byte word, a `‹long name›`, a digraph `ʘB` (its
+  `‹_dgHH›`), or the operand of `′ → ← ⇡ ⇣`. So quotes (`′f`), S1 adverbs
+  (`f€`), chains, aliases (`Ǧ` → `‹getor›`, `ʘg` → `‹gcd›`) and forward
+  references are all seen. Two compiler ops call prelude words that the source
+  does not spell: a chain of three or more links forks through `⑂`, and a
+  record header `⊜` calls `⍳` and `I`. Both count as reached when the op
+  appears.
+- Every definition of a reached name is kept, transitively. The rest are
+  dropped, and each leaves its newlines behind, so prelude line numbers do not
+  move. The program's own line numbers do not change either.
+- The scan over-approximates on purpose. Every byte of the program, including
+  bytes in strings and character literals, counts as a name. Keeping a word
+  too many costs bytes. Dropping one would change what the program does.
+
+Every call, quote and forward reference that is compiled binds to the same body
+as with the whole prelude, so a program behaves the same either way. What
+changes is addresses: word addresses (`golfc -g` lists only the kept words),
+long-name numbers and the cells of long-named variables. **The escape:** a
+program that reaches a prelude word only through an address it computes at run
+time (for example, arithmetic on another word's address) is invisible to the
+scan. Compile it with `golfc -P`.
+
+`gtools/build` and the `cat` pipelines in `test/run2.sh` still compile the
+whole prelude. `python3 tools/golfprune.py PRELUDE.gb PROG.gb… > CUT.gb`
+writes the cut prelude for raw programs, for any of the three compilers.
+
 ### Errors
 
 A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
@@ -2049,7 +2099,8 @@ exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
 past ~138k plain calls dies of SIGSEGV on the guard page), any other signal,
 `.` (exit is exit), and compile errors (`GOLF: undefined word x at line 3` …,
 below), which exit 2. So does a program whose binary would pass 192 KB
-(196608 bytes, the prelude's ~43 KB included): `GOLF: program too large`, and no binary.
+(196608 bytes, the part of the prelude the program reaches included — see
+"Prelude pruning"): `GOLF: program too large`, and no binary.
 
 ### Compile errors
 

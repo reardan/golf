@@ -5,6 +5,13 @@
 #   golfc -j PROG.golfj OUT # PROG is glyph/\mnemonic source (encoded first)
 #   golfc -n PROG OUT       # no prelude (bare program)
 #   golfc -g ... PROG OUT   # also write OUT.map: one `name 0xaddr` per word
+#   golfc -P ... PROG OUT   # the WHOLE prelude (also GOLFC_FULL=1)
+#
+# W13-I: without -P only the prelude definitions the program can reach are
+# compiled (tools/golfprune.py; REFERENCE "Prelude pruning").  A program that
+# reaches a prelude word only through an address it computes at run time needs
+# -P; everything named in the source — calls, ′ quotes, adverbs, chains,
+# digraphs, includes — is seen.
 #
 # Flags combine (-j -g, -n -g, ...).  A compile error is `GOLF: <what> at line
 # N` (or `at FILE line N` inside an included file), exit 2 (W11-3B): N is a
@@ -63,23 +70,21 @@ if [ -n "$stale" ]; then
 fi
 
 prelude="$HERE/lib/prelude.golfj"; encode=""; noprelude=""; gflag=""
+full="${GOLFC_FULL:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     -j) encode=1; shift;;
     -n) noprelude=1; shift;;
     -g) gflag=-g; shift;;
+    -P) full=1; shift;;
     *) break;;
   esac
 done
 prog=$1; out=$2
-src=$(mktemp)
-cp="python3 $HERE/tools/codepage.py encode"
-if [ -z "$noprelude" ]; then
-  $cp < "$prelude" >> "$src"                     # prelude is code-page source
-  printf '\f' >> "$src"     # W11-3B: line 1 of the program is line 1 again
-fi
-if [ -n "$encode" ]; then $cp < "$prog" >> "$src"
-else cat "$prog" >> "$src"; fi
+src=$(mktemp); body=$(mktemp)
+incs=$(mktemp -d); trap 'rm -rf "$src" "$body" "$incs"' EXIT
+if [ -n "$encode" ]; then python3 "$HERE/tools/codepage.py" encode < "$prog" > "$body"
+else cat "$prog" > "$body"; fi
 # W11-2A: `⎘“path“` makes golf2 read that file's bytes as they are — raw code
 # page, the form fd 0 carries.  A `.golfj` include is glyph source, so it is
 # encoded here first, like the program itself: each ⎘“x.golfj“ that resolves
@@ -87,25 +92,38 @@ else cat "$prog" >> "$src"; fi
 # encoded copy in a temp dir, recursively, one copy per real file (so
 # include-once still holds).  A path that resolves to nothing is left alone
 # and golf2 reports it under its own name.  Any other path is untouched.
-incs=$(mktemp -d); trap 'rm -rf "$src" "$incs"' EXIT
 # The temp copy -> path-as-written table goes to $incs/names, so that a
 # diagnostic inside an included .golfj names the user's file (W11-3B).
-python3 - "$src" "$incs" "$HERE/tools" <<'PY'
+#
+# W13-I: the same pass then puts the prelude in front — only the part the
+# program reaches (tools/golfprune.py: every definition whose name the
+# program, its includes, the prelude's top-level code or another kept
+# definition mentions; the rest leave just their newlines).  -P, or
+# GOLFC_FULL=1, keeps the whole prelude; -n puts none.
+python3 - "$src" "$incs" "$HERE/tools" "$body" "${noprelude:+none}${full:+full}" \
+          "$prelude" "$BUILD" <<'PY'
 import os, re, sys
-src, incs = sys.argv[1], sys.argv[2]
+src, incs, body, mode, prelude, build = (sys.argv[1], sys.argv[2], sys.argv[4],
+                                         sys.argv[5], sys.argv[6], sys.argv[7])
 sys.path.insert(0, sys.argv[3]); import codepage
 done = {}
+scanned = []                   # every byte string golf2 will compile
 def fix(data):
+    scanned.append(data)
     def one(m):
         p = m.group(1)
-        if not p.endswith(b".golfj"):
-            return m.group(0)
         for cand in (p, b"lib/" + p, b"vendor/" + p):
             if os.path.isfile(cand):
                 break
         else:
             return m.group(0)
         key = os.path.realpath(cand)
+        if not p.endswith(b".golfj"):          # a raw include: scan it as is
+            if key not in done:
+                done[key] = None
+                with open(cand, "rb") as f:
+                    fix(f.read())
+            return m.group(0)
         if key not in done:
             done[key] = os.path.join(incs, "%d.g2" % len(done)).encode()
             with open(cand, encoding="utf-8") as f:
@@ -116,10 +134,43 @@ def fix(data):
                 f.write(done[key] + b"\0" + p + b"\0")
         return b"\xb6\x8e" + done[key] + b"\x8e"
     return re.sub(rb"\xb6\x8e([^\x8e]*)\x8e", one, data)
-with open(src, "rb") as f:
-    data = f.read()
+with open(body, "rb") as f:
+    prog = fix(f.read())
 with open(src, "wb") as f:
-    f.write(fix(data))
+    if mode != "none":
+        # The encoded prelude is cached in build/, keyed by the hash of what
+        # it is made from (lib/prelude.golfj and the code page).
+        import hashlib
+        h = hashlib.sha1()
+        for d in (prelude, os.path.join(sys.argv[3], "codepage.py"),
+                  os.path.join(sys.argv[3], "mkblob2.py")):
+            with open(d, "rb") as g:
+                h.update(g.read())
+        cache = os.path.join(build, "prelude.gb")
+        key = h.hexdigest().encode() + b"\n"
+        try:
+            with open(cache, "rb") as g:
+                pre = g.read()
+        except OSError:
+            pre = b""
+        if pre.startswith(key):
+            pre = pre[len(key):]
+        else:
+            with open(prelude, encoding="utf-8") as g:
+                pre = codepage.encode(g.read())
+            tmp = cache + ".%d" % os.getpid()
+            with open(tmp, "wb") as g:
+                g.write(key + pre)
+            os.replace(tmp, cache)
+        if mode != "full":
+            import golfprune
+            roots = set()
+            for d in scanned:
+                roots |= golfprune.refs(d)
+            pre = golfprune.prune(pre, roots)
+        f.write(pre)
+        f.write(b"\f")       # W11-3B: line 1 of the program is line 1 again
+    f.write(prog)
 PY
 rc=0; "$GOLF2" $gflag < "$src" > "$out" 2> "$incs/err" || rc=$?
 python3 - "$incs" "$rc" "$out" "$HERE/tools" "$gflag" <<'PY'

@@ -117,6 +117,13 @@ python3 tools/codepage.py encode < lib/prelude.golfj > "$TMP/pre.gb"    # encode
 printf '\f' >> "$TMP/pre.gb"   # + the form feed golfc puts after it: lines count from the program (W11-3B)
 gc(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
         && chmod +x "$TMP/p" && "$TMP/p"; }
+# W13-I: gcp / grefp are gc / gref with only the prelude the program reaches,
+# as tools/golfc compiles it (tools/golfprune.py; see the W13-I block).
+gcpre(){ python3 tools/codepage.py encode > "$TMP/gcp.gb" \
+  && python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/gcp.gb" > "$TMP/gcp.src" && cat "$TMP/gcp.gb" >> "$TMP/gcp.src"; }
+gcp(){ gcpre && "$TMP/golf2" < "$TMP/gcp.src" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p"; }
+grefp(){ gcpre && python3 boot/golfref.py < "$TMP/gcp.src" > "$TMP/prefp" 2>/dev/null \
+  && chmod +x "$TMP/prefp" && "$TMP/prefp" 2>/dev/null; }
 [ "$(printf '%s' '5R L N E'    | gc)" = "5" ]    && ok "range + len"       || no "range/len"
 [ "$(printf '%s' '10R 4 I N E' | gc)" = "4" ]    && ok "index"             || no "index"
 [ "$(printf '%s' '100R S N E'  | gc)" = "4950" ] && ok "sum of range(100)"  || no "sum range"
@@ -1446,7 +1453,7 @@ cat > "$TMP/m2ten.golfj" <<'EOF'
 5‹square›Ṅ␤3‹cube›Ṅ␤‹ten›‹inc›‹double›‹half›‹dec›Ṅ␤
 5⍳‹mean›Ṅ␤4⍳‹sumsq›Ṅ␤3 4‹hyp›Ṅ␤
 EOF
-tools/golfc -j "$TMP/m2ten.golfj" "$TMP/m2ten" 2>/dev/null
+tools/golfc -P -j "$TMP/m2ten.golfj" "$TMP/m2ten" 2>/dev/null   # -P: the whole prelude, as pre.gb (W13-I)
 [ "$("$TMP/m2ten" 2>/dev/null | tr '\n' ' ')" = "25 27 10 2 14 25 " ] \
   && ok "ten long-named words: :, ⊚ and ⊡ headers, calls, ′ inside a chain" || no "ten long names"
 python3 tools/codepage.py encode < "$TMP/m2ten.golfj" | cat "$TMP/pre.gb" - > "$TMP/m2ten.src"
@@ -2158,12 +2165,14 @@ w11eprog $((w11ea + 1)) "$w11eb" > "$TMP/e.over.g2"
 [ "$(w11eprog 262144 0 | w11e "$TMP/golf2")" = 2 ] && [ "$(cat "$TMP/e.err")" = "GOLF: program too large" ] && [ ! -s "$TMP/e.out" ] \
   && ok "a 1 MB program is refused the same way" || no "far over the cap"
 # Between the old 64 KB and the new cap, with real work in it: one word of
-# 1000 store/load/increment statements (2000 until W13-C, D, E and G grew the
-# compiled prelude to 123 KB; the image is about 184 KB of the 192 KB cap), then the list heap and the printers.
-w11es=""; for k in $(seq 1 1000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
+# 2000 store/load/increment statements, then the list heap and the printers.
+# (W13-C..G grew the compiled prelude to 123 KB and cut this to 1000; since
+# W13-I it is compiled as golfc does, with only the prelude it reaches.)
+w11es=""; for k in $(seq 1 2000); do w11es="$w11es$k→‹x›←‹x›⊕→‹x›"; done
 w11es=":‹f›0$w11es←‹x›⊕;‹f›Ṅ 100⍳"'"*∑Ṅ'
-[ "$(printf '%s' "$w11es" | python3 tools/codepage.py encode | w11e "$TMP/golf2")" = 0 ] && chmod +x "$TMP/e.out" \
-  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "1002328350" ] \
+printf '%s' "$w11es" | python3 tools/codepage.py encode > "$TMP/e.prog"
+[ "$(python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/e.prog" | cat - "$TMP/e.prog" | "$TMP/golf2" > "$TMP/e.out" 2>"$TMP/e.err"; echo $?)" = 0 ] && chmod +x "$TMP/e.out" \
+  && [ "$(stat -c%s "$TMP/e.out")" -gt 65536 ] && [ "$("$TMP/e.out")" = "2002328350" ] \
   && ok "a $(stat -c%s "$TMP/e.out")-byte program (> 64 KB) runs: the list heap and the output buffer above the image still work" \
   || no "program past 64 KB: $(cat "$TMP/e.err")"
 w11efsz "$TMP/golf2" | { read -r f n; [ "$f" = "$n" ] && [ "$n" -lt 65536 ]; } \
@@ -2530,7 +2539,8 @@ printf '1Ṅ\n\n5qṄ\n' > "$TMP/w113/b.golfj"
 # -g: the map.  golf2 -g writes `name 0xaddr` lines to fd 2 after a good
 # compile, the binary unchanged; golfc -g turns that into OUT.map, glyphs and all.
 printf ':‹sq›"*;\n:f‹sq›;\n5fṄ\n' > "$TMP/w113/c.golfj"
-(cd "$TMP/w113" && "$EXP/tools/golfc" -j -g c.golfj c && "$EXP/tools/golfc" -j c.golfj c2) >/dev/null 2>&1
+# -P (W13-I): the whole prelude, so the binary can be compared with pre.gb + c below
+(cd "$TMP/w113" && "$EXP/tools/golfc" -P -j -g c.golfj c && "$EXP/tools/golfc" -P -j c.golfj c2) >/dev/null 2>&1
 [ "$("$TMP/w113/c")" = 25 ] && cmp -s "$TMP/w113/c" "$TMP/w113/c2" \
   && ok "golfc -g: the binary is byte-identical with and without -g" || no "golfc -g binary"
 cat "$TMP/pre.gb" <(w112enc < "$TMP/w113/c.golfj") > "$TMP/w113/c.src"
@@ -2686,15 +2696,11 @@ done
 [ -z "$w114bad" ] \
   && ok "malformed ⊜ (no fields, no ;, bad field, bad name, a 61-byte invented name): golf2 and golfref say so with the line, exit 2; the seed exits 2" \
   || no "malformed ⊜:$w114bad"
-# W13-E: the fields reuse the prelude's own long names (then ‹fK› fillers), so
-# the 256 fields add only their 512 invented names to the 1024 however many
-# long names the prelude defines (up to 511).
-w114many=$(python3 -c '
-import re
-pre = re.findall(r"^ *[:⊡]‹([0-9A-Za-z_-]+)›", open("lib/prelude.golfj", encoding="utf-8").read(), re.M)
-f = list(dict.fromkeys(pre))[:256]; f += ["f%d" % k for k in range(256 - len(f))]
-print("⊜‹r›" + "".join("‹%s›" % x for x in f) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-%s›Ṅ␤\"‹r-%s›Ṅ␤≢Ṅ" % (f[255], f[0]))')
-[ "$(printf '%s' "$w114many" | gc)" = "$(printf '355\n100\n256')" ] \
+# 768 names of the program's own (W13-E made the fields reuse the prelude's
+# long names while the whole prelude was compiled; since W13-I gcp, like
+# golfc, interns only the prelude names the program reaches).
+w114many=$(python3 -c 'print("⊜‹r›" + "".join("‹f%d›" % k for k in range(256)) + ";" + " ".join(str(k) for k in range(100, 356)) + "‹r›\"‹r-f255›Ṅ␤\"‹r-f0›Ṅ␤≢Ṅ")')
+[ "$(printf '%s' "$w114many" | gcp)" = "$(printf '355\n100\n256')" ] \
   && [ "$(printf '%s' "${w114many/;/‹f256›;}" | w114a "$TMP/golf2")" = "2 GOLF: too many record fields ‹r› at line 1" ] \
   && ok "256 fields (512 invented names) work; a 257th: GOLF: too many record fields ‹r›" || no "record field bound: $(cat "$TMP/inc/err")"
 [ "$(printf '%s' '⊜‹p›‹x›;5‹p›"⌫‹p-x›' | gc 2>&1)" = "GOLF: use after free" ] \
@@ -3742,7 +3748,6 @@ ops = [("′⌈", max), ("′⌊", min), ("′⩌", max), ("′m", max), ("′k"
 for L in range(10):
     a = [random.randint(-9, 9) for _ in range(L)]
     lit = "".join(f"{v}⍆" if v >= 0 else f"0 {-v}-⍆" for v in a)
-    if L == 7: prog.append("\f:m⌈;:k⌊;")   # W13-E: two programs, so each fits the 192 KB image next to the grown prelude
     for n in range(1, L + 2):
         for g, f in ops:
             prog.append(f"0⍳{lit}{n}{g}⊟⍕␤")
@@ -3753,15 +3758,15 @@ for L in range(10):
                     acc = f(acc, x)
                 out.append(acc)
             want.append(" ".join(map(str, out)))
-p1, p2 = "".join(prog).split("\f")
-open(f"{T}/a5win.prog", "w", encoding="utf-8").write(p1)
-open(f"{T}/a5win2.prog", "w", encoding="utf-8").write(p2)
+open(f"{T}/a5win.prog", "w", encoding="utf-8").write("".join(prog))
 open(f"{T}/a5win.want", "w").write("\n".join(want) + "\n")
 PYEOF
-[ "$({ gc < "$TMP/a5win.prog"; gc < "$TMP/a5win2.prog"; } | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
-  && [ "$({ gref < "$TMP/a5win.prog"; gref < "$TMP/a5win2.prog"; } | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+# One program again since W13-I (W13-E split it in two to fit the 192 KB
+# image next to the whole prelude); gcp/grefp compile the prelude it reaches.
+[ "$(gcp < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
+  && [ "$(grefp < "$TMP/a5win.prog" | sed 's/ *$//')" = "$(cat "$TMP/a5win.want")" ] \
   && ok "lengths 0..9, every n 1..len+1, ⌈ ⌊ ⩌ :m⌈; :k⌊; + - match Python (golf2 and the oracle)" \
-  || no "W12-A5 vs Python: $(diff <({ gc < "$TMP/a5win.prog"; gc < "$TMP/a5win2.prog"; } | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
+  || no "W12-A5 vs Python: $(diff <(gcp < "$TMP/a5win.prog" | sed 's/ *$//') "$TMP/a5win.want" | head -4 | tr '\n' ' ')"
 # The deque is O(len): a window of 100,000 over a million elements would be
 # 10^11 calls of f on the general path.  Here it is two passes.
 printf '%s' ':m⌈;1000000⍳100000′⌈⊟∑Ṅ␤1000000⍳100000′⌊⊟∑Ṅ␤1000000⍳⌽100000′m⊟∑Ṅ␤1000000⍳100000′⩍⊟≢Ṅ' \
@@ -3926,7 +3931,7 @@ for w12o3s in 1 2 3; do
 import heapq, random, sys
 r = random.Random(int(sys.argv[1])); h, prog, out = [], ["‹pq›"], []
 lit = lambda v: str(v) if v >= 0 else str(-v) + "±"
-for _ in range(1200):   # 2000 until W13 grew the prelude past what the image cap leaves
+for _ in range(2000):   # 1200 from W13 wave 1 until W13-I pruned the prelude (gcp)
     if h and r.random() < 0.45:
         out.append(heapq.heappop(h)); prog.append("‹pqpop›Ṅ32)")
     else:
@@ -3938,10 +3943,10 @@ while h:
     out.append(heapq.heappop(h)); prog.append("‹pqpop›Ṅ32)")
 print("".join(prog) + "≢Ṅ"); print(" ".join(map(str, out)) + " 0")' "$w12o3s" > "$TMP/o3r.txt"
   w12o3e=$(sed -n 2p "$TMP/o3r.txt")
-  [ "$(sed -n 1p "$TMP/o3r.txt" | gc)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s golf2]"
-  [ "$(sed -n 1p "$TMP/o3r.txt" | gref)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s oracle]"
+  [ "$(sed -n 1p "$TMP/o3r.txt" | gcp)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s golf2]"
+  [ "$(sed -n 1p "$TMP/o3r.txt" | grefp)" = "$w12o3e" ] || w12o3bad="$w12o3bad [seed $w12o3s oracle]"
 done
-[ -z "$w12o3bad" ] && ok "3 random sequences of 1200 ops match Python heapq (golf2 and the oracle)" || no "W12-O3 random:$w12o3bad"
+[ -z "$w12o3bad" ] && ok "3 random sequences of 2000 ops match Python heapq (golf2 and the oracle)" || no "W12-O3 random:$w12o3bad"
 [ "$(printf '%s' '‹pq›5‹pqpush›1‹pqpush›4‹pqpush›"‹pqtop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ‹pqpop›Ṅ≢Ṅ32)‹pq›3±‹pqpush›2‹pqpush›7±‹pqpush›"TṄ32)⍕' | gc)" = "11450 0 -7 2 -3 " ] \
   && ok "push/top/pop/size; a queue is a tagged list (T 0) shown in heap order" || no "W12-O3 basics"
 [ "$(printf '%s' '‹pq›2 32≪9|‹pqpush›1±32≪5|‹pqpush›0 32≪7|‹pqpush›{‹pqpop›"32≫Ṅ32)4294967295$Ṅ32)"≢0≡}_' | gc)" = "-1 5 0 7 2 9 " ] \
@@ -4898,6 +4903,85 @@ w13io='ℤ"⌊⍀-Ṁ 5⍳⟦3%⟧⍖⍕⊡f⇒a⇒b a b ʘg;12 18fṄ“1 2;3 4
 [ "$(printf '7 1 5 3 6 4' | gin "$w13io")" = "2 1 4 0 3 6[2 3] [4 5] 5" ] \
   && [ "$(cat "$TMP/pre.gb" <(printf '%s' "$w13io" | python3 tools/codepage.py encode) | python3 boot/golfref.py | cmp -s - "$TMP/pin" && echo same)" = same ] \
   && ok "oracle: golfref emits the same binary for the cross-feature program" || no "W13-INT oracle"
+
+# === W13-I ===
+echo "W13-I: golfc compiles only the prelude a program reaches (tools/golfprune.py); -P keeps it all"
+mkdir -p "$TMP/w13i/lib"
+w13ic(){ printf '%s' "$2" > "$TMP/w13i/$1.golfj"; (cd "$TMP/w13i" && "$EXP/tools/golfc" ${3:-} -j "$1.golfj" "$1" 2>&1 && ./"$1"); }
+w13isz(){ stat -c%s "$TMP/w13i/$1"; }
+# The trivial program: the prelude's top-level code and what it reaches only.
+w13ic one '1Ṅ' >/dev/null; w13ic onep '1Ṅ' -P >/dev/null
+(cd "$TMP/w13i" && GOLFC_FULL=1 "$EXP/tools/golfc" -j one.golfj onee)
+printf '%s' '1Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w13i/onef"
+[ "$("$TMP/w13i/one")" = 1 ] && [ "$(w13isz one)" -lt 16384 ] && cmp -s "$TMP/w13i/onep" "$TMP/w13i/onef" && cmp -s "$TMP/w13i/onee" "$TMP/w13i/onef" \
+  && ok "1Ṅ is a $(w13isz one)-byte binary ($(w13isz onef) with the whole prelude); golfc -P and GOLFC_FULL=1 are the old binary byte for byte" \
+  || no "W13-I trivial: $(w13isz one) / $(w13isz onef)"
+# The split is exact: with every name reached, the pruned prelude IS the
+# prelude; with few, the dropped definitions leave their newlines (prelude
+# line numbers stay put) and every top-level byte stays.
+python3 - "$TMP/pre.gb" "$EXP/tools" <<'PY' && ok "golfprune: all names reached = the encoded prelude byte for byte; for 1Ṅ the same newlines, every top-level byte, a quarter of the bytes at most" || no "W13-I golfprune split"
+import sys
+sys.path.insert(0, sys.argv[2]); import golfprune as g
+pre = open(sys.argv[1], "rb").read()
+items = g.split(pre)
+assert b"".join(pre[it[1]:it[2]] for it in items) == pre
+everything = set().union(*(it[3] for it in items if it[0] == "def"))
+assert g.prune(pre, everything) == pre
+small = g.prune(pre, g.refs(b"1\xc3"))
+assert small.count(b"\n") == pre.count(b"\n") and len(small) < len(pre) // 4
+assert all(pre[it[1]:it[2]] in small for it in items if it[0] == "top")
+PY
+# Reachability: each program reaches prelude words in a different way, and
+# prints what it prints with the whole prelude, from a smaller binary.  ′ and
+# S1 adverbs; a 3-link chain (forks through ⑂, which it never spells); a
+# record header (calls ⍳ and I, unspelled); digraphs ʘg ʘl (‹_dg67› ->
+# ‹gcd›); a one-byte alias (Ǧ -> ‹getor›); a long name used before the program
+# defines it; an included .golfj (from lib/) and a raw .g2 include that call
+# words the program never spells.
+printf ':‹ig›12 18‹gcd›;' > "$TMP/w13i/lib/w13ia.golfj"
+printf '\x3a\xb4il\xb5 4 6\xb4lcm\xb5;' > "$TMP/w13i/w13ib.g2"
+w13ibad=""
+while IFS='|' read -r w13ix w13iw; do
+  w13ig=$(w13ic p "$w13ix" | sed 's/ *$//'); w13if=$(w13ic f "$w13ix" -P | sed 's/ *$//')
+  { [ "$w13ig" = "$w13iw" ] && [ "$w13if" = "$w13iw" ] && [ "$(w13isz p)" -lt "$(w13isz f)" ]; } || w13ibad="$w13ibad [$w13ix => '$w13ig' / '$w13if']"
+done <<'W13ICASES'
+3⍳′⊕€⍕ 3⍳⊖€⍕|1 2 3 -1 0 1
+⊚‹m›∑≢÷;9⍳‹m›Ṅ|4
+⊜‹pt›‹x›‹y›;3 4‹pt›"‹pt-y›Ṅ‹pt-x›Ṅ|43
+12 18ʘgṄ 4 6ʘlṄ|612
+‹dict›"1 10‹put›"1 0ǦṄ"2 7ǦṄ|107
+:f‹g›Ṅ;:‹g›5⍳"⊕‹unique›≢;f|50 1 2 3 4
+⎘“w13ia.golfj“⎘“w13ib.g2“‹ig›Ṅ‹il›Ṅ|612
+W13ICASES
+[ -z "$w13ibad" ] && ok "quotes, adverbs, a ⊚ fork, a ⊜ record, ʘ digraphs, a one-byte alias, a forward use and both kinds of include reach their prelude words (same output as -P, smaller)" \
+  || no "W13-I reachability:$w13ibad"
+# The pruned source compiles to one binary in all three compilers, and
+# golfc's binary is that one.
+printf '%s' '5⍳⟦3%⟧⍖⍕ 12 18ʘgṄ' | python3 tools/codepage.py encode > "$TMP/w13i/x.gb"
+python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w13i/x.gb" | cat - "$TMP/w13i/x.gb" > "$TMP/w13i/x.src"
+"$TMP/golf2" < "$TMP/w13i/x.src" > "$TMP/w13i/x.g"; "$TMP/seed" < "$TMP/w13i/x.src" > "$TMP/w13i/x.s"
+python3 boot/golfref.py < "$TMP/w13i/x.src" > "$TMP/w13i/x.r"
+printf '%s' '5⍳⟦3%⟧⍖⍕ 12 18ʘgṄ' > "$TMP/w13i/x.golfj"; (cd "$TMP/w13i" && "$EXP/tools/golfc" -j x.golfj x)
+cmp -s "$TMP/w13i/x.g" "$TMP/w13i/x.s" && cmp -s "$TMP/w13i/x.g" "$TMP/w13i/x.r" && cmp -s "$TMP/w13i/x.g" "$TMP/w13i/x" \
+  && [ "$("$TMP/w13i/x")" = "2 1 4 0 3 6" ] \
+  && ok "seed, golf2 and golfref emit the same binary for a pruned prelude, and it is golfc's" || no "W13-I three-way parity"
+# -g maps the kept words only; a compile error still names the user's line.
+(cd "$TMP/w13i" && "$EXP/tools/golfc" -g -j one.golfj one && "$EXP/tools/golfc" -P -g -j one.golfj onef)
+printf '1Ṅ\n\n5qṄ\n' > "$TMP/w13i/bad.golfj"
+[ "$(grep -c . "$TMP/w13i/one.map")" -lt "$(grep -c . "$TMP/w13i/onef.map")" ] && ! grep -q '^‹gcd› ' "$TMP/w13i/one.map" && grep -q '^‹gcd› ' "$TMP/w13i/onef.map" \
+  && [ "$(cd "$TMP/w13i" && "$EXP/tools/golfc" -j bad.golfj bad 2>&1)" = "GOLF: undefined word q at line 3" ] \
+  && ok "golfc -g maps the $(grep -c . "$TMP/w13i/one.map") kept words of 1Ṅ (-P: $(grep -c . "$TMP/w13i/onef.map")); errors keep the program's line numbers" || no "W13-I map/lines"
+# The ten bench/leetcode programs: pruned and whole-prelude binaries agree on
+# small generated inputs, and each is well under 40 KB now (125 KB before).
+python3 bench/leetcode/gen.py 0.001 "$TMP/w13i/in" > /dev/null
+w13ibad=""; w13isum=0
+for w13ip in twosum parens stock longsub prodself topk islands trap slidemax queens; do
+  tools/golfc -j "bench/leetcode/golf/$w13ip.golfj" "$TMP/w13i/b"; tools/golfc -P -j "bench/leetcode/golf/$w13ip.golfj" "$TMP/w13i/bf"
+  w13isum=$((w13isum + $(w13isz b)))
+  { [ "$("$TMP/w13i/b" < "$TMP/w13i/in/$w13ip.txt")" = "$("$TMP/w13i/bf" < "$TMP/w13i/in/$w13ip.txt")" ] && [ "$(w13isz b)" -lt 40960 ]; } \
+    || w13ibad="$w13ibad $w13ip($(w13isz b))"
+done
+[ -z "$w13ibad" ] && ok "the ten bench/leetcode programs: the same answers pruned and whole, $((w13isum / 10)) bytes on average" || no "W13-I bench:$w13ibad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
