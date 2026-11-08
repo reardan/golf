@@ -137,12 +137,12 @@ against the thing it describes, so none of it can go stale quietly.
 
 | Measured | Now |
 |----------|-----|
-| operator atoms in `mkblob2.ATOMS` | **34** |
-| the template blob itself | **1278** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **4633** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **15212** bytes |
-| assertions in the run2 suite | **863** |
-| assertions in the selfcheck suite | **66** |
+| operator atoms in `mkblob2.ATOMS` | **38** |
+| the template blob itself | **1380** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **5100** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **16891** bytes |
+| assertions in the run2 suite | **935** |
+| assertions in the selfcheck suite | **69** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -203,7 +203,7 @@ the golf2 fixpoint included. In order:
   prelude, so its cells stay zero and it always takes the scalar path.
 - **M-CHAIN — tacit combinators.** `∘` compose writes a 39-byte thunk into the
   RWX code arena at `0x4D0000` and returns its address, so composed quotations
-  are ordinary callables; `⇉` pipeline and `⑂` fork are built on it —
+  are ordinary callables (since W13-H a data record that `⍎` dispatches on); `⇉` pipeline and `⑂` fork are built on it —
   `5⍳′∑′≢′÷⑂` is a mean. Library only, no compiler change.
 - **M4 — 64 bits, signed, big literals.** List cells and the prelude scratch bank
   widened to 8 bytes (the bank was *relocated* to `0x4F0060` rather than widened
@@ -280,7 +280,8 @@ the golf2 fixpoint included. In order:
   nothing can be freed, since a thunk's address may have escaped anywhere.
   (W12-O2 later took the other road: the prelude makes the brk heap
   executable with `mprotect`, thunks become `A` blocks, and freeing one is
-  the program's explicit `⌫`. See Known limits.)
+  the program's explicit `⌫`. W13-H then dropped the code altogether: a
+  closure is a data record and the heap is RW only. See Known limits.)
   **An undefined word is reported.** `e` emitted `call rel32` with
   `rel32 = dict[name] - (p+4)` without ever reading `dict[name]`; for a
   never-defined name that cell is BSS-zero, so the *compile* succeeded and the
@@ -512,6 +513,28 @@ the golf2 fixpoint included. In order:
   does not encode back (gtools' prelude round trip caught it). A one-byte
   program's own code compiles to the same bytes as before; only the prelude
   part of the binary grows (run2 checks this).
+- **W13-I — programs pay only for the prelude they reach.** W13 wave 1 grew
+  the compiled prelude to 125,566 bytes of the 196,608-byte image, so tests
+  were shrunk to fit. The fix is dead-code elimination in the toolchain, not
+  the compiler: `tools/golfprune.py`, called by `tools/golfc` between
+  encoding and `golf2`, cuts the encoded prelude into top-level definitions
+  and top-level code, marks every name the program, its includes and the
+  top-level code mention (one-byte names, `‹long›`, `ʘB`, prefix operands, plus
+  the `⑂` that `⊚` forks through and the `⍳ I` that `⊜` calls), closes over
+  the kept bodies, and drops the rest, leaving their newlines so line numbers
+  stay put. golf2, the seed and golfref did not change, so seed ≡ golf2
+  holds by construction and each still compiles in one pass. A compiler
+  pre-scan would have had to do the same transitive closure twice, in v2
+  GOLF and v1 GOLF, over a buffer neither compiler keeps. Raising the cap
+  instead would move the out buffer, the spill stack and the compilers'
+  buffers, which are hard-coded in many places. Results: `1Ṅ` 125,566 → 13,527
+  bytes; the ten `bench/leetcode` programs ~125.8 KB → 17.8–33.4 KB; golfc ~40%
+  faster (the encoded prelude is cached in `build/prelude.gb`, keyed by a
+  hash). Only addresses change: every compiled reference binds as before.
+  `golfc -P` / `GOLFC_FULL=1` keep the whole prelude, for programs that reach
+  a word only through an address computed at run time. run2's `>64 KB`
+  (2000 statements), W12-O3 (2000 ops), W12-A5 (one program) and 256-field
+  record tests are back to their original sizes, through `gcp`/`grefp`.
 - **W10-A — forward references for every name; 1024 long names.** M2's
   pending-site lists were already indexed by name number, so a one-byte name
   needed no new mechanism, only permission: `e` and `X` now send any name that
@@ -712,8 +735,10 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   `0x430000`, the W11-1C output buffer (the lowest address a running program
   uses; REGISTRY §3). Both compilers check it as they emit: `golf2` writes
   `GOLF: program too large` to fd 2 and exits 2 with nothing on fd 1, the seed
-  exits 2 silently. The prelude alone is about 43 KB (an empty program is 43047
-  bytes, after W11 wave 4), which leaves about 150 KB; an empty word costs 20 bytes. `p_filesz`
+  exits 2 silently. The whole prelude grew to about 123 KB by W13 wave 1, but
+  since W13-I `tools/golfc` compiles only the definitions a program reaches
+  (`1Ṅ` is 13,527 bytes; the whole prelude, `golfc -P`, is 125,566), so about
+  180 KB is left for a program's own code; an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).
   Raising the cap further means moving the 1C buffer and the spill stack up
@@ -756,11 +781,16 @@ unbuilt, and three defects this list does not yet cover — see
   catches nest as deep as the 4096-frame spill stack allows (sharing it with
   the list words). A return-stack overflow is a SIGSEGV on the guard page and
   is not catchable.
-- **Only the unary arithmetic atoms check for a list (W12-O1).** `± ⊕ ⊖ ² ⊗
-  ⊘` on a list raise `GOLF: not a number` through `‹throw›`. Their templates
+- **Only the unary arithmetic atoms check for a list (W12-O1, W13-C).** `± ⊕
+  ⊖ ² ⊗ ⊘` on a list map over it, to any depth (W13-C; W12-O1 made them
+  raise `GOLF: not a number`). Their templates
   test TOS's top byte for `0x7F` and only then call the hook cell `0x4F0DC0`
   (REGISTRY §3.2, slot O1). The prelude fills that cell with `‹_12o1_nan›`,
-  which throws only for a tagged value whose address lies in the list heap.
+  which acts only on a tagged value whose address lies in the list heap: it
+  reads its own return address to see which atom called it, maps the list
+  with that atom inline, and returns past the atom's scalar body. That ties
+  the hook to `mkblob2._numchk`'s layout (the scalar body right after the
+  hook call), which run2's W13-C block checks.
   So `INT64_MAX` and the rest of `[0x7F<<56, 2^63)` stay numbers, and the
   only integers lost are those whose bits are exactly a live heap list's
   tagged address. The hot path is one `cmp byte [rsp+7]` and a not-taken
@@ -803,25 +833,42 @@ unbuilt, and three defects this list does not yet cover — see
   five ops per user `⊇`. Blocks are never split or coalesced; small
   blocks round up to a power of two (≤ 2x), and the >256-cell class checks only
   its head, so a large freed block can be passed over by a bigger request.
-- **Thunks are heap blocks, and the heap is executable (W12-O2).** `∘` and
-  `⊸` take their 39/38-byte thunk from `A` (a 5-cell request, one 72-byte
-  class-1 block), so `⌫` frees one, `‹heapstats›` counts it, and the old
-  lifetime cap (1680 thunks in the fixed 64 KB arena at `0x4D0000`, then
-  `compose arena exhausted`) is gone. For that the prelude `mprotect`s the
-  whole brk heap `PROT_READ|PROT_WRITE|PROT_EXEC` at startup and again each
-  time `A` moves the break: two prelude lines, no compiler or ELF change
-  (x86-64 Linux never makes brk memory executable by itself; a separate
-  `mmap(PROT_EXEC)` arena would have needed a second free list, a second `⌫`
-  path and its own counters). **Costs:** list memory is executable too, so
-  W^X is not kept (the load segment never kept it), and a kernel or policy
-  that refuses an executable heap (SELinux `execheap`, PaX) breaks `∘`/`⊸`.
-  **Checked:** freeing a thunk twice (`double free`) and freeing a non-heap
-  address. **Not checked:** calling a freed thunk (`⍎` is a bare `call`; the
-  poison `⌫` writes over its first bytes is a privileged instruction, so it
-  dies with SIGSEGV, or, once the block is reused, runs whatever is there),
-  and freeing a thunk another thunk still calls. The old arena is unused.
-  Thunk code addresses must stay below 2^32 (each is written as a 4-byte
-  imm64 low half), which the allocator's 32-bit cells already require.
+- **Closures are data records, and the heap is not executable (W13-H).**
+  W12-O2 moved `∘` and `⊸`'s machine-code thunks (39/38 bytes) from the
+  fixed 1680-thunk arena at `0x4D0000` to `A` blocks, and for that the
+  prelude `mprotect`ed the whole brk heap `PROT_READ|PROT_WRITE|PROT_EXEC` at
+  startup and after every growth — so list memory was executable too, and a
+  kernel or policy refusing an executable heap (SELinux `execheap`, PaX)
+  broke `∘`/`⊸`. W13-H makes a closure DATA: a 3-cell `A` block
+  `[f, g, kind]` (compose) or `[f, x, kind]` (bind), whose raw untagged
+  address is the function value, `kind` (cell 2) the address of the prelude
+  word that runs it (`‹_13h_cmp›`, `‹_13h_bnd›`). Both `mprotect` lines are
+  gone; the heap keeps the kernel's RW. **Dispatch:** every code address a
+  program can call (words, `′`-thunks, `⟦ ⟧` blocks, prelude words) is in the
+  image, below `0x600000` (`RSTACK_TOP`, the BSS end), and every heap address
+  is at or above it, so `⍎`'s template (`mkblob2._EXEC`, 17 bytes for 3) is
+  `pop rax; cmp rax,0x600000; jb .call; push rax; call [rax+16]; jmp .done;
+  .call: call rax`. A code call pays one compare and one taken branch; a
+  record's kind word starts with `… r` on the data stack, as a word starts
+  with its arguments, so the threading contract is untouched, and everything
+  that calls a function value (`€ ⇤ ⌿ ⍀ ⍁ ⍸ ⊞ ⊟ ⍣ ⇉ ⑂ ‹catch› ‹memo›`,
+  streams) does so through `⍎` and took records with no change. No hook cell
+  and no prelude support are needed for the split itself, so a bare program
+  and the compilers are unaffected (they never make a record). The kind
+  sits in cell 2 because `⌫` writes only cells 0 (the poison) and 1 (the
+  free-list link): a freed closure still reaches its kind word, which tests
+  cell 0 (a live one holds `f`, a function value, never the poison) and
+  throws `use after free` — before W13-H a freed thunk executed the poison
+  and died of SIGSEGV. **Cost** (bench/RESULTS.md, W13-H): ⍎ of a code
+  address within noise (≤0.3 ns); a call through a record about 2 ns more
+  than through a thunk (a bind 2.6 → 4.7 ns, a compose 3.2 → 5.4 ns), since
+  the kind words are GOLF code (an inline poison test, the record read
+  through the stack) rather than two hand-placed `mov`/`call`s; a closure is
+  a 40-byte block instead of 72. **Not checked**, as before: a stale copy
+  of a closure whose block was handed out again (it runs or misreads the new
+  owner), freeing a closure another one still calls, and a non-function at or
+  above the floor (a tagged list, a large int), which faults reading
+  `[rax+16]` as calling it faulted before. The old arena stays unused.
 - **The integers in `[0x7FFF<<48, 2^63)` are lists.** A list value is
   `addr | 0x7FFF<<48` (W11-1A; it was `addr | 2^48`, which sacrificed the
   everyday `[2^48, 2^49)`), so an integer whose top 16 bits are exactly `0x7FFF`

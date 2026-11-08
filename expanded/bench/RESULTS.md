@@ -42,6 +42,25 @@ best of 7, same session: twosum 71 → 71 ms, longsub 70 → 80, islands 108 →
 | W12-6 before (base 072cdca), 2026-11-08 | 0.075 | 0.125 | 0.108 | 0.081 | 0.141 | 0.092 | 0.103 | 0.130 | 0.185 | 0.032 | 655 |
 | **W12 final** (W12-6), 2026-11-08 | 0.072 | 0.115 | 0.080 | 0.085 | 0.136 | 0.091 | 0.111 | 0.116 | 0.175 | 0.025 | 411 |
 | Python, same runs as W12 final | 0.121 | 0.142 | 0.253 | 0.340 | 1.202 | 0.108 | 0.560 | 0.301 | 1.221 | 0.209 | 2,571 |
+| W13-G before (base 9b14c93), 2026-11-08 | 0.053 | 0.098 | 0.063 | 0.073 | 0.106 | 0.069 | 0.085 | 0.092 | 0.143 | 0.017 | 411 |
+| W13-G, 2026-11-08 | 0.053 | 0.097 | 0.065 | 0.073 | 0.107 | 0.067 | 0.084 | 0.090 | 0.143 | 0.018 | 411 |
+| **W13 final** (W13-F), 2026-11-08 | 0.091 | 0.081 | 0.073 | 0.174 | 0.130 | 0.071 | 0.049 | 0.090 | 0.142 | 0.018 | 177 |
+| Python, same runs as W13 final | 0.099 | 0.146 | 0.196 | 0.332 | 0.974 | 0.087 | 0.446 | 0.259 | 1.145 | 0.176 | 2,571 |
+
+W13-F rewrote all ten with the W13 language (adverbs, `⟦ ⟧` blocks, implicit
+output, bare locals, `Ṁ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ℑ Ǧ ṭ`, the digraphs, the bit atoms):
+411 → 177 bytes, against Jelly's 144. Every one keeps its time complexity and
+beats Python. The W13 final row is the better of two `bench.sh in` runs.
+Stock is `ℤ"⌊⍀-Ṁ`, Trap `ℤ"⌈⍀&⌈⍂⌊\\-∑`, Sliding Window `ℤ⍘⌈⊟`, Islands
+`⎕ʘW′⊣ʘ7` (‹gcomps›, 101 → 7 bytes and 0.09 → 0.05 s), longsub `⏎_Ṕ⌈⍀ℑ\\-Ṁ`
+(42 → 9 bytes; 0.08 → 0.17 s, since `Ṕ` probes a dict per letter where the
+old word indexed a 256-cell table, still half Python's time), and parens keeps
+its bracket stack on the data stack under `€` (41 → 22 bytes, 0.10 → 0.08 s).
+twosum moved between 0.058 and 0.091 s across this session's runs (Python
+0.080–0.099); best of 9, interleaved: golf 59 ms, Python 80 ms. topk's
+shortest form, `ℤ⍘\\"ĊḲ⍋\\⧺\\ʘk` (12 bytes), counts the input twice and takes
+0.106 s against Python's 0.092, so the benchmark keeps the 17-byte one
+(0.068 s). bench/leetcode/README.md has notes on each solution.
 
 W12-6 rewrote all ten with the W12 vocabulary and Z1's one-byte aliases
 (`ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ`): 655 → 411 bytes. Stock is `ℤ"′⌊⍀-′⌈⍁Ṅ` and Trap
@@ -65,6 +84,8 @@ grid once with `⧺`, is the largest).
 | W12-P3 before (base 7a867ca), 2026-11-08 | 1.05 | 8.70 | 19.77 | 25.12 | 21.31 | 26.64 | 40.53 | — |
 | W12-P3, 2026-11-08 | 1.01 | 6.96 | 10.52 | 15.59 | 11.61 | 15.00 | 17.97 | — |
 | **W12 final** (W12-6), 2026-11-08 | 1.09 | 7.10 | 11.19 | 15.83 | 15.60 | 17.27 | 18.68 | 164.08 |
+| W13-G before (base 9b14c93), 2026-11-08 | 0.83 | 5.41 | 9.22 | 13.96 | 11.04 | 12.50 | 16.12 | 90.43 |
+| W13-G, 2026-11-08 | 0.82 | 6.13 | 9.46 | 13.82 | 8.84 | 12.80 | 16.02 | 92.47 |
 
 The W12 final run's other `cases.txt` rows, in ns per element: inc2 1.78,
 dictbump 128.44, scan 17.60, reduce 13.70, eachi 18.94, sort 708.46, ksort
@@ -121,3 +142,232 @@ the same. `⍒` adds n key calls through `€`, the key block and the gather.
 key and its unpacking. It went from 100 to 67 bytes and from 0.0885 to
 0.0852 s (best of 5, same session), with output equal to Python's on
 `gen.py 1 in`.
+
+W13-A (S1 adverbs, `⟦ … ⟧` blocks, bare locals) changes no emitted code.
+`f€` compiles to the bytes of `′f€`, `⟦ … ⟧` to those of `:x … ;′x`, and a
+bare local to those of `⇐x` (run2.sh's W13-A block compares the binaries), so
+run time is unchanged. The compiler does a little more per token: a one-byte
+peek and a scan of the adverb record after every call token. That costs
+nothing measurable. golf2 compiling the prelude plus all twelve
+`bench/leetcode/golf/` files (36,701 bytes) took 19.0 ms before and 19.9 ms
+after, and compiling itself 7.2 ms before and 6.8 ms after (mean of 50 runs
+each, same session; the run-to-run spread is larger than either difference).
+W13-B shipped the bit atoms `♯ ⊣ ⊢ ⊥` (popcount, trailing and leading zero
+count, low bit), one inline instruction each (`popcnt` / `tzcnt` / `lzcnt`,
+and `mov; neg; and` for `x & -x`). Micro rows `popcnt` and `lowbit`, best of
+3: the bare `loop` row is 0.82 ns/iteration and `"♯_` / `"⊣_` / `"⊥_` inside
+it 1.12–1.14, so each atom with its dup and drop costs about 0.3 ns. Implicit
+output adds 15 bytes to the end-of-program exit (a load, a test and a call
+at exit only), and nothing to any loop.
+## W13-C
+
+S5 (`± ⊕ ⊖ ² ⊗ ⊘` map over lists) leaves the int path alone: the atom
+templates are unchanged, and `100000000{⊕⊖⊖"0≡}_` compiles to the same loop
+bytes with the old and the new prelude and runs at 1.40–1.53 ns (old) vs
+1.42–1.50 ns (new) per iteration over five interleaved runs (`inc2`).
+
+Cache-resident rows: a 10^5-element list, 1000 passes, best of 3, ns per
+element (scrambled = `7919*1000003%` of `⍳`):
+
+| case | ns/el |
+|---|---|
+| `Ṁ` scrambled | 2.44 |
+| `Ṁ` on `⍳` (every element a new max) | 2.77 |
+| `Ṃ` scrambled | 2.52 |
+| `′⌈⍁` scrambled (what `Ṁ` replaces) | 3.66 |
+| `⊕` on a list (S5, one pass) | 2.53 |
+| `²` on a list (S5) | 2.53 |
+| `′⊕€` | 4.54 |
+| list `1+` (M-VEC broadcast) | 3.85 |
+
+`micro.sh` rows (fresh lists, `⍳` included, so subtract `iota`): `lmax`
+11.3, `xscan` 16.1 (`scan` 15.6), `findnone` 7.5, `prevocc` 223 and
+`counter` 204 per element on 10^6 (one dict probe each, against `dictbump`
+120), `dsort` 671 (`ksort` 652: one extra pass of `~` over the keys).
+The compiled prelude grew from 74341 to 79691 bytes.
+W13-D shipped the LeetCode library (REFERENCE.md "LeetCode library").
+Best of 3 on this session's machine, input read from stdin and included
+(`ℤ≢` alone is 0.047 s for 10^6 random ints, `⎕≢` 0.017 s for 2·10^6
+chars): `ℤ′e‹countif›` 0.057 s (`ℤ′e⌿≢` 0.060 s), `ℤ‹argmax›` 0.049 s,
+`ℤ10‹mostcommon›` 0.17 s, `‹union›`/`‹inter›`/`‹diff›` of two 10^6 lists
+0.15/0.21/0.15 s (`‹unique›` of one 0.13 s), `‹groupby›` into 100 keys
+0.11 s, `‹prefix›` 0.06 s, `3‹chunk›` 0.07 s; 10^6 `‹bisect›` queries on a
+sorted 10^6 list about 0.3 s past the 0.58 s sort (~300 ns a query);
+`‹find›` (KMP) over 2·10^6 chars 0.05 s; `10000000‹sieve›` 0.14 s; 10^6
+`‹powmod›` with a 30-bit modulus 0.26 s (a 62-bit modulus takes the
+shift-and-add mulmod, about 10 µs a call); 10^6 `‹isqrt›` 0.07 s. The words
+keep their state in `⊡` locals, so none of them takes a spill frame.
+
+### W13-E LeetCode library
+
+Best of 5, wall seconds, input parsing included (`ℤ` alone on the 2M-int
+graph file is 0.10 s). Graph: 200,000 vertices and 1,000,000 random edges
+(weights 1–99), as `n` then the flat edge list. All answers equal Python's.
+
+| program | s |
+|---|---|
+| `ℤ"0⊇\\1↓‹adj›≢Ṅ` (build only) | 0.34 |
+| `ℤ"0⊇\\1↓‹adj›0‹bfs›∑Ṅ` | 0.39 |
+| `ℤ"0⊇\\1↓‹wadj›0‹dijkstra›∑Ṅ` | 1.12 |
+| 1M `‹uunion›` over the same edges | 0.19 |
+| Islands, `:p49-;⎕10‹split›′p‹gcomps›Ṅ`, the 1000×1000 `gen.py 1` grid | 0.059 (`islands.golfj` today: 0.089) |
+| `ℤ‹heapify›≢Ṅ`, 1M ints (`ℤ≢Ṅ` alone: 0.042) | 0.075 |
+| `ℤ10‹nlargest›⍕`, 1M ints | 0.077 |
+| `ℤ‹nextgreater›∑Ṅ`, 1M ints | 0.076 |
+| all 10! `‹perms›` of `10⍳`, each freed | 0.52 |
+| the 20C10 `‹combs›` and 2^20 `‹subsets›` of `20⍳`, each freed | 0.37 |
+
+The pack adds 17.9 KB of code to every program: a trivial program (`1Ṅ`)
+compiles to 74,351 bytes before W13-E and 92,254 after. It uses no scratch
+cells: every word is a `⊡` word with its state in its own frame.
+## W13-G: atoms as the function of a higher-order word
+
+W13-G gave `€ ⌿ ⇤ ⍁ ⍀ ⍸ ⊞` a fast path for an atom function (`+ - * ⌈ ⌊`
+and `∔ ∸ ⨰ ⩌ ⩍` for the two-operand words, `⊕ ⊖ ± ² ⊗ ⊘` for `€ ⌿`): the
+atom runs inline in the word's loop instead of through a call per element.
+The micro rows below are `micro.sh`'s cases, the new ones added by W13-G
+(`fold scan reduce eachi` were atom cases already: `:f+;` is `′+`'s bytes),
+compiled with the base prelude and with W13-G's and run interleaved, best of
+5, same session; ns per element, the `iota` row (5.4–6.1) and the result's
+page faults included:
+
+| case | program | before | after |
+|---|---|---|---|
+| fold | `10000000⍳0′+⇤_` | 11.04 | 8.84 |
+| reduce | `10000000⍳′+⍁_` | 10.27 | 8.92 |
+| scan | `10000000⍳′+⍀_` | 13.47 | 12.06 |
+| eachi | `:f+;10000000⍳′f⍸_` | 15.14 | 12.88 |
+| mapinc | `10000000⍳′⊕€_` | 13.44 | 11.40 |
+| mapsqr | `10000000⍳′²€_` | 13.39 | 13.18 |
+| foldmax | `10000000⍳0′⌈⇤_` | 10.60 | 8.17 |
+| scanmax | `10000000⍳′⌈⍀_` | 13.62 | 11.88 |
+| redmax | `10000000⍳′⌈⍁_` | 10.66 | 8.28 |
+| zipadd | `10000000⍳"′+⊞_` | 14.71 | 12.77 |
+| zipmin | `10000000⍳"′⩍⊞_` | 21.28 | 12.93 |
+| eachimul | `10000000⍳′*⍸_` | 14.57 | 12.78 |
+| filtneg | `10000000⍳′±⌿_` | 11.08 | 9.68 |
+| map (`:f;`, not an atom) | `:f;10000000⍳′f€_` | 13.96 | 13.82 |
+
+On 10^7 fresh elements the words are memory-bound, so the gain there is
+2–3 ns per element. The words' own cost shows on a list that stays in
+cache: 10^5 elements, 1000 passes, best of 5, interleaved (ns per element,
+the pass's `⌫` included):
+
+| form | before | after |
+|---|---|---|
+| `′⊕€` | 4.62 | 2.23 |
+| `′²€` | 4.42 | 2.20 |
+| `′±⌿` | 3.99 | 2.28 |
+| `0′+⇤` | 4.05 | 1.92 |
+| `0′⌈⇤` | 4.20 | 1.70 |
+| `′+⍁` | 3.52 | 1.92 |
+| `′+⍀` | 4.82 | 3.07 |
+| `′⌊⍀` | 4.90 | 2.96 |
+| `′*⍸` | 5.78 | 3.94 |
+| `"′+⊞` | 5.87 | 3.11 |
+| `"′⩍⊞` | 13.23 | 3.49 |
+| `:f;` `′f€` (no fast path) | 4.19 | 4.11 |
+
+The fixed cost per call: `0′+⇤` on a 10-element list, 10^6 calls, 74 → 48
+ms; a user word (`:f;10⍳…′f€`, which takes the general path) 113 → 115 ms,
+the ~3 ns that recognising f costs (an 8-entry cache, and a cell holding the
+last word found not to be an atom). The LeetCode rows above (`lc` = the ten
+solutions compiled both ways, interleaved, best of 5, `gen.py 1` inputs,
+outputs identical) do not move: stock and trap run `⌈⍀ ⌊⍀ ⌈⍁` over a
+million prices, which saves 2–6 ms of 65–90, inside the noise; input parsing
+dominates. The prelude grew by about 15 KB of code (a program's image is
+74 → 89 KB before its own code; the cap is 192 KB).
+
+Not shipped, measured: the fast loops first used the raw ops (`\radd`, a
+branch-free max) with a tag check on every operand and a bail to the general
+path; that was slower than the call (5.8 ns per element for `0′+⇤`, against
+4.1), because the checks cost more than the call they saved. Inlining the
+polymorphic atom itself needs no check at all (its own M-VEC / W12-O1 test
+sends a list to `∔` … or `‹_12o1_nan›` exactly as the thunk would) and is
+what shipped. Four elements per pass instead of two was 0–10% faster and 6 KB
+bigger.
+
+## W13-H: closures as data records, heap not executable
+
+W13-H replaced `∘`/`⊸`'s machine-code thunks with 3-cell data records and
+gave `⍎` a heap-floor test (`cmp rax,0x600000; jb`: code is called, a record
+runs through its kind word, `call [rax+16]`). Base 07d2afa's toolchain and
+W13-H's, both programs compiled from the same sources and run interleaved,
+best of 9, same session; ns per iteration (the `⍎` rows are 10^8-iteration
+loops, the `€` rows ns per element of 10^7):
+
+| case | program | before | after |
+|---|---|---|---|
+| loop, no call | `:f;′f→q 100000000{←q_⊖"0≡}_` | 0.95 | 0.95 |
+| `⍎` of a word | `:f;′f→q 100000000{←q⍎⊖"0≡}_` | 1.74 | 1.75 |
+| `⍎` of a bind | `0′_⊸→q 100000000{←q⍎⊖"0≡}_` | 2.62 | 4.65 |
+| `⍎` of a compose | `:f;′f′f∘→q 100000000{←q⍎⊖"0≡}_` | 3.22 | 5.42 |
+| `€` of a word | `:f;10000000⍳′f€_` | 13.38 | 13.36 |
+| `€` of a bind | `10000000⍳1′+⊸€_` | 14.95 | 17.91 |
+| `€` of a compose | `:f;10000000⍳′f′f∘€_` | 14.13 | 16.47 |
+| make + free, ∘ then ⊸ | `0→j{′⊗′⊕∘⌫ 5′+⊸⌫ ←j1+"→j1000000<1+}` (per closure) | 50.5 | 22.1 |
+
+So the tag test costs nothing measurable on a code address (`⍎` of a word:
+0.79 ns over the bare loop before, 0.80 after; one compare and a taken
+branch, predicted). A call through a closure costs about 2 ns more than
+through a thunk (bind 1.67 → 3.70 ns over the loop, compose 2.27 → 4.47):
+the kind words are GOLF code — a poison test for use after free and the
+record read through the data stack — where the thunk was two `mov`/`call`
+pairs. Building one is twice as fast (no byte-by-byte code writes) and a
+closure is a 40-byte block instead of 72. The prelude got 74 bytes smaller
+(a trivial program `1Ṅ`: 125,566 → 125,492 bytes): the 77 `\exec` sites grew
+by 14 bytes each and the two thunk assemblers went away. `bench/micro/cases.txt`
+has the five rows as `exec bind comp mapbind mapcomp`.
+
+
+
+## W13-I — prelude pruning (binary size, compile time)
+
+`tools/golfc` now compiles only the prelude definitions a program reaches
+(`tools/golfprune.py`). `-P` keeps the whole prelude and gives the old binary
+byte for byte. Sizes are in bytes, whole prelude → pruned. golfc wall time
+for `1Ṅ` went from about 175 ms to 100 ms (best of 5, with the encoded
+prelude cached).
+
+| program | whole | pruned |
+|---|---|---|
+| `1Ṅ` | 125,566 | 13,527 |
+| twosum | 125,887 | 28,945 |
+| parens | 125,835 | 23,228 |
+| stock | 125,768 | 24,348 |
+| longsub | 125,900 | 20,499 |
+| prodself | 125,749 | 22,040 |
+| topk | 125,726 | 33,356 |
+| islands | 126,201 | 25,218 |
+| trap | 125,839 | 23,134 |
+| slidemax | 125,671 | 20,991 |
+| queens | 125,994 | 17,825 |
+
+Run time does not change (`gen.py 1` inputs, best of 5, ms whole/pruned):
+twosum 53/53, parens 97/97, stock 59/58, longsub 74/73, prodself 104/102,
+topk 67/68, islands 86/84, trap 89/86, slidemax 139/136, queens 18/17.
+## W13-F: ten more LeetCode problems
+
+`bench/leetcode/` has twenty problems since W13-F. The second ten each use
+one piece of the W13 library; `bench.sh in`, the better of two runs, wall
+seconds, input parsing included (Python and C++ on the same runs):
+
+| problem | library | Golf bytes | Golf s | Python s | C++ s |
+|---|---|---|---|---|---|
+| search (35) | `‹bisect›` | 4 | 0.077 | 0.138 | 0.076 |
+| koko (875) | `‹bsearch›` | 25 | 0.045 | 0.215 | 0.019 |
+| oranges (994) | `‹adj›` `‹bfs›` | 121 | 0.395 | 0.741 | 0.020 |
+| course (207) | `‹dadj›` `‹toposort›` | 15 | 0.124 | 0.452 | 0.085 |
+| delay (743) | `‹dwadj›` `‹dijkstra›` | 28 | 0.265 | 1.057 | 0.142 |
+| redundant (684) | `‹uf›` `‹uunion›` `‹chunk›` `⍷` | 33 | 0.199 | 0.524 | 0.054 |
+| coins (322) | `‹table1›` | 54 | 0.058 | 0.169 | 0.007 |
+| lcs (1143) | `⍃` `⌈⍀` `⇤` | 33 | 0.178 | 0.492 | 0.008 |
+| temps (739) | `‹nextgreater›` `ℑ` | 7 | 0.124 | 0.992 | 0.084 |
+| bits (338) | `♯` | 6 | 0.047 | 0.824 | 0.056 |
+| **total** | | **326** | | Python 3,055 · golfed Python 1,697 · C++ 5,485 | |
+
+All twenty: Golf 503 bytes, golfed Python 2,997, Python 5,626, C++ 10,098.
+oranges is the slowest against C++ (20×): building the graph calls a
+`⊡` word per cell and pushes every edge end onto a vector before `‹adj›`
+and `‹bfs›` run.
+

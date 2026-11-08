@@ -17,7 +17,8 @@ This is a full oracle, not a shim:
     → set (0x8F), ← get (0x90), ⊚ chain (0xB0), ⊡ ⇒ ⇐ (0xB1-0xB3) and the
     M2 long-name brackets ‹ › (0xB4/0xB5), and W11-2A's include ⎘ (0xB6),
     spliced in place here, and W11-4A's record header ⊜ (0xB7), expanded into
-    the same words golf2 emits.  These change the compiler's
+    the same words golf2 emits, and W13-A's ⟦ … ⟧ blocks (0xBB/0xBC), S1
+    adverb quoting and S4 bare locals.  These change the compiler's
     *logic*, not just its template table, so they cannot be inherited — they are
     transcribed from the authoritative cases in self/seed.golfv1 and
     self/golf2.golfj, whose byte allocations tools/mkblob2.py owns.
@@ -73,6 +74,12 @@ REC_BYTE = mkblob2.REC_BYTE  # ⊜  ⊜‹point›‹x›‹y›; a record heade
 ELSE_BYTE = mkblob2.ELSE_BYTE  # ⋄  c[a⋄b] if-else, {c⋄body} top-tested while (W12-A7)
 VINC_BYTE = mkblob2.VINC_BYTE  # ⇡x  inc qword [x] (W12-Z2)
 VDEC_BYTE = mkblob2.VDEC_BYTE  # ⇣x  dec qword [x]
+BLOCK_BYTE = mkblob2.BLOCK_BYTE        # ⟦ … ⟧  inline block (W13-A S2)
+ENDBLOCK_BYTE = mkblob2.ENDBLOCK_BYTE
+ADVERBS = set(mkblob2.ADVERBS)          # W13-A S1: a call token right before
+UNQUOTED = set(mkblob2.UNQUOTED)        # one of these is quoted, unless it is one of these
+S1_AUDIT = os.environ.get("GOLFREF_S1AUDIT")  # W13-A: log each S1 quote to stderr
+DIGRAPH_BYTE = mkblob2.DIGRAPH_BYTE  # ʘB  the long name ‹_dgHH› (W13-B, S6)
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -94,7 +101,8 @@ def compile_bytes(src: bytes) -> bytes:
     dict_ = {}          # name byte -> file offset of word body (its prologue)
     stack = []          # backpatch stack: (kind, offset)
     chain = None        # M-CHAIN2: the link bytes taken so far, or None
-    frame = False       # M-FRAME: inside a ⊡ definition, which owns a slab
+    J = 0               # M-FRAME: 1 inside a ⊡ definition, which owns a slab;
+                        # W13-A: 2 inside a ⟦ block within one (golf2's J)
     flocals = []        # M-FRAME2: its locals' name numbers, in order of first use
     fsites = []         # M-FRAME2: its frame-size immediates, patched at ';'
     longs = []          # M2: long names in order of first appearance; name
@@ -222,9 +230,20 @@ def compile_bytes(src: bytes) -> bytes:
             longs.append(name)
         return mkblob2.LONG_BASE + longs.index(name)
 
+    def digraph():
+        """W13-B (S6): ʘ then any byte B is the long name ‹_dgHH› (HH = B in
+        upper-case hex), interned like the same text after ‹.  golf2's ‹read›
+        gives 0 at end of input, so a trailing ʘ is ‹_dg00› there too."""
+        nonlocal i
+        b = src[i] if i < n else 0
+        i += 1 if i < n else 0
+        return intern(b"_dg%02X" % b)
+
     def take_name():
-        """A prefix's operand: one byte, or a whole ‹long name›."""
+        """A prefix's operand: one byte, a whole ‹long name›, or ʘB (W13-B)."""
         b = take()
+        if b == DIGRAPH_BYTE:
+            return digraph()
         return read_long() if b == LNAME_BYTE else b
 
     def call_or_template(b):
@@ -310,6 +329,8 @@ def compile_bytes(src: bytes) -> bytes:
             return src[i - 1]
         b = rbyte()
         rec = read_long() if b == LNAME_BYTE else b
+        if b == DIGRAPH_BYTE:                        # W13-B: golf2's ‹getname›
+            rec = digraph()
         if rec < mkblob2.LONG_BASE and not legal(rec):
             die(b"bad record name " + bytes([rec]))
         fields = []
@@ -397,8 +418,8 @@ def compile_bytes(src: bytes) -> bytes:
                 for b in chain[:2] if len(chain) < 3 else []:
                     call_or_template(b)
                 chain = None
-            if frame:                                # M-FRAME: release the slab,
-                frame = False                        # now that its size is known
+            if J == 1:                               # M-FRAME: release the slab,
+                J = 0                                # now that its size is known
                 size = 8 * len(flocals)              # (M-FRAME2): patch every
                 for at in fsites:                    # earlier immediate with it
                     out[at:at + 4] = size.to_bytes(4, "little")
@@ -409,7 +430,7 @@ def compile_bytes(src: bytes) -> bytes:
             patch32(patch, len(out))
             continue
         if ch == '^':                                # M-FRAME: early return.  A
-            if frame:                                # plain template until now;
+            if J == 1:                               # (W13-A: not in a ⟦ block)                                # plain template until now;
                 emit(mkblob2.FRAME_RELEASE)          # it is a case only so it
                 fsites.append(len(out)); emit_u32(0) # (size patched at ';')
             emit(TEMPLATES['^'])                     # can release a ⊡ frame.
@@ -491,13 +512,15 @@ def compile_bytes(src: bytes) -> bytes:
             emit(mkblob2.FRAME_RESERVE)              # ... a slab sized at ';'
             fsites = [len(out)]; emit_u32(0)         # (M-FRAME2), one cell per
             flocals = []                             # distinct local named
-            frame = True                             # which '^' and ';' release
+            J = 1                                    # which '^' and ';' release
             continue
         if c in (LSET_BYTE, LGET_BYTE):              # ⇒x / ⇐x : a frame slot
             name = take_name()                       # a..z (W12-Z3), or a ‹long name›
             if name < 256 and not 0 <= name - ord('a') < 26:
                 die(b"local out of range " + shown(name))
-            if not frame:                            # outside ⊡: M-FRAME's fixed
+            if J == 2:                               # W13-A: a ⟦ block inside a ⊡
+                die(b"block uses local " + shown(name))  # word has no frame
+            if not J:                            # outside ⊡: M-FRAME's fixed
                 if name >= 256 or name - ord('a') >= 8:  # a..h slot; a long name
                     die(b"local out of range " + shown(name))  # (or i..z) has
                 slot = name - ord('a')               # nowhere to go
@@ -521,7 +544,9 @@ def compile_bytes(src: bytes) -> bytes:
             if name < 256 and not (65 <= name < 91 or 97 <= name < 123):
                 die((glyph + " needs a variable").encode())
             k = 0 if c == VINC_BYTE else 8           # /0 inc, /1 dec: modrm + 8
-            if frame and name in flocals:            # a local this ⊡ word has
+            if J and name in flocals:                # a local this ⊡ word has
+                if J == 2:                           # W13-A: not from a ⟦ block
+                    die(b"block uses local " + shown(name))
                 emit([0x48, 0xFF, 0x45 + k, 8 * flocals.index(name)])  # named
             else:                                    # inc/dec qword [rbp+d] ...
                 emit([0x48, 0xFF, 0x04 + k, 0x25])   # ... or qword [cell]
@@ -553,6 +578,23 @@ def compile_bytes(src: bytes) -> bytes:
             else:
                 die("⋄ outside [ ] or { }".encode())
             continue
+        if c == BLOCK_BYTE:                          # W13-A S2: ⟦ — an anonymous
+            if chain is not None:                    # word, compiled in place
+                die("⟦ inside a chain".encode())
+            emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")  # jmp over it
+            emit(v1.PROLOGUE)
+            stack.append(('block', patch, J))        # ⟧ restores the ⊡ flag
+            if J:                                    # inside a ⊡ word: no frame
+                J = 2                                # here (⇒ ⇐ refuse, ^ plain)
+            continue
+        if c == ENDBLOCK_BYTE:                       # W13-A S2: ⟧
+            if not stack or stack[-1][0] != 'block':
+                die("⟧ outside a block".encode())
+            _, patch, J = stack.pop()
+            emit(v1.EPILOGUE)
+            patch32(patch, len(out))                 # the jmp lands on the push
+            emit([0x68]); emit_u32(BASE + patch + 4) # push the body's address
+            continue
         if c == REC_BYTE:                            # W11-4A: ⊜‹point›‹x›‹y›;
             record()
             continue
@@ -564,7 +606,9 @@ def compile_bytes(src: bytes) -> bytes:
             emit(v1.PROLOGUE)
             chain = []                               # links from here to ';'
             continue
-        if c == LNAME_BYTE:                          # M2: ‹name› as a token — its
+        if c == DIGRAPH_BYTE:                        # W13-B: ʘB as a token is
+            c = digraph()                            # ‹_dgHH›, a link or a call
+        elif c == LNAME_BYTE:                        # M2: ‹name› as a token — its
             c = read_long()                          # number then stands for it,
                                                      # as a link or as a call
         if chain is not None:
@@ -581,6 +625,25 @@ def compile_bytes(src: bytes) -> bytes:
                 call_or_template(c)
             continue
 
+        if J and c in flocals:                       # W13-A S4: a bare local
+            if J == 2:                               # this ⊡ word has named is ⇐x
+                die(b"block uses local " + shown(c))
+            if S1_AUDIT:
+                sys.stderr.buffer.write(b"S1 " + str(i).encode() + b": S4 "
+                    + src[max(0, i - 30):i].replace(b"\n", b"\\n") + b"\n")
+            emit([0x48, 0x8B, 0x45, 8 * flocals.index(c), 0x50])
+            continue
+        # W13-A S1: a call token immediately followed by an adverb is quoted.
+        # The next byte is only looked at, never taken; an include's end is a
+        # newline here (golf2 reads 0 there), so a peek never crosses it.
+        nxt = src[i] if i < n and not (segs and i >= segs[-1]["end"]) else 0
+        if nxt in ADVERBS and (c >= mkblob2.LONG_BASE or c not in UNQUOTED):
+            if S1_AUDIT:
+                sys.stderr.buffer.write(b"S1 " + str(i).encode() + b": "
+                    + src[max(0, i - 30):i].replace(b"\n", b"\\n") + b" <|> "
+                    + src[i:i + 10].replace(b"\n", b"\\n") + b"\n")
+            push_ref(c)
+            continue
         call_or_template(c)                          # v1 op, v2 atom, or a call
         continue
 

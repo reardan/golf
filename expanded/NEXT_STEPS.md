@@ -73,8 +73,11 @@ Four facts about the implementation shape everything below:
    prelude definition — which is why making a *bare* operator polymorphic had to
    happen inside its template, and why any future one does too.
 2. **The whole load segment is RWX** and a quotation is just an address, so the
-   prelude can write machine code at runtime. `∘` already does; anything that
-   wants to synthesize a closure can too, with no compiler change.
+   prelude could write machine code at runtime, and `∘` did. Since W13-H a
+   closure is a data record instead (`[f, g|x, kind]` on the heap, which is
+   RW only): `⍎` calls anything below `0x600000` and hands anything above to
+   the record's kind word (cell 2), so a new kind of closure is a new prelude
+   word that fills a 3-cell block, with no compiler change.
 3. **`T` is a tag test (since M-TAG2).** A list value is `addr | 0x7FFF<<48`
    (it was `addr | 2^48` until W11-1A), so "is this a list?" is
    `v >> 48 == 0x7FFF` — exact, cell-free, and cheap enough to

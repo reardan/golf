@@ -105,6 +105,21 @@ LIB = [
     (0xE1, "keys", "Ḳ", "alias of ‹keys›: d -> list, the keys in insertion order"),
     (0xE2, "bump", "Ḃ", "alias of ‹bump›: d k -> d, add 1 to k's value (missing: 1)"),
     (0xE3, "vec", "Ṿ", "alias of ‹vec›: -> v, a new empty vector"),
+    # --- W13-C LIB rows: list words for LeetCode-style programs (prelude
+    # section W13-C).  Mnemonics are letters only and prefix-free: \lookup
+    # (not \dgetor, which \dget is a prefix of) and \tfword (\tf is the word).
+    (0xE4, "lmax", "Ṁ", "max of list: l -> x, signed (empty: empty reduce)"),
+    (0xE5, "lmin", "Ṃ", "min of list: l -> x, signed (empty: empty reduce)"),
+    (0xE6, "uncons", "⍘", "uncons: l -> tail head (empty: empty list)"),
+    (0xE7, "rscan", "⍂", "right scan: l ′f -> l'; exactly ⌽ ′f⍀ ⌽ (f gets acc x)"),
+    (0xE8, "xscan", "⍃", "exclusive scan: l s ′f -> l'; l'[0] = s, l'[i] = f(l'[i-1], l[i-1]), ≢l' = ≢l"),
+    (0xE9, "counter", "Ċ", "counter: l -> d; element -> count, keys in first-seen order"),
+    (0xEA, "dsort", "⍖", "sort by key, descending: l ′k -> l'; stable (ties keep input order)"),
+    (0xEB, "prevocc", "Ṕ", "previous occurrence: l -> l'; l'[i] = last j < i with l[j] = l[i], else -1"),
+    (0xEC, "findfirst", "⍷", "find first: l ′p -> i; first i where p l[i] is 0 (stops there), else -1"),
+    (0xED, "indices", "ℑ", "indices: l -> l [0..n-1] (keeps l)"),
+    (0xEE, "lookup", "Ǧ", "alias of ‹getor›: d k x -> v, k's value or x when absent"),
+    (0xEF, "tfword", "ṭ", "alias of ‹tf›: f -> list, “true“ when f is 0, else “false“"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).
@@ -133,6 +148,13 @@ COMPILER = [
      "prefix: ⇡x adds 1 to variable x in place (←x⊕→x; in a ⊡ word, a local already named there)"),
     (mkblob2.VDEC_BYTE, "vdec", "⇣",
      "prefix: ⇣x subtracts 1 from variable x in place (←x⊖→x; in a ⊡ word, a local already named there)"),
+    # --- W13-A: S2 inline blocks ---
+    (mkblob2.BLOCK_BYTE, "blk", "⟦",
+     "opens an inline block: ⟦ … ⟧ is an anonymous word compiled in place; ⟧ pushes its address"),
+    (mkblob2.ENDBLOCK_BYTE, "endblk", "⟧", "closes an inline block and pushes its address"),
+    # W13-B (S6): the digraph prefix.  ʘ + any byte B is the long name ‹_dgHH›.
+    (mkblob2.DIGRAPH_BYTE, "dig", "ʘ",
+     "prefix: ʘB (any byte B) is the long name ‹_dgHH›, HH = B in upper-case hex (see Digraph page)"),
 ]
 
 def lib_byte(key) -> int:
@@ -330,7 +352,59 @@ def reference_md() -> str:
         b = lib_byte(key)
         word = f"`{key}`" if isinstance(key, str) else "—"
         w(f"| `0x{b:02X}` | `{_md(gl)}` | `\\{mn}` | {word} | {_md(doc)} |")
+    # W13-B (S6): the digraph page, scanned from the prelude.
+    w("\n### Digraph page\n")
+    w("Two-byte words: `ʘ` (`\\dig`, `0xBD`) then any byte B compiles as a call "
+      "to the long name `‹_dgHH›` (HH = B in upper-case hex). The prelude gives "
+      "a word a digraph with `:‹_dgHH›‹name›;`. Generated from "
+      "`lib/prelude.golfj`.\n")
+    w("| digraph | bytes | long name | word | meaning |")
+    w("|---|---|---|---|---|")
+    rows = digraphs()
+    for b, target, comment in rows:
+        w(f"| `{_md(digraph_glyph(b))}` | `BD {b:02X}` | `‹{DIGRAPH_PREFIX}{b:02X}›` "
+          f"| `{_md(target)}` | {_md(comment)} |")
+    if not rows:
+        w("| — | | | | none defined yet |")
     return "\n".join(out) + "\n"
+
+
+# W13-B (S6): the digraph page.  Generated from lib/prelude.golfj: every line
+# that defines `:‹_dgHH›…` is a digraph ʘ + byte 0xHH.  A body that is just
+# one long-name call (`:‹_dgHH›‹name›;`) shows that name as the target; any
+# other body shows `(own body)`.  The comment on the line, if any, is the
+# meaning column.
+PRELUDE = os.path.join(HERE, "..", "lib", "prelude.golfj")
+DIGRAPH_PREFIX = "_dg"
+
+
+def digraphs(path=PRELUDE):
+    """[(byte, target, comment)] for each `:‹_dgHH›` definition, by byte."""
+    import re
+    rows = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+    except OSError:
+        return []
+    pat = re.compile(r"^\s*:‹" + DIGRAPH_PREFIX + r"([0-9A-F]{2})›(.*)$")
+    for line in lines:
+        m = pat.match(line)
+        if not m:
+            continue
+        b, rest = int(m.group(1), 16), m.group(2)
+        code, _, comment = rest.partition("#")
+        t = re.fullmatch(r"\s*‹([0-9A-Za-z_-]+)›\s*;\s*", code)
+        target = f"‹{t.group(1)}›" if t else "(own body)"
+        rows[b] = (b, target, comment.strip())
+    return [rows[b] for b in sorted(rows)]
+
+
+def digraph_glyph(b) -> str:
+    """ʘ + byte b as written in .golfj: b's glyph, or the ASCII byte itself."""
+    if b >= 0x80 and b in BYTE2GLYPH:
+        return "ʘ" + BYTE2GLYPH[b]
+    return "ʘ" + (chr(b) if 32 < b < 127 else f"\\x{b:02X}")
 
 
 def reference_splice(path):

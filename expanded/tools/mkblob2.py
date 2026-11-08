@@ -130,12 +130,12 @@ ATOMS = [
     (0x3D, "xor", "=", [0x58, 0x48, 0x31, 0x04, 0x24],        "bitwise XOR"),
     (0x3E, "shr", ">", [0x59, 0x48, 0xD3, 0x2C, 0x24],        "shift right (by TOS)"),
     # Code-page atoms — single-byte ops in the high half of the byte space
-    (0x80, "neg", "±", [0x58, 0x48, 0xF7, 0xD8, 0x50],   "negate TOS (a list: not a number)"),
-    (0x81, "inc", "⊕", [0x48, 0xFF, 0x04, 0x24],         "TOS + 1 (a list: not a number)"),
-    (0x82, "dec", "⊖", [0x48, 0xFF, 0x0C, 0x24],         "TOS - 1 (a list: not a number)"),
-    (0x83, "sqr", "²", [0x58, 0x48, 0x0F, 0xAF, 0xC0, 0x50], "TOS * TOS (a list: not a number)"),
-    (0x84, "dbl", "⊗", [0x48, 0xD1, 0x24, 0x24],         "TOS * 2 (a list: not a number)"),
-    (0x85, "hlv", "⊘", [0x48, 0xD1, 0x2C, 0x24],         "TOS >> 1 (a list: not a number)"),
+    (0x80, "neg", "±", [0x58, 0x48, 0xF7, 0xD8, 0x50],   "negate TOS (a list: elementwise, any depth)"),
+    (0x81, "inc", "⊕", [0x48, 0xFF, 0x04, 0x24],         "TOS + 1 (a list: elementwise, any depth)"),
+    (0x82, "dec", "⊖", [0x48, 0xFF, 0x0C, 0x24],         "TOS - 1 (a list: elementwise, any depth)"),
+    (0x83, "sqr", "²", [0x58, 0x48, 0x0F, 0xAF, 0xC0, 0x50], "TOS * TOS (a list: elementwise, any depth)"),
+    (0x84, "dbl", "⊗", [0x48, 0xD1, 0x24, 0x24],         "TOS * 2 (a list: elementwise, any depth)"),
+    (0x85, "hlv", "⊘", [0x48, 0xD1, 0x2C, 0x24],         "TOS >> 1 (a list: elementwise, any depth)"),
     # Comparison / selection / signed arithmetic (result -1/0 like '<')
     (0x86, "gt",  "»", [0x59, 0x58, 0x48, 0x39, 0xC1, 0x48, 0x19, 0xC0, 0x50],
                                                           "a b -> (a>b unsigned ? -1 : 0)"),
@@ -160,7 +160,7 @@ ATOMS = [
     # partner `ref` (push a word's address) is a compiler prefix, not an atom —
     # REF_BYTE below, with a case in each of the three compilers — and together
     # they give higher-order functions (map/fold).
-    (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a word address, call it"),
+    (0x8D, "exec", "⍎", [0x58, 0xFF, 0xD0],               "pop a function (a code address, or a ∘ ⊸ closure record), call it"),
     # Raw scalar ops — byte-for-byte copies of the original scalar templates for
     # `+ - * ⌊ ⌈ <` (⊓ ⊔ keep the UNSIGNED cmova/cmovb that ⌊ ⌈ had before W9-1A
     # made those signed — pointer math wants unsigned).  M-VEC will make those bare ops *polymorphic* (dispatch on
@@ -229,6 +229,18 @@ ATOMS = [
     # (lib/prelude.golfj, W11-3A section).
     (0xA8, "spr", "⊷", [0x54, 0x55],                      "-> sp bp: push rsp (as before the atom), then rbp"),
     (0xA9, "spw", "⊶", [0x5D, 0x5C],                      "sp bp ->: set rbp, then rsp (both stacks jump)"),
+    # W13-B: bit atoms.  RAW like the other bitwise atoms (no list dispatch,
+    # no not-a-number check).  popcnt / tzcnt / lzcnt are F3 48 0F B8/BC/BD
+    # (the CPU baseline has popcnt + bmi1 + abm); tzcnt and lzcnt give 64 for
+    # 0.  The low bit is x & -x, written without BMI1's blsi.
+    (0xAA, "pcnt", "♯", [0x58, 0xF3, 0x48, 0x0F, 0xB8, 0xC0, 0x50],
+                                                          "x -> number of 1 bits (popcount)"),
+    (0xAB, "ctz", "⊣", [0x58, 0xF3, 0x48, 0x0F, 0xBC, 0xC0, 0x50],
+                                                          "x -> trailing zero bits (64 for 0)"),
+    (0xAC, "clz", "⊢", [0x58, 0xF3, 0x48, 0x0F, 0xBD, 0xC0, 0x50],
+                                                          "x -> leading zero bits (64 for 0)"),
+    (0xAD, "lsb", "⊥", [0x48, 0x8B, 0x04, 0x24, 0x48, 0xF7, 0xD8, 0x48, 0x21, 0x04, 0x24],
+                                                          "x -> x & -x, the lowest set bit (0 for 0)"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
@@ -385,7 +397,16 @@ OVERRIDES.update({b: _udivchk(v1.TEMPLATES[chr(b)]) for b in map(ord, "/%")})
 # read(2) per byte, as in v1.  The end-of-program exit (blob record 5) gets the
 # same prefix as AUTOEXIT2.
 OVERRIDES.update({b: _FLUSH_CALL + list(v1.TEMPLATES[chr(b)]) for b in map(ord, ".)(")})
-AUTOEXIT2 = bytes(_FLUSH_CALL) + v1.AUTOEXIT
+# W13-B (S3, implicit output): the end-of-program exit — and ONLY it, not `.`
+# — first calls through the END HOOK, the 1C runtime cell 0x4F09A0 (5179808,
+# next to the flush hook).  The prelude's init stores the program's base rsp
+# and fills the cell with ‹_13b_end›, which prints the one value left above
+# that base (⍕ a list, Ṅ anything else) when exactly one is.  Then the flush
+# hook drains it.  BSS 0 without the prelude (golfc -n, every compiler
+# binary): a load, a test and a not-taken jump, nothing else changes.
+END_HOOK = 0x4F09A0
+_END_CALL = _hook_call(END_HOOK)
+AUTOEXIT2 = bytes(_END_CALL) + bytes(_FLUSH_CALL) + v1.AUTOEXIT
 
 # W12-O1: the unary arithmetic atoms ± ⊕ ⊖ ² ⊗ ⊘ refuse a list.  Before W12
 # they computed on its tagged address (`5⍳⊕⍕` printed garbage).  They are the
@@ -428,6 +449,46 @@ def _numchk(scalar):
     return tpl
 NUMCHK_BYTES = (0x80, 0x81, 0x82, 0x83, 0x84, 0x85)   # ± ⊕ ⊖ ² ⊗ ⊘
 OVERRIDES.update({b: _numchk(_ATOM_TPL[b]) for b in NUMCHK_BYTES})
+
+# W13-H: ⍎ dispatches on CLOSURE RECORDS.  Through W12-O2 `∘` and `⊸` wrote
+# machine-code thunks into heap blocks, which needed an executable (RWX) brk
+# heap.  Now a closure is DATA — a 3-cell A block [a, b, kind], whose raw
+# untagged payload address r is the function value and whose cell 2 holds
+# the address of the prelude word that runs it (lib/prelude.golfj, W13-H) —
+# and the heap is RW only.  Every callable CODE address (a word, a ′-thunk,
+# a ⟦⟧ block, a prelude word) lies in the program image, below the heap
+# floor 0x600000, and every heap address lies at or above it, so one
+# unsigned compare tells the two apart:
+#
+#     58                        pop rax
+#     48 3D 00 00 60 00         cmp rax, 0x600000        ; EXEC_FLOOR
+#     72 06                     jb  .call                ; code: call it
+#     50                        push rax                 ; a record: r stays on
+#     FF 50 10                  call qword [rax+16]      ;   the stack for its kind
+#     EB 02                     jmp .done
+#   .call:
+#     FF D0                     call rax
+#   .done:
+#
+# A code address pays a compare and a taken branch (17 bytes instead of 3);
+# a record's kind word is entered with `… r` on the data stack, exactly as a
+# word is entered with its arguments, so the threading contract holds.  No
+# hook cell and no prelude support needed to tell them apart: a program
+# without the prelude never makes a record, and a non-function at or above
+# the floor (a tagged list, a big int) faults reading [rax+16] as calling it
+# faulted before.  The kind words check ⌫'s poison in cell 0 (⌫ writes only
+# cells 0 and 1, so cell 2 survives a free): calling a freed closure is
+# `GOLF: use after free`.
+EXEC_FLOOR = 0x600000                 # == RSTACK_TOP (asserted below)
+EXEC_KIND = 16                        # the record cell holding its kind word
+_EXEC = ([0x58]                                            # pop rax
+         + [0x48, 0x3D] + list(EXEC_FLOOR.to_bytes(4, "little"))   # cmp rax, imm32
+         + [0x72, 0x06]                                    # jb .call
+         + [0x50, 0xFF, 0x50, EXEC_KIND]                   # push rax; call [rax+16]
+         + [0xEB, 0x02]                                    # jmp .done
+         + [0xFF, 0xD0])                                   # .call: call rax
+assert len(_EXEC) == 17 and _EXEC[:1] + _EXEC[-2:] == _ATOM_TPL[0x8D]
+OVERRIDES[0x8D] = _EXEC
 
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
@@ -474,6 +535,36 @@ VENDOR_PATH = 0x43F000    # the C string `vendor/path` the third include try ope
 ELSE_BYTE = 0xB8    # ⋄  the else of c[a⋄b] and the test of {c⋄body} (W12-A7); no memory
 VINC_BYTE = 0xB9    # ⇡x  increment variable x in memory, inc qword [cell] (W12-Z2); no memory
 VDEC_BYTE = 0xBA    # ⇣x  decrement it, dec qword [cell]; in a ⊡ word a named local wins
+# W13-A: S2 inline blocks, ⟦ … ⟧ — an anonymous word compiled in place and
+# jumped over; ⟧ pushes its address.  No memory: the compile-time stack holds
+# the jmp site, the saved ⊡ flag and the tag 1000005 (see self/golf2.golfj).
+BLOCK_BYTE = 0xBB   # ⟦  opens an inline block
+ENDBLOCK_BYTE = 0xBC  # ⟧  closes it and pushes its address
+# W13-A: S1 adverbs.  A call token (an atom, a v1 arithmetic op, a one-byte
+# word, a ‹long name› — and any token that compiles as one, such as a digraph)
+# IMMEDIATELY followed by one of these bytes is compiled as `′token` instead
+# of a call: `f€` is `′f€`.  Listed ONCE, here: build_blob2() stores the set as
+# blob record ADVERB_KEY, which golf2 and the seed scan, and boot/golfref.py
+# imports it.  Glyphs, in order: € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣, then W13's ⍂ ⍃ ⍖ ⍷
+# (0xE7 0xE8 0xEA 0xEC, prelude words another W13 agent adds).
+ADVERBS = bytes([ord("M"), ord("F"), ord("W"), ord("Z"),
+                 0xD1, 0xD2, 0xD3, 0xD4, 0xD8, 0xD9,
+                 0xE7, 0xE8, 0xEA, 0xEC])
+# ... except the bytes below, which never quote: blob record UNQUOTED_KEY.
+#   * the v1 stack, memory and I/O ops: no use as a function argument, and
+#     `\€` "swap, then map" is real code;
+#   * ∘ (0xC5) and ⊸ (0xD0), the two words that BUILD a function: `′f⊸€`
+#     ("bind, then map with the result") is the idiom, so their result is what
+#     the adverb takes (the W13-A audit found it in REFERENCE.md and run2.sh);
+#   * ⊙ (0xA4) and ⊛ (0xA5), the 64-bit fetch and store: memory ops like
+#     v1's @ !, and `cell⊙⍀` "fetch the function, then scan" is real code (the
+#     integration audit found it in W13-C's ⍂).
+# Everything else that reaches the compiler's default case (the other v1 ops,
+# every atom, every word call) quotes.
+UNQUOTED = b'"_\\&@!?,().' + bytes([0xC5, 0xD0, 0xA4, 0xA5])
+ADVERB_KEY = 6      # blob record keys: control bytes, never an op, so `f`
+UNQUOTED_KEY = 7    # finds these two only when asked by number
+DIGRAPH_BYTE = 0xBD # ʘB  W13-B (S6): compiles exactly as the long name ‹_dgHH› (HH = B in upper-case hex); no memory
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).
@@ -541,6 +632,7 @@ assert 0x4E0000 + 8 * NAME_END <= 0x4F0000, "variable bank runs into the runtime
 # is unaffected.
 MEMSZ = 0x200000                    # v2 p_memsz (v1: 0x800000)
 RSTACK_TOP = v1.BASE + MEMSZ        # 0x600000: return-stack top AND heap floor
+assert EXEC_FLOOR == RSTACK_TOP     # W13-H: ⍎'s code/closure split is the heap floor
 MEMSZ_OFF = 64 + 40                 # Phdr at file offset 64; p_memsz at +40
 
 # --- W11-1E: the program-size cap ---------------------------------------------
@@ -591,7 +683,8 @@ def _check_atoms():
     dup = sorted({b for b in bs if bs.count(b) > 1})
     assert not dup, "duplicate ATOMS byte: " + ", ".join(f"0x{b:02X}" for b in dup)
     taken = {REF_BYTE, STR_BYTE, SET_BYTE, GET_BYTE, CHAIN_BYTE, FRAME_BYTE,
-             LSET_BYTE, LGET_BYTE, LNAME_BYTE, RNAME_BYTE}
+             LSET_BYTE, LGET_BYTE, LNAME_BYTE, RNAME_BYTE,
+             BLOCK_BYTE, ENDBLOCK_BYTE}           # W13-A
     taken |= {ord(ch) for ch in v1.TEMPLATES}
     clash = sorted(set(bs) & taken)
     assert not clash, ("ATOMS byte already allocated: "
@@ -664,6 +757,8 @@ def build_blob2():
     b += v1.rec(3, STARTUP2)                     # M-TOOL stash + W9-2C guard + M-MEM rbp
     b += v1.rec(4, header_pairs2())              # M-MEM: shrunken p_memsz
     b += v1.rec(5, AUTOEXIT2)                    # W11-1C: flush hook, then exit(0)
+    b += v1.rec(ADVERB_KEY, ADVERBS)             # W13-A: S1's adverb set
+    b += v1.rec(UNQUOTED_KEY, UNQUOTED)          # W13-A: and the ops it never quotes
     used = set()
     def emit(key, tpl):
         """One record per op byte — the M-VEC override REPLACES the scalar one."""
