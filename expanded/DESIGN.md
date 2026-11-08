@@ -679,10 +679,20 @@ unbuilt, and three defects this list does not yet cover — see
   M-VEC templates do — so widening them is a prelude-only change.
 - **`⌫` is manual, and the free list is simple.** Nothing frees on its own:
   a program that wants a flat heap calls `⌫` on what it is done with, and a
-  freed list must not be used again (its first cell becomes the free-list link).
-  Caught: freeing a non-heap value and freeing one block twice in a row.
-  Not caught: a pointer into the middle of a block, or a stale copy freed after
-  the block was handed out again. Blocks are never split or coalesced; small
+  freed list must not be used again. Caught: freeing a non-heap value, freeing
+  one block twice in a row (`double free`, from the header's `-cap`), and —
+  since W11-2D — USING a freed list: `⌫` writes the poison `-559038737` into
+  its length cell (the free-list link lives in payload cell 1), every list
+  word checks that cell on entry and throws `use after free`, and `⊇` clamps a
+  negative length so it fails too. Not caught: a pointer into the middle of a
+  block, and any stale copy of a block that was freed and then handed out
+  again — `A` clears the poison on reuse, so the stale copy silently reads,
+  or frees, the new owner's list. Also unchecked: a raw `A` block read with
+  `\fetch` directly, and words outside the prelude's list set that read cells
+  themselves (`lib/t*.golfj`). `‹heapstats›` (`-> blocks bytes`) counts what
+  `A` handed out and `⌫` has not taken back. Cost: one call per list word, no
+  per-element work in the prelude's loops (they index through `‹_2d_ix›`),
+  five ops per user `⊇`. Blocks are never split or coalesced; small
   blocks round up to a power of two (≤ 2x), and the >256-cell class checks only
   its head, so a large freed block can be passed over by a bigger request.
 - **The integers in `[0x7FFF<<48, 2^63)` are lists.** A list value is
