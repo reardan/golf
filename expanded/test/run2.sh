@@ -3240,6 +3240,74 @@ w94dbin '⊡f⇒h⇒a⇐h⇐a-;'
   && [ "$(printf '%s' '⊡f⇒h⇒a⇐h⇐a-;5 3fṄ' | gc)" = "-2" ] \
   && [ "$(printf '%s' ':g⇒a⇒h;' | w12z3e)" = "0 0  | " ] \
   && ok "a–h unchanged: same slots and frame inside ⊡, and outside ⊡ ⇒a…⇒h still compile" || no "a–h behaviour"
+# === W12-P2 ===
+echo "W12-P2: dicts that hash once — ‹getor› ‹bump› ‹upd›, the int-key probe, growth"
+# One ‹_2b_find› per call.  An int key has its own hash (8 consecutive ints
+# share a group of index slots) and is compared raw with ≡; a list key keeps
+# ‹hash› and ≣.  ‹hash›'s own values are pinned by the W11-2B block above.
+w12p2a='‹dict›"1 10‹put›_"1 0‹getor›Ṅ32)"2 7‹getor›Ṅ32)"“ab“⊃5‹put›_"“ab“⊃0‹getor›Ṅ32)"3⍳′⍳€9‹getor›Ṅ32)"1‹del›_"1 8‹getor›Ṅ32)‹keys›≢Ṅ'
+[ "$(printf '%s' "$w12p2a" | gc)" = "10 7 5 9 8 1" ] \
+  && ok "‹getor›: present / missing int keys, a list key, a missing nested key, after ‹del›; nothing is inserted" || no "w12-p2 getor"
+w12p2b='‹dict›"5‹bump›_"5‹bump›_"6‹bump›_"5‹get›Ṅ32)"6‹get›Ṅ32)"5‹del›_"5‹bump›_"5‹get›Ṅ32)"‹keys›⍕"‹vals›⍕'
+[ "$(printf '%s' "$w12p2b" | gc)" = "2 1 1 6 5 1 1 " ] \
+  && ok "‹bump›: a missing key starts at 1, a present one counts up; after ‹del› it restarts at 1 and goes last" || no "w12-p2 bump"
+[ "$(printf '%s' '‹dict›"“ab“⊃‹bump›_"“ab“⊃‹bump›_"3⍳′⍳€‹bump›_"3⍳′⍳€‹bump›_"3⍳′⍳€‹bump›_"1⍳5+‹bump›_"5‹bump›_"0⍳‹bump›_"“ab“⊃‹get›Ṅ"3⍳′⍳€‹get›Ṅ"1⍳5+‹get›Ṅ"5‹get›Ṅ"0⍳‹get›Ṅ‹keys›⍕' | gc)" = "23111[97 98] [[] [0] [0 1]] [5] 5 [] " ] \
+  && ok "‹bump› on list keys: code lists made apart, a nested key, [5] vs 5, the empty list" || no "w12-p2 bump list keys"
+# Int keys of every shape: negative, >= 2^62, and 0 after a ‹del› (the deleted
+# entry's key becomes the tagged null, so the raw ≡ can never match it).
+[ "$(printf '%s' '‹dict›"0 1-‹bump›_"0 1-‹bump›_"1 62≪‹bump›_"0‹bump›_"0‹del›_"0 1-‹get›Ṅ"1 62≪‹get›Ṅ"0‹has›Ṅ"0 4‹getor›Ṅ‹keys›≢Ṅ' | gc)" = "21142" ] \
+  && ok "int keys: -1, 2^62, and a deleted 0 is not found by the int probe" || no "w12-p2 int keys"
+w12p2u='‹dict›"4′⊕‹upd›_"4′⊕‹upd›_"4‹get›Ṅ32)"9′⊗‹upd›_"9‹has›Ṅ"9‹get›Ṅ32)"3⍳′⍳€′⊕‹upd›_"3⍳′⍳€′⊕‹upd›_"3⍳′⍳€‹get›Ṅ32)"4‹del›_"4′⊕‹upd›_"‹keys›⍕‹vals›⍕'
+[ "$(printf '%s' "$w12p2u" | gc)" = "2 00 2 9 [[] [0] [0 1]] 4 0 2 1 " ] \
+  && ok "‹upd›: a missing key gets 0 first, then f; present keys, a nested list key, after ‹del›" || no "w12-p2 upd"
+# f runs with the caller's stack under v, and may use the dict itself: bump
+# another key (the entry stays put: written in place), grow the table past
+# several doublings (the entry moved: a second probe stores it), or delete
+# k (stored again).  An f that throws leaves k at 0 and unwinds to ‹catch›.
+[ "$(printf '%s' ':f&+;‹dict›→d 7←d 3′f‹upd›_←d 3′f‹upd›_←d 3‹get›ṄṄ' | gc)" = "147" ] \
+  && [ "$(printf '%s' ':g←d 1‹bump›_10+;‹dict›→d ←d 2′g‹upd›_←d 2′g‹upd›_←d‹keys›⍕←d‹vals›⍕' | gc)" = "2 1 20 2 " ] \
+  && ok "‹upd› threads the caller's stack to f; f may ‹bump› the same dict" || no "w12-p2 upd threading"
+w12p2g=':h0→i{←d←i1000+‹bump›_←i⊕"→i100≡}5+;‹dict›→d ←d 7′h‹upd›_←d 7‹get›Ṅ32)←d‹keys›≢Ṅ32)←d1⊇Ṅ32)←d‹keys›0⊇Ṅ'
+[ "$(printf '%s' "$w12p2g" | gc)" = "5 101 256 7" ] \
+  && [ "$(printf '%s' ':q←d 7‹del›_1+;‹dict›→d ←d 7 5‹put›_←d 7′q‹upd›_←d 7‹get›Ṅ←d‹keys›≢Ṅ' | gc)" = "61" ] \
+  && [ "$(printf '%s' ':t“boom“⊃‹throw›;:u←d 3′t‹upd›;‹dict›→d ′u‹catch›⊐32)←d 3‹get›Ṅ' | gc)" = "boom 0" ] \
+  && ok "‹upd›: f that grows the table (8 -> 256) or deletes k still lands; a throwing f is caught" || no "w12-p2 upd reentry"
+# Growth: 100,000 keys on a power-of-two stride (the shape a plain
+# multiplicative hash piles up on), bumped twice each: cap 8 doubles to
+# 65536, then quadruples to 262144; keys stay in order.
+w12p2s='‹dict›→‹d›0→‹i›{←‹d›←‹i›65536*‹bump›_←‹i›⊕"→‹i›100000≡}0→‹i›{←‹d›←‹i›65536*‹bump›_←‹i›⊕"→‹i›100000≡}←‹d›‹vals›∑Ṅ32)←‹d›‹keys›≢Ṅ32)←‹d›‹keys›100000⍳65536*≣Ṅ32)←‹d›1⊇Ṅ'
+printf '%s' "$w12p2s" | gc > /dev/null; cp "$TMP/p" "$TMP/w12p2s"
+w12p2t0=$(date +%s%N); w12p2so=$("$TMP/w12p2s"); w12p2t1=$(date +%s%N); w12p2ms=$(( (w12p2t1 - w12p2t0) / 1000000 ))
+[ "$w12p2so" = "200000 100000 -1 262144" ] && [ "$w12p2ms" -lt 1000 ] \
+  && ok "growth: 100k stride-65536 keys bumped twice, cap 262144, order and counts intact, ${w12p2ms} ms (< 1000)" || no "w12-p2 growth ($w12p2so, ${w12p2ms} ms)"
+# A million ‹bump›s (500,000 distinct keys): about 0.1 s here, the bound is
+# generous for slow machines.
+printf '%s' ':f2/←d\\‹bump›_0;‹dict›→d 1000000⍳′f€_ ←d‹keys›≢Ṅ32)←d‹vals›∑Ṅ' | gc > /dev/null; cp "$TMP/p" "$TMP/w12p2m"
+w12p2t0=$(date +%s%N); w12p2mo=$("$TMP/w12p2m"); w12p2t1=$(date +%s%N); w12p2ms=$(( (w12p2t1 - w12p2t0) / 1000000 ))
+[ "$w12p2mo" = "500000 1000000" ] && [ "$w12p2ms" -lt 1000 ] \
+  && ok "1M ‹bump› (500k distinct): right counts, ${w12p2ms} ms (< 1000)" || no "w12-p2 1M bump ($w12p2mo, ${w12p2ms} ms)"
+# The word count again, with ‹bump›: the same output as W11-2B's.
+printf '%s' ':‹tally›←‹d›\\‹bump›;:‹show›→‹k›←‹d›←‹k›‹get›Ṅ“ “🗲←‹k›⊐␤0;‹dict›→‹d›‹readall›‹words›′‹tally›€_←‹d›‹keys›′‹show›€_' | gc > /dev/null
+"$TMP/p" < "$TMP/w112b.in" > "$TMP/w12p2wc.got"
+[ -s "$TMP/w12p2wc.got" ] && cmp -s "$TMP/w12p2wc.got" <("$TMP/w112bwc" < "$TMP/w112b.in") \
+  && ok "word count with ‹bump› prints exactly what the W11-2B has/get/put version does" || no "w12-p2 word count"
+# The oracle runs the new words identically.
+w12p2bad=""
+for w12p2p in "$w12p2a" "$w12p2b" "$w12p2u" "$w12p2g"; do
+  [ "$(printf '%s' "$w12p2p" | gref)" = "$(printf '%s' "$w12p2p" | gc)" ] || w12p2bad="$w12p2bad [$w12p2p]"
+done
+[ -z "$w12p2bad" ] && ok "oracle: boot/golfref.py runs ‹getor› ‹bump› ‹upd› (and a grow inside f) identically" || no "w12-p2 oracle:$w12p2bad"
+# REFERENCE.md's examples of the three words print what they say, golf2 and
+# oracle (the W11-2B block checks the whole section on golf2 too).
+w12p2bad=""; w12p2n=0
+while IFS= read -r w12p2l; do
+  w12p2p=${w12p2l%%  ->*}; w12p2p=${w12p2p%"${w12p2p##*[! ]}"}; w12p2w=${w12p2l##*->  }
+  w12p2n=$((w12p2n+1))
+  [ "$(printf '%s' "$w12p2p" | gc | sed 's/ *$//')" = "$w12p2w" ] || w12p2bad="$w12p2bad [$w12p2p]"
+  [ "$(printf '%s' "$w12p2p" | gref | sed 's/ *$//')" = "$w12p2w" ] || w12p2bad="$w12p2bad oracle[$w12p2p]"
+done < <(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ' | grep -- '‹getor›\|‹bump›\|‹upd›')
+[ -z "$w12p2bad" ] && [ "$w12p2n" -ge 6 ] \
+  && ok "REFERENCE.md's ‹getor› ‹bump› ‹upd› examples ($w12p2n) print what they say, golf2 and oracle" || no "REFERENCE W12-P2 examples:$w12p2bad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
