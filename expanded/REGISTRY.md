@@ -282,6 +282,7 @@ Prelude long names in use (all **shipped**):
 | `‹cadd›` `‹csub›` `‹cmul›` | W11-3C (**shipped**) | `W11-3C checked arithmetic` |
 | `‹assert›` `‹expect›`, and the helpers `‹_4b_show›` `‹_4b_exit›` `‹_4b_fail›` | W11-4B (**shipped**) | `W11-4B test words` |
 | `‹stack›` | W11-4C (**shipped**) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
+| `‹getor›` `‹bump›` `‹upd›`, and the helpers `‹_12p2_ins›` `‹_12p2_huge›` (W12-P2 also rewrote the W11-2B words `‹_2b_find›` `‹_2b_grow›` `‹_2b_zero›` `‹put›` `‹get›` `‹has›` `‹del›` `‹dict›` in place) | W12-P2 (**shipped**) | `W12-P2 dicts that hash once` |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -544,7 +545,7 @@ to the integrator. Decimals are what you type.
 | 1C | `0x4F0980`–`0x4F09BF` | 5179776 | `0x4F0980` 5179776: bytes pending in the output buffer at `0x430000` (0 = empty, BSS) · `0x4F0988` 5179784: the buffer's fd (0 = use fd 1) · `0x4F0990` 5179792: the **flush hook** — the address of `‹flush›`, stored by the prelude's init; `.` `)` `(`, the end-of-program exit and the divide-by-zero exit call it when non-zero (`tools/mkblob2.FLUSH_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0998` 5179800: `‹flush›`'s drain offset (shipped) | 5179808 … 5179832 |
 | 1D | `0x4F09C0`–`0x4F09FF` | 5179840 | — | 5179840 … 5179896 (all eight) |
 | 2A | `0x4F0A00`–`0x4F0A3F` | 5179904 | — (compiler work; its state is in `m+160` and `0x438000`) | 5179904 … 5179960 |
-| 2B | `0x4F0A40`–`0x4F0A7F` | 5179968 | dict scratch (shipped, private to the dict words): `0x4F0A40` 5179968 `‹_2b_h8›`'s byte source · `0x4F0A48` 5179976 / `0x4F0A50` 5179984 / `0x4F0A58` 5179992 short-lived temps (entry address, probe slot, new entry) · spares used: 5180000 / 5180008 / 5180016 `‹_2b_zero›`'s address, count, index | 5180024 |
+| 2B | `0x4F0A40`–`0x4F0A7F` | 5179968 | dict scratch (shipped, private to the dict words): `0x4F0A40` 5179968 `‹_2b_h8›`'s byte source · `0x4F0A48` 5179976 / `0x4F0A50` 5179984 / `0x4F0A58` 5179992 short-lived temps (entry address, probe slot, new entry) · spares used: 5180008 `‹_2b_zero›`'s end address (5180000 / 5180016 free again since W12-P2's unrolled `‹_2b_zero›`; W12-P2 also uses 5179984 for a moment in `‹_2b_find›`) | 5180000 · 5180016 · 5180024 |
 | 2C | `0x4F0A80`–`0x4F0ABF` | 5180032 | — (`⊸` uses the `∘` arena pointer `0x4F003C`) | 5180032 … 5180088 (all eight) |
 | 2D | `0x4F0AC0`–`0x4F0AFF` | 5180096 | shipped: `0x4F0AC0` 5180096: live blocks · `0x4F0AC8` 5180104: live bytes, each block `(cap+1)*8` (header included); `A` adds, `⌫` subtracts, `‹heapstats›` reads; BSS 0 | 5180112 … 5180152 |
 | 3A | `0x4F0B00`–`0x4F0B3F` | 5180160 | shipped: `0x4F0B00` 5180160: **catch handler chain head** — the address of the newest handler record, a 64-byte spill-stack frame `[sp][bp][previous head]…` (0 = no handler: `‹throw›` prints and exits) · `0x4F0B08` 5180168: the message in flight · `0x4F0B10` 5180176: the **divide-by-zero hook** — the address of `‹_3a_div0›`, stored by the prelude's init; the `/ % ÷ ∣` zero exit calls it first when non-zero (`tools/mkblob2.DIV0_HOOK`; BSS 0 in a bare program and in the compiler) · `0x4F0B18` 5180184: `‹_3a_pop›`'s record address | 5180192 … 5180216 |
@@ -575,7 +576,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | Task | Slot (hex) | Slot base (dec) | Cells (dec) |
 |------|------------|-----------------|-------------|
 | P1 input | `0x4F0D00`–`0x4F0D3F` | 5180672 | 5180672 … 5180728 |
-| P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | 5180736 … 5180792 |
+| P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | shipped, all eight: 5180736 d (masked) · 5180744 k · 5180752 D (the key's stored hash) · 5180760 the probe's slot (shift+2 for a moment) · 5180768 the value / default · 5180776 index table · 5180784 cap-1 (5180776 / 5180784 are also `‹_12p2_huge›`'s temps) · 5180792 the multiplier 0x9E3779B97F4A7C15, stored by `‹dict›` |
 | P3 list loops | `0x4F0D80`–`0x4F0DBF` | 5180800 | 5180800 … 5180856 |
 | O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 |
 | Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180984 |
@@ -598,7 +599,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 73 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5 and W11-4C 1, helpers included) — 1024 since W10-A, so 951 are left
+prelude now uses 78 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1 and W12-P2 5, helpers included) — 1024 since W10-A, so 946 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

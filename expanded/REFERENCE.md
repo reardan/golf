@@ -454,7 +454,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 73 in all after W11-4B and W11-4C, helpers included), so a program has 951 for itself.
+has 78 in all after W12-P2, helpers included), so a program has 946 for itself.
 
 ### Text
 
@@ -693,6 +693,9 @@ uses the same words.
 | `‹vals›` | `d -> list` | the values, in the same order as `‹keys›` |
 | `‹set›` | `-> s` | a new, empty set (a dict) |
 | `‹add›` | `s k -> s` | add `k` to the set. This is the same as `k 0‹put›`. `‹has›`, `‹del›` and `‹keys›` work on sets |
+| `‹getor›` | `d k dflt -> v` | the value of `k`, or `dflt` when `k` is not a key. Nothing is inserted (W12-P2) |
+| `‹bump›` | `d k -> d` | add 1 to the value of `k`. A missing key is inserted with the value 1. The counter word: `d k ‹bump›` is `d k 1 ‹put›` or `d k d k ‹get› 1+ ‹put›`, in one probe (W12-P2) |
+| `‹upd›` | `d k ′f -> d` | replace the value `v` of `k` with `f(v)`. A missing key is inserted with `0` first, so `f` sees `0`. `f` runs with the caller's stack under `v`, as `€`'s function does (see "Threading state" below), and may use dicts itself, `d` included (W12-P2) |
 
 ```
 ‹dict›"1 10‹put›"2 20‹put›"1‹get›Ṅ                ->  10
@@ -708,29 +711,50 @@ uses the same words.
 The last example prints its message on stderr, not stdout, and exits with
 status 1.
 
-**A dict is changed in place.** `‹put›`, `‹del›` and `‹add›` hand back the
-same `d`, so you can drop the result (`‹put›_`) or chain from it. A dict is
+`‹getor›`, `‹bump›` and `‹upd›` find the key once, where `‹has›` then
+`‹get›` then `‹put›` would hash and compare it three times:
+
+```
+‹dict›"7‹bump›"7‹bump›"9‹bump›‹vals›⍕              ->  2 1
+‹dict›"1 10‹put›"1 0‹getor›Ṅ"2 0‹getor›Ṅ           ->  100
+‹dict›"3′⊗‹upd›"3 5‹put›"3′⊗‹upd›3‹get›Ṅ           ->  10
+‹dict›"“ab“⊃‹bump›"“ab“⊃‹bump›"“ab“⊃‹get›Ṅ‹keys›⍕   ->  2[97 98]
+‹set›"4‹add›"4 9‹getor›Ṅ"5 9‹getor›Ṅ‹keys›⍕          ->  094
+:f&+;‹dict›→d 7←d 3′f‹upd›_←d 3′f‹upd›_←d 3‹get›ṄṄ   ->  147
+```
+
+In the last one `f` is `&+`: it adds the `7` left under the dict's value
+(threading), so the value goes `0`, `7`, `14` and the `7` is still there at
+the end. `‹bump›` adds with the raw `﹢`, so it is meant for int values.
+
+**A dict is changed in place.** `‹put›`, `‹del›`, `‹add›`, `‹bump›` and
+`‹upd›` hand back the same `d`, so you can drop the result (`‹put›_`) or chain from it. A dict is
 a tagged list of 6 cells, so `≢d` is 6, not the number of keys. Its contents
 are internal. Keys that are lists are stored **by reference**, not copied:
 do not change or `⌫` a list while it is a key. The table is a compact dict, as
 in CPython: an insertion-ordered entry array plus an open-addressing index
 (power-of-two size, linear probing, load at most 1/2, tombstones for deleted
-keys). It grows by doubling and gives the old blocks back with `⌫`. Inserts,
-lookups and deletes take O(1) expected time. 100,000 int inserts plus 100,000
-lookups take about 0.05 s.
+keys). It grows by doubling (by four once it reaches 131,072 slots) and gives
+the old blocks back with `⌫`. Inserts, lookups and deletes take O(1) expected
+time. An int key is placed by a cheap hash of its own (not `‹hash›`), which
+keeps runs of consecutive ints together in memory, and is compared with `≡`;
+a list key is placed by its `‹hash›` and compared with `≣`. A million int
+`‹put›`s, or a million `‹bump›`s, take about 0.13 s (W12-P2; 0.55 s before).
 
 A word count over stdin:
 
 ```
-:‹bump›→‹k›←‹d›←‹k›1←‹d›←‹k›‹has›[_←‹d›←‹k›‹get›⊕]‹put›;
+:‹tally›←‹d›\\‹bump›;
 :‹show›→‹k›←‹d›←‹k›‹get›Ṅ“ “🗲←‹k›⊐␤0;
-‹dict›→‹d›‹readall›‹words›′‹bump›€_←‹d›‹keys›′‹show›€_
+‹dict›→‹d›‹readall›‹words›′‹tally›€_←‹d›‹keys›′‹show›€_
 ```
 
 It prints `count word` once for each distinct word, in order of first
-appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`), the prelude has 73 long
-names, which leaves 951 for a program.
+appearance. `‹tally›` gets each word with the stack under it, puts the dict
+under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
+`‹_12p2` are these words' helpers. With them
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P2's three dict words and two helpers), the prelude has 78 long
+names, which leaves 946 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
