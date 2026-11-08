@@ -71,7 +71,15 @@
 # it among the names so far, else claim that entry.  -> its name number.  A name
 # byte must be 0-9 A-Z a-z _ or - : the five range tests sum to -1 for exactly
 # one of them and to 0 for anything else, EOF included.
-:Nm60+@256+64*4702208+m68+!0m64+!{("181-[_m64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@1024<[2.]m60+@"1+m60+!256+^]m80+@256+64*4702208+m72+!x[m80+@256+^]m80+@1+m80+!0}]"48-10<&65-26<+&97-26<+&95-1<+&45-1<+[2.]m64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!0};
+# W11-4A split N into the pieces ⊜ needs too, since a record invents names
+# (‹point-x›, ‹set-point-x›) and interns them as if read: n starts a name in the
+# next free entry, d is the name-byte test (ch -> ch sum: -1 legal, 0 not), b
+# appends a byte (past 60: exit 2), i interns the finished name -> its number.
+:nm60+@256+64*4702208+m68+!0m64+!;                       # n: start a name in the next free entry
+:d"48-10<&65-26<+&97-26<+&95-1<+&45-1<+;                 # d: ch -> ch f, f = -1 for 0-9 A-Z a-z _ -
+:bm64+@60<[2.]m68+@4+m64+@+,m64+@1+m64+!;                # b: ch -> ; append it to the name
+:im64+@m68+@!m64+@[2.]0m80+!{m80+@m60+@-[m60+@1024<[2.]m60+@"1+m60+!256+^]m80+@256+64*4702208+m72+!x[m80+@256+^]m80+@1+m80+!0}; # i: -> the built name's number, interned
+:Nn{("181-[_i^]d[2.]b0};
 :G("180-[_N];                                           # G: a prefix's operand -- one byte, or a whole ‹long name›
 :F\o4*4785152+"@P\w\!;                                  # F: op name -> emit `op rel32`, the site joining name's pending list
 :R"Y@m84+!4*4785152+"@\0\!{"[_^]"@\"m84+@\-4-\!0};       # R: name -> patch its pending sites to its (just stored) body
@@ -80,7 +88,7 @@
 # W11-2A — include, ⎘“path“ (0xB6).  The compiler reads the file's bytes as if
 # they stood where the ⎘ is, by swapping fd 0: dup(0) saves the includer's
 # input, open + dup2 puts the file on fd 0, and at its end j dup2s the saved fd
-# back (J).  Search: the path as written, then lib/path.  Include-once: a path
+# back (J).  Search: the path as written, then lib/path, then vendor/path (W11-4A).  Include-once: a path
 # already included (same bytes) is skipped.  At most 8 deep, 60 files.  Layout
 # (compiler-only, ../REGISTRY.md §3): 0x438000 [len:4][path][0] (the len cell
 # becomes `lib/` for the retry) · 0x438100 the saved-fd stack, 4 bytes a level
@@ -101,10 +109,14 @@
 :Jm160+@1-m160+!m160+@4*4423936+@m168+!m168+@33O_m168+@3O_; # J: leave an include -- dup2(saved,0), close(saved)
 :j0{_("[m160+@[^]J]"};                                  # j: the next input byte; an included file's end resumes its includer
 :r0m64+!{("142-[_^]"[2.]m64+@250<[2.]m64+@V+,m64+@1+m64+!0}; # r: read the path up to the closing “ (EOF, or past 250 bytes: exit 2)
+# W: W11-4A's third place, vendor/path.  `vendor/` is 7 bytes, more than the
+# length cell holds, so the C string is built at 0x43F000 (W11-4A's region):
+# `vend` and `or/`, then the path and its NUL copied from V (m172 counts).
+:W1684956534m192512+!3109487m192516+!0m172+!{Vm172+@+?m192519+m172+@+,m172+@1+"m172+!m64+@1+-1<}m192512+2O"1048576<[2.];
 # I: the ⎘ case.  “ must follow; read the path, NUL-terminate it, give it its
 # length cell; skip it if the table has it; else check depth and count, copy it
-# into the table, open it (or lib/path), save fd 0 and dup2 the file onto it.
-:I(142-1<[2.]r0m64+@V+,m64+@V4-!V4-m68+!0m80+!{m80+@m164+@-1<"[m80+@256*4424192+m72+!x[_^]m80+@1+m80+!]}m160+@8<[2.]m164+@60<[2.]m164+@256*4424192+m72+!m64+@4+m172+!{m172+@1-m172+!V4-m172+@+?m72+@m172+@+,m172+@1<}m164+@1+m164+!V2O"1048576<[_794978668V4-!V4-2O"1048576<[2.]]m168+!0""32Km160+@4*4423936+!m160+@1+m160+!m168+@33O_m168+@3O_;
+# into the table, open it (or lib/path, or vendor/path), save fd 0 and dup2 the file onto it.
+:I(142-1<[2.]r0m64+@V+,m64+@V4-!V4-m68+!0m80+!{m80+@m164+@-1<"[m80+@256*4424192+m72+!x[_^]m80+@1+m80+!]}m160+@8<[2.]m164+@60<[2.]m164+@256*4424192+m72+!m64+@4+m172+!{m172+@1-m172+!V4-m172+@+?m72+@m172+@+,m172+@1<}m164+@1+m164+!V2O"1048576<[_794978668V4-!V4-2O"1048576<[_W]]m168+!0""32Km160+@4*4423936+!m160+@1+m160+!m168+@33O_m168+@3O_;
 # e — the default: emit a table op, or compile a call to a user word.
 #
 # v1's `e` emitted `call rel32` with rel32 = dict[name] - (P+4) and never looked
@@ -162,6 +174,22 @@
 # displacement is a disp8.  m80 is the walking index (M2's, idle by now).  golf2
 # names the offending local on fd 2; the seed can only exit(2).
 :l"256<1+["97-8<[2.]]m56+@["256<[2.]97-8*^]0m80+!{m80+@m88+@-[m88+@16<[2.]"m88+@4*m96++!_m88+@"1+m88+!8*^]"m80+@4*m96++@-[_m80+@8*^]m80+@1+m80+!0}; # l: name -> local displacement
+# ---------------------------------------------------------------------------
+# W11-4A — records, ⊜‹point›‹x›‹y›; (0xB7).  At compile time the header becomes
+# the words golf2's ‹defrecord› emits (see self/golf2.golfj, Records):
+#     :‹point› n⍳ then per field k, last first: \&16≪16>(8k+8)﹢⊛ ;
+#     :‹point-x› k⊇;    :‹set-point-x› &k⊇_&16≪16>(8k+8)﹢⊛;
+# Seed-side scratch (../REGISTRY.md §3): m192 the record's name number · m196
+# the field count · m200 the field being emitted · m204 u's byte pointer; u's
+# countdown at 0x43FF00 and the field table (4 bytes a name) at 0x43C000, the
+# W11-4A region.  Every malformed header is golf2's `GOLF: record …` / `bad
+# record …`; the seed exits 2.
+# ---------------------------------------------------------------------------
+:u"256<[64*4702208+"4+m204+!@4456192!{m204+@?bm204+@1+m204+!4456192@1-"4456192!1<}^]b; # u: name -> ; append its spelling
+:q"233oP4+\Y!RP0w1E;                                     # q: name -> site; `:name`'s header
+:s38e16Lw162e16Lw62e1+8*Lw145e165e;                      # s: k -> ; emit &16≪16>(8k+8)﹢⊛
+:v0m196+!{("59-[_m196+@[2.]^]"[2.]"33<["180-[_N]"256<1+[d[2.]]m196+@256<[2.]m196+@4*4440064+!m196+@1+m196+!0]_0}; # v: read the fields up to ;
+:yG"256<1+[d[2.]]m192+!vm192+@qm196+@Lw82em196+@m200+!{m200+@1-"m200+!92esm200+@1<}94Ek0m200+!{nm192+@u45bm200+@4*4440064+@uiqm200+@Lw73e94Ekn115b101b116b45bm192+@u45bm200+@4*4440064+@uiq38em200+@Lw73e95em200+@s94Ekm200+@1+"m200+!m196+@-1<}; # y: the ⊜ case
 :t"33<1+[_^]                                            # whitespace
 "35-[_h^]                                               # '#' comment
 "U1+[48-{("U[Q!Lw^]Z0}]                                 # digit -> number
@@ -277,6 +305,7 @@
 # the char's place and fall through — so the LINK case and `e` below treat it
 # exactly like a one-byte name.
 "182-[_I^]                                              # 0xB6  ⎘  include a file (W11-2A)
+"183-[_y^]                                              # 0xB7  ⊜  a record header (W11-4A)
 "180-[_N]                                               # 0xB4  ‹  a long name used as a token
 
 # A token inside a chain is a LINK.  This case must sit LAST, just before the

@@ -96,7 +96,9 @@ COMPILER = [
      "opens a long name: ‹name› stands wherever a one-byte name can"),
     (mkblob2.RNAME_BYTE, "rname", "›", "closes a long name"),
     (mkblob2.IMPORT_BYTE, "import", "⎘",
-     "prefix: ⎘“path“ compiles that file in place (once; searches . then lib/)"),
+     "prefix: ⎘“path“ compiles that file in place (once; searches . then lib/ then vendor/)"),
+    (mkblob2.REC_BYTE, "rec", "⊜",
+     "prefix: ⊜‹point›‹x›‹y›; defines ‹point› (x y -> rec), ‹point-x› (rec -> x), ‹set-point-x› (rec v -> rec)"),
 ]
 
 def lib_byte(key) -> int:

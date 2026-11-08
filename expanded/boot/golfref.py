@@ -16,7 +16,8 @@ This is a full oracle, not a shim:
   * **Compiler ops are implemented natively** here: ′ ref (0x8C), “ str (0x8E),
     → set (0x8F), ← get (0x90), ⊚ chain (0xB0), ⊡ ⇒ ⇐ (0xB1-0xB3) and the
     M2 long-name brackets ‹ › (0xB4/0xB5), and W11-2A's include ⎘ (0xB6),
-    spliced in place here.  These change the compiler's
+    spliced in place here, and W11-4A's record header ⊜ (0xB7), expanded into
+    the same words golf2 emits.  These change the compiler's
     *logic*, not just its template table, so they cannot be inherited — they are
     transcribed from the authoritative cases in self/seed.golfv1 and
     self/golf2.golfj, whose byte allocations tools/mkblob2.py owns.
@@ -66,6 +67,7 @@ LGET_BYTE = mkblob2.LGET_BYTE    # ⇐  push a local slot
 LNAME_BYTE = mkblob2.LNAME_BYTE  # ‹  opens a long name (M2)
 RNAME_BYTE = mkblob2.RNAME_BYTE  # ›  closes it
 IMPORT_BYTE = mkblob2.IMPORT_BYTE  # ⎘  ⎘“path“ includes a file (W11-2A)
+REC_BYTE = mkblob2.REC_BYTE  # ⊜  ⊜‹point›‹x›‹y›; a record header (W11-4A)
 FORK_BYTE = 0xC7              # ⑂  the prelude word a 3+-link chain forks through
 VARBANK = 0x4E0000            # variable bank: cell for name c is VARBANK + 8*c
 VARSTRIDE = 8                 # M3W: 8 bytes per name (it was 4, and truncated)
@@ -265,7 +267,7 @@ def compile_bytes(src: bytes) -> bytes:
         if len(included) >= mkblob2.IMPORT_FILES:
             bad(b"too many includes")
         included.append(path)
-        for cand in (path, b"lib/" + path):
+        for cand in (d + path for d in mkblob2.IMPORT_DIRS):  # ., lib/, vendor/
             try:
                 with open(cand, "rb") as f:
                     return rest, f.read() + b"\n"
@@ -274,6 +276,86 @@ def compile_bytes(src: bytes) -> bytes:
             except OSError:
                 pass
         bad(b"cannot include")
+
+    def legal(b):
+        """golf2's ‹legal›: may byte b stand in a long name (0-9 A-Z a-z _ -)?"""
+        return b < 128 and (chr(b).isalnum() or b in b"_-")
+
+    def intern(name):
+        """golf2's ‹intern›: a name's number, claiming the next one if new."""
+        if name not in longs:
+            if len(longs) >= mkblob2.LONG_MAX:
+                die("too many long names ‹".encode() + name + "›".encode())
+            longs.append(name)
+        return mkblob2.LONG_BASE + longs.index(name)
+
+    def record():
+        """W11-4A: ⊜‹point›‹x›‹y›; — golf2's ‹defrecord›.  The header expands to
+        the words golf2 emits, token for token (see self/golf2.golfj, Records):
+            :‹point› n⍳ (per field k, last first) \\&16≪16>(8k+8)﹢⊛ ;
+            :‹point-x› k⊇;   :‹set-point-x› &k⊇_&16≪16>(8k+8)﹢⊛;
+        with the names interned in that order, so the numbers match too."""
+        nonlocal i
+        def rbyte():                                 # golf2's ‹read›: 0 at the
+            nonlocal i                               # end of the file (here,
+            end = segs[-1]["end"] - 1 if segs else n  # the newline include()
+            if i >= end:                             # appends is past it)
+                return 0
+            i += 1
+            return src[i - 1]
+        b = rbyte()
+        rec = read_long() if b == LNAME_BYTE else b
+        if rec < mkblob2.LONG_BASE and not legal(rec):
+            die(b"bad record name " + bytes([rec]))
+        fields = []
+        while True:
+            b = rbyte()
+            if b == ord(';'):
+                if not fields:
+                    die(b"record without fields " + shown(rec))
+                break
+            if b == 0:
+                die(b"record without ; " + shown(rec))
+            if b < 33:
+                continue
+            if b == LNAME_BYTE:
+                b = read_long()
+            if b < mkblob2.LONG_BASE and not legal(b):
+                die(b"bad record field " + bytes([b]))
+            if len(fields) >= mkblob2.REC_MAX:
+                die(b"too many record fields " + shown(rec))
+            fields.append(b)
+        def spelled(name):
+            return bytes([name]) if name < mkblob2.LONG_BASE else longs[name - mkblob2.LONG_BASE]
+        def invent(*parts):
+            name = b"".join(parts)
+            if len(name) > mkblob2.LONG_LEN:         # ‹badname›: what fitted
+                die("bad long name ‹".encode() + name[:mkblob2.LONG_LEN] + "›".encode())
+            return intern(name)
+        def header(name):                            # ':'s header
+            emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
+            define(name)
+            emit(v1.PROLOGUE)
+            return patch
+        def end(patch):
+            emit(v1.EPILOGUE); patch32(patch, len(out))
+        def store(k):                                # &16≪16>(8k+8)﹢⊛
+            call_or_template(ord('&')); emit_lit(16); call_or_template(0xA2)
+            emit_lit(16); call_or_template(ord('>')); emit_lit(8 * k + 8)
+            call_or_template(0x91); call_or_template(0xA5)
+        patch = header(rec)
+        emit_lit(len(fields)); call_or_template(ord('R'))
+        for k in reversed(range(len(fields))):
+            call_or_template(ord('\\')); store(k)
+        end(patch)
+        for k, f in enumerate(fields):
+            patch = header(invent(spelled(rec), b"-", spelled(f)))
+            emit_lit(k); call_or_template(ord('I'))
+            end(patch)
+            patch = header(invent(b"set-", spelled(rec), b"-", spelled(f)))
+            call_or_template(ord('&')); emit_lit(k); call_or_template(ord('I'))
+            call_or_template(ord('_')); store(k)
+            end(patch)
 
     while i < n:
         while segs and i >= segs[-1]["end"]:         # W11-2A: left an include
@@ -427,6 +509,9 @@ def compile_bytes(src: bytes) -> bytes:
                     seg["end"] += len(data)
                 segs.append({"start": i, "end": i + len(data), "reset": i,
                              "file": len(included), "holes": []})
+            continue
+        if c == REC_BYTE:                            # W11-4A: ⊜‹point›‹x›‹y›;
+            record()
             continue
         if c == CHAIN_BYTE:                          # ⊚name … ; : a tacit chain
             name = take_name()                       # the header is ':'s

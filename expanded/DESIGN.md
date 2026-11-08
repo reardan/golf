@@ -139,10 +139,10 @@ against the thing it describes, so none of it can go stale quietly.
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **34** |
 | the template blob itself | **1146** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **3559** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **11804** bytes |
-| assertions in the run2 suite | **640** |
-| assertions in the selfcheck suite | **54** |
+| the generated bootstrap seed (`self/seed.golf`) | **4201** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **13834** bytes |
+| assertions in the run2 suite | **655** |
+| assertions in the selfcheck suite | **57** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -596,6 +596,35 @@ allocations they need are in [`REGISTRY.md`](REGISTRY.md) §1.3, §2 and §3.1.
    to the old exit). Uncaught errors print exactly what they printed before.
    Still outside it: signals (the return-stack guard page's SIGSEGV), `.`, and
    the compiler's own messages.
+4. **Records are expanded by the compiler, into plain words over plain lists
+   (W11-4A).** `⊜‹point›‹x›‹y›;` is a compiler op byte (`0xB7`, `\rec`), not
+   a prelude word: at compile time `t`'s new case (`‹defrecord›`) reads the
+   record name and the fields up to `;`, then emits three kinds of ordinary
+   `:` definitions, token for token what their source would compile to —
+   `‹point›` = `n⍳` then, last field first, `\&16≪16>(8k+8)﹢⊛` (store each
+   value in its cell); `‹point-x›` = `k⊇`; `‹set-point-x›` =
+   `&k⊇_&16≪16>(8k+8)﹢⊛` (in place, the `⊇` keeping the index and
+   use-after-free checks). So there is no runtime support at all, a record IS
+   a list (every list word works on it, `⍕` prints its fields), and the words
+   are ordinary names: forward references, `′`, chain links and
+   `GOLF: undefined word ‹point-z›` for a field that does not exist all come
+   for free. The names are invented with `-` as the joiner, since `.` is not a
+   long-name byte (the plan's `‹point.x›` is `‹point-x›`); the compiler builds
+   each in the next free long-name entry and interns it exactly as
+   `‹readname›` would (‹readname› was split into ‹fresh› ‹legal› ‹intern› for
+   this), so they count against the 1024, two per field. The same task added
+   `vendor/` as the third include location, after the path as written and
+   `lib/` (for W11-4E's packages): the C string `vendor/path` is built in the
+   W11-4A region at `0x43F000`, since `vendor/` does not fit the 4-byte length
+   cell the `lib/` retry overwrites. Malformed headers stop the compile, exit 2:
+   `record without fields`, `record without ;`, `bad record field`,
+   `bad record name`, `too many record fields` (256), each ` at line N`; the
+   seed mirrors all of it (exit 2 silently) and `boot/golfref.py` the bytes
+   and messages. State: the field table at `0x43C000` and, in the seed,
+   `m+192`…`m+204` (REGISTRY §3). Cost: the `golf2` binary +2341 bytes
+   (16073 → 18414), `seed` +2254 (10917 → 13171); `self/golf2.golf` +2030
+   (11804 → 13834), `self/seed.golf` +642 (3559 → 4201). A program without
+   `⊜` compiles to the same bytes as before.
 
 ## Invariants we do not break
 

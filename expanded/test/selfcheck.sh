@@ -173,7 +173,19 @@ both include "$TMP/src.include"
 [ "$("$TMP/new.include" 2>/dev/null)" = "17289" ] \
   && ok "prelude + nested, repeated and self includes run (W11-2A)" || no "include program output"
 
-for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k include; do
+# W11-4A: ⊜ records — long and one-byte names, a forward call to an accessor,
+# a setter — and an include found through vendor/ (the third search place),
+# through both source forms.
+mkdir -p "$TMP/rec/vendor"
+printf '%s' '⊜‹pt›‹x›‹y›;:‹n2›"‹pt-x›²&‹pt-y›²+;' | python3 tools/codepage.py encode > "$TMP/rec/vendor/rpt.g2"
+printf '%s' ':‹fy›‹q-b›;⎘“rpt.g2“⊜q a ‹b›;3 4‹pt›‹n2›Ṅ7 8q9‹set-q-a›"‹fy›\\‹q-a›+Ṅ7→‹v›←‹v›Ṅ' \
+  | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.records"
+( cd "$TMP/rec" && "$TMP/seed" < "$TMP/src.records" > "$TMP/old.records" 2>/dev/null; chmod +x "$TMP/old.records"
+  "$TMP/golf2" < "$TMP/src.records" > "$TMP/new.records" 2>/dev/null; chmod +x "$TMP/new.records" )
+[ "$("$TMP/new.records" 2>/dev/null)" = "25177" ] \
+  && ok "prelude + records and a vendor/ include run (W11-4A)" || no "records program output: $("$TMP/new.records" 2>&1)"
+
+for t in hello fizz lists strings vars vectorize capstone chaindef locals longnames frames fwd1 names1k include records; do
   cmp -s "$TMP/old.$t" "$TMP/new.$t" \
     && ok "golf2 == seed on $t" \
     || { no "golf2 differs from seed on $t"; cmp -l "$TMP/old.$t" "$TMP/new.$t" 2>/dev/null | head -5 | sed 's/^/       /'; }
@@ -267,6 +279,17 @@ cat "$TMP/pre.gb" <(printf '%s' "⎘“$TMP/inc.none.g2“1Ṅ" | python3 tools/
   && [ "$(cat "$TMP/badinc.newerr")" = "GOLF: cannot include $TMP/inc.none.g2 at line 1" ] \
   && ok "both refuse a missing include, exit 2 (W11-2A)" \
   || no "missing-include rejection differs (seed $sst, golf2 $gst)"
+
+# W11-4A: a malformed record header is refused by both; only golf2 can say how.
+w114a=""
+for w114s in '⊜‹p›;|record without fields ‹p›' '⊜‹p›‹x›|record without ; ‹p›' '⊜‹p›x(;|bad record field (' '⊜(x;|bad record name ('; do
+  cat "$TMP/pre.gb" <(printf '%s' "${w114s%%|*}" | python3 tools/codepage.py encode) > "$TMP/badrec.src"
+  "$TMP/seed"  < "$TMP/badrec.src" > "$TMP/badrec.old" 2>"$TMP/badrec.olderr"; sst=$?
+  "$TMP/golf2" < "$TMP/badrec.src" > "$TMP/badrec.new" 2>"$TMP/badrec.newerr"; gst=$?
+  [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badrec.old" ] && [ ! -s "$TMP/badrec.new" ] && [ ! -s "$TMP/badrec.olderr" ] \
+    && [ "$(cat "$TMP/badrec.newerr")" = "GOLF: ${w114s#*|} at line 1" ] || w114a="$w114a [${w114s%%|*}: seed $sst, golf2 $gst]"
+done
+[ -z "$w114a" ] && ok "both refuse a malformed ⊜ header, exit 2 (W11-4A)" || no "malformed-record rejection differs:$w114a"
 
 echo "Every compiler op the v2-GOLF source implements, exercised through it"
 gnew(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/p.src"

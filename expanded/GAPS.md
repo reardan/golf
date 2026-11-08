@@ -232,11 +232,26 @@ key on but integers.
 nested to any depth, compared with `≣`, so a code list read at run time is a
 usable string key. It is a compact, insertion-ordered dict with
 open-addressing, and 100,000 int inserts plus lookups take about 0.05 s
-(REFERENCE.md, "Dicts and sets"). Tuples, objects and classes are still
-missing.
+(REFERENCE.md, "Dicts and sets"). Objects and classes are still missing;
+records (named fields) are closed below.
 
 ```
 ‹dict›"“ab“⊃7‹put›"“ab“⊃‹get›Ṅ    ->  7
+```
+
+**Structs / records — CLOSED (W11-4A).** `⊜‹point›‹x›‹y›;` declares a
+record: the compiler defines a constructor `‹point›` (`x y -> rec`),
+accessors `‹point-x›` (`rec -> x`) and setters `‹set-point-x›`
+(`rec v -> rec`, in place). It is a Rust tuple struct with named accessors,
+or a Python namedtuple that may be mutated: a plain list underneath, so `⍕`
+prints it and every list word works on it, and a wrong field name is an
+undefined word at compile time (REFERENCE.md, "Records"). The accessor is
+spelled `‹point-x›`, not `‹point.x›` (`.` is not a long-name byte). Not
+covered: types (any list long enough passes for a point), methods, and
+inheritance.
+
+```
+⊜‹point›‹x›‹y›; 3 4‹point›‹point-y›Ṅ    ->  4
 ```
 
 ### 2.2 Names and scope
@@ -376,8 +391,8 @@ body in the running program), so a crash address or a gdb `break *0x…` can be
 tied to a word name; the binary is unchanged by `-g`.
 
 **Includes — closed by W11-2A.** `⎘“path“` compiles that file's bytes in
-place: nested (8 deep), include-once, searched as written and then in `lib/`
-(REFERENCE.md "Modules"). It is textual inclusion, like C's `#include` with
+place: nested (8 deep), include-once, searched as written, then in `lib/`, then
+in `vendor/` (W11-4A, for fetched packages) (REFERENCE.md "Modules"). It is textual inclusion, like C's `#include` with
 an include guard, not Python's modules: there are no namespaces, so an
 included file's names are the includer's names.
 
