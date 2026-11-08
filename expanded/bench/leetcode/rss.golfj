@@ -1,0 +1,9 @@
+# rss.golfj — the Golf port of rss.py (W14-B), same command line and output:
+#   rss INFILE CMD ARGS...   run CMD with INFILE on stdin and stdout on
+#                            /dev/null; print its peak RSS in KB (wait4's
+#                            ru_maxrss), one line.  stderr is inherited and
+#                            the exit status is ignored, as in rss.py.
+# tools/golfc -j bench/leetcode/rss.golfj rss && ./rss in/stock.txt bin/stock
+‹args›→‹a›
+3⍳0 ←‹a›0⊇‹open›⍈1 “/dev/null“⊃‹create›⍈2 0 1-⍈→‹io›
+←‹a›1↓←‹io›‹spawn›‹waitr›Ṅ␤_

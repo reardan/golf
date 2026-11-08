@@ -442,6 +442,7 @@ Prelude long names in use (all **shipped**):
 | `‹bisect›` `‹bisectr›` `‹bsearch›` `‹append›` `‹groupby›` `‹mostcommon›` `‹union›` `‹inter›` `‹diff›` `‹argmax›` `‹argmin›` `‹any›` `‹all›` `‹countif›` `‹takewhile›` `‹dropwhile›` `‹chunk›` `‹prefix›` `‹rangesum›` `‹diffapply›` `‹lexcmp›` `‹gcd›` `‹lcm›` `‹abs›` `‹sign›` `‹powmod›` `‹isqrt›` `‹divmod›` `‹sieve›` `‹isdigit›` `‹isalpha›` `‹isalnum›` `‹isspace›` `‹isupper›` `‹islower›` `‹upper›` `‹lower›` `‹find›` `‹ispal›` (39), the helpers `‹_13d_rng›` `‹_13d_sub›` `‹_13d_a›` `‹_13d_cl›` `‹_13d_new›` `‹_13d_addall›` `‹_13d_fi›` `‹_13d_mm›` (names starting `‹_13d_` are reserved for them), and the 18 digraph names `‹_dg61›`…`‹_dg6D›` `‹_dg30›`…`‹_dg34›` (see §1.6 "Digraph page"): 65 in all | W13-D (**shipped**) | `===== W13-D =====` (the end of the file) |
 | `‹adj›` `‹dadj›` `‹wadj›` `‹dwadj›` `‹bfs›` `‹comps›` `‹toposort›` `‹dijkstra›` `‹gget›` `‹gset›` `‹nbrs4›` `‹nbrs8›` `‹gcomps›` `‹transpose›` `‹rot90›` `‹uf›` `‹ufind›` `‹uunion›` `‹ucount›` `‹memo›` `‹table1›` `‹table2›` `‹times›` `‹heapify›` `‹nsmallest›` `‹nlargest›` `‹pq2push›` `‹pq2pop›` `‹nextgreater›` `‹nextsmaller›` `‹prevgreater›` `‹prevsmaller›` `‹nextperm›` `‹perms›` `‹combs›` `‹subsets›` `‹cartesian›` (37), the 18 digraph aliases `‹_dg35›`–`‹_dg39›` `‹_dg6E›`–`‹_dg7A›` (see §1.6 "Digraph page"), and 21 helpers `‹_13e_…›` (the prefix `‹_13e` is reserved for them): 76 names | W13-E (**shipped**) | `# ===== W13-E =====` |
 | the helpers `‹_13h_cmp›` `‹_13h_bnd›` (the compose / bind kind words, whose addresses are a closure record's cell 2) and `‹_13h_comp›` `‹_13h_bind›` (the record builders `∘` and `⊸` forward to); names starting `‹_13h` are W13-H's | W13-H (**shipped**) | `# ===== W13-H =====` (end of the prelude) |
+| `‹spawn›` `‹wait›` `‹waitr›` `‹run›` `‹capture›` `‹capturet›` `‹exec›` `‹pipe›` `‹kill›` `‹signame›` (processes, REFERENCE "Processes (W14-B)"), and the helpers `‹_14b_ename›` `‹_14b_fail›` `‹_14b_pid›` `‹_14b_close›` `‹_14b_envp›` `‹_14b_path›` `‹_14b_cand›` `‹_14b_cands›` `‹_14b_frees›` `‹_14b_argvc›` `‹_14b_argvf›` `‹_14b_try›` `‹_14b_die›` `‹_14b_child›` `‹_14b_w4›` `‹_14b_st›` `‹_14b_now›` `‹_14b_reap›` `‹_14b_nb›` `‹_14b_ign›` `‹_14b_rst›` `‹_14b_rec›` `‹_14b_rd›` `‹_14b_out›` `‹_14b_drain›` `‹_14b_pf›` `‹_14b_cap0›`; names starting `‹_14b` are W14-B's | W14-B (**shipped**) | `# ===== W14-B =====` |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -759,6 +760,16 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | W13-H closures as data | one, 5181392 in the W12 O2 slot (§3.2) | `‹_13h_bnd›` parks the bind record there until it has read `f` and `x`; `‹_13h_cmp›` keeps its record in its `⊡` frame. No hook cell: `⍎` calls a record's kind word through cell 2 of the record itself (`call [rax+16]`), so the M-VEC table's `0x8D` slot stays empty |
 | W13-I prelude pruning | none | a `tools/golfc` step only (`tools/golfprune.py`); the runtime and the compilers are unchanged |
 | W13-E LeetCode library | none | every W13-E word is a `⊡` word: its loop state is its own frame on the return stack, so it needs no scratch cell and no spill frame and is re-entrant. The streams (`‹perms›` `‹combs›` `‹subsets›` `‹cartesian›`) build their records with W12-A8's `‹_12a8_mk›`, which uses A8's cell 5181312 for a moment, as A8's own constructors do |
+
+### 3.4 W14 runtime cells
+
+Each W14 task has a private 64-byte block in the free headroom at `0x432000`
+(W14-B 4399104–4399167, W14-D 4399168–4399231, W14-E 4399232–4399295,
+W14-G 4399296–4399359, W14-J 4399360–4399423; W14-L none).
+
+| Task | Cells | Use |
+|---|---|---|
+| W14-B processes | none (its block 4399104–4399167 is unused) | every W14-B word is a `⊡` word or stateless; the syscall buffers (pipe2's fds, wait4's status and rusage, pollfds, clock_gettime, rt_sigaction) are `A` blocks freed after use, and the entry rsp cell 0x4F0040 is only read (envp) |
 
 ---
 

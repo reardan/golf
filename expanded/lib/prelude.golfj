@@ -2954,3 +2954,165 @@
 # ‹_13h_comp›  f g -> r  (∘)  ·  ‹_13h_bind›  x f -> r  (⊸): fill a record.
 ⊡‹_13h_comp›⇒g⇒f3A⇒r⇐f⇐r\store⇐g⇐r8\radd\store\ref‹_13h_cmp›⇐r16\radd\store⇐r;
 ⊡‹_13h_bind›⇒f⇒x3A⇒r⇐f⇐r\store⇐x⇐r8\radd\store\ref‹_13h_bnd›⇐r16\radd\store⇐r;
+
+# ===== W14-B =====
+# Processes: run other programs, wire their stdin/stdout/stderr, wait for
+# them, capture their output (REFERENCE "Processes (W14-B)").  Built on ⎈ and
+# ⌁ (W14-A): fork 57 · execve 59 · dup2 33 · pipe2 293 · wait4 61 (four
+# arguments, so ⌁) · kill 62 · poll 7 · close 3 · fcntl 72 · rt_sigaction 13
+# (⌁) · clock_gettime 228 · exit 60.
+#   ‹spawn›    argv io -> pid      start a child.  argv is a list of code
+#                                  lists; io is 0 (inherit fds 0 1 2) or a list
+#                                  [in out err] of fds, -1 = inherit that one
+#   ‹wait›     pid -> status       exit code 0..255, or -signal if killed
+#   ‹waitr›    pid -> status kb    the same, plus the child's peak RSS in KB
+#                                  (wait4's rusage ru_maxrss)
+#   ‹run›      argv -> status      spawn with inherited io, then wait
+#   ‹capture›  argv input -> out err status
+#                                  input (a code list, or 0 for /dev/null) on
+#                                  the child's stdin; its stdout and stderr
+#                                  come back as code lists.  One poll(2) loop
+#                                  writes and reads all three pipes (the input
+#                                  end nonblocking, 64 KB at a time), so no
+#                                  size of input or output deadlocks
+#   ‹capturet› argv input ms -> out err status
+#                                  ‹capture› with a time limit: after ms
+#                                  milliseconds the child gets SIGKILL and the
+#                                  status is -256, with whatever output came;
+#                                  a negative ms means no limit
+#   ‹exec›     argv ->             replace this process (stdout flushed first)
+#   ‹pipe›     -> rfd wfd          pipe2(O_CLOEXEC)
+#   ‹kill›     pid sig ->          kill(2)
+#   ‹signame›  n -> list           “SIGSEGV“ for 11 …, for 1..31; else “signal n“
+# argv[0] with no '/' is looked up on $PATH (read from envp, the words after
+# argv's NULL at the entry rsp cell 0x4F0040; no PATH means /bin:/usr/bin; an
+# empty PATH entry is "."), trying each candidate as execvp does: the error
+# reported is EACCES if any candidate gave it, else the last one.  The child
+# inherits envp.  Exec failure reaches the parent through an O_CLOEXEC pipe
+# the child writes its errno to (8 bytes; the parent reads 0 bytes when the
+# exec worked), so ‹spawn› ‹run› ‹capture› throw `cannot run <argv0>
+# (ENOENT)` instead of returning a silent 127.  The child first moves each io
+# fd above 2 with F_DUPFD_CLOEXEC, then dup2s it onto 0 1 2, so any order of
+# fds ([1 0 -1] too) and CLOEXEC pipes work; a bad fd fails the spawn
+# (`cannot run x (EBADF)`).  ‹flush› runs before every fork, so buffered
+# output is never written twice.  Other failures throw `cannot fork
+# (EAGAIN)`, `cannot make a pipe (EMFILE)`, `cannot wait for pid N (ECHILD)`,
+# `cannot kill pid N (ESRCH)`, `cannot run an empty argv`, and `io is not 0
+# or [in out err]` (checked in the parent: nothing in the child may throw,
+# or a ‹catch› armed before the fork would resume in it).  ‹capture› ignores
+# SIGPIPE only while its loop runs, after the fork (a child that exits without
+# reading its input is not an error), then puts the old disposition back; it
+# closes its pipes when ‹spawn› throws, so failures do not leak fds.  After a
+# timeout it reaps the child, then drains what is left in the pipes without
+# blocking (64 reads at most per pipe, in case a grandchild holds them open).
+# Every word is a ⊡ word or a plain one with no state: no runtime cells, no
+# scratch held across a call, re-entrant.  Like the rest of the prelude, no
+# swap byte (0x5C): `decode -m | encode` must give the same bytes back
+# (gtools.sh), and a decoded swap runs into the mnemonic after it, so the
+# words use locals instead.  Names that start with ‹_14b› are
+# the helpers:
+#   ‹_14b_ename› e -> list        errno name (adds ESRCH E2BIG ENOEXEC ECHILD
+#                                 EAGAIN ENOMEM ETXTBSY EPIPE to 1B's table)
+#   ‹_14b_fail›  r verb subj ->   throw `verb subj (ENAME)`, r = -errno
+#   ‹_14b_pid›   n -> list        “pid n“
+#   ‹_14b_close› fd ->            close, errors ignored
+#   ‹_14b_envp›  -> ptr           envp, from the entry rsp
+#   ‹_14b_path›  -> list          $PATH as a code list
+#   ‹_14b_cand›  a d -> a c       the C string d/a (d empty: ./a)
+#   ‹_14b_cands› a -> l           every C string to try for argv0 a
+#   ‹_14b_frees› l ->             free each element, then l
+#   ‹_14b_argvc› v -> b · ‹_14b_argvf› b ->   a C argv array, and its free
+#   ‹_14b_try›   k c e -> r       execve each candidate; -errno as above
+#   ‹_14b_die›   w r ->           (child) write -r to fd w, exit 127
+#   ‹_14b_child› k c e z w ->     (child) set up fds 0 1 2, exec or die
+#   ‹_14b_w4›    p opt -> raw kb r   wait4; r is the pid, or 0 (WNOHANG)
+#   ‹_14b_st›    raw -> status    decode a wait status
+#   ‹_14b_now›   -> ms            CLOCK_MONOTONIC in milliseconds
+#   ‹_14b_reap›  p d -> status    wait; kill at the deadline d (-1: none)
+#   ‹_14b_nb›    fd ->            set O_NONBLOCK
+#   ‹_14b_ign› -> old · ‹_14b_rst› old ->   SIGPIPE ignored / restored
+#   ‹_14b_rec›   -> rec           a growable byte buffer [ptr cap len]
+#   ‹_14b_rd›    fd rec -> r      one read of up to 64 KB onto its end
+#   ‹_14b_out›   rec -> list      the bytes as a code list (rec freed)
+#   ‹_14b_drain› fd rec ->        nonblocking reads until empty
+#   ‹_14b_pf›    f a o q ->       fill the three pollfds
+#   ‹_14b_cap0›  v i -> a o q b n p   ‹capture›'s pipes and spawn
+:‹_14b_ename›"3﹣[_“ESRCH“U^]"7﹣[_“E2BIG“U^]"8﹣[_“ENOEXEC“U^]"10﹣[_“ECHILD“U^]
+ "11﹣[_“EAGAIN“U^]"12﹣[_“ENOMEM“U^]"26﹣[_“ETXTBSY“U^]"32﹣[_“EPIPE“U^]‹_1b_ename›;
+⊡‹_14b_fail›⇒s U⇒v⇒r v s⧺“ (“U⧺0 r﹣‹_14b_ename›⧺“)“U⧺‹throw›;
+⊡‹_14b_pid›‹fmt›⇒f“pid “U f⧺;
+:‹_14b_close›0 0 3⎈_;
+:‹_14b_envp›5177408⊙"⊙3≪﹢16﹢;
+⊡‹_14b_path›‹_14b_envp›⇒e
+ {e⊙0≡⋄e⊙⇒s s@1213481296﹣[s4﹢?61﹣[s5﹢⇒s0⇒n{s n﹢?0≡⋄⇡n}s n‹_1b_tolist›^]]e8﹢⇒e}
+ “/bin:/usr/bin“U;
+⊡‹_14b_cand›⇒d"⇒a d≢[“.“U⇒d]d“/“U"⇒u⧺"⇒t a⧺⇒w w‹_1b_tobytes›w⌫t⌫u⌫;
+⊡‹_14b_frees›"⇒l≢⇒n0⇒i{i n≡⋄l i⊇⌫⇡i}l⌫;
+⊡‹_14b_cands›⇒a a47∊a≢﹡[1⍳0 a‹_1b_tobytes›⍈^]
+ ‹_14b_path›"⇒p58‹split›⇒q a q′‹_14b_cand›€⇒r_q‹_14b_frees›p⌫r;
+⊡‹_14b_argvc›"⇒v≢"⇒n⊕A⇒b0⇒i{i n≡⋄v i⊇‹_1b_tobytes›b i3≪﹢⊛⇡i}0 b n3≪﹢⊛b;
+⊡‹_14b_argvf›"⇒b⇒p{p⊙0≡⋄p⊙⌫p8﹢⇒p}b⌫;
+⊡‹_14b_try›⇒e⇒c⇒k0⇒x0⇒y k≢⇒n0⇒j{j n≡⋄k j⊇c e 59⎈"⇒y13﹢[1⇒x]⇡j}x[y⋄0 13﹣];
+⊡‹_14b_die›⇒r⇒w1A⇒b0 r﹣b⊛w b 8 1⎈_127 0 0 60⎈;
+⊡‹_14b_child›⇒w⇒z⇒e⇒c⇒k
+ w 1030 3 72⎈"0≺[⇒w⋄_]
+ z[⋄3A⇒t0⇒j{j3≡⋄z j⊇"0 1﹣≡[1030 3 72⎈"0≺[⋄⇒m w m‹_14b_die›]]t j3≪﹢⊛⇡j}
+  0⇒j{j3≡⋄t j3≪﹢⊙"0 1﹣≡[j 0 33⎈"0≺[⋄⇒m w m‹_14b_die›]]_⇡j}]
+ w k c e‹_14b_try›‹_14b_die›;
+⊡‹pipe›1A⇒b b 524288 0 293⎈"0≺[_⋄“cannot make a pipe“0⍳‹_14b_fail›]b@b4﹢@b⌫;
+⊡‹spawn›⇒z⇒v v≢[“cannot run an empty argv“U‹throw›]
+ z[⋄z≢3﹣[⋄“io is not 0 or [in out err]“U‹throw›]]
+ v0⊇‹_14b_cands›⇒k v‹_14b_argvc›⇒c‹_14b_envp›⇒e‹pipe›⇒w⇒r‹flush›
+ 0 0 0 57⎈⇒p p[r‹_14b_close›k c e z w‹_14b_child›]
+ w‹_14b_close›p0≺[⋄r‹_14b_close›p“cannot fork“0⍳‹_14b_fail›]
+ 1A⇒b r b 8 0⎈⇒n r‹_14b_close›c‹_14b_argvf›k‹_14b_frees›b⊙⇒x b⌫
+ n0≻[p⋄p 0 0 0 0 0 61⌁_0 x﹣“cannot run “v0⊇‹_14b_fail›];
+⊡‹_14b_w4›⇒o⇒p19A⇒b p b o b8﹢0 0 61⌁"0≺[⋄“cannot wait for “p‹_14b_pid›‹_14b_fail›]⇒r
+ b@b40﹢⊙b⌫r;
+⊡‹_14b_st›⇒s s127$"[_s8≫255$⋄±];
+⊡‹waitr›0‹_14b_w4›_⇒k‹_14b_st›k;
+:‹wait›‹waitr›_;
+:‹run›0‹spawn›‹wait›;
+⊡‹exec›⇒v v≢[“cannot run an empty argv“U‹throw›]‹flush›
+ v0⊇‹_14b_cands›"⇒k v‹_14b_argvc›"⇒c‹_14b_envp›‹_14b_try›c‹_14b_argvf›k‹_14b_frees›
+ “cannot run “v0⊇‹_14b_fail›;
+⊡‹kill›⇒s⇒p p s 0 62⎈"0≺[_⋄“cannot kill “p‹_14b_pid›‹_14b_fail›];
+⊡‹signame›⇒n n⊖31<1﹢[“SIGHUP SIGINT SIGQUIT SIGILL SIGTRAP SIGABRT SIGBUS SIGFPE SIGKILL SIGUSR1 SIGSEGV SIGUSR2 SIGPIPE SIGALRM SIGTERM SIGSTKFLT SIGCHLD SIGCONT SIGSTOP SIGTSTP SIGTTIN SIGTTOU SIGURG SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGWINCH SIGIO SIGPWR SIGSYS“U
+  "⇒u32‹split›"⇒l n⊖⊇0↓l‹_14b_frees›u⌫^]
+ “signal “U"⇒g n‹fmt›"⇒f⧺f⌫g⌫;
+⊡‹_14b_now›2A⇒b1 b0 228⎈_b⊙1000﹡b8﹢⊙1000000/﹢b⌫;
+⊡‹_14b_reap›⇒d⇒p d1﹢[p‹wait›^]0⇒k
+ {k[p1‹_14b_w4›⇒r_⇒s r⋄1]⋄d‹_14b_now›﹣"0≻[_p9‹kill›p‹wait›_1⇒k⋄⇒m0 0 m10⊓7⎈_]}
+ k[s‹_14b_st›⋄0 256﹣];
+⊡‹_14b_nb›⇒f f 3 0 72⎈2048|⇒g f 4 g 72⎈_;
+⊡‹_14b_ign›4A⇒n4A⇒o1 n⊛0 n8﹢⊛0 n16﹢⊛0 n24﹢⊛13 n o 8 0 0 13⌁_n⌫o;
+⊡‹_14b_rst›⇒o13 o0 8 0 0 13⌁_o⌫;
+⊡‹_14b_rec›3A⇒r8192A r⊛65536 r8﹢⊛0 r16﹢⊛r;
+⊡‹_14b_rd›⇒r⇒f r8﹢⊙r16﹢⊙﹣65536≺1﹢[r8﹢⊙2﹡⇒c c3≫A⇒n r⊙⇒o0⇒k r16﹢⊙7﹢3≫⇒e
+  {k e≡⋄o k3≪﹢⊙n k3≪﹢⊛⇡k}o⌫n r⊛c r8﹢⊛]
+ f r⊙r16﹢⊙﹢65536 0⎈"0≻[⋄"r16﹢⊙﹢r16﹢⊛];
+⊡‹_14b_out›⇒r r⊙r16﹢⊙‹_1b_tolist›r⊙⌫r⌫;
+⊡‹_14b_drain›⇒r⇒f f‹_14b_nb›0⇒k{k64≡⋄f r‹_14b_rd›0≻[64⇒k⋄⇡k]};
+⊡‹_14b_pf›⇒q⇒o⇒a⇒f a f!4 f4﹢!o f8﹢!1 f12﹢!q f16﹢!1 f20﹢!;
+⊡‹_14b_cap0›⇒i⇒v
+ i[“/dev/null“U"⇒g‹open›⇒z g⌫0 1﹣⇒a0⇒b0⇒n⋄‹pipe›⇒a⇒z a‹_14b_nb›i‹_1b_tobytes›⇒b i≢⇒n]
+ ‹pipe›⇒w⇒o‹pipe›⇒u⇒q
+ v3⍳0 z⍈1 w⍈2 u⍈"⇒l′‹spawn›‹catch›"[_⇒p⋄⇒g__l⌫z‹_14b_close›w‹_14b_close›u‹_14b_close›
+  a‹_14b_close›o‹_14b_close›q‹_14b_close›b[⋄b⌫]g‹throw›]
+ l⌫z‹_14b_close›w‹_14b_close›u‹_14b_close›n[a‹_14b_close›0 1﹣⇒a]a o q b n p;
+⊡‹capturet›⇒m‹_14b_cap0›⇒p⇒n⇒b⇒q⇒o⇒a
+ m0≺[‹_14b_now›m﹢⇒d⋄0 1﹣⇒d]
+ ‹_14b_rec›⇒x‹_14b_rec›⇒y3A⇒f0⇒s0⇒t‹_14b_ign›⇒g
+ {t a0≺o0≺$q0≺$|⋄
+  d1﹢[0 1﹣⋄d‹_14b_now›﹣"0≻[_0]]⇒r
+  r[p9‹kill›1⇒t]
+  t[f a o q‹_14b_pf›f 3 r 7⎈0≻[⋄
+   f6﹢?[⋄a b s﹢n s﹣65536⊓1⎈⇒r r0≺[r s﹢⇒s s n≡[⋄a‹_14b_close›0 1﹣⇒a]⋄r11﹢[⋄a‹_14b_close›0 1﹣⇒a]]]
+   f14﹢?[⋄o x‹_14b_rd›0≻[o‹_14b_close›0 1﹣⇒o]]
+   f22﹢?[⋄q y‹_14b_rd›0≻[q‹_14b_close›0 1﹣⇒q]]]]}
+ g‹_14b_rst›
+ t[p d‹_14b_reap›⋄p‹wait›_0 256﹣]⇒r
+ t[⋄o0≺[o x‹_14b_drain›]q0≺[q y‹_14b_drain›]]
+ a‹_14b_close›o‹_14b_close›q‹_14b_close›f⌫b[⋄b⌫]
+ x‹_14b_out›y‹_14b_out›r;
+:‹capture›0 1﹣‹capturet›;

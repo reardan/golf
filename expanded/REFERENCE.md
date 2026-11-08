@@ -2010,6 +2010,82 @@ them all. The streams read their input lists in place and do not own them.
   `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
   0.52 s. Names that start with `‹_13e` are these words' helpers.
 
+### Processes (W14-B)
+
+The process words run other programs, the way a shell script or Python's
+`subprocess` does. An **argv** is a list of code lists, program first:
+`“ls -l“⊃32‹split›` is one, and so is `‹args›`. A program name with no `/`
+is looked up on `$PATH`, as `execvp` does. The child gets this process's
+environment. A **status** is the exit code `0`–`255`, or minus the signal
+number when a signal killed the child (`-9` for SIGKILL), as in Python's
+`returncode`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹run›` | `argv -> status` | run the program with this process's stdin, stdout and stderr, and wait for it |
+| `‹capture›` | `argv input -> out err status` | run it with `input` on its stdin, and collect its stdout and stderr as code lists. `input` is a code list, or `0` for `/dev/null`. One `poll(2)` loop feeds the input and drains both outputs, so no size of either deadlocks. A child that exits without reading all its input is not an error |
+| `‹capturet›` | `argv input ms -> out err status` | `‹capture›` with a time limit. When `ms` milliseconds pass, the child gets SIGKILL and the status is **`-256`**, with whatever output arrived. A negative `ms` means no limit |
+| `‹spawn›` | `argv io -> pid` | start the program and return at once. `io` is `0` to inherit fds 0, 1 and 2, or a 3-element list `[in out err]` of fds, where `-1` inherits that one |
+| `‹wait›` | `pid -> status` | wait for a child to end |
+| `‹waitr›` | `pid -> status kb` | the same, plus the child's peak resident set size in KB (`wait4`'s `ru_maxrss`) |
+| `‹exec›` | `argv ->` | replace this process with the program. Buffered output is flushed first. Returns only by throwing |
+| `‹pipe›` | `-> rfd wfd` | a new pipe, both ends close-on-exec. Pass an end to `‹spawn›` in `io`; `‹fread›`, `‹fwrite›` and `‹close›` work on it |
+| `‹kill›` | `pid sig ->` | send signal `sig` to `pid` |
+| `‹signame›` | `n -> list` | the signal's name, `SIGHUP` … `SIGSYS` for 1–31 (Python's `signal.Signals` names); any other `n` is `signal n` |
+
+```
+“printf hi“⊃32‹split›‹run›Ṅ                        ->  hi0
+“false“⊃32‹split›‹run›Ṅ                            ->  1
+“tr a-z A-Z“⊃32‹split›“golf“⊃‹capture›Ṅ\\⊐⊐         ->  0GOLF
+“sleep 5“⊃32‹split›0 100‹capturet›Ṅ__              ->  -256
+“sleep 5“⊃32‹split›0‹spawn›"9‹kill›‹wait›Ṅ         ->  -9
+“printf x“⊃32‹split›5Ṅ‹exec›7Ṅ                     ->  5x
+11‹signame›⊐ 64‹signame›⊐                          ->  SIGSEGVsignal 64
+“nosuch“⊃32‹split›‹run›                            ->  GOLF: cannot run nosuch (ENOENT)
+```
+
+```
+‹args›‹run›.                           # ./p sh -c 'exit 3'   exits 3
+‹pipe›→‹w›→‹r›                         # a child writing into a pipe:
+“date“⊃32‹split›3⍳1 ←‹w›⍈0 0 1-⍈2 0 1-⍈‹spawn›‹wait›_
+←‹w›‹close›←‹r›100‹fread›⊐             # prints the date
+```
+
+- **A program that cannot run is an error in the parent.** The child
+  reports `execve`'s errno back through a close-on-exec pipe, so `‹run›`,
+  `‹spawn›` and `‹capture›` throw `GOLF: cannot run nosuch (ENOENT)` (or
+  `EACCES` for a file that is not executable, and so on) instead of returning
+  a status of 127. A bad fd in `io` is `cannot run prog (EBADF)`. As with
+  `execvp`, when some `$PATH` entry gave `EACCES` and none ran, the error is
+  `EACCES`. An empty `$PATH` entry is the current directory, and with no
+  `$PATH` at all the search is `/bin:/usr/bin`. The other failures are
+  `cannot fork (EAGAIN)`, `cannot make a pipe (EMFILE)`, `cannot wait for pid
+  N (ECHILD)`, `cannot kill pid N (ESRCH)`, `cannot run an empty argv` and
+  `io is not 0 or [in out err]` (an `io` list that is not 3 long). All
+  of them go through `‹throw›`, so `‹catch›` catches them (see Errors).
+- **Output order.** Every word that forks flushes the output buffer first, so
+  what `Ṅ ⍕ 🗲 ⊐` printed comes out once, before the child's output.
+- **Timeouts.** After the kill, `‹capturet›` reaps the child and then reads
+  what is left in the pipes without blocking. A grandchild that still holds
+  them open (`sh -c 'sleep 9'` leaves a `sleep` behind) is not waited for and
+  not killed. A child that closes its stdout and stderr but keeps running is
+  killed at the limit too.
+- **`io` fds** may be given in any order (`[-1 2 1]` swaps stdout and stderr)
+  and may be close-on-exec: the child copies them above fd 2 before it moves
+  them onto 0, 1 and 2. The parent keeps its own copies, and closes them
+  with `‹close›` when it is done (a pipe's reader sees end of file only when
+  every write end is closed).
+- `‹capture›` holds both outputs in memory, as a byte buffer that doubles,
+  and widens each into a code list at the end (8 bytes a byte). While its loop
+  runs it ignores SIGPIPE, and it restores the old disposition afterwards. The
+  child is forked before that, so it starts with the usual SIGPIPE.
+- **Peak RSS.** `‹waitr›` is what `bench/leetcode/rss.golfj` (the Golf port
+  of `rss.py`) prints. It is the child's own peak. Python's
+  `RUSAGE_CHILDREN` reading in `rss.py` also counts the forked Python before
+  its `exec` (about 13 MB), so for a small child the two differ.
+
+Names that start with `‹_14b` are these words' helpers.
+
 ### Prelude pruning
 
 `tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your
