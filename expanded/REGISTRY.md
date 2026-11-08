@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **63** are now spent, leaving **48** free. It is partitioned as follows
+space; **65** are now spent, leaving **46** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -250,6 +250,26 @@ mnemonics are letters only and prefix-free against the shipped ones:
 `\dget` and `\dput` because `\get` (`←`) is a compiler op and `\puts` and
 `\putat` exist.
 
+### 1.5 W13 assignments
+
+W13-A (S1 adverbs, S2 inline blocks, S4 bare locals). Checked with
+`codepage.py check`: `\blk` and `\endblk` are not a prefix of any shipped
+mnemonic and have none as a prefix, and the glyphs are new.
+
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0xBB` | `\blk` | `⟦` | compiler op: opens an inline block `⟦ … ⟧`, an anonymous word compiled in place and jumped over (W13 S2) | A | shipped |
+| `0xBC` | `\endblk` | `⟧` | compiler op: closes the innermost `⟦` and pushes the block's address | A | shipped |
+
+**S1 adverb bytes** (W13-A; no new byte). A call token immediately followed by
+one of `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ ⍂ ⍃ ⍖ ⍷` (`0x4D 0x46 0x57 0x5A 0xD1 0xD2 0xD3 0xD4
+0xD8 0xD9 0xE7 0xE8 0xEA 0xEC`) is quoted. The set is `mkblob2.ADVERBS`,
+listed once there. The bytes that never quote are `mkblob2.UNQUOTED`
+(`" _ \ & @ ! ? , ( ) .` and `∘ ⊸`). Both sets reach the two GOLF compilers as
+**template-blob records 6 and 7**, whose keys are control bytes and never an
+op, and `boot/golfref.py` imports them. A new adverb is one byte added to
+`ADVERBS`, then a regenerate.
+
 ## 2. Prelude word letters
 
 A prelude word is a single byte, so every word costs one ASCII letter forever.
@@ -440,7 +460,7 @@ both forms are given here and the decimal is the one you type.
 | `m+88`, `m+92` | 4259928 · 4259932 | M-FRAME2 in the **seed** only: the current `⊡` word's local count · the head of its frame-size patch list (`self/golf2.golfj` keeps both in its variable bank, as `‹locals›` and `‹frame›`) (W9-4D) | shipped |
 | `m+96`…`m+159` | 4259936–4259999 | M-FRAME2 slot table, **both** compilers: the name number of the current `⊡` word's local `i` (`i` < 16) at `m+96+4*i`, in order of first appearance. Compiler-only (W9-4D) | shipped |
 | `m+160`…`m+172` | 4260000 · 4260004 · 4260008 · 4260012 | **W11-2A** include state in the **seed** only: open-include depth · include-once table count · the fd being entered or left · the table-copy countdown. The path's length is M2's `m+64`. (`self/golf2.golfj` keeps the first three in its variable bank, as `‹depth›` `‹includes›` `‹fd›`) | shipped (W11-2A) |
-| `m+176`…`m+188` | 4260016 · 4260020 · 4260024 · 4260028 | **W11-3B** compiler scratch, four 4-byte cells — **unused**: W11-3B shipped without them. Source positions and the `-g` flag live in `self/golf2.golfj`'s variable bank (`‹pos›` = line·64 + file, `‹debug›`, `‹at›`), the saved position of include level `k` (0–7) in the bank cell of the unspellable name `k` (`0x4E0000 + 8k`, golf2's process only), and a forward reference's first-use `‹pos›` in the last placeholder of its pending-site list (where `0` used to end it). The seed reports no messages, so it keeps none of this. Spare for a later front-end owner | spare (W11-3B) |
+| `m+176`…`m+188` | 4260016 · 4260020 · 4260024 · 4260028 | **W13-A**, in the **seed** only: `m+176`, `m+180` and `m+184` hold `A`'s byte, cursor and end while it scans blob record 6 or 7 (S1). `m+188` is spare. `self/golf2.golfj` keeps the same three in its variable bank as `‹probe›` `‹rp›` `‹rend›`, plus `‹peekpos›`. Before W13 these cells were **W11-3B** compiler scratch, four 4-byte cells, **unused**: W11-3B shipped without them. Source positions and the `-g` flag live in `self/golf2.golfj`'s variable bank (`‹pos›` = line·64 + file, `‹debug›`, `‹at›`), the saved position of include level `k` (0–7) in the bank cell of the unspellable name `k` (`0x4E0000 + 8k`, golf2's process only), and a forward reference's first-use `‹pos›` in the last placeholder of its pending-site list (where `0` used to end it). The seed reports no messages, so it keeps none of this. Spare for a later front-end owner | spare (W11-3B) |
 | `m+192`…`m+204` | 4260032 · 4260036 · 4260040 · 4260044 | **W11-4A** record state in the **seed** only, four 4-byte cells: the record's name number · its field count · the field being emitted · the spelling copy's byte pointer (`self/golf2.golfj` keeps them in its variable bank, as `‹record›` `‹fields›` `‹field›` `‹from›`, plus `‹upto›`) | shipped (W11-4A) |
 | `m+208` | 4260048 | **first free compiler scratch** | free |
 | `m+2048`–`m+4095` | 0x410800–0x410FFF | **RETIRED** (W10-A) — v1's dictionary (`m+2048 + 4*name`; M2 ran its long names into `m+3072`…). Neither `golf2` nor `seed` touches it any more (v1c, a frozen binary, still uses it in its own process); do not encroach anyway, it is what v1 documents | free |

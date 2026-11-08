@@ -94,6 +94,7 @@
 #   y  `Z`'s digit temporary                                (new)
 #   S  `e`'s undefined-word message block                   (new)
 #   J  1 while compiling a ⊡ definition, 0 otherwise         (M-FRAME)
+#      (W13-A: 2 inside a ⟦ block within a ⊡ definition)
 #   u  1 while compiling a chain body, 0 otherwise           (M-CHAIN2)
 #   K  how many links the chain has taken so far             (M-CHAIN2)
 #   F  the 1st buffered link byte                            (M-CHAIN2)
@@ -160,6 +161,11 @@
 # W12-Z2 (`⇡x` / `⇣x`) adds no state: ‹step› keeps the name in b, as ⇒/⇐ do,
 # and ‹named› walks M-FRAME2's slot table with M2's ‹idx›, idle between tokens.
 #
+# W13-A (S1 adverbs, S2 ⟦ … ⟧, S4 bare locals) adds four, live only inside
+# ‹plain› for one token: ‹probe› ‹rp› ‹rend› (‹inrec›'s byte, cursor and end)
+# and ‹peekpos› (‹pos› after the one-byte peek).  J gains a third value: 2
+# inside a ⟦ block of a ⊡ word (the block cannot reach the word's frame).
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -172,7 +178,7 @@
 # ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹forward› ‹resolve›
 # ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
 # g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
-# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹step› t H.  The M2 words have long names for the same reason their state
+# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹step› ‹inrec› ‹quoted› ‹plain› ‹badglyph› t H (W13-A: the four before t).  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -1362,6 +1368,12 @@ V
 ‹badlocal›
 ]
 ]
+←J          # W13-A: J is 2 inside a ⟦ block of a ⊡ word.  The block is called
+2-          #   from wherever it is passed to, under other frames, so rbp is
+[           #   not the word's: no local is reachable there, so none is named
+“GOLF: block uses local “
+‹badlocal›
+]
 ←J
 [           # OUTSIDE a ⊡ word there is no table: today's fixed a..h slot,
 ←b          #   name - 'a', exactly as M-FRAME compiled it
@@ -1789,6 +1801,12 @@ _
 ←b
 -
 [
+←J          # W13-A: named, but this is a ⟦ block inside the ⊡ word, which
+2-          #   cannot reach the word's frame (see ‹plain›)
+[
+“GOLF: block uses local “
+‹badlocal›
+]
 ←‹idx›
 1+
 ^
@@ -1848,6 +1866,147 @@ w
 o
 ←b
 o
+;
+
+# ---------------------------------------------------------------------------
+# W13-A: the default token — S4 bare locals and S1 adverbs
+# ---------------------------------------------------------------------------
+#
+# Every token the cases of `t` do not claim (an atom, a v1 op, a one-byte word
+# or a ‹long name›, and anything else that falls through to the end of `t` as
+# a name) reaches ‹plain›, outside a chain.  Two rules come before the call:
+#
+#   S4  inside a ⊡ word, a name the word has already named as a local (with
+#       ⇒x or ⇐x earlier in its body) is that local: bare `x` compiles as ⇐x.
+#       It shadows a word of the same name for the rest of the body; before
+#       the first ⇒x/⇐x, and in a word that never names x, `x` is the call.
+#   S1  a token IMMEDIATELY followed by an adverb byte (blob record 6,
+#       mkblob2.ADVERBS: € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ ⍂ ⍃ ⍖ ⍷) compiles as `′token` (X)
+#       instead of a call — unless it is one of blob record 7's bytes
+#       (mkblob2.UNQUOTED: the v1 stack/memory/I-O ops, and ∘ ⊸), which never
+#       quote.  `f€` is `′f€`; `f €` is still "call f, then map".
+#
+# S1 needs one byte of lookahead.  ‹read› takes it (the include-aware `g` is
+# not used, so the peek never crosses the end of an included file, where
+# ‹read› returns 0) and it is pushed back into q, which the main loop's `g`
+# hands to `t` next.  ‹read› counts a newline, so ‹pos› is wound back while
+# the token is compiled, for ‹forward›'s first-use line, and set forward after.
+#
+# State: ‹probe› ‹rp› ‹rend› (‹inrec›'s byte, cursor and end) and ‹peekpos›
+# (‹pos› after the peek), all idle between tokens.
+
+:‹inrec›    # ‹inrec› : 0 iff ch is a byte of blob record key's body  [ ch key -> f ]
+f
+"
+2+
+→‹rp›       # the body's first byte
+1+
+?           # its length
+←‹rp›
++
+→‹rend›     # one past its last byte
+→‹probe›
+{
+←‹rp›
+←‹rend›
+-
+[           # past the end: not in it
+1
+^
+]
+←‹rp›
+?
+←‹probe›
+-
+[           # found
+0
+^
+]
+←‹rp›
+1+
+→‹rp›
+0
+}
+;
+
+:‹quoted›   # ‹quoted› : 0 iff name b, followed by byte q, is quoted (S1) [ -> f ]
+←q
+6           # blob record 6: the adverbs
+‹inrec›
+[           # q is an adverb
+←b
+256<
+[           #   a long name always quotes
+0
+^
+]
+←b
+7           #   blob record 7: the bytes that never quote
+‹inrec›
+"
+[
+_
+1
+^
+]
+_
+0
+^
+]
+1           # q is not an adverb
+;
+
+:‹plain›    # ‹plain› : a bare local, a quoted token, or e        [ name -> ]
+→b
+‹named›     # S4: slot+1 of a local this ⊡ word has named (‹named› refuses
+"           #   one from inside a ⟦ block), else 0
+[           # not a local:
+_
+←‹pos›      #   S1: peek at the next byte, on the token's own line
+→‹peekpos›
+‹read›
+→q          #   pushed back: the main loop takes it next, whatever it is
+←‹pos›
+←‹peekpos›
+→‹pos›
+→‹peekpos›  #   where the reader really is, restored below
+‹quoted›
+[           #   an adverb follows: ′name
+←b
+X
+←‹peekpos›
+→‹pos›
+^
+]
+←b
+e           #   anything else: the template or the call, as always
+←‹peekpos›
+→‹pos›
+^
+]
+1-          # a local: exactly ⇐x's bytes
+8*
+→b
+72o         #   0x48 0x8B 0x45 disp  mov rax, [rbp+disp]
+139o
+69o
+←b
+o
+80o         #   0x50                 push rax
+;
+
+:‹badglyph› # ‹badglyph› : `GOLF: <glyph><tail> at line N`, exit 2 (W13-A) [ tail glyph -> !!! ]
+“GOLF: “
+‹say›
+4259892!    # the glyph's three UTF-8 bytes, staged in m+52 as ‹badelse› does
+2
+4259892
+3
+1⎈
+_
+‹say›       # the tail
+‹where›
+2.
 ;
 
 :t
@@ -2326,6 +2485,53 @@ _
 ]
 
 "
+187-
+[           # 0xBB ⟦ : an inline block (W13-A S2) — an anonymous word,
+_           #   compiled in place and jumped over; ⟧ pushes its address.
+←u          #   The header is ':'s without a name, and the compile-time stack
+1-          #   gets [jmp site][the saved J][tag 1000005], so `⋄` `]` `}`
+[           #   and `;` see a tag they do not own.  Not inside a chain, whose
+“ inside a chain“ # tokens are links
+10919906    #   0xA69FE2: the UTF-8 of ⟦
+‹badglyph›
+]
+233o        #   0xE9 = jmp over the block
+←p
+0
+w           #   the placeholder site, for ⟧
+1E          #   the word prologue (blob record 1)
+←J          #   the ⊡ flag, which ⟧ restores ...
+"
+1<
+[           #   ... and inside a ⊡ word, 2: the block is called from under
+2→J         #   other frames, so ⇒ ⇐ and bare locals refuse (‹slot›, ‹named›)
+]           #   and `^` is the plain epilogue (it releases no frame)
+1000005
+^
+]
+
+"
+188-
+[           # 0xBC ⟧ : close the innermost ⟦
+_
+1000005-
+[           #   it is a ⟦'s tag
+→J          #   the ⊡ flag as it was before the ⟦
+94E         #   the epilogue (blob record 94)
+"
+k           #   the jmp over the block lands here, on ...
+4+
+606208-
+L
+w           #   ... push imm32 <the block's body address>
+^
+]
+“ outside a block“
+10985442    #   0xA79FE2: the UTF-8 of ⟧
+‹badglyph›
+]
+
+"
 180-
 [           # 0xB4 ‹ : a long name used as a token.  It is read and interned,
 _           #   and its NUMBER takes the char's place on the stack — then falls
@@ -2373,8 +2579,8 @@ e           #   link 4 and later: a plain call, applied to what the fork left
 ^
 ]
 
-e           # anything else: a table op or a call to a defined word
-;
+‹plain›     # anything else: a table op or a call (W13-A: or a bare local,
+;           # or a quote before an adverb)
 
 
 # ---------------------------------------------------------------------------
