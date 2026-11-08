@@ -15,7 +15,12 @@ python3 gen.py 1 in         # the large inputs (~59 MB); `gen.py 0.001 small` fo
 ./bytes.sh                  # sizes: golf code-page bytes, pyg, py, cpp, jelly; totals
 JELLY='jelly eu' python3 jbench.py stock=20000 queens=9   # all four at sizes Jelly can finish
 python3 rss.py in/stock.txt bin/stock                     # peak RSS of one run, KB
+../../tools/golfc -j rss.golfj bin/rss && bin/rss in/stock.txt bin/stock   # the same in Golf (W14-B)
 ```
+
+`rss.py` reads `RUSAGE_CHILDREN`, which also counts the forked Python before
+its `exec` (about 13 MB); `rss.golfj` reports the child's own peak, so the two
+agree only for a child bigger than that.
 
 | Problem | Level | Large input |
 |---|---|---|

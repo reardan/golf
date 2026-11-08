@@ -4367,6 +4367,128 @@ w14a='1“hi“4+2 0 0 0 1⌁_0 4096 3 34 0 1- 0 9⌁"42\\⊛⊙Ṅ'
   && [ "$(printf '%s' '\scall' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "ae" ] \
   && ok "⌁: write(2) and an anonymous mmap(2) (flags in r10, fd in r8) through six registers; oracle agrees; \\scall encodes to AE" || no "W14-A ⌁ six-argument syscall"
 
+# === W14-B ===
+# Processes: ‹spawn› ‹wait› ‹waitr› ‹run› ‹capture› ‹capturet› ‹exec› ‹pipe›
+# ‹kill› ‹signame›.  w14b compiles $1 (whole prelude) and runs it inside
+# $TMP/w14b with the further arguments, printing `rc=N <stdout>|<stderr>`;
+# w14bx runs the last one again, under a command prefix (env …).  Python's
+# subprocess / signal modules are the oracle for statuses, signal names,
+# captured bytes and errnos.
+echo "W14-B: processes — ‹spawn› ‹wait› ‹waitr› ‹run› ‹capture› ‹capturet› ‹exec› ‹pipe› ‹kill› ‹signame›"
+mkdir -p "$TMP/w14b"
+w14b(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14b/p" 2>/dev/null \
+          && chmod +x "$TMP/w14b/p" && shift && (cd "$TMP/w14b" && ./p "$@" > p.out 2> p.err; echo "rc=$? $(cat p.out)|$(cat p.err)"); }
+w14bx(){ (cd "$TMP/w14b" && "$@" ./p > p.out 2> p.err; echo "rc=$? $(cat p.out)|$(cat p.err)"); }
+w14bl=':‹l2›2⍳\\1\\⍈\\0\\⍈;:‹l3›3⍳\\2\\⍈\\1\\⍈\\0\\⍈;:‹sh›“sh“⊃\\“-c“⊃\\‹l3›;'
+# ‹run›: exit codes, and minus the signal for a killed child.
+[ "$(w14b "$w14bl"':‹r›‹sh›‹run›Ṅ␤;“exit 0“⊃‹r›“exit 7“⊃‹r›“exit 255“⊃‹r›“kill -SEGV $$“⊃‹r›“kill -KILL $$“⊃‹r›“kill -TERM $$“⊃‹r›“true“⊃1⍳\\0\\⍈‹run›Ṅ')" \
+    = "rc=0 $(python3 -c '
+import subprocess
+for c in ["exit 0", "exit 7", "exit 255", "kill -SEGV $$", "kill -KILL $$", "kill -TERM $$"]:
+    print(subprocess.run(["sh", "-c", c]).returncode)
+print(subprocess.run(["true"]).returncode, end="")')|" ] \
+  && ok "‹run›: exit codes 0 7 255 and -11 -9 -15 for signals, as Python's subprocess; argv[0] found on \$PATH" || no "W14-B run statuses"
+# ‹capture›: stdin in, stdout and stderr out, the status; 0 is /dev/null.
+[ "$(w14b "$w14bl"'“echo out; echo err >&2; tr a-z A-Z; exit 3“⊃‹sh›“hello“⊃‹capture›Ṅ␤\\⊐“|“🗲⊐“|“🗲“cat; echo x“⊃‹sh›0‹capture›Ṅ\\⊐⊐')" \
+    = "rc=0 $(python3 -c '
+import subprocess
+r = subprocess.run(["sh", "-c", "echo out; echo err >&2; tr a-z A-Z; exit 3"], input=b"hello", capture_output=True)
+print(r.returncode); print(r.stdout.decode(), end="|"); print(r.stderr.decode(), end="|")
+r = subprocess.run(["sh", "-c", "cat; echo x"], stdin=subprocess.DEVNULL, capture_output=True)
+print(r.returncode, r.stdout.decode(), r.stderr.decode(), sep="", end="")')|" ] \
+  && ok "‹capture›: input on stdin, stdout and stderr as code lists, the status; input 0 is /dev/null (Python oracle)" || no "W14-B capture"
+# No deadlock at any size: 1 MB through cat both ways, 2 MB of stderr then
+# 3 MB of stdout, and 1 MB offered to a child that never reads it (no SIGPIPE).
+[ "$(w14b "$w14bl"':‹m›251%;“cat“⊃1⍳\\0\\⍈1000000⍳′‹m›€"→‹i›‹capture›Ṅ32)≢Ṅ32)"≢Ṅ32)←‹i›≣Ṅ␤“head -c 2000000 /dev/zero >&2; head -c 3000000 /dev/zero“⊃‹sh›0‹capture›Ṅ32)≢Ṅ32)"≢Ṅ32)∑Ṅ␤“true“⊃1⍳\\0\\⍈1000000⍳‹capture›Ṅ≢Ṅ≢Ṅ')" \
+    = "rc=0 0 0 1000000 -1
+0 2000000 3000000 0
+000|" ] && ok "‹capture›: 1 MB in and out of cat byte for byte, 2 MB stderr + 3 MB stdout, 1 MB to a child that never reads" || no "W14-B capture sizes"
+# ‹capturet›: SIGKILL at the limit, status -256, the output that came; a run
+# that finishes in time is unchanged; a child that closes its pipes and
+# lingers is killed too.
+w14bt0=$(date +%s%N)
+[ "$(w14b "$w14bl"'“echo before; sleep 5; echo after“⊃‹sh›0 300‹capturet›Ṅ32)≢Ṅ32)⊐“exec >&- 2>&-; sleep 5“⊃‹sh›0 300‹capturet›Ṅ32)≢Ṅ32)≢Ṅ␤“echo hi; exit 4“⊃‹sh›0 5000‹capturet›Ṅ32)≢Ṅ32)⊐')" = "rc=0 -256 0 before
+-256 0 0
+4 0 hi|" ] && [ $(( ($(date +%s%N) - w14bt0) / 1000000 )) -lt 4000 ] \
+  && ok "‹capturet›: a 300 ms limit kills (status -256, output so far kept), also after the pipes close; in time, the plain status" || no "W14-B capturet"
+# A program that cannot run is an error in the parent, with the errno the
+# child's execve got (Python's OSError agrees), catchable; nothing leaks.
+w14bpy='
+import errno, os, subprocess
+for a in ["nosuchprog_w14b", "/etc", "./noexec"]:
+    try: subprocess.run([a])
+    except OSError as e: print("cannot run %s (%s)" % (a, errno.errorcode[e.errno]))'
+: > "$TMP/w14b/noexec"
+[ "$(w14b ':‹t›1⍳\\0\\⍈′‹run›‹catch›⊐␤_;“nosuchprog_w14b“⊃‹t›“/etc“⊃‹t›“./noexec“⊃‹t›')" = "rc=0 $(cd "$TMP/w14b" && python3 -c "$w14bpy")|" ] && [ "$(w14b '“nosuchprog_w14b“⊃1⍳\\0\\⍈“in“⊃‹capture›')" = "rc=1 |GOLF: cannot run nosuchprog_w14b (ENOENT)" ] \
+  && [ "$(w14b '0⍳0‹spawn›')" = "rc=1 |GOLF: cannot run an empty argv" ] \
+  && [ "$(w14b ':‹f›“nope“⊃1⍳\\0\\⍈“in“⊃‹capture›;0→‹k›{′‹f›‹catch›_⇡‹k›←‹k›400≡1﹢}‹pipe›ṄṄ')" = "rc=0 43|" ] \
+  && ok "cannot run: ENOENT, EACCES (a directory, a file without x), an empty argv; ‹capture› closes its pipes on a failed spawn" || no "W14-B cannot run"
+# The search on $PATH: like execvp, an empty entry is ".", EACCES wins over
+# ENOENT unless a later entry runs; no PATH at all is /bin:/usr/bin.
+mkdir -p "$TMP/w14b/d1"; cp /bin/echo "$TMP/w14b/d1/myecho"; : > "$TMP/w14b/myecho"
+[ "$(w14b '“myecho“⊃“ran“⊃2⍳\\1\\⍈\\0\\⍈′‹run›‹catch›"[_Ṅ⋄⊐_]')" != "" ] \
+  && [ "$(w14bx env PATH=/nonexist::d1)" = "rc=0 ran
+0|" ] && [ "$(w14bx env PATH=.:d1)" = "rc=0 ran
+0|" ] && [ "$(w14bx env PATH=.:/nonexist)" = "rc=0 cannot run myecho (EACCES)|" ] \
+  && [ "$(w14bx env PATH=/nonexist)" = "rc=0 cannot run myecho (ENOENT)|" ] \
+  && [ "$(w14b '“sh“⊃“-c“⊃“echo ok“⊃3⍳\\2\\⍈\\1\\⍈\\0\\⍈‹run›Ṅ'; w14bx env -i)" = "rc=0 ok
+0|
+rc=0 ok
+0|" ] && ok "\$PATH: an empty entry is ., EACCES then a later hit runs, EACCES / ENOENT reported as execvp; no PATH: /bin:/usr/bin" || no "W14-B PATH search"
+# ‹spawn› with io: a ‹pipe›, fds in any order, -1 inherits; a bad fd is the
+# child's EBADF, reported by the parent.  ‹flush› before the fork: buffered
+# output is neither lost nor doubled.
+[ "$(w14b "$w14bl"'‹pipe›→‹w›→‹r›“echo“⊃“piped“⊃‹l2›0 1-←‹w›0 1-‹l3›‹spawn›‹wait›Ṅ←‹w›‹close›←‹r›100‹fread›⊐←‹r›‹close›“echo to1; echo to2 >&2“⊃‹sh›0 1- 2 1‹l3›‹spawn›‹wait›Ṅ␤5Ṅ“true“⊃1⍳\\0\\⍈99 0 1-"‹l3›‹spawn›')" = "rc=1 0piped
+to2
+0
+5|to1
+GOLF: cannot run true (EBADF)" ] \
+  && [ "$(w14b "$w14bl"'5Ṅ“echo“⊃“x“⊃‹l2›‹run›_6Ṅ')" = "rc=0 5x
+6|" ] && ok "‹spawn› io: a ‹pipe› as stdout, [-1 2 1] swaps stdout and stderr, fd 99 is EBADF; output flushed once before the fork" || no "W14-B spawn io"
+# ‹kill› ‹wait› ‹waitr›: SIGTERM shows as -15; ESRCH and ECHILD throw;
+# ‹waitr›'s peak RSS sees a 50 MB child.
+[ "$(w14b '“sleep“⊃“10“⊃2⍳\\1\\⍈\\0\\⍈0‹spawn›"15‹kill›‹wait›Ṅ␤:‹k›99999999 9‹kill›;′‹k›‹catch›⊐␤:‹w›1‹wait›;′‹w›‹catch›⊐␤“python3“⊃“-c“⊃“x = bytearray(50000000)“⊃3⍳\\2\\⍈\\1\\⍈\\0\\⍈0‹spawn›‹waitr›50000≻1﹢Ṅ32)Ṅ')" = "rc=0 -15
+cannot kill pid 99999999 (ESRCH)
+cannot wait for pid 1 (ECHILD)
+0 0|" ] && ok "‹kill› then ‹wait›: -15; ‹kill› ESRCH and ‹wait› ECHILD throw; ‹waitr› reports a 50 MB child's peak RSS (> 50000 KB)" || no "W14-B kill wait waitr"
+# ‹exec›: replaces the process after flushing; a failure throws.
+[ "$(w14b '5Ṅ“echo“⊃“x“⊃2⍳\\1\\⍈\\0\\⍈‹exec›6Ṅ')" = "rc=0 5x|" ] \
+  && [ "$(w14b '7Ṅ“nosuchprog_w14b“⊃1⍳\\0\\⍈‹exec›')" = "rc=1 7|GOLF: cannot run nosuchprog_w14b (ENOENT)" ] \
+  && ok "‹exec›: buffered output first, then the new program; a missing program throws" || no "W14-B exec"
+# ‹signame›: Python's signal.Signals names for 1..31, “signal n“ otherwise.
+[ "$(w14b '0 1-34⍳1-′‹signame›€′⊐€_')" = "rc=0 $(python3 -c '
+import signal
+def nm(n):
+    try: return signal.Signals(n).name
+    except ValueError: return "signal %d" % n
+print("".join(nm(n) for n in range(-1, 33)), end="")')|" ] \
+  && ok "‹signame›: SIGHUP … SIGSYS for 1..31 as Python's signal module; signal -1, 0, 32 otherwise" || no "W14-B signame"
+# Oracle parity: boot/golfref.py compiles the process words the same.
+w14bo="$w14bl"'“echo a; echo b >&2; exit 5“⊃‹sh›“z“⊃‹capture›Ṅ⊐⊐11‹signame›⊐'
+[ "$(printf '%s' "$w14bo" | gref)" = "$(printf '%s' "$w14bo" | gc)" ] && [ "$(printf '%s' "$w14bo" | gc)" = "$(printf '5b\na\nSIGSEGV')" ] \
+  && ok "oracle: golfref.py and golf2 agree on ‹capture› and ‹signame›" || no "W14-B oracle"
+# The demo: bench/leetcode/rss.golfj is rss.py in Golf.  The child sees the
+# input file on stdin (its stderr is inherited) and its peak RSS is printed.
+# Python's RUSAGE_CHILDREN also counts the forked Python before the exec
+# (about 13 MB), so the numbers are compared on a child bigger than that.
+tools/golfc -j bench/leetcode/rss.golfj "$TMP/w14b/rss" 2>/dev/null
+w14brg=$("$TMP/w14b/rss" bench/leetcode/rss.py sh -c 'wc -c >&2; echo dropped' 2>&1)
+w14brp=$(python3 bench/leetcode/rss.py bench/leetcode/rss.py sh -c 'wc -c >&2; echo dropped' 2>&1)
+w14bg=$("$TMP/w14b/rss" /dev/null python3 -c 'x = bytearray(80000000)')
+w14bp=$(python3 bench/leetcode/rss.py /dev/null python3 -c 'x = bytearray(80000000)')
+[ "$(printf '%s' "$w14brg" | head -1)" = "$(printf '%s' "$w14brp" | head -1)" ] && [ "$(printf '%s\n' "$w14brg" | wc -l)" = 2 ] \
+  && [ "$w14bg" -gt 80000 ] && [ $(( (w14bg - w14bp) * (w14bg - w14bp) * 400 )) -lt $(( w14bp * w14bp )) ] \
+  && ok "bench/leetcode/rss.golfj: same stdin and output as rss.py; an 80 MB child's peak RSS within 5% ($w14bg vs $w14bp KB)" || no "W14-B rss.golfj ($w14bg vs $w14bp)"
+
+# REFERENCE.md's Processes examples print what the doc says (stderr merged).
+w14bbad=""
+while IFS= read -r w14bdl; do
+  w14bdp=${w14bdl%%  ->*}; w14bdp=${w14bdp%"${w14bdp##*[! ]}"}; w14bdw=${w14bdl##*->  }
+  [ "$(printf '%s' "$w14bdp" | gc 2>&1)" = "$w14bdw" ] || w14bbad="$w14bbad [$w14bdp]"
+done < <(sed -n '/^### Processes (W14-B)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14bbad" ] && [ "$(sed -n '/^### Processes (W14-B)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Processes examples print what they say" || no "REFERENCE Processes examples:$w14bbad"
+
 # === W13-C ===
 echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"
 # The code page: each mnemonic encodes to its byte, each glyph round-trips
