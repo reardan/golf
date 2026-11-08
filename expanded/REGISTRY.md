@@ -241,7 +241,7 @@ Prelude long names in use (all **shipped**):
 | `‹throw›` | W11-0 (the stub; W11-3A rewrites it in place) | `W11-0` — defined right after `H`, ahead of `X` |
 | `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›`, and the helpers `‹_1b_tobytes›` `‹_1b_tolist›` `‹_1b_dec›` `‹_1b_ename›` `‹_1b_fail›` `‹_1b_wr›` | W11-1B (**shipped**) | `W11-1B Files` |
 | `‹flush›`, and the helpers `‹_1c_put›` `‹_1c_init›` | W11-1C (**shipped**) | `W11-1C buffered output` |
-| `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›` | W11-1D (reserved) | `W11-1D Text` |
+| `‹fmt›` `‹hex›` `‹parsehex›` `‹split›` `‹trim›` `‹startswith›` `‹joinwith›` `‹pad›`, and the helpers `‹_1d_utoa›` `‹_1d_sub›` `‹_1d_put›` | W11-1D (**shipped**) | `W11-1D Text` |
 | `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›` | W11-2B (reserved) | `W11-2B dict and set` |
 | `‹heapstats›` | W11-2D (reserved) | `W11-2D use after free` |
 | `‹catch›` | W11-3A (reserved; `‹throw›` above is 3A's too) | `W11-3A catch` |
@@ -250,7 +250,7 @@ Prelude long names in use (all **shipped**):
 | `‹stack›` | W11-4C (reserved) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 
 The table heading says shipped; the W11 rows marked *reserved* are allocated,
-not live (only `‹throw›` and W11-1C's `‹flush›` are shipped). **W11 helper names:** a W11 task that
+not live (shipped so far: `‹throw›` and the W11-1B, 1C and 1D rows). **W11 helper names:** a W11 task that
 needs a private helper word names it `‹_<id>…›` with its lowercase task id,
 e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
 `‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers

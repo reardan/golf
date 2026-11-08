@@ -2065,6 +2065,50 @@ w111c(){ printf '%s' "$1" | gc > "$TMP/w111c.o" 2>&1; echo "rc=$? $(cat "$TMP/w1
   && ok "no prelude: ‘)’ is still a raw write; golfref.py flushes at exit too" || no "bare ) / oracle flush"
 
 # === W11-1D ===
+echo "W11-1D: text words ‹fmt› ‹hex› ‹parsehex› ‹split› ‹trim› ‹startswith› ‹joinwith› ‹pad›"
+# Code lists in, code lists out; every list result is a new list.  124) prints
+# `|` so padding and trimming show their edges.
+[ "$(printf '%s' '“a, b,c“⊃44‹split›′‹trim›€"≢Ṅ␤"0⊇⊐␤"1⊇⊐␤2⊇⊐␤255‹hex›⊐' | gc)" = "$(printf '3\na\nb\nc\nff')" ] \
+  && ok "the done-when pair: “a, b,c“⊃44‹split›′‹trim›€ gives a b c; 255‹hex›⊐ prints ff" || no "w11-1d done-when"
+[ "$(printf '%s' '0‹fmt›⊐␤123‹fmt›⊐␤0 45-‹fmt›⊐␤0 1-‹fmt›⊐␤1 63≪‹fmt›⊐␤1 63≪⊖‹fmt›⊐␤10‹fmt›"≢Ṅ⍕' | gc)" \
+   = "$(printf '0\n123\n-45\n-1\n-9223372036854775808\n9223372036854775807\n249 48 ')" ] \
+  && ok "‹fmt›: 0, positive, negative, -1, INT64_MIN, INT64_MAX; a real code list" || no "w11-1d fmt"
+[ "$(printf '%s' '0‹hex›⊐␤3054‹hex›⊐␤0 1-‹hex›⊐␤1 63≪‹hex›⊐␤15‹hex›⊐16‹hex›⊐' | gc)" \
+   = "$(printf '0\nbee\nffffffffffffffff\n8000000000000000\nf10')" ] \
+  && ok "‹hex›: lowercase, no prefix, negatives as unsigned two's complement" || no "w11-1d hex"
+[ "$(printf '%s' '“ff“⊃‹parsehex›Ṅ␤“  -1A“⊃‹parsehex›Ṅ␤“+deadBEEFx9“⊃‹parsehex›Ṅ␤“zz“⊃‹parsehex›Ṅ␤0⍳‹parsehex›Ṅ␤“0x1f“⊃‹parsehex›Ṅ␤“ffffffffffffffff“⊃‹parsehex›Ṅ' | gc)" \
+   = "$(printf '255\n-26\n3735928559\n0\n0\n0\n-1')" ] \
+  && ok "‹parsehex›: case-blind digits, whitespace and sign, stops at a non-hex byte, bad/empty -> 0, wraps" || no "w11-1d parsehex"
+[ "$(printf '%s' '1 63≪"‹hex›‹parsehex›≡Ṅ 0 1-"‹hex›‹parsehex›≡Ṅ 48879"‹hex›‹parsehex›≡Ṅ 0 77-"‹fmt›‹num›≡Ṅ' | gc)" = "-1-1-1-1" ] \
+  && ok "‹hex›‹parsehex› and ‹fmt›‹num› round-trip (INT64_MIN, -1, 0xbeef, -77)" || no "w11-1d round trip"
+[ "$(printf '%s' '0⍳44‹split›"≢Ṅ0⊇≢Ṅ␤“,a,,b,“⊃44‹split›"≢Ṅ′≢€⍕␤“abc“⊃44‹split›"≢Ṅ0⊇⊐␤“k=v“⊃61‹split›⍕' | gc)" \
+   = "$(printf '10\n50 1 0 1 0 \n1abc\n[107] [118] ')" ] \
+  && ok "‹split›: empty fields kept (Python str.split), the empty list is one empty field, no sep is one field" || no "w11-1d split"
+[ "$(printf '%s' '2⍳9+“ hi  there “⊃⧺2⍳12+⧺‹trim›"≢Ṅ124)⊐124)␤“   “⊃‹trim›≢Ṅ0⍳‹trim›≢Ṅ“x“⊃‹trim›⊐“ab“⊃‹trim›⊐' | gc)" \
+   = "$(printf '9|hi  there|\n00xab')" ] \
+  && ok "‹trim›: tabs/newlines/CR/spaces both ends, inner kept; all-blank and empty give empty" || no "w11-1d trim"
+[ "$(printf '%s' '“abc“⊃“ab“⊃‹startswith›Ṅ“abc“⊃“abc“⊃‹startswith›Ṅ“abc“⊃0⍳‹startswith›Ṅ“ab“⊃“abc“⊃‹startswith›Ṅ“abc“⊃“b“⊃‹startswith›Ṅ0⍳0⍳‹startswith›Ṅ0⍳“a“⊃‹startswith›Ṅ“abc“⊃“ab“⊃‹startswith›[124)]' | gc)" = "0001101|" ] \
+  && ok "‹startswith›: 0 on a prefix (zero-is-true like ∊), the empty prefix always, longer prefix 1" || no "w11-1d startswith"
+[ "$(printf '%s' '“x,y,z“⊃44‹split›“ - “⊃‹joinwith›⊐␤“a b“⊃32‹split›44‹joinwith›⊐␤0⍳44‹joinwith›≢Ṅ␤“a“⊃32‹split›“--“⊃‹joinwith›⊐␤“,,“⊃44‹split›44‹joinwith›⊐␤3⍳′‹fmt›€0⍳‹joinwith›⊐' | gc)" \
+   = "$(printf 'x - y - z\na,b\n0\na\n,,\n012')" ] \
+  && ok "‹joinwith›: list or int sep, empty list of lists, one element, inverse of ‹split›" || no "w11-1d joinwith"
+[ "$(printf '%s' '42‹fmt›5‹pad›⊐124)␤“abcdef“⊃3‹pad›⊐124)␤0⍳2‹pad›⍕124)“ab“⊃0 3-‹pad›⊐124)' | gc)" = "$(printf '   42|\nabcdef|\n32 32 |ab|')" ] \
+  && ok "‹pad›: left-pads with spaces, never truncates, negative width is a copy" || no "w11-1d pad"
+# The input is never written, and the words nest inside a map (X/Y frames).
+[ "$(printf '%s' '“ a “⊃"‹trim›_"⊐124)"32‹split›_"5‹pad›_"0⍳‹startswith›_⊐124)3⍳′‹fmt›€⍕' | gc)" = "$(printf ' a | a |[48] [49] [50] ')" ] \
+  && ok "the text words leave their input unchanged and nest inside €" || no "w11-1d purity/nesting"
+# The Python oracle compiles the prelude to the same behaviour.
+w111d='“ x,ff , -1A“⊃44‹split›′‹trim›€"′‹parsehex›€⍕"124‹joinwith›⊐0 255-‹fmt›⊐1 63≪‹hex›⊐'
+[ "$(printf '%s' "$w111d" | gref)" = "$(printf '%s' "$w111d" | gc)" ] && [ "$(printf '%s' "$w111d" | gc)" = "0 255 -26 x|ff|-1A-2558000000000000000" ] \
+  && ok "oracle: boot/golfref.py runs the text words identically" || no "w11-1d oracle"
+# REFERENCE.md's Text examples print what the doc says.
+w111dbad=""
+while IFS= read -r w111dl; do
+  w111dp=${w111dl%%  ->*}; w111dp=${w111dp%"${w111dp##*[! ]}"}; w111dw=${w111dl##*->  }
+  [ "$(printf '%s' "$w111dp" | gc)" = "$w111dw" ] || w111dbad="$w111dbad [$w111dp]"
+done < <(sed -n '/^### Text$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w111dbad" ] && [ "$(sed -n '/^### Text$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Text examples print what they say" || no "REFERENCE Text examples:$w111dbad"
 
 # === W11-2A ===
 

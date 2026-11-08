@@ -448,6 +448,38 @@ one that returns a list returns a NEW tagged list and never writes its input.
 The four words use 4 of the 1024 long names a program may have (the prelude
 has 13 in all), so a program has 1011 for itself.
 
+### Text
+
+The text words (W11-1D) work on **code lists**, the one-code-per-cell lists
+that `⊃`, `‹readall›` and `‹readline›` make and `⊐` prints. Each one that
+returns a list returns a NEW list and never writes its input. A flag is
+zero-is-true, like `∊` and `T`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹fmt›` | `n -> list` | `n` in signed decimal, with a `-` first when `n < 0`. INT64_MIN works. `‹num›` reads it back |
+| `‹hex›` | `n -> list` | `n` in lowercase hex, with no `0x` prefix. `n` is read as **unsigned** 64-bit (two's complement, like Rust's `{:x}`), so `-1` gives sixteen `f`s and nothing gets a sign |
+| `‹parsehex›` | `list -> n` | parse hex: skip leading whitespace, one optional `+` or `-`, then the digits `0-9 a-f A-F` up to the first other byte. It never fails: no digits gives `0`, a `0x` prefix stops at the `x` (so it gives `0`), and overflow wraps at 64 bits, so `‹hex›‹parsehex›` gives back any int |
+| `‹split›` | `list sep -> lists` | split on every element equal to `sep` (one element, such as `44` for a comma; `≡` equality). Empty fields are kept, as in Python's `str.split(sep)`: `k` separators always give `k+1` fields, and the empty list gives one empty field |
+| `‹trim›` | `list -> list` | drop ASCII whitespace (tab, `\n`, `\v`, `\f`, `\r`, space) from both ends |
+| `‹startswith›` | `list prefix -> f` | `0` if `prefix` is a prefix of `list`, else `1` (zero-is-true, like `∊`). The empty prefix always matches. Elements are compared with `≡` |
+| `‹joinwith›` | `lists sep -> list` | concatenate the inner lists with `sep` between each pair. `sep` is a list, or an int taken as a one-element list. An empty `lists` gives the empty list. Every element of `lists` must be a list |
+| `‹pad›` | `list width -> list` | left-pad with spaces (32) to `width` (right-justify, like Python's `str.rjust`). It never truncates: a list already `width` long or longer, or a negative `width`, gives a copy |
+
+```
+“a, b,c“⊃44‹split›′‹trim›€124‹joinwith›⊐  ->  a|b|c
+“,a,,“⊃44‹split›≢Ṅ                         ->  4
+0 42-‹fmt›⊐                                ->  -42
+255‹hex›⊐                                  ->  ff
+“  -ff“⊃‹parsehex›Ṅ                        ->  -255
+“ hi “⊃‹trim›≢Ṅ                            ->  2
+“golf“⊃“go“⊃‹startswith›Ṅ                  ->  0
+3⍳′‹fmt›€“, “⊃‹joinwith›⊐                  ->  0, 1, 2
+7‹fmt›3‹pad›⊐                              ->    7
+```
+
+Names that start with `‹_1d` are these words' helpers.
+
 ### Errors
 
 A runtime error prints one line, `GOLF: <message>`, on stderr (fd 2) and exits
