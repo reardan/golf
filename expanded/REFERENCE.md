@@ -2060,7 +2060,8 @@ number when a signal killed the child (`-9` for SIGKILL), as in Python's
   `EACCES`. An empty `$PATH` entry is the current directory, and with no
   `$PATH` at all the search is `/bin:/usr/bin`. The other failures are
   `cannot fork (EAGAIN)`, `cannot make a pipe (EMFILE)`, `cannot wait for pid
-  N (ECHILD)`, `cannot kill pid N (ESRCH)` and `cannot run an empty argv`. All
+  N (ECHILD)`, `cannot kill pid N (ESRCH)`, `cannot run an empty argv` and
+  `io is not 0 or [in out err]` (an `io` list that is not 3 long). All
   of them go through `‹throw›`, so `‹catch›` catches them (see Errors).
 - **Output order.** Every word that forks flushes the output buffer first, so
   what `Ṅ ⍕ 🗲 ⊐` printed comes out once, before the child's output.

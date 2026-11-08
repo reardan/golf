@@ -4421,6 +4421,7 @@ for a in ["nosuchprog_w14b", "/etc", "./noexec"]:
 : > "$TMP/w14b/noexec"
 [ "$(w14b ':‹t›1⍳\\0\\⍈′‹run›‹catch›⊐␤_;“nosuchprog_w14b“⊃‹t›“/etc“⊃‹t›“./noexec“⊃‹t›')" = "rc=0 $(cd "$TMP/w14b" && python3 -c "$w14bpy")|" ] && [ "$(w14b '“nosuchprog_w14b“⊃1⍳\\0\\⍈“in“⊃‹capture›')" = "rc=1 |GOLF: cannot run nosuchprog_w14b (ENOENT)" ] \
   && [ "$(w14b '0⍳0‹spawn›')" = "rc=1 |GOLF: cannot run an empty argv" ] \
+  && [ "$(w14b '“true“⊃1⍳\\0\\⍈2⍳′‹spawn›‹catch›⊐__7Ṅ')" = "rc=0 io is not 0 or [in out err]7|" ] \
   && [ "$(w14b ':‹f›“nope“⊃1⍳\\0\\⍈“in“⊃‹capture›;0→‹k›{′‹f›‹catch›_⇡‹k›←‹k›400≡1﹢}‹pipe›ṄṄ')" = "rc=0 43|" ] \
   && ok "cannot run: ENOENT, EACCES (a directory, a file without x), an empty argv; ‹capture› closes its pipes on a failed spawn" || no "W14-B cannot run"
 # The search on $PATH: like execvp, an empty entry is ".", EACCES wins over

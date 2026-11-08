@@ -2997,7 +2997,9 @@
 # (`cannot run x (EBADF)`).  ‹flush› runs before every fork, so buffered
 # output is never written twice.  Other failures throw `cannot fork
 # (EAGAIN)`, `cannot make a pipe (EMFILE)`, `cannot wait for pid N (ECHILD)`,
-# `cannot kill pid N (ESRCH)`, `cannot run an empty argv`.  ‹capture› ignores
+# `cannot kill pid N (ESRCH)`, `cannot run an empty argv`, and `io is not 0
+# or [in out err]` (checked in the parent: nothing in the child may throw,
+# or a ‹catch› armed before the fork would resume in it).  ‹capture› ignores
 # SIGPIPE only while its loop runs, after the fork (a child that exits without
 # reading its input is not an error), then puts the old disposition back; it
 # closes its pipes when ‹spawn› throws, so failures do not leak fds.  After a
@@ -3056,6 +3058,7 @@
  w k c e‹_14b_try›‹_14b_die›;
 ⊡‹pipe›1A⇒b b 524288 0 293⎈"0≺[_⋄“cannot make a pipe“0⍳‹_14b_fail›]b@b4﹢@b⌫;
 ⊡‹spawn›⇒z⇒v v≢[“cannot run an empty argv“U‹throw›]
+ z[⋄z≢3﹣[⋄“io is not 0 or [in out err]“U‹throw›]]
  v0⊇‹_14b_cands›⇒k v‹_14b_argvc›⇒c‹_14b_envp›⇒e‹pipe›⇒w⇒r‹flush›
  0 0 0 57⎈⇒p p[r‹_14b_close›k c e z w‹_14b_child›]
  w‹_14b_close›p0≺[⋄r‹_14b_close›p“cannot fork“0⍳‹_14b_fail›]
