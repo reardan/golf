@@ -81,6 +81,8 @@ LIB = [
     (0xD1, "scan", "⍀", "scan: l ′f -> l'; inclusive, l'[0] = l[0], l'[i] = f(l'[i-1], l[i])"),
     (0xD2, "reduce", "⍁", "reduce: l ′f -> x; fold seeded by l[0] (empty: empty reduce)"),
     (0xD3, "eachi", "⍸", "each-indexed: l ′f -> l'; l'[i] = f(l[i], i)"),
+    # --- W12-A4 LIB row: sort by key (prelude section W12-A4) ---
+    (0xD4, "ksort", "⍒", "sort by key: l ′k -> l'; stable, ascending by k x (k once per element)"),
     # --- W12-Z4 LIB rows: store-at, vector push/pop (prelude section W12-Z4) ---
     (0xD5, "putat", "⍈", "store-at: list i v -> list; list[i] = v in place (bounds-checked)"),
     (0xD6, "push", "⍆", "push: v x -> v'; append x (vector or deque back); use the returned v'"),

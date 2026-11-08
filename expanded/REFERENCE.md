@@ -288,6 +288,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xD1` | `⍀` | `\scan` | — | scan: l ′f -> l'; inclusive, l'[0] = l[0], l'[i] = f(l'[i-1], l[i]) |
 | `0xD2` | `⍁` | `\reduce` | — | reduce: l ′f -> x; fold seeded by l[0] (empty: empty reduce) |
 | `0xD3` | `⍸` | `\eachi` | — | each-indexed: l ′f -> l'; l'[i] = f(l[i], i) |
+| `0xD4` | `⍒` | `\ksort` | — | sort by key: l ′k -> l'; stable, ascending by k x (k once per element) |
 | `0xD5` | `⍈` | `\putat` | — | store-at: list i v -> list; list[i] = v in place (bounds-checked) |
 | `0xD6` | `⍆` | `\push` | — | push: v x -> v'; append x (vector or deque back); use the returned v' |
 | `0xD7` | `⍅` | `\pop` | — | pop: v -> v x; remove the last element (empty: pop from empty) |
@@ -495,7 +496,44 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 100 in all after W12-Z4, helpers included), so a program has 924 for itself.
+has 124 in all after W12-A4, helpers included), so a program has 900 for itself.
+
+### Sorting by key
+
+`⍋` sorts the elements themselves. Two words sort by something else (W12-A4):
+
+| word | stack effect | meaning |
+|---|---|---|
+| `⍒` (`0xD4`, `\ksort`) | `l ′k -> l'` | a new list: `l` sorted ascending by the key `k x` of each element. It is stable, so elements with equal keys keep their order. Descending is a negating key, `′±` or `′(k ±)` |
+| `‹grade›` | `l -> perm` | the permutation that sorts `l`: a new list of the indices `0 … n-1` such that `l[perm[0]] ≤ l[perm[1]] ≤ …`. Stable: equal elements keep index order |
+
+```
+:f7%;10⍳′f⍒⍕                 ->  0 7 1 8 2 9 3 4 5 6
+5⍳′±⍒⍕                       ->  4 3 2 1 0
+5⍳⌽‹grade›⍕                  ->  4 3 2 1 0
+:f7919*1000%;6⍳′f€"⍕"‹grade›⍕ ->  0 919 838 757 676 595 0 5 4 3 2 1
+:k\\⊕\\±;0 5⍳′k⍒⍕Ṅ           ->  4 3 2 1 0 5
+:i±;:k′i⍒0⊇;3⍳1+′⍳€⌽′k⍒⍕     ->  [0] [0 1] [0 1 2]
+0⍳′±⍒≢Ṅ                      ->  0
+```
+
+- **Keys** compare as `⍋` compares: signed, on the raw 64-bit cell. An int
+  key at or above `0x7FFF<<48` is a list value, and a list key compares by its
+  tagged value (after every smaller int, among lists by address), so there is
+  no lexicographic order on list keys. To sort by two ints, pack them into
+  one, as `bench/leetcode/golf/topk.golfj` does: `x - (count<<32)` sorts by
+  count descending, then by `x`.
+- **`k` runs once per element**, in order, through `€`. So it sees the
+  caller's stack under its element (see "Threading state" below) and may run
+  `⍒` itself. The keys are computed first and then sorted with `⍋`'s merge
+  sort, comparing keys by index: O(n log n) compares and n calls of `k`.
+- Both words check their list for use after free and return a tagged list,
+  and neither writes its input. Their scratch blocks (the keys and a merge
+  buffer) go back to `⌫`. A throw inside `k` unwinds through `‹catch›` like
+  any other, though the half-built key list is not freed.
+- Cost at 1M elements: `‹grade›` is about as fast as `⍋` (~650 ns per
+  element on the shared bench machine), and `⍒` adds about 15% for the key
+  calls and the gather.
 
 ### Text
 
@@ -854,8 +892,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers), the prelude has 100 long
-names, which leaves 924 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`), the prelude has 124 long
+names, which leaves 900 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -892,6 +930,8 @@ leaves or takes below that is the caller's business. Nesting works: a
 function that runs `€` itself sees its own caller's stack under its own
 element.
 
+`⍒` (W12-A4) computes its keys with `€`, so its key function threads the same
+way: `:k\\⊕\\±;0 5⍳′k⍒⍕Ṅ` prints `4 3 2 1 0 5`, the 5 being the count of calls.
 ### Scan, reduce and each-indexed
 
 Three more higher-order list words (W12-A2, W12-A3). They keep the
