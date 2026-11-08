@@ -4367,6 +4367,220 @@ w14a='1“hi“4+2 0 0 0 1⌁_0 4096 3 34 0 1- 0 9⌁"42\\⊛⊙Ṅ'
   && [ "$(printf '%s' '\scall' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "ae" ] \
   && ok "⌁: write(2) and an anonymous mmap(2) (flags in r10, fd in r8) through six registers; oracle agrees; \\scall encodes to AE" || no "W14-A ⌁ six-argument syscall"
 
+# === W14-G ===
+# printf-style ‹format›, ‹fixed›, the str-method text words, little-endian
+# packing, hex and UTF-8.  First fixed cases (the REFERENCE examples, the
+# diagnostics, ‹catch›, no leak), then a Python oracle: one program a section,
+# compiled pruned (gcp), each line checked against Python's % operator,
+# Decimal ROUND_HALF_UP, str methods, struct and surrogateescape.
+echo "W14-G: ‹format› ‹printf› ‹fixed›, text, bytes, little-endian and UTF-8 words"
+w14gbad=""
+while IFS=$'\t' read -r w14gx w14gw; do
+  [ -z "$w14gx" ] && continue
+  w14gg=$(printf '%s' "$w14gx" | gc 2>&1 | tr '\n' '/' | sed 's/ *\/*$//')
+  [ "$w14gg" = "$w14gw" ] || w14gbad="$w14gbad [$w14gx => $w14gg]"
+done <<'W14GCASES'
+“%-6s|%05d|%x“⊃Ṿ“ab“⊃⍆42⍆255⍆‹format›⊐	ab    |00042|ff
+“%+.2d %c%%“⊃Ṿ7⍆65⍆‹printf›	+07 A%
+“[%5.2s] %X %o %b %u“⊃Ṿ“abc“⊃⍆255⍆8⍆5⍆0 1-⍆‹format›⊐	[   ab] FF 10 101 18446744073709551615
+“%s=%d“⊃Ṿ“n“⊃⍆1 63≪⍆‹format›⊐“ %s“⊃Ṿ0 12-⍆‹format›⊐	n=-9223372036854775808 -12
+1234567 1000000 3‹fixed›⊐	1.235
+0 5-10 0‹fixed›⊐ 0 1-1000 2‹fixed›⊐ 1 63≪1 0‹fixed›⊐	-10.00-9223372036854775808
+“ab“⊃6‹center›⊐“|“🗲“ab“⊃5‹ljust›⊐“|“🗲“ab“⊃1‹center›⊐	  ab  |ab   |ab
+“a.b.c“⊃“.“⊃“::“⊃‹replace›⊐ “ab“⊃0⍳“-“⊃‹replace›⊐	a::b::c-a-b-
+“a.b.c“⊃“.“⊃‹rfind›Ṅ“a.b.c“⊃“.“⊃‹count›Ṅ“a.b.c“⊃“.c“⊃‹endswith›Ṅ“abc“⊃0⍳‹count›Ṅ	3204
+“k=v=w“⊃“=“⊃‹partition›Ṅ\\⊐“,“🗲⊐“ “🗲“k=v=w“⊃“=“⊃‹rpartition›Ṅ\\⊐“,“🗲⊐“ “🗲“kvw“⊃“=“⊃‹partition›Ṅ\\⊐“,“🗲⊐	0k,v=w 0k=v,w 1kvw,
+“hello“⊃“el“⊃“ip“⊃‹translate›⊐ “hello“⊃“l“⊃0⍳‹translate›⊐ Ṿ0 1-⍆300⍆97⍆“a“⊃“b“⊃‹translate›⍕	hippoheo-1 300 98
+“abcd“⊃0 4‹le›‹hex›⊐ 0 2-2‹tole›"⍕0 2‹les›Ṅ 4⍳1 258 2‹setle›⍕	64636261254 255 -20 2 1 3
+“hi“⊃‹hexbytes›⊐ “68 69“⊃‹unhexbytes›⊐ “C3A9ff“⊃‹unhexbytes›‹utf8›⍕Ṿ8364⍆56575⍆‹unutf8›‹hexbytes›⊐	6869hi233 56575 e282acff
+7→‹count›⇡‹count›←‹count›Ṅ“aaa“⊃“a“⊃‹count›Ṅ	83
+“%d %d“⊃Ṿ1⍆‹format›	GOLF: format: not enough arguments
+:‹f›“%d“⊃Ṿ1⍆2⍆‹format›;′‹f›‹catch›⊐	format: too many arguments
+“%q“⊃Ṿ1⍆‹format›	GOLF: format: bad conversion %q
+“abc%-5“⊃Ṿ‹format›	GOLF: format: incomplete conversion
+“%x“⊃Ṿ“x“⊃⍆‹format›	GOLF: format: %x needs a number
+“%d“⊃5‹format›	GOLF: format: args must be a list
+“%d“Ṿ‹format›	GOLF: format: template must be a list
+1 0 2‹fixed›	GOLF: divide by zero
+“a“⊃0⍳‹partition›	GOLF: partition: empty separator
+“a“⊃0⍳‹rpartition›	GOLF: rpartition: empty separator
+“ab“⊃“a“⊃“xy“⊃‹translate›	GOLF: translate: from and to differ in length
+“ab“⊃Ṿ300⍆0⍳‹translate›	GOLF: translate: not a byte
+5 3‹tole›	GOLF: tole: width must be 1, 2, 4 or 8
+3⍳2 9 2‹setle›	GOLF: setle: offset out of range
+3⍳0 1-2‹les›	GOLF: le: offset out of range
+“ab“⊃1 2‹le›	GOLF: le: offset out of range
+“ff0“⊃‹unhexbytes›	GOLF: unhexbytes: odd number of hex digits
+“f f“⊃‹unhexbytes›	GOLF: unhexbytes: bad hex digit
+Ṿ55296⍆‹unutf8›	GOLF: unutf8: invalid code point 55296
+Ṿ0 1-⍆‹unutf8›	GOLF: unutf8: invalid code point -1
+Ṿ1114112⍆‹unutf8›	GOLF: unutf8: invalid code point 1114112
+“%5d %s %.1s %c %x %-4s|“⊃→t Ṿ3⍆“ab“⊃⍆“xy“⊃⍆65⍆255⍆7⍆→a ‹heapstats›_→n ←t←a‹format›⌫ 0 1-1000 5‹fixed›⌫ ‹heapstats›_←n-Ṅ	0
+W14GCASES
+[ -z "$w14gbad" ] && ok "W14-G fixed cases: format/printf conversions and flags, fixed, center/ljust, replace/rfind/count/endswith, partition/rpartition, translate, le/les/tole/setle, hex, UTF-8; every diagnostic; catchable; ‹format› and ‹fixed› free their temporaries; ‹count› as a variable still works" \
+  || no "W14-G fixed cases:$w14gbad"
+w14gsecs=$(python3 - "$TMP" <<'W14GPY'
+import random, struct, string, sys
+from decimal import Decimal, ROUND_HALF_UP, getcontext
+getcontext().prec = 80
+R = random.Random(1414)
+out = sys.argv[1]
+SAFE = string.ascii_letters + string.digits + " .,-=:;!?()[]<>@$&*_+|~^"
+progs = {}
+def emit(sec, code, want):
+    p, w = progs.setdefault(sec, ([], []))
+    p.append(code + '␤')
+    w.append(want)
+def gint(v):                       # any 64-bit int, no big literal in the source
+    return '“%s%x“⊃‹parsehex›' % ('-' if v < 0 else '', abs(v))
+def gn(v):                         # a small int
+    return str(v) if v >= 0 else '0 %d-' % -v
+def gs(s):
+    return '“%s“⊃' % s
+def rs(alpha, lo, hi):
+    return ''.join(R.choice(alpha) for _ in range(R.randint(lo, hi)))
+def ghex(b):
+    return '“%s“⊃‹unhexbytes›' % b.hex()
+# --- format vs Python's % (%b via the decimal digits of bin(v), %u as %d) ---
+for _ in range(160):
+    tpl = ''; py = ''; args = ''
+    for _ in range(R.randint(1, 4)):
+        lit = rs(SAFE, 0, 3)
+        if R.random() < 0.15:
+            lit += '%%'
+        tpl += lit; py += lit.replace('%%', '%')
+        conv = R.choice('duxXobcs')
+        flags = ''.join(f for f in '-0+ ' if R.random() < 0.3)
+        if conv != 'd':
+            flags = flags.replace('+', '').replace(' ', '')
+        width = str(R.randint(1, 12)) if R.random() < 0.6 else ''
+        prec = '.%d' % R.randint(0, 6) if R.random() < 0.4 and conv != 'c' else ''
+        spec = flags + width + prec
+        tpl += '%' + spec + conv
+        if conv == 'd':
+            v = R.choice([R.randint(-99, 99), R.randint(-2**63, 2**63 - 1), R.randint(-10**6, 10**6), -2**63])
+            args += gint(v) + '⍆'; py += ('%' + spec + 'd') % v
+        elif conv in 'uxXob':
+            v = R.choice([R.randint(0, 99), R.randint(0, 2**63 - 1), 0])
+            args += gint(v) + '⍆'
+            if conv == 'b':
+                py += ('%' + spec + 'd') % int(format(v, 'b'))
+            else:
+                py += ('%' + spec + conv.replace('u', 'd')) % v
+        elif conv == 'c':
+            v = R.randint(33, 126); args += gn(v) + '⍆'; py += ('%' + spec + 'c') % v
+        else:
+            if R.random() < 0.2:
+                v = R.randint(-10**9, 10**9); args += gn(v) + '⍆'
+            else:
+                v = rs(SAFE, 0, 8); args += gs(v) + '⍆'
+            py += ('%' + spec + 's') % (v,)
+    emit('fmt', gs(tpl) + 'Ṿ' + args + '‹format›⊐', py)
+# unsigned views of negatives, and printf
+for v in (-1, -255, -2**63, -2**40 - 7):
+    u = v & (2**64 - 1)
+    emit('fmt', gs('%x %X %o %u|%30b') + 'Ṿ' + gint(v) * 1 + '⍆' + (gint(v) + '⍆') * 4 + '‹format›⊐',
+         '%x %X %o %d|%30s' % (u, u, u, u, format(u, 'b')))
+emit('fmt', gs('<%5s|%-3d>') + 'Ṿ' + gs('ab') + '⍆7⍆‹printf›', '<   ab|7  >')
+# --- fixed vs Decimal ROUND_HALF_UP (half away from zero), no "-0" ---
+for _ in range(80):
+    n = R.choice([R.randint(-10**4, 10**4), R.randint(-10**15, 10**15), R.randint(-2**63, 2**63 - 1)])
+    d = R.choice([R.randint(1, 1000), 10**R.randint(0, 9), R.randint(1, 10**17)]) * R.choice([1, -1])
+    k = R.randint(0, 9)
+    q = (Decimal(n) / Decimal(d)).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
+    s = '{:f}'.format(q)
+    if q == 0:
+        s = s.lstrip('-')
+    emit('fixed', gint(n) + gint(d) + str(k) + '‹fixed›⊐', s)
+for n, d, k in ((5, 10, 0), (-5, 10, 0), (15, 100, 1), (-15, 100, 1), (9995, 1000, 2), (-1, 1000, 2), (1234567, 1000000, 3), (7, 1, 0), (2, 3, 0)):
+    q = (Decimal(n) / Decimal(d)).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
+    s = '{:f}'.format(q)
+    emit('fixed', gint(n) + gint(d) + str(k) + '‹fixed›⊐', s.lstrip('-') if q == 0 else s)
+# --- text words vs str methods ---
+for _ in range(60):
+    s = rs(SAFE.replace(' ', ''), 0, 6); w = R.randint(-2, 12)
+    emit('text', gs(s) + gn(w) + '‹center›⊐“|“🗲' + gs(s) + gn(w) + '‹ljust›⊐“|“🗲' + gs(s) + gn(w) + '‹pad›⊐',
+         s.center(w) + '|' + s.ljust(w) + '|' + s.rjust(w))
+for _ in range(80):
+    h = rs('ab', 0, 9); n = rs('ab', 0, 3); r = rs('xy', 0, 2)
+    want = '%d %d %d ' % (h.count(n), h.rfind(n), 0 if h.endswith(n) else 1) + h.replace(n, r)
+    code = gs(h) + gs(n) + '‹count›Ṅ“ “🗲' + gs(h) + gs(n) + '‹rfind›Ṅ“ “🗲' + gs(h) + gs(n) + '‹endswith›Ṅ“ “🗲' + gs(h) + gs(n) + gs(r) + '‹replace›⊐'
+    if n:
+        a, sep, b = h.partition(n); f = 0 if sep else 1
+        c, sep2, e = h.rpartition(n); g = 0 if sep2 else 1
+        if g:
+            c, e = h, ''
+        want += '|%d:%s:%s|%d:%s:%s' % (f, a, b, g, c, e)
+        code += '“|“🗲' + gs(h) + gs(n) + '‹partition›Ṅ\\\\“:“🗲⊐“:“🗲⊐“|“🗲' + gs(h) + gs(n) + '‹rpartition›Ṅ\\\\“:“🗲⊐“:“🗲⊐'
+    emit('text', code, want)
+for _ in range(40):
+    s = rs('abcdef', 0, 10); fr = ''.join(R.sample('abcdef', R.randint(0, 4)))
+    if R.random() < 0.3:
+        to = ''; py = s.encode().translate(None, fr.encode()).decode()
+    else:
+        to = ''.join(R.choice('ABCDEF') for _ in fr); py = s.translate(str.maketrans(fr, to))
+    emit('text', gs(s) + gs(fr) + gs(to) + '‹translate›⊐', py)
+# --- bytes: little-endian vs struct, hex round trips ---
+for _ in range(80):
+    w = R.choice((1, 2, 4, 8)); v = R.randint(-2**63, 2**63 - 1)
+    b = bytes(R.randrange(256) for _ in range(R.randint(w, 12))); o = R.randint(0, len(b) - w)
+    fmt = {1: 'b', 2: 'h', 4: 'i', 8: 'q'}[w]
+    tole = struct.pack('<' + fmt.upper(), v & ((1 << 8 * w) - 1)).hex()
+    le = struct.unpack_from('<' + fmt.upper(), b, o)[0]; les = struct.unpack_from('<' + fmt, b, o)[0]
+    nb = bytearray(b); nb[o:o + w] = bytes.fromhex(tole)
+    emit('bytes', gint(v) + str(w) + '‹tole›‹hexbytes›⊐“ “🗲' + gs('%u') + 'Ṿ' + ghex(b) + str(o) + ' ' + str(w) + '‹le›⍆‹format›⊐“ “🗲'
+         + ghex(b) + str(o) + ' ' + str(w) + '‹les›Ṅ“ “🗲' + ghex(b) + str(o) + gint(v) + str(w) + '‹setle›‹hexbytes›⊐',
+         '%s %d %d %s' % (tole, le, les, nb.hex()))
+for _ in range(30):
+    b = bytes(R.randrange(256) for _ in range(R.randint(0, 20)))
+    spaced = ' '.join(b[i:i + 1].hex().upper() if i % 2 else b[i:i + 1].hex() for i in range(len(b)))
+    emit('bytes', gs(spaced) + '‹unhexbytes›‹hexbytes›⊐', b.hex())
+# --- UTF-8 vs Python's surrogateescape ---
+for x in range(256):
+    emit('utf8', ghex(bytes([x])) + '‹utf8›"⍕‹unutf8›‹hexbytes›⊐',
+         ''.join('%d ' % ord(c) for c in bytes([x]).decode('utf-8', 'surrogateescape')) + '%02x' % x)
+def rbytes():
+    parts = []
+    for _ in range(R.randint(0, 6)):
+        k = R.random()
+        if k < 0.4:
+            cp = R.choice([R.randint(0x20, 0x7E), R.randint(0x80, 0x7FF), R.randint(0x800, 0xD7FF),
+                           R.randint(0xE000, 0xFFFF), R.randint(0x10000, 0x10FFFF)])
+            parts.append(chr(cp).encode())
+        elif k < 0.6:
+            parts.append(chr(R.randint(0x80, 0x10FFFF) if R.random() < .5 else R.randint(0x800, 0xFFFF)).encode('utf-8', 'surrogatepass')[:-1])
+        elif k < 0.8:
+            parts.append(bytes([R.randrange(256)]))
+        else:
+            parts.append(R.choice([b'\xc0\xaf', b'\xe0\x80\xaf', b'\xed\xa0\x80', b'\xf4\x90\x80\x80', b'\xf8\x88\x80\x80\x80', b'\xc2', b'\xef\xbf\xbd']))
+    return b''.join(parts)
+for _ in range(150):
+    b = rbytes()
+    emit('utf8', ghex(b) + '‹utf8›"⍕‹unutf8›‹hexbytes›⊐',
+         ''.join('%d ' % ord(c) for c in b.decode('utf-8', 'surrogateescape')) + b.hex())
+for _ in range(40):
+    cps = [R.choice([R.randint(0, 0x7F), R.randint(0x80, 0x7FF), R.randint(0x800, 0xD7FF), R.randint(0xDC80, 0xDCFF),
+                     R.randint(0xE000, 0xFFFF), R.randint(0x10000, 0x10FFFF)]) for _ in range(R.randint(0, 5))]
+    emit('utf8', 'Ṿ' + ''.join(gn(c) + '⍆' for c in cps) + '‹unutf8›‹hexbytes›⊐',
+         ''.join(map(chr, cps)).encode('utf-8', 'surrogateescape').hex())
+for sec, (p, w) in progs.items():
+    open('%s/w14g_%s.golfj' % (out, sec), 'w', encoding='utf-8').write('\n'.join(p) + '\n')
+    open('%s/w14g_%s.want' % (out, sec), 'w', encoding='utf-8').write('\n'.join(w) + '\n')
+print(' '.join(progs))
+W14GPY
+)
+w14gbad=""
+for w14gs in $w14gsecs; do
+  python3 tools/codepage.py encode < "$TMP/w14g_$w14gs.golfj" > "$TMP/w14g.gb" \
+    && python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w14g.gb" > "$TMP/w14g.src" && cat "$TMP/w14g.gb" >> "$TMP/w14g.src" \
+    && "$TMP/golf2" < "$TMP/w14g.src" > "$TMP/w14gp" 2>/dev/null && chmod +x "$TMP/w14gp" \
+    && "$TMP/w14gp" > "$TMP/w14g_$w14gs.got" 2>&1 && cmp -s "$TMP/w14g_$w14gs.want" "$TMP/w14g_$w14gs.got" \
+    || w14gbad="$w14gbad $w14gs($(diff "$TMP/w14g_$w14gs.want" "$TMP/w14g_$w14gs.got" 2>&1 | head -3 | tr '\n' ' '))"
+done
+[ "$w14gsecs" = "fmt fixed text bytes utf8" ] && [ -z "$w14gbad" ] \
+  && ok "W14-G Python oracle: 165 ‹format›/‹printf› vs %, 89 ‹fixed› vs Decimal HALF_UP, 200 text-word lines vs str, 110 le/tole/setle/hex vs struct, every byte 0-255 + 190 UTF-8 decode/encode round trips vs surrogateescape" \
+  || no "W14-G Python oracle:$w14gbad"
+
 # === W13-C ===
 echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"
 # The code page: each mnemonic encodes to its byte, each glyph round-trips

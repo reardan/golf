@@ -2954,3 +2954,205 @@
 # ‹_13h_comp›  f g -> r  (∘)  ·  ‹_13h_bind›  x f -> r  (⊸): fill a record.
 ⊡‹_13h_comp›⇒g⇒f3A⇒r⇐f⇐r\store⇐g⇐r8\radd\store\ref‹_13h_cmp›⇐r16\radd\store⇐r;
 ⊡‹_13h_bind›⇒f⇒x3A⇒r⇐f⇐r\store⇐x⇐r8\radd\store\ref‹_13h_bnd›⇐r16\radd\store⇐r;
+# ===== W14-G =====
+# Text formatting, byte strings, little-endian packing and UTF-8, for scripts
+# (REFERENCE "Formatting, bytes and UTF-8 (W14-G)").  Text is a CODE LIST, one
+# byte (or, after ‹utf8›, one code point) per element; every word that returns
+# a list returns a NEW one and never writes its input, except ‹setle›, which
+# stores in place.  Flags are zero-is-true, like ‹startswith›.  Every looping
+# word is a ⊡ word (its state is its own frame), so all of them are
+# re-entrant; no scratch cells, no runtime cells (REGISTRY §3.4).  Raw atoms
+# only in the loops (﹢ ﹣ ﹡ ≪ ≫ ⊙ ⊛).  Variable-length results grow a ‹vec›
+# with ⍆ (a vector is a list).  Errors throw through ‹throw›.
+#   ‹format›      tpl args -> list   printf: %d %u %x %X %o %b %c %s %%, flags
+#                                    - 0 + space, a width, a .N precision (%s:
+#                                    at most N bytes; a number: at least N
+#                                    digits).  args is a list; %s takes a code
+#                                    list (an int prints in decimal), the
+#                                    others an int; %x %X %o %b %u read it as
+#                                    UNSIGNED 64-bit.  Errors `format: …`:
+#                                    not enough / too many arguments, bad
+#                                    conversion %q, incomplete conversion,
+#                                    %d needs a number, template / args must
+#                                    be a list
+#   ‹printf›      tpl args ->        ‹format›, ⊐ (buffered), free the text
+#   ‹fixed›       n d k -> list      n/d with k decimals, rounded half away
+#                                    from zero; `-` only when the rounded
+#                                    value is not zero; |d| < 2^63/10
+#   ‹ljust›       list w -> list     pad right with spaces to w (no truncation)
+#   ‹center›      list w -> list     Python's str.center: the odd space goes
+#                                    left when w is odd, else right
+#   ‹replace›     list old new -> list   every non-overlapping old, left to
+#                                    right; an empty old inserts new at every
+#                                    gap, ends included (str.replace)
+#   ‹rfind›       h n -> i           last index of the sublist n in h, -1 if
+#                                    none; the empty n is found at ≢h
+#   ‹count›       h n -> k           non-overlapping occurrences; empty n gives
+#                                    ≢h + 1
+#   ‹endswith›    list s -> f        0 if s is a suffix of list, else 1
+#   ‹partition›   list sep -> head tail f   split at the first sep: f 0; when
+#   ‹rpartition›  list sep -> head tail f   absent, (a copy of list, []) and 1.
+#                                    rpartition splits at the last sep.  An
+#                                    empty sep throws `partition: empty separator`
+#   ‹translate›   list from to -> list   byte map from[i] -> to[i]; an empty
+#                                    `to` deletes the bytes in `from`; other
+#                                    lengths must match; a value outside 0..255
+#                                    in list passes through, in from throws
+#   ‹le› ‹les›    list off w -> n    little-endian unsigned / signed int of w
+#                                    (1 2 4 8) bytes at off; throws `le: …`
+#   ‹tole›        n w -> list        n as w little-endian bytes
+#   ‹setle›       list off n w -> list   store n's w low bytes at off, in place
+#   ‹hexbytes›    list -> list       two lowercase hex digits per byte
+#   ‹unhexbytes›  list -> list       the inverse; whitespace between pairs is
+#                                    skipped; odd digits or a bad char throws
+#   ‹utf8›        list -> cps        decode UTF-8 (strict: no overlongs,
+#                                    surrogates or > U+10FFFF); each byte b of
+#                                    an invalid sequence becomes 0xDC00+b
+#                                    (Python's surrogateescape)
+#   ‹unutf8›      cps -> list        encode; 0xDC80–0xDCFF become the raw byte
+#                                    again; any other surrogate, a negative or
+#                                    > 0x10FFFF throws `unutf8: …`
+# Helpers (‹_14g_…›; p is a list's masked address, its elements at p+8+8i):
+#   ‹_14g_new›  n -> p          a raw block of n unset elements, length n
+#   ‹_14g_at›   hp np i -> f    0 if n occurs in h at i (i+≢n <= ≢h), else 1
+#   ‹_14g_ff›   hp np i -> j    the first occurrence at or after i, or -1
+#   ‹_14g_app›  v p a b -> v    push p's elements a..b-1 on the vector v
+#   ‹_14g_rep›  v c k -> v      push c k times (none when k <= 0)
+#   ‹_14g_sp›   v k -> v        push k spaces
+#   ‹_14g_lr›   list a r -> v   a spaces, the list, r spaces
+#   ‹_14g_cut›  list sep i -> head tail f   ‹partition›'s result for index i
+#   ‹_14g_wd›   w name ->       throw unless w is 1, 2, 4 or 8
+#   ‹_14g_rng›  p off w name -> throw unless the w bytes at off are in p
+#   ‹_14g_hd›   d -> c          the hex digit for 0..15
+#   ‹_14g_hv›   c -> v          hex digit value, >= 16 for a non-digit
+#   ‹_14g_hx›   c -> v          ‹_14g_hv›, throwing on a non-digit
+#   ‹_14g_dec›  p n i -> cp k   decode one UTF-8 sequence at i (k bytes)
+#   ‹_14g_enc›  v cp -> v       push cp's UTF-8 bytes
+#   ‹_14g_abs›  x -> |x|        (INT64_MIN stays 2^63, read unsigned)
+#   ‹_14g_ch›   p n i -> c      element i, or -1 at the end
+#   ‹_14g_dg›   c -> d          decimal digit value, or -1
+#   ‹_14g_emit› v s z t w f -> v   one conversion: sign char s (0 = none), z
+#               zeros, the body list t, padded to w; f bit 1 left-justify,
+#               bit 2 zero-pad
+#   ‹_14g_cv›   v a m j c f w e -> v j'   conversion c with flags f, width w,
+#               precision e (-1 = none), args a (count m), next arg j
+⊡‹_14g_new›⇒n⇐n1﹢A⇐n&⊛;
+⊡‹_14g_at›⇒i⇒n⇒h⇐n⊙⇒m0⇒j{⇐j⇐m≡⋄⇐h⇐i⇐j﹢3≪﹢8﹢⊙⇐n⇐j3≪﹢8﹢⊙≡[1^]⇐j1﹢⇒j}0;
+⊡‹_14g_ff›⇒i⇒n⇒h⇐h⊙⇐n⊙﹣⇒e{⇐i⇐e≻⋄⇐h⇐n⇐i‹_14g_at›[⇐i^]⇐i1﹢⇒i}0 1﹣;
+⊡‹_14g_app›⇒b⇒a⇒p{⇐a⇐b≺1﹢⋄⇐p⇐a3≪﹢8﹢⊙⍆⇐a1﹢⇒a};
+⊡‹_14g_rep›⇒k⇒c{⇐k0≻1﹢⋄⇐c⍆⇐k1﹣⇒k};
+:‹_14g_sp›32\\‹_14g_rep›;
+⊡‹_14g_lr›⇒r⇒a‹_2d_chk›⇒p⇐p⊙⇐a﹢⇐r﹢‹vecn›⇐a‹_14g_sp›⇐p0⇐p⊙‹_14g_app›⇐r‹_14g_sp›;
+⊡‹ljust›⇒w"‹_2d_chk›⊙⇐w\\﹣0\\‹_14g_lr›;
+⊡‹center›⇒w‹_2d_chk›⇒p⇐w⇐p⊙﹣"0≺[⋄_0]⇒m⇐m1≫⇐m⇐w$1$﹢⇒a⇐p⇐a⇐m⇐a﹣‹_14g_lr›;
+#
+# --- searching ---
+⊡‹rfind›‹_2d_chk›⇒n‹_2d_chk›⇒h⇐h⊙⇐n⊙﹣⇒i{⇐i0≺⋄⇐h⇐n⇐i‹_14g_at›[⇐i^]⇐i1﹣⇒i}0 1﹣;
+⊡‹count›‹_2d_chk›⇒n‹_2d_chk›⇒h⇐n⊙"⇒m[⇐h⊙1﹢^]0⇒k0⇒i{⇐h⇐n⇐i‹_14g_ff›"⇒i0≺⋄⇐k1﹢⇒k⇐i⇐m﹢⇒i}⇐k;
+⊡‹endswith›‹_2d_chk›⇒n‹_2d_chk›⇒h⇐h⊙⇐n⊙﹣"0≺[⇒i⇐h⇐n⇐i‹_14g_at›⋄_1];
+⊡‹_14g_cut›⇒i⇒s⇒l⇐l‹_2d_chk›⊙⇒n⇐i0≺[⇐l0⇐i‹_1d_sub›⇐l⇐i⇐s‹_2d_chk›⊙﹢"⇒j⇐n⇐j﹣‹_1d_sub›0⋄⇐l0⇐n‹_1d_sub›0⍳1];
+⊡‹partition›⇒s⇒l⇐s‹_2d_chk›⊙[“partition: empty separator“U‹throw›]⇐l⇐s⇐l⇐s‹find›‹_14g_cut›;
+⊡‹rpartition›⇒s⇒l⇐s‹_2d_chk›⊙[“rpartition: empty separator“U‹throw›]⇐l⇐s⇐l⇐s‹rfind›‹_14g_cut›;
+⊡‹replace›‹_2d_chk›⇒w‹_2d_chk›⇒o‹_2d_chk›⇒h⇐h⊙⇒n⇐o⊙⇒m⇐n‹vecn›0⇒i
+ {⇐h⇐o⇐i‹_14g_ff›"⇒j0≺⋄⇐h⇐i⇐j‹_14g_app›⇐w0⇐w⊙‹_14g_app›⇐j⇐m﹢⇒i
+  ⇐m[⇐j⇐n≺[⋄⇐h⇐j3≪﹢8﹢⊙⍆]⇐j1﹢⇒i]}
+ ⇐h⇐i⇐n‹_14g_app›;
+⊡‹translate›‹_2d_chk›⇒t‹_2d_chk›⇒f‹_2d_chk›⇒l⇐t⊙⇒m
+ ⇐m[⋄⇐m⇐f⊙≡[“translate: from and to differ in length“U‹throw›]]
+ 256A⇒b0⇒i{⇐i256≡⋄⇐i⇐b⇐i3≪﹢⊛⇐i1﹢⇒i}
+ 0⇒i{⇐i⇐f⊙≡⋄⇐f⇐i3≪﹢8﹢⊙"256<[“translate: not a byte“U‹throw›]3≪⇐b﹢⇒q⇐m[0 1﹣⋄⇐t⇐i3≪﹢8﹢⊙]⇐q⊛⇐i1﹢⇒i}
+ ⇐l⊙‹vecn›0⇒i{⇐i⇐l⊙≡⋄⇐l⇐i3≪﹢8﹢⊙"256<[⍆⋄3≪⇐b﹢⊙"1﹢[_⋄⍆]]⇐i1﹢⇒i}⇐b⌫;
+#
+# --- little-endian ints ---
+⊡‹_14g_wd›⇒m⇒w⇐w1﹣8<⇐w♯1≡$[⇐m U“: width must be 1, 2, 4 or 8“U⧺‹throw›];
+⊡‹_14g_rng›⇒m⇒w⇒o⇒p⇐w⇐m‹_14g_wd›⇐o⇐w﹢⇐p⊙»⇐o0≺|[⋄⇐m U“: offset out of range“U⧺‹throw›];
+⊡‹le›⇒w⇒o‹_2d_chk›⇒p⇐p⇐o⇐w“le“‹_14g_rng›0⇒n⇐w⇒i{⇐i0≡⋄⇐i1﹣⇒i⇐n8≪⇐p⇐o⇐i﹢3≪﹢8﹢⊙255$|⇒n}⇐n;
+⊡‹les›⇒w⇐w‹le›64⇐w3≪﹣"⇒s≪⇐s≫;
+⊡‹setle›⇒w⇒n⇒o"‹_2d_chk›⇒p⇐p⇐o⇐w“setle“‹_14g_rng›0⇒i{⇐i⇐w≡⋄⇐n255$⇐p⇐o⇐i﹢3≪﹢8﹢⊛⇐n8>⇒n⇐i1﹢⇒i};
+⊡‹tole›⇒w⇒n⇐w“tole“‹_14g_wd›⇐w⍳0⇐n⇐w‹setle›;
+#
+# --- hex ---
+:‹_14g_hd›"9»39$﹢48﹢;
+:‹_14g_hv›"48﹣"10<~99$|\\32|87﹣"10﹣6<~99$|⊓;
+:‹_14g_hx›‹_14g_hv›"16<[“unhexbytes: bad hex digit“U‹throw›];
+⊡‹hexbytes›‹_2d_chk›⇒p⇐p⊙"⇒n1≪‹_14g_new›⇒q0⇒i
+ {⇐i⇐n≡⋄⇐p⇐i3≪﹢8﹢⊙255$"4>‹_14g_hd›⇐q⇐i4≪﹢8﹢⊛15$‹_14g_hd›⇐q⇐i4≪﹢16﹢⊛⇐i1﹢⇒i}⇐q32767 48≪|;
+⊡‹unhexbytes›‹_2d_chk›⇒p⇐p⊙⇒n⇐n1≫‹vecn›0⇒i
+ {⇐i⇐n≡⋄⇐p⇐i3≪﹢8﹢⊙"⇒c32≡⇐c9﹣5<|[
+   ⇐c‹_14g_hx›4≪⇐i1﹢"⇒i⇐n≡[⋄“unhexbytes: odd number of hex digits“U‹throw›]
+   ⇐p⇐i3≪﹢8﹢⊙‹_14g_hx›|⍆]⇐i1﹢⇒i};
+#
+# --- UTF-8 ---
+# ‹_14g_dec›: the lead byte b gives k continuation bytes, the payload bits c
+# and the range l..h of the FIRST continuation (Unicode's table 3-7, which
+# rules out overlongs, surrogates and > U+10FFFF); the rest are 80..BF.  Any
+# miss escapes just the lead byte: the bytes after it are then decoded (or
+# escaped) one by one, which is what Python's surrogateescape gives.
+⊡‹_14g_dec›⇒i⇒n⇒p⇐p⇐i3≪﹢8﹢⊙255$⇒b
+ ⇐b128<[⋄⇐b1^]
+ 128⇒l191⇒h0⇒k
+ ⇐b194<[⋄56320⇐b﹢1^]
+ ⇐b224<[⋄1⇒k⇐b31$⇒c]
+ ⇐k[⇐b240<[⋄2⇒k⇐b15$⇒c⇐b224≡[⋄160⇒l]⇐b237≡[⋄159⇒h]]]
+ ⇐k[⇐b245<[⋄3⇒k⇐b7$⇒c⇐b240≡[⋄144⇒l]⇐b244≡[⋄143⇒h]]]
+ ⇐k[56320⇐b﹢1^]
+ ⇐i⇐k﹢⇐n<[56320⇐b﹢1^]
+ 1⇒j{⇐j⇐k»⋄⇐p⇐i⇐j﹢3≪﹢8﹢⊙255$⇒x⇐x⇐l﹣⇐h⇐l﹣»[⋄56320⇐b﹢1^]⇐c6≪⇐x63$|⇒c128⇒l191⇒h⇐j1﹢⇒j}
+ ⇐c⇐k1﹢;
+⊡‹utf8›‹_2d_chk›⇒p⇐p⊙⇒n⇐n‹vecn›0⇒i{⇐i⇐n≡⋄⇐p⇐n⇐i‹_14g_dec›⇐i﹢⇒i⍆};
+⊡‹_14g_enc›⇒c
+ ⇐c128<[⋄⇐c⍆^]
+ ⇐c56448﹣128<[⋄⇐c56320﹣⍆^]
+ ⇐c55296﹣2048<⇐c1114112<~|[⋄“unutf8: invalid code point “U⇐c‹fmt›⧺‹throw›]
+ ⇐c2048<[⋄192⇐c6≫|⍆128⇐c63$|⍆^]
+ ⇐c65536<[⋄224⇐c12≫|⍆128⇐c6≫63$|⍆128⇐c63$|⍆^]
+ 240⇐c18≫|⍆128⇐c12≫63$|⍆128⇐c6≫63$|⍆128⇐c63$|⍆;
+⊡‹unutf8›‹_2d_chk›⇒p⇐p⊙⇒n⇐n‹vecn›0⇒i{⇐i⇐n≡⋄⇐p⇐i3≪﹢8﹢⊙‹_14g_enc›⇐i1﹢⇒i};
+#
+# --- numbers as text ---
+:‹_14g_abs›"0≺[⋄0\\﹣];
+# ‹fixed›: long division of |n| by |d| (unsigned, so 2^63 works): the integer
+# part q, then k digits into the block g; round up when 2r >= |d|, carrying
+# through the digits into q; `-` when the signs differ and the result is not 0.
+⊡‹fixed›⇒k⇒d⇒n⇐k0≺[⋄0⇒k]
+ ⇐n⇐d=0≺⇒s⇐n‹_14g_abs›⇒a⇐d‹_14g_abs›⇒b⇐a⇐b/⇒q⇐a⇐b%⇒r⇐k1⊔A⇒g
+ 0⇒i{⇐i⇐k≡⋄⇐r10﹡⇒r⇐r⇐b/⇐g⇐i3≪﹢⊛⇐r⇐b%⇒r⇐i1﹢⇒i}
+ ⇐r1≪⇐b<[⇐k⇒i1⇒c{⇐c0≡⋄⇐i[⇐q1﹢⇒q0⇒c⋄⇐i1﹣⇒i⇐g⇐i3≪﹢⇒z⇐z⊙1﹢"10≡[⇐z⊛0⇒c⋄_0⇐z⊛]]}]
+ ⇐q⇒y0⇒i{⇐i⇐k≡⋄⇐g⇐i3≪﹢⊙⇐y|⇒y⇐i1﹢⇒i}
+ ⇐k24﹢‹vecn›⇐s⇐y0≡~$[⋄45⍆]
+ ⇐q10 0‹_1d_utoa›‹_2d_chk›"⇒t0⇐t⊙‹_14g_app›⇐t⌫
+ ⇐k[⋄46⍆0⇒i{⇐i⇐k≡⋄⇐g⇐i3≪﹢⊙48﹢⍆⇐i1﹢⇒i}]⇐g⌫;
+#
+# --- printf ---
+⊡‹_14g_ch›⇒i⇒n⇒p⇐i⇐n<[⋄⇐p⇐i3≪﹢8﹢⊙^]0 1﹣;
+:‹_14g_dg›48﹣"10<[_0 1﹣];
+⊡‹_14g_emit›⇒f⇒w‹_2d_chk›⇒t⇒z⇒s
+ ⇐w⇐t⊙﹣⇐z﹣⇐s0≡1﹢﹣"0≺[⋄_0]⇒q
+ ⇐f1$[⇐f2$[⇐q‹_14g_sp›⋄⇐z⇐q﹢⇒z]0⇒q]
+ ⇐s[⋄⇐s⍆]48⇐z‹_14g_rep›⇐t0⇐t⊙‹_14g_app›⇐q‹_14g_sp›;
+⊡‹_14g_cv›⇒e⇒w⇒f⇒c⇒j⇒m⇒a
+ ⇐c37≡[⋄37⍆⇐j^]
+ ⇐c1﹢[“format: incomplete conversion“U‹throw›]
+ 0⇒b⇐c117≡[⋄10⇒b]⇐c100≡[⋄10⇒b]⇐c120≡[⋄16⇒b]⇐c88≡[⋄16⇒b]⇐c111≡[⋄8⇒b]⇐c98≡[⋄2⇒b]⇐c115≡[⋄1⇒b]⇐c99≡[⋄1⇒b]
+ ⇐b[“format: bad conversion %“U0⍳⇐c⍆⧺‹throw›]
+ ⇐j⇐m<[“format: not enough arguments“U‹throw›]
+ ⇐a⇐j3≪﹢8﹢⊙⇒x⇐j1﹢⇒j
+ ⇐c115≡[⋄⇐x⇒o⇐x T[⋄⇐x‹fmt›⇒x]
+  ⇐e0≺[⇐x0⇐e⇐x‹_2d_chk›⊙⊓‹_1d_sub›⇐x⇐o≡[⇐x⌫]⇒x]
+  0 0⇐x⇐w⇐f2~$‹_14g_emit›⇐x⇐o≡[⇐x⌫]⇐j^]
+ ⇐c99≡[⋄0⍳⇐x⍆⇒t0 0⇐t⇐w⇐f2~$‹_14g_emit›⇐t⌫⇐j^]
+ ⇐x T[“format: %“U0⍳⇐c⍆⧺“ needs a number“U⧺‹throw›]
+ 0⇒s⇐c100≡[⋄⇐x0≺[⇐f4$[⋄43⇒s]⇐f8$[⋄⇐s[32⇒s]]⋄45⇒s0⇐x﹣⇒x]]
+ ⇐x⇐b0‹_1d_utoa›‹_2d_chk›⇒t
+ ⇐c88≡[⋄0⇒k{⇐k⇐t⊙≡⋄⇐t⇐k3≪﹢8﹢"⊙"96»32$﹣\\⊛⇐k1﹢⇒k}]
+ 0⇒z⇐e0≺[⇐e⇐t⊙﹣"0≺[⋄_0]⇒z]
+ ⇐s⇐z⇐t⇐w⇐f‹_14g_emit›⇐t⌫⇐j;
+⊡‹format›"T[⋄“format: args must be a list“U‹throw›]‹_2d_chk›⇒a"T[⋄“format: template must be a list“U‹throw›]‹_2d_chk›⇒p
+ ⇐p⊙⇒n⇐a⊙⇒m0⇒j0⇒i⇐n8﹢‹vecn›
+ {⇐i⇐n≡⋄⇐p⇐i3≪﹢8﹢⊙⇐i1﹢⇒i"37≡[⍆⋄_
+   0⇒f{⇐p⇐n⇐i‹_14g_ch›"45≡1$&48≡2$|&43≡4$|\\32≡8$|"⇒b0≡⋄⇐f⇐b|⇒f⇐i1﹢⇒i}
+   0⇒w{⇐p⇐n⇐i‹_14g_ch›‹_14g_dg›"⇒d0≺⋄⇐w10﹡⇐d﹢⇒w⇐i1﹢⇒i}
+   0 1﹣⇒e⇐p⇐n⇐i‹_14g_ch›46≡[⋄⇐i1﹢⇒i0⇒e{⇐p⇐n⇐i‹_14g_ch›‹_14g_dg›"⇒d0≺⋄⇐e10﹡⇐d﹢⇒e⇐i1﹢⇒i}]
+   ⇐a⇐m⇐j⇐p⇐n⇐i‹_14g_ch›⇐f⇐w⇐e‹_14g_cv›⇒j⇐i1﹢⇒i]}
+ ⇐j⇐m≡[“format: too many arguments“U‹throw›];
+:‹printf›‹format›"⊐⌫;
