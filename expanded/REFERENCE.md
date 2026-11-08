@@ -454,7 +454,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 72 in all after W11-4B, helpers included), so a program has 952 for itself.
+has 73 in all after W11-4B and W11-4C, helpers included), so a program has 951 for itself.
 
 ### Text
 
@@ -667,8 +667,8 @@ A word count over stdin:
 
 It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers), the prelude has 72 long
-names, which leaves 952 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`), the prelude has 73 long
+names, which leaves 951 for a program.
 
 ### Closures
 
@@ -826,6 +826,80 @@ wrote it, not by the encoded copy `golfc` hands the compiler.
 1Ṅ
 5qṄ                  # stderr: GOLF: undefined word q at line 2   exit status 2
 ```
+
+### REPL
+
+`tools/golfi` (W11-4C) is an interactive loop: type a line of `.golfj`
+source, see what it printed and then the data stack. Words, variables,
+includes and the stack carry over from line to line. The stack line comes
+from the prelude word `‹stack›`, which any program can call:
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹stack›` | `->` | print the data stack bottom to top without changing it: `<depth>`, then each value (an int as `Ṅ` prints it, a list in brackets as `⍕` prints an inner one), then a newline |
+
+```
+1 2 3⍳‹stack›                    ->  <3> 1 2 [0 1 2]
+‹stack›                          ->  <0>
+3⍳′⍳€ 5±‹stack›                  ->  <2> [[] [0] [0 1]] -5
+:‹s›9‹stack›_;1 2‹s›             ->  <3> 1 2 9
+```
+
+The data stack is the machine stack, and calls keep their return addresses
+on a separate stack, so `‹stack›` shows the same values inside a word (the
+last example), inside `€` (the element on top of the caller's values) or
+under `‹catch›`. Its base is where the stack stood at the end of the
+prelude's own start-up, recorded in cell 5180480. A value whose top 16 bits
+are `0x7FFF` prints as a list (DESIGN.md, known limits).
+
+A session (`golf> ` is the prompt; `....> ` continues an entry):
+
+```text
+golf> :‹sq›"*;
+<0>
+golf> 3 4
+<2> 3 4
+golf> ‹sq›+
+<1> 19
+golf> oops
+GOLF: undefined word o
+(not kept)
+golf> 3⍳9⊇
+GOLF: index out of range
+(not kept)
+golf> “sq: “🗲3⍳‹sq›∑Ṅ
+sq: 5
+<1> 19
+golf> :f
+....> 1+;
+<1> 19
+golf> f
+<1> 20
+golf> :quit
+```
+
+**How it works: replay.** golfi keeps the session, the entries accepted so
+far. For each new entry it compiles one whole program with `tools/golfc -j`
+(the session, a marker, the entry, a marker, `‹stack›`, an end marker), runs
+it with stdin from `/dev/null`, and shows only what came after the first
+marker. So every side effect of earlier entries runs again, silently, each
+time (a slow entry slows all later ones; `:reset` starts over), and a program
+that reads stdin sees end of input rather than waiting. Each entry takes
+about 0.11 s (compile and run), nearly all of it in `golfc`.
+
+An entry is kept only if it compiles, runs, exits 0 and reaches the end
+marker, so the session is always a valid program. An entry that fails
+prints the compiler's or the runtime's `GOLF:` line (` at line N` is
+dropped for a one-line entry, or given as `at line K of this entry`), or
+`killed by SIGSEGV`, `exit status N`, `timed out after 10 s`
+(`GOLFI_TIMEOUT`), and then `(not kept)`.
+
+An entry spans lines while a `:` `⊡` `⊚` `⊜` definition, a `[` or `{`, or a
+`“` string is still open. Commands, as a whole line: `:show` prints the
+session's source, `:reset` empties it, `:quit` (or end of input) leaves.
+`golfi -t` adds each entry's time as `(0.110 s)`. Prompts appear only on a
+terminal and everything goes to stdout, so `golfi < script` gives a clean,
+ordered transcript (test/run2.sh's W11-4C block checks one).
 
 ### Debugging
 

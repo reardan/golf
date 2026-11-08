@@ -1268,6 +1268,23 @@
  5180448\fetch‹_4b_fail›“: expected “🗲5180440\fetch‹_4b_show›“ got “🗲5180432\fetch‹_4b_show›␤;
 
 # === W11-4C REPL stack ===
+# ‹stack›  ->   W11-4C: print the data stack, bottom to top, without touching
+# it: `<depth>`, then a space and each value — an int via N, a list via Q's
+# bracketed form (as ⍕ prints an inner list) — then a newline.  `1 2 3⍳‹stack›`
+# prints `<3> 1 2 [0 1 2]`.  The data stack is the machine stack (rsp); calls
+# keep their return addresses on the rbp stack, so the data stack looks the
+# same inside a word as at top level.  The base is recorded HERE, at prelude
+# init (the line below), as rsp at that point (⊷'s sp, the stack being empty):
+# cell 5180480; value i (0 = bottom) is at base-8-8i, and the depth is
+# (base - sp)/8 with sp from ⊷ on entry.  Inside a ‹catch› or € the stack
+# shows everything below too, as it is one stack.  Cells: 5180488 sp ·
+# 5180496 depth · 5180504 index (4C spares).  Not re-entrant (a list printer
+# never calls it back).
+:‹stack›\spr_5180488\store5180480\fetch5180488\fetch\rsub3>5180496\store
+ 60‹_1c_put›5180496\fetch N62‹_1c_put›0 5180504\store
+ 5180496\fetch0\eq[{32‹_1c_put›5180480\fetch5180504\fetch8\rmul\rsub8\rsub\fetch"T[1 48\shl\rsub Q 32767 48\shl]"T1\rsub[N 0]_
+  5180504\fetch1\radd"5180504\store5180496\fetch\rlt1\radd}]E;
+\spr_5180480\store
 
 # --- W3 hook installation (top-level init; must stay LAST) ---
 # M-VEC — implicit vectorization.  The bare + - * ⌈ ⌊ now compile to a

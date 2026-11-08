@@ -141,7 +141,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1146** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **4201** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **13834** bytes |
-| assertions in the run2 suite | **667** |
+| assertions in the run2 suite | **676** |
 | assertions in the selfcheck suite | **57** |
 | assertions in the gtools differential suite | **44** |
 | the capstone, in op bytes | **46** |
@@ -695,7 +695,7 @@ These are real, currently true, and none of them is a bug in the bootstrap. The
 fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
 
 - **Long names (M2) are bounded and global.** 1024 per program since W10-A
-  (the prelude's 72 count too, as of W11-4B), at most 60 bytes each, interned in a fixed
+  (the prelude's 73 count too, as of W11-4C), at most 60 bytes each, interned in a fixed
   compiler table; a 1025th is refused. Every name, one-byte or long, may be
   forward-referenced (W10-A). Locals take long names too (W9-4D), up to 16 per
   `⊡` word. And there are no scopes: a long name, like a letter, is

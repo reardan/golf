@@ -404,6 +404,15 @@ file and a summary, and exits non-zero on any failure (REFERENCE.md
 "Testing"). Unlike pytest there are no line numbers (the message names the
 check), no fixtures, and one process per file.
 
+**REPL — closed by W11-4C.** `tools/golfi` reads `.golfj` a line at a time
+and shows each line's output and then the data stack (`<2> 19 [0 1 4]`, from
+the new prelude word `‹stack›`, which any program can call). It replays: the
+whole session is recompiled and rerun for every line (about 0.11 s each), so
+definitions, variables, includes and the stack persist; a line that fails to
+compile or run is reported and dropped (REFERENCE.md "REPL"). Not a true
+incremental REPL — earlier lines' side effects rerun, silently, every time,
+and stdin is `/dev/null`.
+
 ---
 
 ## 3. Defects found while writing this

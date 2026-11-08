@@ -254,10 +254,10 @@ Prelude long names in use (all **shipped**):
 | `‹catch›`, and the helpers `‹_3a_raise›` `‹_3a_spill›` `‹_3a_div0›` `‹_3a_init›` (`‹_3a_pop›` is defined up by `‹throw›`, ahead of it) | W11-3A (**shipped**; `‹throw›` above is 3A's too) | `W11-3A catch` |
 | `‹cadd›` `‹csub›` `‹cmul›` | W11-3C (**shipped**) | `W11-3C checked arithmetic` |
 | `‹assert›` `‹expect›`, and the helpers `‹_4b_show›` `‹_4b_exit›` `‹_4b_fail›` | W11-4B (**shipped**) | `W11-4B test words` |
-| `‹stack›` | W11-4C (reserved) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
+| `‹stack›` | W11-4C (**shipped**) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 
 The table heading says shipped; the W11 rows marked *reserved* are allocated,
-not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C and 4B rows). **W11 helper names:** a W11 task that
+not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows). **W11 helper names:** a W11 task that
 needs a private helper word names it `‹_<id>…›` with its lowercase task id,
 e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
 `‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers
@@ -524,7 +524,7 @@ to the integrator. Decimals are what you type.
 | 3C | `0x4F0B80`–`0x4F0BBF` | 5180288 | shipped, private to the checked words: `0x4F0B80` 5180288 a · `0x4F0B88` 5180296 b · `0x4F0B90` 5180304 the wrapped result (short-lived; the words call nothing but `‹throw›`) | 5180312 … 5180344 |
 | 4A | `0x4F0BC0`–`0x4F0BFF` | 5180352 | — (compiler work; `m+192`, `0x43C000`) | 5180352 … 5180408 |
 | 4B | `0x4F0C00`–`0x4F0C3F` | 5180416 | shipped: `0x4F0C00` 5180416: failure count (`‹assert›`/`‹expect›`; BSS 0) · spares used: `0x4F0C08` 5180424 the flush hook (`‹flush›`) saved when the first failure installs `‹_4b_exit›` in the 1C hook cell 5179792 · 5180432 / 5180440 / 5180448 `‹expect›`'s actual, expected, msg (`‹assert›` uses 5180448 too) · 5180456 `‹_4b_exit›`'s rbp | 5180464 … 5180472 |
-| 4C | `0x4F0C40`–`0x4F0C7F` | 5180480 | `0x4F0C40` 5180480: the data-stack base `‹stack›` prints from, if it needs one | 5180488 … 5180536 |
+| 4C | `0x4F0C40`–`0x4F0C7F` | 5180480 | shipped: `0x4F0C40` 5180480: the data-stack base `‹stack›` prints from (rsp at the end of prelude init) · `0x4F0C48` 5180488 sp · `0x4F0C50` 5180496 depth · `0x4F0C58` 5180504 index (‹stack›'s loop state) | 5180512 … 5180536 |
 | 4D | `0x4F0C80`–`0x4F0CBF` | 5180544 | — | 5180544 … 5180600 (all eight) |
 | 4E | `0x4F0CC0`–`0x4F0CFF` | 5180608 | — | 5180608 … 5180664 (all eight) |
 
@@ -548,7 +548,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 72 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3 and W11-4B 5, helpers included) — 1024 since W10-A, so 952 are left
+prelude now uses 73 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5 and W11-4C 1, helpers included) — 1024 since W10-A, so 951 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 
