@@ -4357,6 +4357,16 @@ w13bb='12345♯Ṅ12345⊣Ṅ12345⊢Ṅ12345⊥Ṅ'
   && [ "$(printf '%s' '\pcnt\ctz\clz\lsb\dig' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "aaabacadbd" ] \
   && ok "oracle: the bit atoms compile the same; \\pcnt \\ctz \\clz \\lsb \\dig encode to AA AB AC AD BD" || no "W13-B bit atoms oracle"
 
+# === W14-A ===
+# ⌁ is the six-argument syscall.  mmap(0, 4096, PROT_READ|WRITE, MAP_PRIVATE|
+# ANONYMOUS, -1, 0) puts its flags in r10 and fd in r8, which ⎈ never sets, so
+# a page that comes back writable proves all six registers arrive.
+echo "W14-A: ⌁ six-argument syscall"
+w14a='1“hi“4+2 0 0 0 1⌁_0 4096 3 34 0 1- 0 9⌁"42\\⊛⊙Ṅ'
+[ "$(printf '%s' "$w14a" | gc)" = "hi42" ] && [ "$(printf '%s' "$w14a" | gref)" = "hi42" ] \
+  && [ "$(printf '%s' '\scall' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "ae" ] \
+  && ok "⌁: write(2) and an anonymous mmap(2) (flags in r10, fd in r8) through six registers; oracle agrees; \\scall encodes to AE" || no "W14-A ⌁ six-argument syscall"
+
 # === W13-C ===
 echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"
 # The code page: each mnemonic encodes to its byte, each glyph round-trips

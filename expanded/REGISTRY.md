@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **82** are now spent, leaving **29** free. It is partitioned as follows
+space; **83** are now spent, leaving **28** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -282,6 +282,7 @@ shipped one (`\pcnt`, not `\popc`: `\pop` is `⍅`), checked by
 | `0xAB` | `\ctz` | `⊣` | atom: `x -> n` trailing zero bits (`tzcnt`), 64 for 0, raw | W13-B | shipped |
 | `0xAC` | `\clz` | `⊢` | atom: `x -> n` leading zero bits (`lzcnt`), 64 for 0, raw | W13-B | shipped |
 | `0xAD` | `\lsb` | `⊥` | atom: `x -> x & -x`, the lowest set bit (0 for 0), raw | W13-B | shipped |
+| `0xAE` | `\scall` | `⌁` | atom: `a1 a2 a3 a4 a5 a6 num -> result`, the six-argument raw syscall (`⎈` sets only rdi rsi rdx). Spends one byte of the `0xA8`–`0xAF` headroom, as W11-3A did | W14-A | shipped |
 | `0xBD` | `\dig` | `ʘ` | compiler op, prefix: `ʘB` (B any byte) compiles exactly as the long name `‹_dgHH›`, HH = B in upper-case hex — a call, `′`, a chain link, a prefix's operand (`→ ← ⇒ ⇐ ⇡ ⇣ : ⊡ ⊚ ⊜`), a forward reference; undefined is `GOLF: undefined word ‹_dgHH›`. Cases in `self/golf2.golfj` (‹digraph›), the seed (spelled out in `G` and `t`) and `boot/golfref.py` | W13-B | shipped |
 
 W13-C's twelve one-byte prelude words (section `# ===== W13-C =====` of

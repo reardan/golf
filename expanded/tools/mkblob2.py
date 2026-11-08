@@ -241,6 +241,13 @@ ATOMS = [
                                                           "x -> leading zero bits (64 for 0)"),
     (0xAD, "lsb", "⊥", [0x48, 0x8B, 0x04, 0x24, 0x48, 0xF7, 0xD8, 0x48, 0x21, 0x04, 0x24],
                                                           "x -> x & -x, the lowest set bit (0 for 0)"),
+    # W14-A: the six-argument syscall.  ⎈ fills rdi rsi rdx only, so r10 r8 r9
+    # hold whatever the last op left there; wait4, mmap, clock_nanosleep and
+    # friends need all six.  a1 is the deepest operand, num the top, as for ⎈:
+    # pop rax, r9, r8, r10, rdx, rsi, rdi; syscall; push rax.  The kernel's
+    # return comes back unchanged (a failure is a negative errno).
+    (0xAE, "scall", "⌁", [0x58, 0x41, 0x59, 0x41, 0x58, 0x41, 0x5A, 0x5A, 0x5E, 0x5F, 0x0F, 0x05, 0x50],
+                                                          "a1 a2 a3 a4 a5 a6 num -> result: raw six-argument syscall"),
 ]
 
 # --- M-VEC (W3): polymorphic templates for the bare + - * ⌈ ⌊ ----------------
