@@ -1134,6 +1134,28 @@
 # === W11-3A catch ===
 
 # === W11-3C checked arithmetic ===
+# ‹cadd› ‹csub› ‹cmul›  a b -> a op b   Rust-style checked 64-bit signed ops:
+# the wrapped result when it is exact, else `“integer overflow“U‹throw›` (exit
+# 1, or caught by ‹catch› once W11-3A lands).  The bare + - * keep wrapping.
+# SCALAR ONLY: no shape test and no list dispatch — the raw atoms ﹢ ﹣ ﹡ ÷ ≺
+# do the work, so an integer whose top 16 bits are 0x7FFF (e.g. INT64_MAX) is
+# a number here, and a list's tagged address is just a 64-bit integer.
+# Overflow tests (r = the wrapped result):
+#   add: (a^r)&(b^r) < 0      both operands differ in sign from r
+#   sub: (a^b)&(a^r) < 0      operands differ in sign and r left a's sign
+#   mul: a≠0 and (r÷a ≠ b or (a = -1 and b = INT64_MIN)); a = 0 never
+#        overflows (and skips the divide).  The extra clause is needed because
+#        ÷ defines INT64_MIN÷-1 = INT64_MIN, which would pass the check.
+# Scratch: a 5180288, b 5180296, r 5180304 (W11-3C's REGISTRY §3.1 slot).
+# Leaves: nothing but the failure path calls a word, so the global cells are
+# safe inside a map or a ‹catch›.
+:‹cadd›5180296\store5180288\store5180288\fetch5180296\fetch\radd"5180304\store
+ 5180288\fetch5180304\fetch=5180296\fetch5180304\fetch=$0\slt1\radd[“integer overflow“U‹throw›];
+:‹csub›5180296\store5180288\store5180288\fetch5180296\fetch\rsub"5180304\store
+ 5180288\fetch5180296\fetch=5180288\fetch5180304\fetch=$0\slt1\radd[“integer overflow“U‹throw›];
+:‹cmul›5180296\store5180288\store5180288\fetch5180296\fetch\rmul"5180304\store
+ 5180288\fetch0\eq[5180304\fetch5180288\fetch\sdv5180296\fetch\eq
+  5180288\fetch1\neg\eq5180296\fetch1 63\shl\eq$~$[“integer overflow“U‹throw›]];
 
 # === W11-4B test words ===
 

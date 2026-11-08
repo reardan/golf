@@ -248,12 +248,12 @@ Prelude long names in use (all **shipped**):
 | `‹hash›` `‹dict›` `‹put›` `‹get›` `‹has›` `‹del›` `‹keys›` `‹vals›` `‹set›` `‹add›`, and the helpers `‹_2b_h8›` `‹_2b_zero›` `‹_2b_find›` `‹_2b_grow›` `‹_2b_col›` | W11-2B (**shipped**) | `W11-2B dict and set` |
 | `‹heapstats›`, and the helpers `‹_2d_chk›` `‹_2d_ix›` (defined up by `L`/`I`, ahead of their callers) | W11-2D (**shipped**) | `W11-2D use after free` |
 | `‹catch›` | W11-3A (reserved; `‹throw›` above is 3A's too) | `W11-3A catch` |
-| `‹cadd›` `‹csub›` `‹cmul›` | W11-3C (reserved) | `W11-3C checked arithmetic` |
+| `‹cadd›` `‹csub›` `‹cmul›` | W11-3C (**shipped**) | `W11-3C checked arithmetic` |
 | `‹assert›` `‹expect›` | W11-4B (reserved) | `W11-4B test words` |
 | `‹stack›` | W11-4C (reserved) — the plan's `‹.s›` is not spellable: `.` is not a long-name byte | `W11-4C REPL stack` |
 
 The table heading says shipped; the W11 rows marked *reserved* are allocated,
-not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D, 2B and 2D rows). **W11 helper names:** a W11 task that
+not live (shipped so far: `‹throw›` and the W11-1B, 1C, 1D, 2B, 2D and 3C rows). **W11 helper names:** a W11 task that
 needs a private helper word names it `‹_<id>…›` with its lowercase task id,
 e.g. `‹_1b_errno›`, `‹_2b_probe›`, `‹_3a_unwind›` — the prefixes `‹_1a` …
 `‹_4e` are reserved, one per task, and nothing else may use them. Keep helpers
@@ -516,7 +516,7 @@ to the integrator. Decimals are what you type.
 | 2D | `0x4F0AC0`–`0x4F0AFF` | 5180096 | shipped: `0x4F0AC0` 5180096: live blocks · `0x4F0AC8` 5180104: live bytes, each block `(cap+1)*8` (header included); `A` adds, `⌫` subtracts, `‹heapstats›` reads; BSS 0 | 5180112 … 5180152 |
 | 3A | `0x4F0B00`–`0x4F0B3F` | 5180160 | `0x4F0B00` 5180160: **catch handler chain head** (0 = no handler: `‹throw›` prints and exits) · `0x4F0B08` 5180168: the message in flight | 5180176 … 5180216 |
 | 3B | `0x4F0B40`–`0x4F0B7F` | 5180224 | — (compiler work; `m+176`) | 5180224 … 5180280 |
-| 3C | `0x4F0B80`–`0x4F0BBF` | 5180288 | — | 5180288 … 5180344 (all eight) |
+| 3C | `0x4F0B80`–`0x4F0BBF` | 5180288 | shipped, private to the checked words: `0x4F0B80` 5180288 a · `0x4F0B88` 5180296 b · `0x4F0B90` 5180304 the wrapped result (short-lived; the words call nothing but `‹throw›`) | 5180312 … 5180344 |
 | 4A | `0x4F0BC0`–`0x4F0BFF` | 5180352 | — (compiler work; `m+192`, `0x43C000`) | 5180352 … 5180408 |
 | 4B | `0x4F0C00`–`0x4F0C3F` | 5180416 | `0x4F0C00` 5180416: failure count (`‹assert›`/`‹expect›`) | 5180424 … 5180472 |
 | 4C | `0x4F0C40`–`0x4F0C7F` | 5180480 | `0x4F0C40` 5180480: the data-stack base `‹stack›` prints from, if it needs one | 5180488 … 5180536 |
