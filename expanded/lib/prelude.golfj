@@ -1210,7 +1210,7 @@
 # === W11-3C checked arithmetic ===
 # ‹cadd› ‹csub› ‹cmul›  a b -> a op b   Rust-style checked 64-bit signed ops:
 # the wrapped result when it is exact, else `“integer overflow“U‹throw›` (exit
-# 1, or caught by ‹catch› once W11-3A lands).  The bare + - * keep wrapping.
+# 1, or caught by ‹catch›, W11-3A).  The bare + - * keep wrapping.
 # SCALAR ONLY: no shape test and no list dispatch — the raw atoms ﹢ ﹣ ﹡ ÷ ≺
 # do the work, so an integer whose top 16 bits are 0x7FFF (e.g. INT64_MAX) is
 # a number here, and a list's tagged address is just a 64-bit integer.

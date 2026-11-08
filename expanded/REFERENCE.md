@@ -453,7 +453,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 64 in all after W11-3A, helpers included), so a program has 960 for itself.
+has 67 in all after W11 wave 3, helpers included), so a program has 957 for itself.
 
 ### Text
 
@@ -612,8 +612,8 @@ A word count over stdin:
 
 It prints `count word` once for each distinct word, in order of first
 appearance. Names that start with `‹_2b` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five), the prelude has 64 long
-names, which leaves 960 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words), the prelude has 67 long
+names, which leaves 957 for a program.
 
 ### Closures
 
@@ -648,8 +648,9 @@ exits 1, whichever of the two words asks.
 The bare `+ - *` (and `﹢ ﹣ ﹡`) wrap at 64 bits, silently. The checked words
 (W11-3C) are Rust's `checked_add` / `checked_sub` / `checked_mul` turned into
 errors: the exact signed result when it fits in 64 bits, otherwise
-`GOLF: integer overflow` through `‹throw›` (exit 1; once W11-3A's `‹catch›`
-lands, `′f‹catch›` catches it and returns the message, like any other error).
+`GOLF: integer overflow` through `‹throw›` (exit 1; `′f‹catch›` catches it and
+returns the message, like any other error: `:‹f›9223372036854775807 1‹cadd›;′‹f›‹catch›⊐`
+prints `integer overflow` and the program goes on).
 
 | word | stack effect | meaning |
 |---|---|---|
@@ -735,7 +736,7 @@ exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
 past ~138k plain calls dies of SIGSEGV on the guard page), any other signal,
 `.` (exit is exit), and compile errors (`GOLF: undefined word x at line 3` …,
 below), which exit 2. So does a program whose binary would pass 192 KB
-(196608 bytes, the prelude's ~40 KB included): `GOLF: program too large`, and no binary.
+(196608 bytes, the prelude's ~42 KB included): `GOLF: program too large`, and no binary.
 
 ### Compile errors
 

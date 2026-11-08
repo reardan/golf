@@ -2645,6 +2645,17 @@ done < <(sed -n '/^### Checked arithmetic$/,/^### /p' REFERENCE.md | sed -n '/^`
 [ -z "$w113cbad" ] && [ "$(sed -n '/^### Checked arithmetic$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 4 ] \
   && ok "REFERENCE.md's Checked arithmetic examples print what they say" || no "REFERENCE Checked arithmetic examples:$w113cbad"
 
+# === W11-3 integration ===
+echo "W11-3 integration: ‹catch› across 3A/3C (overflow caught) and 2A (catch in a program with ⎘)"
+[ "$(w110 ':‹f›9223372036854775807 1‹cadd›;′‹f›‹catch›⊐“|“⊃⊐5Ṅ')" = "rc=0 18 " ] && [ "$(cat "$TMP/w110.out")" = "integer overflow|5" ] \
+  && ok "′‹f›‹catch› around INT64_MAX 1 ‹cadd› returns 'integer overflow' and the program continues" \
+  || no "caught overflow: $(w110 ':‹f›9223372036854775807 1‹cadd›;′‹f›‹catch›⊐“|“⊃⊐5Ṅ')"
+printf '%s' ':‹boom›3⍳9⊇;:‹safe›′‹boom›‹catch›;' | w112enc > "$TMP/inc/w113i.g2"
+[ "$(printf '%s' '⎘“w113i.g2“′‹boom›‹catch›⊐7Ṅ‹safe›⊐8Ṅ' | w112a "$TMP/golf2")" = 0 ] \
+  && [ "$(w112run 2>&1; echo " $?")" = "index out of range7index out of range8 0" ] \
+  && ok "‹catch› works in a program that ⎘-includes a file (around an included word, and inside one)" \
+  || no "catch with include: $(cat "$TMP/inc/err") $(w112run 2>&1)"
+
 # === W11-4A ===
 
 # === W11-4B ===

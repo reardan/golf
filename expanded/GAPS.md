@@ -83,7 +83,7 @@ one type, and it wraps:
 **Overflow detection — CLOSED (W11-3C), opt-in.** The bare ops still wrap,
 but `‹cadd›` `‹csub›` `‹cmul›` (`a b -> a op b`, scalars only) are Rust's
 checked ops: `9223372036854775807 1‹cadd›` stops with `GOLF: integer
-overflow` (exit 1; catchable with `‹catch›` once W11-3A lands) instead of
+overflow` (exit 1, or caught by `‹catch›`, W11-3A, which returns the message) instead of
 printing `-9223372036854775808`. Still no bignums: overflow is an error, never
 a promotion (REFERENCE.md, "Checked arithmetic").
 
