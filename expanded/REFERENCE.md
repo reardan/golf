@@ -251,9 +251,11 @@ goes for the raw forms `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`, and for the comparisons `< » 
 ## 3. The v2 code page
 
 The v2 language uses one byte for each operation, from the full 0–255 range.
-`tools/mkblob2.py` (atoms) and `tools/codepage.py` (compiler ops and library
-words) are the source of truth. `REGISTRY.md` records which bytes are taken.
-The tables below are generated from those files. Do not edit them by hand.
+`data/ops.tsv` (every byte's glyph, mnemonic and meaning) and
+`data/templates.txt` (the atoms' machine code) are the source of truth, read by
+`tools/mkblob2.py` and `tools/codepage.py`. `REGISTRY.md` records which bytes
+are taken. The tables below are generated from those files. Do not edit them by
+hand.
 
 <!-- BEGIN GENERATED: python3 tools/codepage.py reference -->
 ### Atoms

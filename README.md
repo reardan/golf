@@ -84,11 +84,14 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
   `STARTUP` stashes the entry `rsp`, so a GOLF program can open a file and read
   its own `argv` instead of being a stdin-to-stdout filter forever.
 - **the repo's own build tools, written in GOLF** — `expanded/gtools/` holds
-  `encode`, `decode`, `mkblob`, `mkgolf2` and `hexcat`. They *shadow* the Python
-  originals rather than replacing them, and `test/gtools.sh` requires
+  `encode`, `decode`, `mkblob`, `mkgolf2`, `hexcat` and `tables`. They *shadow*
+  the Python originals rather than replacing them, and `test/gtools.sh` requires
   byte-identical output over the repo's real sources. `mkblob | encode |
   mkgolf2` regenerates the compiler's own source with no Python in the pipeline,
-  and that source still reaches the `golf2 == golf2'` fixpoint.
+  and that source still reaches the `golf2 == golf2'` fixpoint. The code page
+  and the template blob are source data (`expanded/data/ops.tsv`,
+  `expanded/data/templates.txt`), and `tables` builds every table output from
+  them — both compiler sources included — byte for byte with the Python.
 
 What the W11 round added, closing the gaps against Python and Rust that
 [`expanded/GAPS.md`](expanded/GAPS.md) lists (each word is in REFERENCE.md):

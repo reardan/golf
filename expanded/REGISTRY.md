@@ -13,7 +13,9 @@ is cheap and reversible; discovering a collision after `self/seed.golf` and
 
 `Status` is `reserved` (allocated here, not implemented yet — do not use the
 byte/glyph/mnemonic for anything else) or `shipped` (live in
-`tools/mkblob2.py` / `tools/codepage.py` / `lib/prelude.golfj`).
+`data/ops.tsv` / `data/templates.txt` / `lib/prelude.golfj`; since W14-L the
+code page and the template blob are source data, read by `tools/mkblob2.py`,
+`tools/codepage.py` and the GOLF tool `gtools/tables.golfj`).
 
 The op-byte, mnemonic and glyph invariants are **machine-checked**:
 
@@ -806,9 +808,21 @@ either; the decoders copy a literal's bytes back out raw.
 1. Add the row here first, `reserved`, with the wave that will ship it.
 2. Run `python3 tools/codepage.py check` — it must exit 0 *before* you write
    any code (the row is not yet in the tables) *and* after (the tables agree).
-3. Implement: `tools/mkblob2.py` (`ATOMS` template, for a real op) **and**
-   `boot/golfref.py` (oracle parity), a `tools/codepage.py` `LIB`/`COMPILER`
-   row, a `lib/prelude.golfj` definition for a word, and a `test/run2.sh` case.
+3. Implement. The code page and the template blob are **source data**
+   (W14-L): edit the data files, never a Python literal.
+   - `data/ops.tsv`: one TAB-separated row `table byte mnemonic glyph doc` —
+     table `A` for an atom, `C` for a compiler op, `L` for a library word (its
+     format is in the file's header). Its row order is the order of
+     `codepage.py table`, REFERENCE.md and the blob.
+   - `data/templates.txt`, for an atom: a `tpl BYTE` line with its machine
+     code, in the file's small notation (hex bytes, named fragments with
+     arguments, labels and `>label` jumps; documented at the top of the file).
+     A template that wraps another (a hook call, a check in front of an old
+     body) is an `override BYTE` built from the fragments there. An address the
+     template uses must also be the named constant in `tools/mkblob2.py`'s
+     memory map, which checks the data against it.
+   - then `boot/golfref.py` (oracle parity), a `lib/prelude.golfj` definition
+     for a word, and a `test/run2.sh` case.
    For a **compiler-logic** op (a prefix/token, not a template): write it in
    `self/golf2.golfj` — the compiler's source since M-SELF — *and* mirror it
    into `tools/mkblob2.py`'s v1-GOLF seed cases, or `test/selfcheck.sh`'s
@@ -819,5 +833,10 @@ either; the decoders copy a literal's bytes back out raw.
    top-level code and what it names, and drops definitions nothing names
    (W13-I; REFERENCE "Prelude pruning").
 4. Flip `reserved` → `shipped` in the same commit.
-5. Regenerate: `cd expanded && python3 tools/mkblob2.py`, then commit both
-   `self/seed.golf` and `self/golf2.golf` — they are generated, never edited.
+5. Regenerate: `cd expanded && python3 tools/mkblob2.py` (it rewrites
+   `self/seed.golf`, `self/golf2.golf`, `data/codepage.tsv` and
+   `data/blob.hex`) and `python3 tools/codepage.py reference --update
+   REFERENCE.md`, then commit them all — they are generated, never edited.
+   `test/selfcheck.sh` fails if any is stale, and `test/gtools.sh` builds every
+   one of them again with `gtools/tables.golfj` from the same data files and
+   requires the same bytes.
