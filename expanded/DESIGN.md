@@ -39,9 +39,14 @@ before them.
 ## Code page (Jelly-style)
 
 Like Jelly, the canonical program form is raw bytes, one byte per operation, and
-humans read/write them through a code page. `tools/mkblob2.py` is the single
-source of truth: each atom has a byte, a display glyph, an ASCII mnemonic, and a
-machine-code template. `tools/codepage.py` converts between forms:
+humans read/write them through a code page. Since W14-L the code page and the
+template blob are **source data**: `data/ops.tsv` gives every op byte (atom,
+compiler op, library word) its display glyph, ASCII mnemonic and doc, and
+`data/templates.txt` gives every atom its machine-code template, in a small
+notation of hex bytes, named fragments with arguments, labels and jumps.
+`tools/mkblob2.py` and `tools/codepage.py` read them, and so does the GOLF
+tool `gtools/tables.golfj`, which builds every output the Python does from
+them, byte for byte. `tools/codepage.py` converts between forms:
 
 ```
 codepage.py encode <prog.golfj >prog.gb   # \sqr / glyph / ASCII  ->  raw bytes
@@ -268,6 +273,16 @@ the golf2 fixpoint included. In order:
   That reason has since expired: the seed's source is `self/seed.golfv1` in this
   tree, and `build_seed()` is now the same strip-and-splice `mkgolf2` already
   does, so a GOLF port is available whenever it is worth the rung.
+  W14-L took that rung and the one under it: the tables stopped being Python
+  literals and became the hand-edited data files `data/ops.tsv` and
+  `data/templates.txt`, and `gtools/tables.golfj` builds from them everything
+  the Python builds — the blob and `data/blob.hex`, `data/codepage.tsv`,
+  `self/seed.golf`, `self/golf2.golf`, `codepage.py table`, the REFERENCE
+  block and `check`'s report — with the template notation expanded by a GOLF
+  implementation of its own. `test/gtools.sh` diffs every one against the
+  Python and walks the ladder from `v1c` on the two GOLF-written compiler
+  sources to the fixpoint. The derived `data/codepage.tsv` and `data/blob.hex`
+  stay checked in for the older tools; `tools/mktables.py` writes them.
 - **M-DIAG — the two silent failures got names.** GOLF reported nothing, ever;
   these are the first two diagnostics in the language, and both were audited into
   existence by [`GAPS.md`](GAPS.md) rather than hit in normal use.
@@ -664,14 +679,16 @@ allocations they need are in [`REGISTRY.md`](REGISTRY.md) §1.3, §2 and §3.1.
   ELF header) and the `v1c` binary `../SEEDS` pins are ground truth, and the
   tree they came from is frozen on the `minimal` branch.
 - `self/golf2.golf` and `self/seed.golf` are **generated** — never hand-edited.
-  Run `python3 tools/mkblob2.py` from `expanded/` and commit the result;
+  Run `python3 tools/mkblob2.py` from `expanded/` and commit the result (it
+  also rewrites the derived `data/codepage.tsv` and `data/blob.hex`);
   `test/selfcheck.sh` fails if what is committed is not what it emits.
 - A change to the compiler's logic goes in `self/golf2.golfj` **and** in
   `tools/mkblob2.py`'s v1-GOLF seed, or `test/selfcheck.sh`'s byte-for-byte
   `seed == golf2` comparison catches the drift.
-- Every new "dumb" op is added as a template in `tools/mkblob2.py` (and mirrored
-  in `boot/golfref.py`), so the reference oracle and the self-hosted compiler
-  always agree.
+- Every new "dumb" op is an `A` row in `data/ops.tsv` and a `tpl` in
+  `data/templates.txt` (and mirrored in `boot/golfref.py`, which reads the same
+  tables through `mkblob2`), so the reference oracle and the self-hosted
+  compiler always agree.
 - Every byte, glyph, mnemonic, prelude letter and fixed address is allocated in
   [`REGISTRY.md`](REGISTRY.md) **before** it is implemented, and
   `python3 tools/codepage.py check` enforces the namespace invariants.
@@ -933,7 +950,9 @@ unbuilt, and three defects this list does not yet cover — see
 | `self/golf2.golfj` | **the v2 compiler's source** — its logic, written in v2 GOLF (edit this) |
 | `self/golf2.golf` | GENERATED: `golf2.golfj` code-page encoded + the template blob |
 | `self/seed.golf` | GENERATED: the same compiler in v1 GOLF — the bootstrap rung only |
-| `tools/mkblob2.py` | builds both `self/*.golf`; source of truth for the atom table + the v1 seed |
+| `data/ops.tsv` | SOURCE DATA: the code page — every op byte's table, mnemonic, glyph and doc (edit this) |
+| `data/templates.txt` | SOURCE DATA: the template blob, in its notation (edit this) |
+| `tools/mkblob2.py` | reads both data files (ATOMS, OVERRIDES, ...), holds the memory map, builds both `self/*.golf` |
 | `REFERENCE.md` | **the language reference**: v1 core ops, the generated v2 code-page tables, a checked tutorial |
 | `tools/codepage.py` | code page: encode/decode glyph/mnemonic ⇄ raw bytes; `table` / `reference` (REFERENCE.md's generated tables) |
 | `tools/golfc` | compile a program (prepends the prelude; `-j` to encode glyph source) |
@@ -944,9 +963,9 @@ unbuilt, and three defects this list does not yet cover — see
 | `examples/` | v2 programs (`capstone.golfj`, `legacy_capstone.golfj`, `bigheap.golfj`, …) |
 | `test/run2.sh` | bootstrap ladder, language tests, oracle differentials, doc assertions |
 | `test/selfcheck.sh` | M-SELF: `seed` and `golf2` are the same compiler; the generated files are fresh |
-| `gtools/` | M-TOOL: the build tools written in GOLF — `hexcat` `encode` `decode` `mkblob` `mkgolf2`, plus the `build` driver |
+| `gtools/` | M-TOOL: the build tools written in GOLF — `hexcat` `encode` `decode` `mkblob` `mkgolf2` `tables`, plus the `build` driver |
 | `lib/t*.golfj` | the tool libraries (lowercase letters): `tio` files/streams/argv, `ttext` text, `tutf` the code page |
-| `data/` | GENERATED tables the GOLF tools read: `codepage.tsv`, `blob.hex` (`tools/mktables.py`) |
+| `data/` | the source data above, the frozen `v1.hex`, and two GENERATED tables the older GOLF tools read: `codepage.tsv`, `blob.hex` (`tools/mktables.py`) |
 | `test/gtools.sh` | M-TOOL: every GOLF tool matches its Python counterpart byte for byte |
 | `REGISTRY.md` | the allocation ledger: op bytes, mnemonics, glyphs, prelude letters, memory |
 | `NEXT_STEPS.md` | the forward queue |
