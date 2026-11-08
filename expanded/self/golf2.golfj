@@ -1320,7 +1320,7 @@ w
 # Locals (M-FRAME, sized per definition since M-FRAME2)
 # ---------------------------------------------------------------------------
 #
-# A ⊡ word's locals are NAMES — `a`…`h` or any ‹long name› — and each gets the
+# A ⊡ word's locals are NAMES — `a`…`z` or any ‹long name› — and each gets the
 # next slot at its first appearance in the definition, so a word that names k
 # locals has a frame of exactly k cells: slot i at [rbp+8*i], the return address
 # at [rbp+8*k].  The slot is known the moment the name is read, so ⇒/⇐ stay
@@ -1345,10 +1345,10 @@ V
 ←b
 256<
 1﹢
-[           # a one-byte local is a..h, as it always was.  ⇒z or ⇒A is
-←b          #   refused rather than quietly given a slot: a one-letter local
-97﹣         #   is still a deliberate, small namespace
-8<
+[           # a one-byte local is a lowercase letter, a..z (W12-Z3; a..h
+←b          #   before).  ⇒A or ⇒{ is refused rather than quietly given a
+97﹣         #   slot: a one-letter local is still a small namespace
+26<
 [
 “GOLF: local out of range “
 ‹badlocal›
@@ -1359,6 +1359,13 @@ V
 ←b          #   name - 'a', exactly as M-FRAME compiled it
 256<
 [           #   and a long name has nowhere to go at all
+“GOLF: local out of range “
+‹badlocal›
+]
+←b          #   nor has i..z: the fixed slots stop at h
+97﹣
+8<
+[
 “GOLF: local out of range “
 ‹badlocal›
 ]

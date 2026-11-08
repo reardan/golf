@@ -1133,9 +1133,11 @@ echo "Per-call locals (M-FRAME): ⊡name … ; owns a frame, ⇒x / ⇐x reach i
   && ok "a plain : word is unchanged — 50,000 deep still works" || no "opt-in regression"
 # Unchecked, ⇒z is displacement 200 — a NEGATIVE disp8 (-56), landing in the
 # frame of a word not yet called — and ⇒A wraps to 0 and silently aliases slot a.
-[ "$(printf '%s' '\dlocf\lsetz;1fN' | und)" = "2" ] \
+# Since W12-Z3 a ⊡ word takes ⇒z (its table gives it a slot), so the fixed-slot
+# case is a : word's.
+[ "$(printf '%s' ':f\lsetz;1fN' | und)" = "2" ] \
   && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range z at line 1" ] \
-  && ok "a slot name past h is refused, not silently wrapped" || no "lset range"
+  && ok "a slot name past h is refused outside ⊡, not silently wrapped" || no "lset range"
 [ "$(printf '%s' '\dlocf\lgetA;1fN' | und)" = "2" ] \
   && [ "$(cat "$TMP/u.err")" = "GOLF: local out of range A at line 1" ] \
   && ok "... and one before a, which would have aliased slot a" || no "lget range"
@@ -2516,7 +2518,7 @@ printf '%s' '⎘“d9.g2“' | w112enc > "$TMP/inc/d8.g2"     # W11-2A's chain, 
   && ok "the includer's count resumes after a (nested) include; a 9th level is reported inside d8.g2" || no "count across includes: $(cat "$TMP/inc/err")"
 w113bbad=""
 for w113bs in '1\n⎘“w113cube.g2“\n3‹cube›Ṅ\n' '1\n⎘“sq.g2“\n⎘“w113loc.g2“' '1\n⎘“w113cube.g2“\n\n:‹oops›;\n\n\n‹z›' \
-              '1\n⎘“sq.g2“\n\n⎘“nope.g2“' '\n\n‹a b›' '\n‹abc' '\n⊡f⇒a⇒z;' '1Ṅ\n\n5qṄ\n' '1\n2\n\f3\nq' '⎘“d1.g2“'; do
+              '1\n⎘“sq.g2“\n\n⎘“nope.g2“' '\n\n‹a b›' '\n‹abc' '\n:f⇒a⇒z;' '1Ṅ\n\n5qṄ\n' '1\n2\n\f3\nq' '⎘“d1.g2“'; do
   w113bg=$(printf "$w113bs" | w113b "$TMP/golf2")
   w113br=$(printf "$w113bs" | w113b "python3 $EXP/boot/golfref.py")
   [ "$w113bg" = "$w113br" ] || w113bbad="$w113bbad [$w113bs: $w113bg | $w113br]"
@@ -3056,6 +3058,46 @@ done < <(sed -n '/^### Threading state through/,/^### /p' REFERENCE.md | sed -n 
   || no "REFERENCE threading examples:$w120bad"
 w120reg=$(sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -cE '\| (reserved|shipped) \|$')
 [ "$w120reg" -ge 13 ] && ok "REGISTRY.md §1.4 reserves the W12 bytes ($w120reg rows)" || no "W12 byte reservations: $w120reg"
+
+# === W12-Z3 ===
+echo "W12-Z3: one-letter locals a–z inside a ⊡ word (M-FRAME2's slot table, still ≤ 16)"
+# Inside ⊡ any lowercase letter takes the next slot at its first appearance,
+# exactly as a..h and ‹long› names did; outside ⊡ only M-FRAME's fixed a..h
+# slots exist, so ⇒q there is refused as before.
+w12z3e(){ cat "$TMP/pre.gb" <(python3 tools/codepage.py encode) > "$TMP/z3.src"
+          "$TMP/golf2" < "$TMP/z3.src" > /dev/null 2>"$TMP/z3.err"; w12z3g=$?
+          python3 boot/golfref.py < "$TMP/z3.src" > /dev/null 2>"$TMP/z3.rerr"; w12z3r=$?
+          echo "$w12z3g $w12z3r $(cat "$TMP/z3.err") | $(cat "$TMP/z3.rerr")"; }
+w12z3p='⊡‹t›⇒r⇐r[0^]⇐r⇒s⇐s2*⇒a⇐a⇒‹acc›⇐r1-‹t›⇒z⇐z⇐‹acc›+⇐s-;20000‹t›Ṅ'
+[ "$(printf '%s' "$w12z3p" | gc)" = "200010000" ] && [ "$(printf '%s' "$w12z3p" | gref)" = "200010000" ] \
+  && ok "⇒r ⇒s ⇒z mixed with a and ‹acc›, 20,000 deep: each call keeps its own (golf2 and the oracle)" \
+  || no "i–z locals in recursion: $(printf '%s' "$w12z3p" | gc)"
+w94dbin "${w12z3p%%;*};"
+[ "$(w94dhas 4881ed28000000)" = 1 ] && [ "$(w94dhas 4881c528000000)" = 2 ] \
+  && ok "five locals r s a ‹acc› z: sub rbp,40 once, add rbp,40 at the ^ and at ;" \
+  || no "i–z frame size: sub×$(w94dhas 4881ed28000000) add×$(w94dhas 4881c528000000)"
+w94dbin '⊡f⇒z⇒a⇐a⇐z-;'
+[ "$(w94dhas 5848894500)" = 1 ] && [ "$(w94dhas 5848894508)" = 1 ] && [ "$(printf '%s' '⊡f⇒z⇒a⇐a⇐z-;5 3fṄ' | gc)" = "2" ] \
+  && ok "slots go by first appearance, not by letter: ⇒z is [rbp+0], ⇒a [rbp+8]" || no "z/a slot order"
+w12z3k='⇒k⇒l⇒m⇒n⇒o⇒p⇒q⇒r⇒s⇒t⇒u⇒v⇒w⇒x⇒y⇒z'
+[ "$(printf '%s' "⊡f$w12z3k⇐k⇐z-⇐q+;1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16fṄ" | gc)" = "25" ] \
+  && ok "all 16 slots as one-letter locals k…z (⇐k⇐z-⇐q+ = 16-1+10)" || no "16 one-letter locals"
+[ "$(printf '%s' "⊡f$w12z3k⇐k⇒j;" | w12z3e)" = "2 2 GOLF: too many locals j at line 1 | GOLF: too many locals j at line 1" ] \
+  && ok "the 17th distinct one-letter name is GOLF: too many locals j, exit 2 (both)" || no "17th one-letter local: $(printf '%s' "⊡f$w12z3k⇐k⇒j;" | w12z3e)"
+[ "$(printf '%s' "⊡f⇒a⇒b⇒c⇒d⇒e⇒f⇒g⇒h⇒i⇒‹v1›⇒‹v2›⇒‹v3›⇒‹v4›⇒‹v5›⇒‹v6›⇒‹v7›⇒‹v8›;" | w12z3e)" = "2 2 GOLF: too many locals ‹v8› at line 1 | GOLF: too many locals ‹v8› at line 1" ] \
+  && ok "the cap counts one-letter and long names together: a…i + 7 long = 16, the 8th long is the 17th" || no "mixed 17th local"
+[ "$(printf '%s' ':g⇒q;' | w12z3e)" = "2 2 GOLF: local out of range q at line 1 | GOLF: local out of range q at line 1" ] \
+  && [ "$(printf '%s' ':g1⇐z;' | w12z3e)" = "2 2 GOLF: local out of range z at line 1 | GOLF: local out of range z at line 1" ] \
+  && [ "$(printf '%s' '5⇒i' | w12z3e)" = "2 2 GOLF: local out of range i at line 1 | GOLF: local out of range i at line 1" ] \
+  && ok "outside a ⊡ word ⇒q / ⇐z / top-level ⇒i are still local out of range (both)" || no "i–z outside ⊡: $(printf '%s' ':g⇒q;' | w12z3e)"
+[ "$(printf '%s' '⊡f⇒A;' | w12z3e)" = "2 2 GOLF: local out of range A at line 1 | GOLF: local out of range A at line 1" ] \
+  && [ "$(printf '%s' '⊡f⇒{;' | w12z3e)" = "2 2 GOLF: local out of range { at line 1 | GOLF: local out of range { at line 1" ] \
+  && ok "inside ⊡ a one-letter local must still be lowercase: ⇒A and ⇒{ (just past z) are refused" || no "non-lowercase local in ⊡"
+w94dbin '⊡f⇒h⇒a⇐h⇐a-;'
+[ "$(w94dhas 5848894500)" = 1 ] && [ "$(w94dhas 5848894508)" = 1 ] && [ "$(w94dhas 4881ed10000000)" = 1 ] \
+  && [ "$(printf '%s' '⊡f⇒h⇒a⇐h⇐a-;5 3fṄ' | gc)" = "-2" ] \
+  && [ "$(printf '%s' ':g⇒a⇒h;' | w12z3e)" = "0 0  | " ] \
+  && ok "a–h unchanged: same slots and frame inside ⊡, and outside ⊡ ⇒a…⇒h still compile" || no "a–h behaviour"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
