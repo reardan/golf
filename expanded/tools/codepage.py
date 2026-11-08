@@ -77,6 +77,10 @@ LIB = [
     (0xCF, "memb", "∊", "member: list x -> 0 if x is an element, else 1"),
     # --- W11-2C LIB row: closures by value (prelude anchor W11-2C bind) ---
     (0xD0, "bind", "⊸", "bind: x ′f -> ′g; g pushes the captured x, then calls f"),
+    # --- W12-Z4 LIB rows: store-at, vector push/pop (prelude section W12-Z4) ---
+    (0xD5, "putat", "⍈", "store-at: list i v -> list; list[i] = v in place (bounds-checked)"),
+    (0xD6, "push", "⍆", "push: v x -> v'; append x (vector or deque back); use the returned v'"),
+    (0xD7, "pop",  "⍅", "pop: v -> v x; remove the last element (empty: pop from empty)"),
 ]
 
 # Compiler-level ops that are not atoms (handled specially in golf2's tokenizer).

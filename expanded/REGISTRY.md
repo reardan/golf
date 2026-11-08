@@ -44,7 +44,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **41** are now spent, leaving **70** free. It is partitioned as follows
+space; **44** are now spent, leaving **67** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -228,9 +228,9 @@ no glyph is in use.
 | `0xD2` | `\reduce` | `⍁` | prelude: `l ′f ⍁ -> x` fold with no seed; empty list throws `empty reduce` | A2 | reserved |
 | `0xD3` | `\eachi` | `⍸` | prelude: `l ′f ⍸ -> l'` map, `f` gets `x i` | A3 | reserved |
 | `0xD4` | `\ksort` | `⍒` | prelude: `l ′k ⍒ -> l'` stable sort by key `k x`, ascending | A4 | reserved |
-| `0xD5` | `\put1` | `⍈` | prelude: `l i v ⍈ -> l` store into a list in place (bounds- and free-checked) | Z4 | reserved |
-| `0xD6` | `\push` | `⍆` | prelude: `v x ⍆ -> v` vector push (capacity doubles) | Z4 | reserved |
-| `0xD7` | `\pop` | `⍅` | prelude: `v ⍅ -> v x` vector pop (empty throws `pop from empty`) | Z4 | reserved |
+| `0xD5` | `\putat` | `⍈` | prelude: `l i v ⍈ -> l` store into a list in place (bounds- and free-checked). Planned as `\put1`; renamed because `codepage.encode` reads a mnemonic as letters only, so `\put1` could not be typed (W12-Z4) | Z4 | shipped |
+| `0xD6` | `\push` | `⍆` | prelude: `v x ⍆ -> v` vector push (capacity doubles; returns the possibly-new v); on a `‹deque›`, its back | Z4 | shipped |
+| `0xD7` | `\pop` | `⍅` | prelude: `v ⍅ -> v x` vector pop (empty throws `pop from empty`); on a `‹deque›`, its back | Z4 | shipped |
 | `0xD8` | `\win` | `⊟` | prelude: `l n ′f ⊟ -> l'` reduce of every length-`n` window (monotonic deque for `⌈`/`⌊`) | A5 | reserved |
 | `0xD9` | `\fix` | `⍣` | prelude: `x ′f ⍣ -> y` apply `f` until the result `≣` the previous one | A6 | reserved |
 | `0xDA` | `\next` | `⍞` | prelude: `s ⍞ -> s x 0 \| s 1` pull the next value of a stream | A8 | reserved |
@@ -528,6 +528,10 @@ Notes:
   every list word masks it back off (`(v<<16)>>16`, idempotent, so a raw `A`
   block is accepted too). The tag is a property of the *value*, not an address:
   it needs no cell, and nothing in this table records it.
+  The other top-16 values in use: `0x7FFE`, `⍕`'s internal nested-list marker
+  (W9-3B), and `0x7FFD`, a **deque** (W12-Z4: `‹deque›`'s block, which is not a
+  list, so `T` calls it an int while the entry mask still strips it for `≢`
+  and `⌫`).
 - The M-VEC hook table is at stride 8 (not 4) so it stayed correct when M4
   widened list cells to 64 bits — which W4A has now done, with no change to the
   templates, the hook cells or the seed.
@@ -579,7 +583,7 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | P2 dicts | `0x4F0D40`–`0x4F0D7F` | 5180736 | shipped, all eight: 5180736 d (masked) · 5180744 k · 5180752 D (the key's stored hash) · 5180760 the probe's slot (shift+2 for a moment) · 5180768 the value / default · 5180776 index table · 5180784 cap-1 (5180776 / 5180784 are also `‹_12p2_huge›`'s temps) · 5180792 the multiplier 0x9E3779B97F4A7C15, stored by `‹dict›` |
 | P3 list loops | `0x4F0D80`–`0x4F0DBF` | 5180800 | 5180800 … 5180856 |
 | O1 atoms on lists | `0x4F0DC0`–`0x4F0DFF` | 5180864 | 5180864 … 5180920 (W12-O1 uses one: 5180864, the not-a-number hook cell `mkblob2.NAN_HOOK` that the prelude fills with `‹_12o1_nan›`; 5180872 … 5180920 spare) |
-| Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180984 |
+| Z4 store-at / vector / deque / O3 heap | `0x4F0E00`–`0x4F0E3F` | 5180928 | 5180928 … 5180960 used (shipped, W12-Z4): block · value · index/new block · count · deque head for `⍈ ⍆ ⍅ ‹first› ‹last› ‹pushf› ‹popf›`, see the prelude's W12-Z4 section; 5180968 … 5180984 free (O3's heap may take them) |
 | A2 scan / reduce | `0x4F0E40`–`0x4F0E7F` | 5180992 | 5180992 … 5181048 |
 | A3 each-indexed | `0x4F0E80`–`0x4F0EBF` | 5181056 | 5181056 … 5181112 |
 | A4 sort-by / grade | `0x4F0EC0`–`0x4F0EFF` | 5181120 | 5181120 … 5181176 |
@@ -599,7 +603,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 86 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8 and W12-P2 5, helpers included) — 1024 since W10-A, so 938 are left
+prelude now uses 100 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5 and W12-Z4 12, helpers included) — 1024 since W10-A, so 924 are left
 for a program (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

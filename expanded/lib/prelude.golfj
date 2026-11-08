@@ -1491,3 +1491,107 @@
 :‹_12o1_nan›"T["16\shl16>5177396@\rsub5177400@\rlt1\radd[“not a number“U‹throw›]];
 :‹_12o1_init›\ref‹_12o1_nan›5180864\store;
 ‹_12o1_init›
+
+# === W12-Z4 store-at, vector, deque ===
+# ⍈ (0xD5)  l i v -> l   l[i] = v IN PLACE, and l comes back unchanged (the
+# same tagged value).  The twin of ⊇: the same one unsigned compare, so i >= ≢l
+# and every negative i (no counting from the end, as with ⊇) is `index out of
+# range` through ‹throw›.  As in ⊇, a negative length is clamped to 0 before
+# the compare, so a freed list (whose length cell holds ⌫'s poison) always
+# fails it, and the cold path asks ‹_2d_chk› first: `use after free`.  Every
+# word here checks for a freed block that way, off the hot path: a pop or a
+# peek tests n > 0 (signed), a push clamps a negative capacity (⌫ also
+# writes -cap into the header) to 0, so it fails the room test and the
+# growth path's ‹_2d_chk› throws.
+#
+# A VECTOR IS A LIST.  A's header cell (at payload-8) already holds the
+# block's capacity in cells, the request rounded up to its size class, so
+# every list has room for cap-1 elements and most have spare: 5⍳ asked for 6
+# cells and got 8.  ⍆ (0xD6)  v x -> v'  writes x at element len and bumps the
+# length cell when len+1 < cap; otherwise ‹_12z4_vgrow› gets a block of 2*cap
+# cells (A's classes are powers of two times 4, so the doubled request is an
+# exact class and nothing is wasted; past 256 cells class 7 gives exactly what
+# is asked), copies the length cell and the elements, gives the OLD block to
+# ⌫ and pushes into the new one.  So the result is the same v while there is
+# room and a new v after a growth, and the caller must keep the returned
+# value, as with Go's append: `←v x⍆→v`.  The old value is then a freed list
+# (`use after free` on its next list word, until A reuses the block).  The
+# length cell stays first, so every list word reads a vector; ⌫ of the
+# current v frees the current block, and ‹heapstats› stays exact (a growth is
+# one A and one ⌫: the block count is unchanged, the bytes grow).  ⍆ appends
+# in place, so any other copy of v sees it (a list from ⍳ € … included).
+# Amortized O(1): a growth copies len cells and doubles the room.
+# ⍅ (0xD7)  v -> v x   x is the last element, removed (the length cell drops;
+# the block never shrinks or moves, so v is unchanged).  Empty: `pop from
+# empty`.  ‹last› / ‹first›  v -> x  peek; empty is ⊇'s `index out of range`.
+# ‹vec› -> v  an empty vector (A(1): capacity 3, like 0⍳); ‹vecn› n -> v an
+# empty one with room for n before its first growth.
+#
+# A DEQUE IS NOT A LIST.  It is one A block [n, h, ring of R = cap-2 slots]
+# tagged 0x7FFD<<48 (the list tag is 0x7FFF, Q's nested marker 0x7FFE), so T
+# calls it an int and the list words leave it alone, but every list word's
+# entry mask strips any top 16 bits: ≢ reads n, the element count, and ⌫
+# frees it.  Element k (0 = front) is in slot (h+k) mod R, at payload + 16 +
+# 8*slot.  The mod is one compare and subtract, since h+k < 2R, written out
+# in place wherever it is needed (a call cost ~15% on push/pop):
+#     P j -> P j'    &8\rsub\fetch2\rsub&&\rlt[\rsub0]_     (R = cap-2)
+# ⍆ ⍅ ‹first› ‹last› test the tag (`48>32765\rsub`, zero for a deque) and take
+# the ring path for a deque; ‹pushf› / ‹popf› take only a deque (`not a
+# deque` otherwise).  A full ring doubles (‹_12z4_dgrow›: the elements move to
+# slots 0..n-1 of a 2*cap block, h = 0, the old block goes to ⌫), so both
+# ends are amortized O(1) and ⍆ / ‹pushf› return the possibly-new d.
+#
+# None of these call user code, so they need no X/Y frame: the hot paths work
+# on the data stack (with `&`, never the swap byte), what does not fit there
+# lives in the Z4 runtime slot (REGISTRY §3.2), and A / ⌫ (s5 only) are
+# leaves:
+#   5180928 c0 the block (raw payload address)
+#   5180936 c1 the value being stored, pushed or popped
+#   5180944 c2 ⍈'s index · the new block in a growth
+#   5180952 c3 n (⍆'s growth: len+1; ⍅ on a deque: the new count)
+#   5180960 c4 a deque's head h
+#   5180968 c5 … 5180984 c7 free
+:\putat 5180936\store5180944\store"16\shl16>"5180928\store\fetch"0\slt~$5180944\fetch\gt[
+ 5180928\fetch‹_2d_chk›_“index out of range“U‹throw›]
+ 5180936\fetch5180928\fetch5180944\fetch8\rmul\radd8\radd\store;
+# ‹_12z4_empty› / ‹_12z4_oor›  P n ->   the cold path of a pop / a peek whose
+# count n is not > 0 (signed): a freed block's poison is negative, so these
+# first ask ‹_2d_chk› (`use after free`), then throw `pop from empty` /
+# `index out of range`.  The hot paths therefore only mask the tag and test
+# n, as ⊇ does, instead of calling ‹_2d_chk› every time.
+:‹_12z4_empty›_‹_2d_chk›_“pop from empty“U‹throw›;
+:‹_12z4_oor›_‹_2d_chk›_“index out of range“U‹throw›;
+# ‹_12z4_vgrow›  P n1 -> P' n1   n1 = len+1: copy cells 0..len of P into a
+# block of twice P's capacity, ⌫ P.
+:‹_12z4_vgrow›&‹_2d_chk›_5180952\store5180928\store5180928\fetch8\rsub\fetch2\rmul A5180944\store
+ 0{"8\rmul"5180928\fetch\radd\fetch&5180944\fetch\radd\store_1\radd"5180952\fetch\rlt1\radd}_
+ 5180928\fetch\free5180944\fetch5180952\fetch;
+# ‹_12z4_dgrow›  d -> d'   d's ring is full: unroll it into slots 0..n-1 of a
+# block of twice the capacity (h = 0) and ⌫ the old block.
+:‹_12z4_dgrow›‹_2d_chk›"5180928\store"\fetch5180952\store8\radd\fetch5180960\store
+ 5180928\fetch8\rsub\fetch2\rmul A5180944\store
+ 0{5180928\fetch&5180960\fetch\radd&8\rsub\fetch2\rsub&&\rlt[\rsub0]_8\rmul\radd16\radd\fetch&8\rmul5180944\fetch\radd16\radd\store1\radd"5180952\fetch\rlt1\radd}_
+ 5180952\fetch5180944\fetch\store0 5180944\fetch8\radd\store
+ 5180928\fetch\free5180944\fetch32765 48\shl|;
+# ‹_12z4_dfull›  d -> d P   ⍆ and ‹pushf›'s common start: grow d when n == R.
+:‹_12z4_dfull›"16\shl16>"\fetch&8\rsub\fetch2\rsub"0\slt~$\rlt[_‹_12z4_dgrow›"16\shl16>];
+:\push5180936\store"48>32765\rsub[‹_12z4_dfull›"\fetch&8\radd\fetch\radd&8\rsub\fetch2\rsub&&\rlt[\rsub0]_
+ 8\rmul&\radd16\radd5180936\fetch&\store_"\fetch1\radd&\store_^]
+ 16\shl16>"\fetch1\radd&8\rsub\fetch"0\slt~$&\gt[‹_12z4_vgrow›]
+ 8\rmul&\radd5180936\fetch&\store&\rsub3>&\store32767 48\shl|;
+:\pop"48>32765\rsub["16\shl16>"\fetch"0\sgt[‹_12z4_empty›]1\rsub"5180952\store&\store
+ "8\radd\fetch5180952\fetch\radd&8\rsub\fetch2\rsub&&\rlt[\rsub0]_8\rmul\radd16\radd\fetch^]
+ "16\shl16>"\fetch"0\sgt[‹_12z4_empty›]1\rsub"5180952\store&\store5180952\fetch1\radd8\rmul\radd\fetch;
+:‹first›"48>32765\rsub[16\shl16>"\fetch"0\sgt[‹_12z4_oor›]_"8\radd\fetch8\rmul\radd16\radd\fetch^]
+ 16\shl16>"\fetch"0\sgt[‹_12z4_oor›]_8\radd\fetch;
+:‹last›"48>32765\rsub[16\shl16>"\fetch"0\sgt[‹_12z4_oor›]&8\radd\fetch\radd1\rsub&8\rsub\fetch2\rsub&&\rlt[\rsub0]_8\rmul\radd16\radd\fetch^]
+ 16\shl16>"\fetch"0\sgt[‹_12z4_oor›]8\rmul\radd\fetch;
+:‹vec›1 A0&\store32767 48\shl|;
+:‹vecn›"0\slt1\radd[_0]1\radd A0&\store32767 48\shl|;
+:‹deque›8 A0&\store0&8\radd\store32765 48\shl|;
+:‹pushf›5180936\store"48>32765\eq[“not a deque“U‹throw›]‹_12z4_dfull›
+ "8\radd\fetch"[&8\rsub\fetch2\rsub\radd]1\rsub"5180960\store&8\radd\store
+ 5180936\fetch&5180960\fetch8\rmul\radd16\radd\store"\fetch1\radd&\store_;
+:‹popf›"48>32765\eq[“not a deque“U‹throw›]"16\shl16>"\fetch"0\sgt[‹_12z4_empty›]1\rsub&\store
+ "8\radd\fetch8\rmul&\radd16\radd\fetch5180936\store
+ "8\radd\fetch1\radd&8\rsub\fetch2\rsub&&\rlt[\rsub0]_&8\radd\store_5180936\fetch;

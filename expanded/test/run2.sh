@@ -3309,6 +3309,170 @@ done < <(sed -n '/^### Dicts and sets$/,/^### /p' REFERENCE.md | sed -n '/^```$/
 [ -z "$w12p2bad" ] && [ "$w12p2n" -ge 6 ] \
   && ok "REFERENCE.md's ‹getor› ‹bump› ‹upd› examples ($w12p2n) print what they say, golf2 and oracle" || no "REFERENCE W12-P2 examples:$w12p2bad"
 
+# === W12-Z4 ===
+echo "W12-Z4: ⍈ store-at, the growable vector (⍆ ⍅ ‹vec› ‹last› ‹first›) and the deque (‹deque› ‹pushf› ‹popf›)"
+# ⍈ is ⊇'s twin; a vector is a list whose spare capacity (A's header cell)
+# ⍆ fills before it doubles into a new block; a deque is a ring in one block
+# tagged 0x7FFD.  w110 (W11-0, above) prints rc, the stdout byte count and stderr.
+[ "$(printf '%s' '5⍳2 9⍈⍕␤5⍳"2 9⍈≡Ṅ␤5⍳→l ←l4 0 9-⍈_ ←l∑Ṅ␤3⍳′⍳€1 5⍳⍈⍕␤5⍳0 7⍈4 8⍈⍕' | gc)" \
+    = "$(printf '0 1 9 3 4 \n-1\n-3\n[] [0 1 2 3 4] [0 1] \n7 1 2 3 8 ')" ] \
+  && ok "⍈ stores in place and leaves the same l (≡ -1), negative values and list values too" || no "⍈ basics: $(printf '%s' '5⍳2 9⍈⍕' | gc)"
+w12z4bad=""
+for w12z4a in '5⍳5 9⍈' '5⍳0 1-9⍈' '0⍳0 9⍈' '5⍳9 1 63≪|9⍈' '‹vec›‹last›' '‹vec›‹first›' '‹deque›‹first›' '‹deque›‹last›'; do
+  [ "$(w110 "$w12z4a")" = "rc=1 0 GOLF: index out of range" ] || w12z4bad="$w12z4bad [$w12z4a: $(w110 "$w12z4a")]"
+done
+[ "$(w110 '7Ṅ‹vec›⍅')" = "rc=1 1 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [vec pop]"
+[ "$(w110 '‹vec›1⍆⍅_⍅')" = "rc=1 0 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [vec pop 2]"
+[ "$(w110 '‹deque›⍅')" = "rc=1 0 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [deque pop]"
+[ "$(w110 '‹deque›1‹pushf›‹popf›_‹popf›')" = "rc=1 0 GOLF: pop from empty" ] || w12z4bad="$w12z4bad [deque popf]"
+[ "$(w110 '5⍳1‹pushf›')" = "rc=1 0 GOLF: not a deque" ] && [ "$(w110 '‹vec›‹popf›')" = "rc=1 0 GOLF: not a deque" ] || w12z4bad="$w12z4bad [not a deque]"
+[ -z "$w12z4bad" ] && ok "errors through ‹throw›: index out of range (⍈ past the end, negative, on empty; ‹first›/‹last› of an empty vector or deque), pop from empty (both ends), not a deque; earlier output flushed" \
+  || no "W12-Z4 errors:$w12z4bad"
+w12z4bad=""
+for w12z4a in '0 9⍈' '1⍆' '⍅' '‹first›' '‹last›'; do
+  [ "$(w110 "5⍳\"⌫$w12z4a")" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [list $w12z4a]"
+  [ "$(w110 "300⍳\"⌫$w12z4a")" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [class-7 list $w12z4a]"
+done
+for w12z4a in '1⍆' '⍅' '1‹pushf›' '‹popf›' '‹first›' '‹last›' '≢'; do
+  [ "$(w110 "‹deque›1⍆\"⌫$w12z4a")" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [deque $w12z4a]"
+done
+[ "$(w110 '‹vec›→v←v1⍆2⍆3⍆_←v≢Ṅ←v4⍆_←v≢')" = "rc=1 1 GOLF: use after free" ] && [ "$(w110 '‹vec›→v←v1⍆2⍆3⍆4⍆_←v≢')" = "rc=1 0 GOLF: use after free" ] || w12z4bad="$w12z4bad [stale after growth]"
+[ "$(w110 '‹vec›→v←v1⍆2⍆3⍆4⍆_ ←v⌫')" = "rc=1 0 GOLF: double free" ] || w12z4bad="$w12z4bad [stale ⌫]"
+[ -z "$w12z4bad" ] && ok "use after free: ⍈ ⍆ ⍅ ‹first› ‹last› on a freed list (small and class 7), every deque word on a freed deque, and the value a growth left behind (⌫ of it: double free)" \
+  || no "W12-Z4 use after free:$w12z4bad"
+[ "$(printf '%s' ':‹f›‹vec›⍅;1 2′‹f›‹catch›⊐␤Ṅ␤Ṅ␤:‹g›5⍳7 0⍈;′‹g›‹catch›⊐␤:‹h›‹deque›‹popf›;′‹h›‹catch›⊐' | gc)" \
+    = "$(printf 'pop from empty\n2\n1\nindex out of range\npop from empty')" ] \
+  && ok "′f‹catch› gets pop from empty / index out of range, with the caller's stack restored" || no "W12-Z4 catch"
+# Capacity: ‹vec› is A(1) = class 4, (4+1)*8 = 40 bytes; each growth doubles
+# the block (past 256 cells class 7 gives exactly the request) and gives the
+# old one back, so the live block count stays +1 and the bytes are (cap+1)*8.
+python3 - "$TMP" <<'PYEOF'
+import sys
+T = sys.argv[1]
+marks = [0, 3, 4, 7, 8, 15, 16, 100, 255, 256, 511, 512, 1023, 1024, 5000]
+prog = [":‹p›←‹v›\\\\⍆→‹v›0;‹heapstats›→b→n‹vec›→‹v›"]
+want, done, model = [], 0, []
+for m in marks:
+    if m > done:
+        prog.append(f"{m - done}⍳\"′‹p›€⌫⌫")
+        model += range(m - done)
+        done = m
+    prog.append("‹heapstats›←b-Ṅ“ “🗲←n-Ṅ“ “🗲←‹v›≢Ṅ“ “🗲←‹v›∑Ṅ␤")
+    cap = 4
+    while m + 1 > cap:
+        cap *= 2
+    want.append(f"{(cap + 1) * 8} 1 {m} {sum(model)}")
+prog.append("←‹v›⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤")
+want.append("0 0")
+open(f"{T}/z4cap.prog", "w", encoding="utf-8").write("".join(prog))
+open(f"{T}/z4cap.want", "w").write("\n".join(want) + "\n")
+PYEOF
+[ "$(gc < "$TMP/z4cap.prog")" = "$(cat "$TMP/z4cap.want")" ] \
+  && ok "‹heapstats› through 11 doublings (3 → 8191 elements): one live block of (cap+1)*8 bytes, ≢ and ∑ right at every step; ⌫ of the grown vector gives back exactly that block" \
+  || no "W12-Z4 capacity: $(diff <(gc < "$TMP/z4cap.prog") "$TMP/z4cap.want" | head -4 | tr '\n' ' ')"
+[ "$(printf '%s' '5⍳→l ←l7⍆_ ←l≢Ṅ␤←l8⍆_ ←l"≢Ṅ⍕␤←l9⍆≡Ṅ␤3‹vecn›→v‹heapstats›_→n←v1⍆2⍆3⍆_‹heapstats›_←n-Ṅ' | gc)" \
+    = "$(printf '6\n70 1 2 3 4 7 8 \n0\n0')" ] \
+  && ok "⍆ on a ⍳ list appends in place into its spare room (5⍳ holds 7, so the 8th push moves it: ≡ 0); 3‹vecn› takes 3 pushes without a growth" || no "W12-Z4 in-place / vecn"
+# Random workloads against a Python model, through golf2 AND the oracle: a
+# vector (⍆ ⍅ ⍈ ⊇ ‹first› ‹last› ≢ ∑) and a deque (both ends, peeks, ≢),
+# with push-heavy and pop-heavy phases so the deque's ring wraps and doubles
+# several times.
+python3 - "$TMP" <<'PYEOF'
+import random, sys
+from collections import deque
+T = sys.argv[1]
+r = random.Random(1204)
+p, w, v = ["‹vec›→v"], [], []
+for step in range(900):
+    bias = 0.8 if (step // 150) % 2 == 0 else 0.3
+    x = r.randrange(0, 10**6)
+    op = r.random()
+    if op < bias or not v:
+        p.append(f"←v{x}⍆→v"); v.append(x)
+    else:
+        k = r.randrange(6)
+        if k == 0:
+            p.append("←v⍅Ṅ␤_"); w.append(v.pop())
+        elif k == 1:
+            i = r.randrange(len(v)); p.append(f"←v{i} {x}⍈_"); v[i] = x
+        elif k == 2:
+            i = r.randrange(len(v)); p.append(f"←v{i}⊇Ṅ␤"); w.append(v[i])
+        elif k == 3:
+            p.append("←v‹first›Ṅ␤←v‹last›Ṅ␤"); w += [v[0], v[-1]]
+        else:
+            p.append("←v≢Ṅ␤←v∑Ṅ␤"); w += [len(v), sum(v)]
+open(f"{T}/z4vec.prog", "w", encoding="utf-8").write("".join(p))
+open(f"{T}/z4vec.want", "w").write("".join(f"{a}\n" for a in w))
+p, w, d = ["‹deque›→d"], [], deque()
+for step in range(1500):
+    bias = 0.75 if (step // 250) % 2 == 0 else 0.35
+    x = r.randrange(0, 10**6)
+    if r.random() < bias or not d:
+        if r.random() < 0.5:
+            p.append(f"←d{x}⍆→d"); d.append(x)
+        else:
+            p.append(f"←d{x}‹pushf›→d"); d.appendleft(x)
+    else:
+        k = r.randrange(5)
+        if k == 0:
+            p.append("←d⍅Ṅ␤_"); w.append(d.pop())
+        elif k == 1:
+            p.append("←d‹popf›Ṅ␤_"); w.append(d.popleft())
+        elif k == 2:
+            p.append("←d‹first›Ṅ␤"); w.append(d[0])
+        elif k == 3:
+            p.append("←d‹last›Ṅ␤"); w.append(d[-1])
+        else:
+            p.append("←d≢Ṅ␤"); w.append(len(d))
+p.append("←d≢Ṅ␤")
+w.append(len(d))
+open(f"{T}/z4deq.prog", "w", encoding="utf-8").write("".join(p))
+open(f"{T}/z4deq.want", "w").write("".join(f"{a}\n" for a in w))
+PYEOF
+[ "$(gc < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] && [ "$(gref < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] \
+  && ok "900 random vector ops (⍆ ⍅ ⍈ ⊇ ‹first› ‹last› ≢ ∑) match a Python list, golf2 and oracle" \
+  || no "W12-Z4 vector model: $(diff <(gc < "$TMP/z4vec.prog") "$TMP/z4vec.want" | head -4 | tr '\n' ' ')"
+[ "$(gc < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] && [ "$(gref < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] \
+  && ok "1500 random deque ops at both ends (wrapping, growing) match collections.deque, golf2 and oracle" \
+  || no "W12-Z4 deque model: $(diff <(gc < "$TMP/z4deq.prog") "$TMP/z4deq.want" | head -4 | tr '\n' ' ')"
+[ "$(printf '%s' '‹heapstats›→b→n‹deque›→d 1000→i{←d←i‹pushf›→d←i⊖"→i0≡}‹heapstats›←b-Ṅ“ “🗲←n-Ṅ“ “🗲←d≢Ṅ“ “🗲←d‹first›Ṅ“ “🗲←d‹last›Ṅ␤←d⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤‹deque›"T Ṅ"16≪16>"⊙Ṅ8﹢⊙Ṅ' | gc)" \
+    = "$(printf '8200 1 1000 1 1000\n0 0\n100')" ] \
+  && ok "a deque grown to 1000 by ‹pushf› is one live block (cap 1024: 8200 bytes) and ⌫ gives it back; T calls a deque an int; a new one is [n=0, h=0, …]" \
+  || no "W12-Z4 deque heap: $(printf '%s' '‹heapstats›→b→n‹deque›→d 1000→i{←d←i‹pushf›→d←i⊖"→i0≡}‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)"
+[ "$(printf '%s' '⍈⍆⍅\putat\push\pop' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "d5d6d7d5d6d7" ] \
+  && grep -qE '^\| `0xD5` \| `\\putat` \| `⍈` .*\| Z4 \| shipped \|$' REGISTRY.md \
+  && grep -qE '^\| `0xD6` \| `\\push` \| `⍆` .*\| Z4 \| shipped \|$' REGISTRY.md \
+  && grep -qE '^\| `0xD7` \| `\\pop` \| `⍅` .*\| Z4 \| shipped \|$' REGISTRY.md \
+  && ok "⍈ ⍆ ⍅ and \\putat \\push \\pop encode to 0xD5–0xD7; REGISTRY §1.4 marks the three shipped" || no "W12-Z4 codepage / registry rows"
+# The three LeetCode rewrites (bench/leetcode/golf) use the new words and no
+# raw-memory stack any more; small inputs, answers from the Python solutions.
+w12z4bad=""
+mkdir -p "$TMP/z4lc"
+for w12z4a in parens islands slidemax; do
+  "$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/$w12z4a.golfj" "$TMP/z4lc/$w12z4a" > /dev/null 2>&1 || w12z4bad="$w12z4bad [compile $w12z4a]"
+done
+grep -q '⊛' bench/leetcode/golf/parens.golfj bench/leetcode/golf/islands.golfj bench/leetcode/golf/slidemax.golfj && w12z4bad="$w12z4bad [raw ⊛ left]"
+grep -q '⍆' bench/leetcode/golf/parens.golfj && grep -q '⍈' bench/leetcode/golf/islands.golfj && grep -q '‹popf›' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
+for w12z4a in '([]{})' '([)]' '((' '())' '}' '{[()()]}'; do
+  [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/parens")" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/parens.py)" ] || w12z4bad="$w12z4bad [parens $w12z4a]"
+done
+for w12z4a in '11000 11000 00100 00011' '1 0 1' '111 101 111' '0000 0000' '10101 01010 10101'; do
+  [ "$(printf '%s\n' $w12z4a | "$TMP/z4lc/islands")" = "$(printf '%s\n' $w12z4a | python3 bench/leetcode/py/islands.py)" ] || w12z4bad="$w12z4bad [islands $w12z4a]"
+done
+for w12z4a in '3 1 3 -1 -3 5 3 6 7' '1 4 2 9' '2 9 8 7 6 5' '4 1 2 3 4 5 6' '3 5 5 5 5'; do
+  [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/slidemax" | sed 's/ *$//')" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/slidemax.py)" ] || w12z4bad="$w12z4bad [slidemax $w12z4a]"
+done
+[ -z "$w12z4bad" ] && ok "LeetCode parens (⍆ ⍅), islands (⍈ ⊇ ⍆ ⍅) and slidemax (deque) lost their raw stacks and still answer like the Python solutions" \
+  || no "W12-Z4 LeetCode rewrites:$w12z4bad"
+w12z4bad=""; w12z4n=0
+while IFS= read -r w12z4l; do
+  w12z4p=${w12z4l%%  ->*}; w12z4p=${w12z4p%"${w12z4p##*[! ]}"}; w12z4w=${w12z4l##*->  }; w12z4n=$((w12z4n+1))
+  [ "$(printf '%s' "$w12z4p" | gc 2>&1 | sed 's/ *$//')" = "$w12z4w" ] || w12z4bad="$w12z4bad [$w12z4p]"
+  case "$w12z4w" in GOLF:*) ;; *) [ "$(printf '%s' "$w12z4p" | gref | sed 's/ *$//')" = "$w12z4w" ] || w12z4bad="$w12z4bad oracle[$w12z4p]";; esac
+done < <(sed -n '/^### Vectors and deques$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w12z4bad" ] && [ "$w12z4n" -ge 8 ] && ok "REFERENCE.md's Vectors and deques examples print what they say (golf2; the oracle too, but for the stderr ones)" \
+  || no "REFERENCE W12-Z4 examples:$w12z4bad"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
