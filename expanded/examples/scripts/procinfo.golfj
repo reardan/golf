@@ -1,0 +1,13 @@
+#!/usr/bin/env golfrun
+# procinfo — a few facts about the running process:
+#   ./procinfo.golfj
+#   pid 4242
+#   terminal: stdin true, stdout true, stderr true
+#   epoch 1794172088
+#   HOME=/root
+# Messages about a missing HOME go to stderr with ‹eputs›, after stdout's
+# buffered lines, so a terminal shows them in order.
+“pid “🗲‹getpid›Ṅ␤
+“terminal: stdin “🗲0‹isatty›‹tf›⊐“, stdout “🗲1‹isatty›‹tf›⊐“, stderr “🗲2‹isatty›‹tf›⊐␤
+“epoch “🗲‹walltime›1000000000/Ṅ␤
+“HOME“⊃‹getenv›[“HOME=“🗲⊐␤⋄_“procinfo: HOME is not set“⊃1⍳10+⧺‹eputs›1‹exit›]

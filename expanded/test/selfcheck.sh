@@ -56,7 +56,8 @@ sys.exit(0 if seed.count(esc) == 1 and g2.count(esc) == 1 else 1)
 PY
 # The GOLF-written tools under gtools/ cannot read a Python literal, so the code
 # page and the template blob are also checked in as data (data/codepage.tsv,
-# data/blob.hex), generated from the same tables by tools/mktables.py.  Nothing
+# data/blob.hex), derived by tools/mktables.py from the same source data
+# (data/ops.tsv, data/templates.txt, which mkblob2 and codepage read).  Nothing
 # on the build path reads them, so only this check can notice when an atom is
 # added to mkblob2.ATOMS and the data files are not regenerated — at which point
 # every gtools/ program would silently be working from a stale code page.

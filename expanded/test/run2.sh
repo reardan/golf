@@ -2630,7 +2630,7 @@ open(f"{T}/w113c.nov", "w").write(str(n))
 PYEOF
 w113cbad=""
 for k in 0 1 2; do
-  cat "$TMP/pre.gb" "$TMP/w113c.ok$k.g2" | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.got" 2>&1
+  { python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w113c.ok$k.g2"; cat "$TMP/w113c.ok$k.g2"; } | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" > "$TMP/w113c.got" 2>&1
   cmp -s "$TMP/w113c.got" "$TMP/w113c.ok$k.want" || w113cbad="$w113cbad [op $k: $(diff "$TMP/w113c.got" "$TMP/w113c.ok$k.want" | head -3 | tr '\n' ' ')]"
 done
 w113cn=$(cat "$TMP/w113c.nov")
@@ -3444,12 +3444,12 @@ w.append(len(d))
 open(f"{T}/z4deq.prog", "w", encoding="utf-8").write("".join(p))
 open(f"{T}/z4deq.want", "w").write("".join(f"{a}\n" for a in w))
 PYEOF
-[ "$(gc < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] && [ "$(gref < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] \
+[ "$(gcp < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] && [ "$(grefp < "$TMP/z4vec.prog")" = "$(cat "$TMP/z4vec.want")" ] \
   && ok "900 random vector ops (⍆ ⍅ ⍈ ⊇ ‹first› ‹last› ≢ ∑) match a Python list, golf2 and oracle" \
-  || no "W12-Z4 vector model: $(diff <(gc < "$TMP/z4vec.prog") "$TMP/z4vec.want" | head -4 | tr '\n' ' ')"
-[ "$(gc < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] && [ "$(gref < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] \
+  || no "W12-Z4 vector model: $(diff <(gcp < "$TMP/z4vec.prog") "$TMP/z4vec.want" | head -4 | tr '\n' ' ')"
+[ "$(gcp < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] && [ "$(grefp < "$TMP/z4deq.prog")" = "$(cat "$TMP/z4deq.want")" ] \
   && ok "1500 random deque ops at both ends (wrapping, growing) match collections.deque, golf2 and oracle" \
-  || no "W12-Z4 deque model: $(diff <(gc < "$TMP/z4deq.prog") "$TMP/z4deq.want" | head -4 | tr '\n' ' ')"
+  || no "W12-Z4 deque model: $(diff <(gcp < "$TMP/z4deq.prog") "$TMP/z4deq.want" | head -4 | tr '\n' ' ')"
 [ "$(printf '%s' '‹heapstats›→b→n‹deque›→d 1000→i{←d←i‹pushf›→d←i⊖"→i0≡}‹heapstats›←b-Ṅ“ “🗲←n-Ṅ“ “🗲←d≢Ṅ“ “🗲←d‹first›Ṅ“ “🗲←d‹last›Ṅ␤←d⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤‹deque›"T Ṅ"16≪16>"⊙Ṅ8﹢⊙Ṅ_' | gc)" \
     = "$(printf '8200 1 1000 1 1000\n0 0\n100')" ] \
   && ok "a deque grown to 1000 by ‹pushf› is one live block (cap 1024: 8200 bytes) and ⌫ gives it back; T calls a deque an int; a new one is [n=0, h=0, …]" \
@@ -4357,6 +4357,712 @@ w13bb='12345♯Ṅ12345⊣Ṅ12345⊢Ṅ12345⊥Ṅ'
   && [ "$(printf '%s' '\pcnt\ctz\clz\lsb\dig' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "aaabacadbd" ] \
   && ok "oracle: the bit atoms compile the same; \\pcnt \\ctz \\clz \\lsb \\dig encode to AA AB AC AD BD" || no "W13-B bit atoms oracle"
 
+# === W14-A ===
+# ⌁ is the six-argument syscall.  mmap(0, 4096, PROT_READ|WRITE, MAP_PRIVATE|
+# ANONYMOUS, -1, 0) puts its flags in r10 and fd in r8, which ⎈ never sets, so
+# a page that comes back writable proves all six registers arrive.
+echo "W14-A: ⌁ six-argument syscall"
+w14a='1“hi“4+2 0 0 0 1⌁_0 4096 3 34 0 1- 0 9⌁"42\\⊛⊙Ṅ'
+[ "$(printf '%s' "$w14a" | gc)" = "hi42" ] && [ "$(printf '%s' "$w14a" | gref)" = "hi42" ] \
+  && [ "$(printf '%s' '\scall' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "ae" ] \
+  && ok "⌁: write(2) and an anonymous mmap(2) (flags in r10, fd in r8) through six registers; oracle agrees; \\scall encodes to AE" || no "W14-A ⌁ six-argument syscall"
+
+# === W14-B ===
+# Processes: ‹spawn› ‹wait› ‹waitr› ‹run› ‹capture› ‹capturet› ‹exec› ‹pipe›
+# ‹kill› ‹signame›.  w14b compiles $1 (whole prelude) and runs it inside
+# $TMP/w14b with the further arguments, printing `rc=N <stdout>|<stderr>`;
+# w14bx runs the last one again, under a command prefix (env …).  Python's
+# subprocess / signal modules are the oracle for statuses, signal names,
+# captured bytes and errnos.
+echo "W14-B: processes — ‹spawn› ‹wait› ‹waitr› ‹run› ‹capture› ‹capturet› ‹exec› ‹pipe› ‹kill› ‹signame›"
+mkdir -p "$TMP/w14b"
+w14b(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14b/p" 2>/dev/null \
+          && chmod +x "$TMP/w14b/p" && shift && (cd "$TMP/w14b" && ./p "$@" > p.out 2> p.err; echo "rc=$? $(cat p.out)|$(cat p.err)"); }
+w14bx(){ (cd "$TMP/w14b" && "$@" ./p > p.out 2> p.err; echo "rc=$? $(cat p.out)|$(cat p.err)"); }
+w14bl=':‹l2›2⍳\\1\\⍈\\0\\⍈;:‹l3›3⍳\\2\\⍈\\1\\⍈\\0\\⍈;:‹sh›“sh“⊃\\“-c“⊃\\‹l3›;'
+# ‹run›: exit codes, and minus the signal for a killed child.
+[ "$(w14b "$w14bl"':‹r›‹sh›‹run›Ṅ␤;“exit 0“⊃‹r›“exit 7“⊃‹r›“exit 255“⊃‹r›“kill -SEGV $$“⊃‹r›“kill -KILL $$“⊃‹r›“kill -TERM $$“⊃‹r›“true“⊃1⍳\\0\\⍈‹run›Ṅ')" \
+    = "rc=0 $(python3 -c '
+import subprocess
+for c in ["exit 0", "exit 7", "exit 255", "kill -SEGV $$", "kill -KILL $$", "kill -TERM $$"]:
+    print(subprocess.run(["sh", "-c", c]).returncode)
+print(subprocess.run(["true"]).returncode, end="")')|" ] \
+  && ok "‹run›: exit codes 0 7 255 and -11 -9 -15 for signals, as Python's subprocess; argv[0] found on \$PATH" || no "W14-B run statuses"
+# ‹capture›: stdin in, stdout and stderr out, the status; 0 is /dev/null.
+[ "$(w14b "$w14bl"'“echo out; echo err >&2; tr a-z A-Z; exit 3“⊃‹sh›“hello“⊃‹capture›Ṅ␤\\⊐“|“🗲⊐“|“🗲“cat; echo x“⊃‹sh›0‹capture›Ṅ\\⊐⊐')" \
+    = "rc=0 $(python3 -c '
+import subprocess
+r = subprocess.run(["sh", "-c", "echo out; echo err >&2; tr a-z A-Z; exit 3"], input=b"hello", capture_output=True)
+print(r.returncode); print(r.stdout.decode(), end="|"); print(r.stderr.decode(), end="|")
+r = subprocess.run(["sh", "-c", "cat; echo x"], stdin=subprocess.DEVNULL, capture_output=True)
+print(r.returncode, r.stdout.decode(), r.stderr.decode(), sep="", end="")')|" ] \
+  && ok "‹capture›: input on stdin, stdout and stderr as code lists, the status; input 0 is /dev/null (Python oracle)" || no "W14-B capture"
+# No deadlock at any size: 1 MB through cat both ways, 2 MB of stderr then
+# 3 MB of stdout, and 1 MB offered to a child that never reads it (no SIGPIPE).
+[ "$(w14b "$w14bl"':‹m›251%;“cat“⊃1⍳\\0\\⍈1000000⍳′‹m›€"→‹i›‹capture›Ṅ32)≢Ṅ32)"≢Ṅ32)←‹i›≣Ṅ␤“head -c 2000000 /dev/zero >&2; head -c 3000000 /dev/zero“⊃‹sh›0‹capture›Ṅ32)≢Ṅ32)"≢Ṅ32)∑Ṅ␤“true“⊃1⍳\\0\\⍈1000000⍳‹capture›Ṅ≢Ṅ≢Ṅ')" \
+    = "rc=0 0 0 1000000 -1
+0 2000000 3000000 0
+000|" ] && ok "‹capture›: 1 MB in and out of cat byte for byte, 2 MB stderr + 3 MB stdout, 1 MB to a child that never reads" || no "W14-B capture sizes"
+# ‹capturet›: SIGKILL at the limit, status -256, the output that came; a run
+# that finishes in time is unchanged; a child that closes its pipes and
+# lingers is killed too.
+w14bt0=$(date +%s%N)
+[ "$(w14b "$w14bl"'“echo before; sleep 5; echo after“⊃‹sh›0 300‹capturet›Ṅ32)≢Ṅ32)⊐“exec >&- 2>&-; sleep 5“⊃‹sh›0 300‹capturet›Ṅ32)≢Ṅ32)≢Ṅ␤“echo hi; exit 4“⊃‹sh›0 5000‹capturet›Ṅ32)≢Ṅ32)⊐')" = "rc=0 -256 0 before
+-256 0 0
+4 0 hi|" ] && [ $(( ($(date +%s%N) - w14bt0) / 1000000 )) -lt 4000 ] \
+  && ok "‹capturet›: a 300 ms limit kills (status -256, output so far kept), also after the pipes close; in time, the plain status" || no "W14-B capturet"
+# A program that cannot run is an error in the parent, with the errno the
+# child's execve got (Python's OSError agrees), catchable; nothing leaks.
+w14bpy='
+import errno, os, subprocess
+for a in ["nosuchprog_w14b", "/etc", "./noexec"]:
+    try: subprocess.run([a])
+    except OSError as e: print("cannot run %s (%s)" % (a, errno.errorcode[e.errno]))'
+: > "$TMP/w14b/noexec"
+[ "$(w14b ':‹t›1⍳\\0\\⍈′‹run›‹catch›⊐␤_;“nosuchprog_w14b“⊃‹t›“/etc“⊃‹t›“./noexec“⊃‹t›')" = "rc=0 $(cd "$TMP/w14b" && python3 -c "$w14bpy")|" ] && [ "$(w14b '“nosuchprog_w14b“⊃1⍳\\0\\⍈“in“⊃‹capture›')" = "rc=1 |GOLF: cannot run nosuchprog_w14b (ENOENT)" ] \
+  && [ "$(w14b '0⍳0‹spawn›')" = "rc=1 |GOLF: cannot run an empty argv" ] \
+  && [ "$(w14b '“true“⊃1⍳\\0\\⍈2⍳′‹spawn›‹catch›⊐__7Ṅ')" = "rc=0 io is not 0 or [in out err]7|" ] \
+  && [ "$(w14b ':‹f›“nope“⊃1⍳\\0\\⍈“in“⊃‹capture›;0→‹k›{′‹f›‹catch›_⇡‹k›←‹k›400≡1﹢}‹pipe›ṄṄ')" = "rc=0 43|" ] \
+  && ok "cannot run: ENOENT, EACCES (a directory, a file without x), an empty argv; ‹capture› closes its pipes on a failed spawn" || no "W14-B cannot run"
+# The search on $PATH: like execvp, an empty entry is ".", EACCES wins over
+# ENOENT unless a later entry runs; no PATH at all is /bin:/usr/bin.
+mkdir -p "$TMP/w14b/d1"; cp /bin/echo "$TMP/w14b/d1/myecho"; : > "$TMP/w14b/myecho"
+[ "$(w14b '“myecho“⊃“ran“⊃2⍳\\1\\⍈\\0\\⍈′‹run›‹catch›"[_Ṅ⋄⊐_]')" != "" ] \
+  && [ "$(w14bx env PATH=/nonexist::d1)" = "rc=0 ran
+0|" ] && [ "$(w14bx env PATH=.:d1)" = "rc=0 ran
+0|" ] && [ "$(w14bx env PATH=.:/nonexist)" = "rc=0 cannot run myecho (EACCES)|" ] \
+  && [ "$(w14bx env PATH=/nonexist)" = "rc=0 cannot run myecho (ENOENT)|" ] \
+  && [ "$(w14b '“sh“⊃“-c“⊃“echo ok“⊃3⍳\\2\\⍈\\1\\⍈\\0\\⍈‹run›Ṅ'; w14bx env -i)" = "rc=0 ok
+0|
+rc=0 ok
+0|" ] && ok "\$PATH: an empty entry is ., EACCES then a later hit runs, EACCES / ENOENT reported as execvp; no PATH: /bin:/usr/bin" || no "W14-B PATH search"
+# ‹spawn› with io: a ‹pipe›, fds in any order, -1 inherits; a bad fd is the
+# child's EBADF, reported by the parent.  ‹flush› before the fork: buffered
+# output is neither lost nor doubled.
+[ "$(w14b "$w14bl"'‹pipe›→‹w›→‹r›“echo“⊃“piped“⊃‹l2›0 1-←‹w›0 1-‹l3›‹spawn›‹wait›Ṅ←‹w›‹close›←‹r›100‹fread›⊐←‹r›‹close›“echo to1; echo to2 >&2“⊃‹sh›0 1- 2 1‹l3›‹spawn›‹wait›Ṅ␤5Ṅ“true“⊃1⍳\\0\\⍈99 0 1-"‹l3›‹spawn›')" = "rc=1 0piped
+to2
+0
+5|to1
+GOLF: cannot run true (EBADF)" ] \
+  && [ "$(w14b "$w14bl"'5Ṅ“echo“⊃“x“⊃‹l2›‹run›_6Ṅ')" = "rc=0 5x
+6|" ] && ok "‹spawn› io: a ‹pipe› as stdout, [-1 2 1] swaps stdout and stderr, fd 99 is EBADF; output flushed once before the fork" || no "W14-B spawn io"
+# ‹kill› ‹wait› ‹waitr›: SIGTERM shows as -15; ESRCH and ECHILD throw;
+# ‹waitr›'s peak RSS sees a 50 MB child.
+[ "$(w14b '“sleep“⊃“10“⊃2⍳\\1\\⍈\\0\\⍈0‹spawn›"15‹kill›‹wait›Ṅ␤:‹k›99999999 9‹kill›;′‹k›‹catch›⊐␤:‹w›1‹wait›;′‹w›‹catch›⊐␤“python3“⊃“-c“⊃“x = bytearray(50000000)“⊃3⍳\\2\\⍈\\1\\⍈\\0\\⍈0‹spawn›‹waitr›50000≻1﹢Ṅ32)Ṅ')" = "rc=0 -15
+cannot kill pid 99999999 (ESRCH)
+cannot wait for pid 1 (ECHILD)
+0 0|" ] && ok "‹kill› then ‹wait›: -15; ‹kill› ESRCH and ‹wait› ECHILD throw; ‹waitr› reports a 50 MB child's peak RSS (> 50000 KB)" || no "W14-B kill wait waitr"
+# ‹exec›: replaces the process after flushing; a failure throws.
+[ "$(w14b '5Ṅ“echo“⊃“x“⊃2⍳\\1\\⍈\\0\\⍈‹exec›6Ṅ')" = "rc=0 5x|" ] \
+  && [ "$(w14b '7Ṅ“nosuchprog_w14b“⊃1⍳\\0\\⍈‹exec›')" = "rc=1 7|GOLF: cannot run nosuchprog_w14b (ENOENT)" ] \
+  && ok "‹exec›: buffered output first, then the new program; a missing program throws" || no "W14-B exec"
+# ‹signame›: Python's signal.Signals names for 1..31, “signal n“ otherwise.
+[ "$(w14b '0 1-34⍳1-′‹signame›€′⊐€_')" = "rc=0 $(python3 -c '
+import signal
+def nm(n):
+    try: return signal.Signals(n).name
+    except ValueError: return "signal %d" % n
+print("".join(nm(n) for n in range(-1, 33)), end="")')|" ] \
+  && ok "‹signame›: SIGHUP … SIGSYS for 1..31 as Python's signal module; signal -1, 0, 32 otherwise" || no "W14-B signame"
+# Oracle parity: boot/golfref.py compiles the process words the same.
+w14bo="$w14bl"'“echo a; echo b >&2; exit 5“⊃‹sh›“z“⊃‹capture›Ṅ⊐⊐11‹signame›⊐'
+[ "$(printf '%s' "$w14bo" | gref)" = "$(printf '%s' "$w14bo" | gc)" ] && [ "$(printf '%s' "$w14bo" | gc)" = "$(printf '5b\na\nSIGSEGV')" ] \
+  && ok "oracle: golfref.py and golf2 agree on ‹capture› and ‹signame›" || no "W14-B oracle"
+# The demo: bench/leetcode/rss.golfj is rss.py in Golf.  The child sees the
+# input file on stdin (its stderr is inherited) and its peak RSS is printed.
+# Python's RUSAGE_CHILDREN also counts the forked Python before the exec
+# (about 13 MB), so the numbers are compared on a child bigger than that.
+tools/golfc -j bench/leetcode/rss.golfj "$TMP/w14b/rss" 2>/dev/null
+w14brg=$("$TMP/w14b/rss" bench/leetcode/rss.py sh -c 'wc -c >&2; echo dropped' 2>&1)
+w14brp=$(python3 bench/leetcode/rss.py bench/leetcode/rss.py sh -c 'wc -c >&2; echo dropped' 2>&1)
+w14bg=$("$TMP/w14b/rss" /dev/null python3 -c 'x = bytearray(80000000)')
+w14bp=$(python3 bench/leetcode/rss.py /dev/null python3 -c 'x = bytearray(80000000)')
+[ "$(printf '%s' "$w14brg" | head -1)" = "$(printf '%s' "$w14brp" | head -1)" ] && [ "$(printf '%s\n' "$w14brg" | wc -l)" = 2 ] \
+  && [ "$w14bg" -gt 80000 ] && [ $(( (w14bg - w14bp) * (w14bg - w14bp) * 400 )) -lt $(( w14bp * w14bp )) ] \
+  && ok "bench/leetcode/rss.golfj: same stdin and output as rss.py; an 80 MB child's peak RSS within 5% ($w14bg vs $w14bp KB)" || no "W14-B rss.golfj ($w14bg vs $w14bp)"
+
+# REFERENCE.md's Processes examples print what the doc says (stderr merged).
+w14bbad=""
+while IFS= read -r w14bdl; do
+  w14bdp=${w14bdl%%  ->*}; w14bdp=${w14bdp%"${w14bdp##*[! ]}"}; w14bdw=${w14bdl##*->  }
+  [ "$(printf '%s' "$w14bdp" | gc 2>&1)" = "$w14bdw" ] || w14bbad="$w14bbad [$w14bdp]"
+done < <(sed -n '/^### Processes (W14-B)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14bbad" ] && [ "$(sed -n '/^### Processes (W14-B)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && ok "REFERENCE.md's Processes examples print what they say" || no "REFERENCE Processes examples:$w14bbad"
+# === W14-D ===
+echo "W14-D: ‹getenv› ‹environ› ‹isatty› ‹getpid› ‹exit› ‹eputs› ‹now› ‹walltime› ‹sleep› ‹rusage›; tools/golfrun"
+# w14dc SRC: compile SRC (full prelude) to $TMP/w14d without running it, so a
+# case can run it under env -i, in the background, under a pty or strace.
+w14dc(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14d" 2>/dev/null \
+           && chmod +x "$TMP/w14d"; }
+w14dc '“A“⊃‹getenv›Ṅ⊐␤“B“⊃‹getenv›Ṅ≢Ṅ␤“C“⊃‹getenv›Ṅ≢Ṅ␤“AB“⊃‹getenv›Ṅ⊐␤“A“⊃‹getenv›Ṅ⊐␤““⊃‹getenv›Ṅ≢Ṅ␤“ABC“⊃‹getenv›Ṅ≢Ṅ␤“X“⊃‹getenv›Ṅ⊐'
+[ "$(env -i A=1 B= AB=x=y X=$'caf\xc3\xa9' "$TMP/w14d")" = "$(printf '01\n00\n10\n0x=y\n01\n10\n10\n0caf\xc3\xa9')" ] \
+  && ok "‹getenv›: set (0 value), empty value (0, empty), unset/prefix/longer/empty name (1, empty), a value holding = and UTF-8 bytes" || no "W14-D getenv"
+w14dc '‹args›0⊇‹getenv›Ṅ⊐'
+[ "$("$TMP/w14d" HOME)" = "0$(python3 -c 'import os; print(os.environ["HOME"])')" ] \
+  && [ "$(env -i "$TMP/w14d" PATH)" = 1 ] \
+  && ok "‹getenv› HOME agrees with Python's os.environ; an empty environment has nothing" || no "W14-D getenv oracle"
+w14dc ':‹l›⊐␤0;‹environ›"≢Ṅ␤′‹l›€_'
+[ "$(env -i Z=1 A=2 EMPTY= "$TMP/w14d" | tr '\n' ' ')" = "3 Z=1 A=2 EMPTY= " ] && [ "$(env -i "$TMP/w14d")" = 0 ] \
+  && ok "‹environ›: every entry as KEY=VALUE in envp order (not sorted); an empty environment gives the empty list" || no "W14-D environ"
+w14dc ':‹l›⊐␤0;‹environ›′‹l›€_'
+[ "$("$TMP/w14d" | grep -v '^_=' | sort)" = "$(env | grep -v '^_=' | sort)" ] \
+  && ok "‹environ› holds what env(1) prints (the whole inherited environment)" || no "W14-D environ oracle"
+w14dc '0‹isatty›Ṅ1‹isatty›Ṅ2‹isatty›Ṅ99‹isatty›Ṅ0 1-‹isatty›Ṅ'
+[ "$("$TMP/w14d" < /dev/null 2>/dev/null | cat)" = "11111" ] \
+  && [ "$(python3 -c 'import pty,sys; pty.spawn(sys.argv[1:])' "$TMP/w14d" < /dev/null 2>/dev/null | tr -d '\r')" = "00011" ] \
+  && ok "‹isatty›: 1 for /dev/null and a pipe, 0 for a pty (python3 pty.spawn), 1 for a closed or negative fd" || no "W14-D isatty"
+w14dc '‹getpid›Ṅ'
+"$TMP/w14d" > "$TMP/w14dpid" & w14dp=$!; wait "$w14dp"
+[ "$(cat "$TMP/w14dpid")" = "$w14dp" ] && ok "‹getpid› is the pid the shell started (\$!)" || no "W14-D getpid"
+[ "$(printf '%s' '7Ṅ3‹exit›8Ṅ' | gc; echo " rc=$?")" = "7 rc=3" ] \
+  && [ "$(printf '%s' '5 0‹exit›' | gc; echo "rc=$?")" = "rc=0" ] \
+  && [ "$(printf '%s' ':‹q›9‹exit›;1 2‹q›' | gc; echo "rc=$?")" = "rc=9" ] \
+  && [ "$(printf '%s' '1“m“⊃‹assert›0‹exit›' | gc; echo "rc=$?")" = "$(printf 'FAIL: m\nrc=1')" ] \
+  && [ "$(printf '%s' '1“m“⊃‹assert›4‹exit›' | gc; echo "rc=$?")" = "$(printf 'FAIL: m\nrc=4')" ] \
+  && ok "‹exit›: buffered output first, the status kept, no implicit output, from inside a word; a failed ‹assert› turns 0 into 1" || no "W14-D exit"
+[ "$(printf '%s' '1Ṅ“err“⊃‹eputs›2Ṅ' | gc 2>&1)" = "1err2" ] && [ "$(printf '%s' '1Ṅ“err“⊃‹eputs›2Ṅ' | gc 2>/dev/null)" = "12" ] \
+  && [ "$(printf '%s' '““⊃‹eputs›0⍳‹eputs›5Ṅ' | gc 2>&1)" = "5" ] \
+  && ok "‹eputs›: the list goes to fd 2 only, after what stdout had buffered (order kept); an empty list writes nothing" || no "W14-D eputs"
+w14dc '‹now›Ṅ␤‹walltime›Ṅ'
+w14da=$(python3 -c 'import time; print(time.clock_gettime_ns(time.CLOCK_MONOTONIC), time.time_ns())')
+w14do=$("$TMP/w14d" | tr '\n' ' ')
+w14db=$(python3 -c 'import time; print(time.clock_gettime_ns(time.CLOCK_MONOTONIC), time.time_ns())')
+python3 - "$w14da" "$w14do" "$w14db" <<'PY' && ok "‹now› and ‹walltime› fall between Python's CLOCK_MONOTONIC / time_ns read before and after the run" || no "W14-D now/walltime: $w14da | $w14do | $w14db"
+import sys
+a, o, b = (list(map(int, s.split())) for s in sys.argv[1:])
+assert a[0] <= o[0] <= b[0] and a[1] <= o[1] <= b[1], (a, o, b)
+PY
+[ "$(printf '%s' '‹now›‹now›≻Ṅ‹now›‹now›-0≻Ṅ' | gc)" = "00" ] && ok "‹now› never goes backwards" || no "W14-D now monotonic"
+w14dc '‹args›0⊇‹num›‹now›&‹sleep›‹now›\\-1000000/\\-Ṅ'
+w14ds=$("$TMP/w14d" 250); w14dz=$("$TMP/w14d" 0); w14dn=$("$TMP/w14d" -40)
+[ "$w14ds" -ge 0 ] && [ "$w14ds" -lt 2000 ] && [ "$w14dz" -ge 0 ] && [ "$w14dz" -lt 500 ] && [ "$w14dn" -ge 40 ] && [ "$w14dn" -lt 540 ] \
+  && ok "‹sleep› 250 lasts at least 250 ms on ‹now› (and not seconds more); 0 and a negative ms return at once" || no "W14-D sleep: $w14ds $w14dz $w14dn"
+if command -v strace > /dev/null && strace -o /dev/null true 2>/dev/null; then
+  w14de=$(strace -o "$TMP/w14dst" -e trace=clock_nanosleep -e inject=clock_nanosleep:error=EINTR:when=1 "$TMP/w14d" 120)
+  [ "$w14de" -ge 0 ] && [ "$(grep -c 'tv_sec=0, tv_nsec=120000000' "$TMP/w14dst")" = 2 ] && grep -q 'EINTR.*INJECTED' "$TMP/w14dst" \
+    && ok "‹sleep› restarts after EINTR (strace injects one) with the time left" || no "W14-D sleep EINTR: $w14de $(cat "$TMP/w14dst")"
+else
+  ok "‹sleep› EINTR restart (skipped: strace cannot run here)"
+fi
+w14dc '0‹rusage›"≢Ṅ“ “🗲⍕0 1-‹rusage›⍕“/proc/self/status“⊃‹readfile›10‹split›′‹h›⌿0⊇6↓‹num›Ṅ:‹h›“VmHWM:“⊃‹startswith›;'
+python3 - "$("$TMP/w14d")" <<'PY' && ok "‹rusage›: [user µs, system µs, maxrss KB] for self, maxrss at least /proc/self/status VmHWM, children all 0 before any child" || no "W14-D rusage: $("$TMP/w14d")"
+import sys
+v = list(map(int, sys.argv[1].split()))
+assert v[0] == 3 and v[1] >= 0 and v[2] >= 0 and v[3] > 0 and v[4:7] == [0, 0, 0], v
+assert v[3] >= v[7] > 0, v      # maxrss survives exec (the shell's RSS), so >= VmHWM, in KB
+PY
+[ "$(printf '%s' '0→‹i›{⇡‹i›←‹i›30000000≡}0‹rusage›0⊇0≻Ṅ1‹rusage›≢Ṅ' | gc)" = "-13" ] \
+  && ok "‹rusage›: user time grows with a busy loop; who 1 (this thread) works too" || no "W14-D rusage busy"
+[ "$(printf '%s' ':‹b›5‹rusage›;′‹b›‹catch›⊐“ “🗲5179712⊙Ṅ' | gc)" = "cannot getrusage (EINVAL) 22" ] \
+  && [ "$(printf '%s' '7‹rusage›' | gc 2>&1; echo "rc=$?")" = "$(printf 'GOLF: cannot getrusage (EINVAL)\nrc=1')" ] \
+  && ok "‹rusage› with a bad who: 'cannot getrusage (EINVAL)' (catchable; errno 22 in 5179712), exit 1 uncaught" || no "W14-D rusage EINVAL"
+[ "$(printf '%s' '“HOME“⊃‹getenv›__‹now›_‹walltime›_‹getpid›_‹environ›_0‹isatty›_0‹rusage›_0‹sleep›““⊃‹eputs›“x“⊃⊐' | gcp)" = x ] \
+  && [ "$(printf '%s' '“HOME“⊃‹getenv›__‹now›_‹walltime›_‹getpid›_‹environ›_0‹isatty›_0‹rusage›_0‹sleep›““⊃‹eputs›“x“⊃⊐' | grefp)" = x ] \
+  && ok "pruned golfc keeps what the W14-D words reach; the oracle (boot/golfref.py) compiles them the same" || no "W14-D pruned / oracle"
+# REFERENCE.md's "Environment and time (W14-D)" examples print what they say.
+w14dbad=""
+while IFS= read -r w14dl; do
+  w14dp=${w14dl%%  ->*}; w14dp=${w14dp%"${w14dp##*[! ]}"}; w14dw=${w14dl##*->  }
+  [ "$(printf '%s' "$w14dp" | gc 2>&1)" = "$w14dw" ] || w14dbad="$w14dbad [$w14dp]"
+done < <(sed -n '/^### Environment and time (W14-D)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14dbad" ] && [ "$(sed -n '/^### Environment and time (W14-D)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 10 ] \
+  && ok "REFERENCE.md's Environment and time examples print what they say" || no "REFERENCE W14-D examples:$w14dbad"
+# tools/golfrun: compile into build/golfrun/<key>, then exec with the args.
+w14dg="$TMP/w14dg"; mkdir -p "$w14dg"
+printf '#!%s\n⎘“%s/i1.golfj“ ‹args›′⊐€_ ‹readall›≢Ṅ 3‹f›Ṅ 5‹exit›\n' "$EXP/tools/golfrun" "$w14dg" > "$w14dg/s.golfj"
+printf '\\import\\str%s/i2.golfj\\str :‹f›‹g›;\n' "$w14dg" > "$w14dg/i1.golfj"
+printf ':‹g›10*;\n' > "$w14dg/i2.golfj"; chmod +x "$w14dg/s.golfj"
+w14dn0=$(ls build/golfrun 2>/dev/null | wc -l)
+w14d1=$(printf 'abc' | "$w14dg/s.golfj" x y; echo " rc=$?")
+w14dn1=$(ls build/golfrun | wc -l)
+w14d2=$(printf 'abc' | "$w14dg/s.golfj" x y; echo " rc=$?")
+w14dn2=$(ls build/golfrun | wc -l)
+[ "$w14d1" = "xy330 rc=5" ] && [ "$w14d2" = "$w14d1" ] && [ "$w14dn1" -le $((w14dn0+1)) ] && [ "$w14dn2" = "$w14dn1" ] \
+  && ok "golfrun: a #! script runs with its args and stdin, keeps its exit status; the second run hits the cache" || no "W14-D golfrun: $w14d1 | $w14d2 | $w14dn0 $w14dn1 $w14dn2"
+printf ':‹g›100*;\n' > "$w14dg/i2.golfj"
+[ "$(tools/golfrun "$w14dg/s.golfj" < /dev/null; echo " rc=$?")" = "0300 rc=5" ] \
+  && ok "golfrun: editing a nested include (\\import\\str…, recursively) recompiles" || no "W14-D golfrun include key"
+printf '5N' > "$w14dg/r.g2"; printf '3‹nope›' > "$w14dg/bad.golfj"
+[ "$(tools/golfrun "$w14dg/r.g2"; echo " rc=$?")" = "5 rc=0" ] \
+  && [ "$(tools/golfrun "$w14dg/bad.golfj" 2>&1; echo "rc=$?")" = "$(printf 'GOLF: undefined word ‹nope› at line 1\nrc=2')" ] \
+  && [ "$(tools/golfrun "$w14dg/none.golfj" 2>&1 >/dev/null | head -c 22; tools/golfrun "$w14dg/none.golfj" 2>/dev/null; echo " rc=$?")" = "golfrun: no such progr rc=2" ] \
+  && [ -z "$(ls -A build/golfrun | grep '^\.tmp')" ] \
+  && ok "golfrun: a raw program; a compile error is golfc's (exit 2, nothing cached); a missing file is exit 2" || no "W14-D golfrun raw/errors"
+[ "$(env -i Z=1 A=2 PATH="$EXP/tools:/usr/bin:/bin" examples/scripts/printenv.golfj | grep -v '^_=\|^PWD=\|^SHLVL=' | tr '\n' ' ')" = "Z=1 A=2 PATH=$EXP/tools:/usr/bin:/bin " ] \
+  && [ "$(env -i Z=1 PATH="$EXP/tools:/usr/bin:/bin" examples/scripts/printenv.golfj Z NO; echo "rc=$?")" = "$(printf '1\nrc=1')" ] \
+  && [ "$(PATH="$EXP/tools:$PATH" examples/scripts/stopwatch.golfj 30 | sed 's/[0-9][0-9]*/N/g' | tr '\n' ' ')" = "slept N ms (asked N) user N us, system N us, maxrss N KB " ] \
+  && [ "$(env -u HOME PATH="$EXP/tools:$PATH" examples/scripts/procinfo.golfj 2>&1 >/dev/null; echo "rc=$?")" = "$(printf 'procinfo: HOME is not set\nrc=1')" ] \
+  && ok "examples/scripts: printenv (all, or named, status 1 if unset), stopwatch, procinfo run through #!/usr/bin/env golfrun" || no "W14-D example scripts"
+# === W14-E ===
+echo "W14-E: filesystem — ‹stat› ‹lstat› ‹exists› ‹isfile› ‹isdir› ‹samefile› ‹mkdir› ‹makedirs› ‹unlink› ‹rmdir› ‹rename› ‹listdir› ‹rmtree› ‹mkdtemp› ‹getcwd› ‹chdir› ‹pathjoin› ‹dirname› ‹basename›"
+# w14e PROG [ARGS…] compiles PROG (whole prelude, golf2) and runs it inside
+# $TMP/w14e/d with ARGS, printing `rc=<status> <stdout>|<stderr>`.  Python's
+# os / os.path, run on the same paths, is the oracle throughout.
+mkdir -p "$TMP/w14e/d"
+w14e(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14e/p" 2>/dev/null \
+          && chmod +x "$TMP/w14e/p" && shift && (cd "$TMP/w14e/d" && "$TMP/w14e/p" "$@" > ../out 2> ../err; echo "rc=$? $(cat ../out)|$(cat ../err)"); }
+# Path words on the awkward cases (trailing slashes, '/', '', '.', runs of '/').
+w14ep=('' / . .. a a/ a/b a/b/ /a /a/ /a/b //a /// a//b a/b// a/./b .hidden ../x x/..)
+w14epr=':‹l›"‹dirname›⊐“|“🗲‹basename›⊐␤0;‹args›′‹l›€_'
+w14epw=$(python3 -c 'import os.path,sys
+for p in sys.argv[1:]: print(os.path.dirname(p) + "|" + os.path.basename(p))' "${w14ep[@]}")
+[ "$(w14e "$w14epr" "${w14ep[@]}")" = "rc=0 $w14epw|" ] \
+  && [ "$(printf '%s' "$w14epr" | python3 tools/codepage.py encode | cat <(python3 tools/codepage.py encode < lib/prelude.golfj) - \
+       | python3 boot/golfref.py > "$TMP/w14e/o" 2>/dev/null && chmod +x "$TMP/w14e/o" && "$TMP/w14e/o" "${w14ep[@]}")" = "$w14epw" ] \
+  && ok "‹dirname› ‹basename› agree with os.path on ${#w14ep[@]} paths ('', '/', '.', trailing and doubled slashes); the oracle compiler agrees" \
+  || no "W14-E dirname/basename: $(w14e "$w14epr" "${w14ep[@]}" | tr '\n' '~')"
+w14ej=()
+for a in '' / a a/ /a //a a/b .; do for b in '' / b b/ /b ./b ..; do w14ej+=("$a" "$b"); done; done
+w14ejw=$(python3 -c 'import os.path,sys
+a = sys.argv[1:]
+for i in range(0, len(a), 2): print(os.path.join(a[i], a[i+1]))' "${w14ej[@]}")
+[ "$(w14e '‹args›→‹v›0→‹i›{←‹i›←‹v›≢<1+⋄←‹v›←‹i›⊇←‹v›←‹i›1+⊇‹pathjoin›⊐␤←‹i›2+→‹i›}' "${w14ej[@]}")" = "rc=0 $w14ejw|" ] \
+  && ok "‹pathjoin› agrees with os.path.join on $(( ${#w14ej[@]} / 2 )) pairs (absolute b replaces a, empty sides, one '/')" \
+  || no "W14-E pathjoin"
+# stat / lstat / exists / isfile / isdir against os.stat, os.lstat, os.path.*
+# on a file, a hard link, a directory, symlinks to each, a dangling symlink, a
+# missing path, a path through a file, and ''.
+(cd "$TMP/w14e/d" && printf 'hello' > f && ln f h && mkdir -p sd && ln -s f lf && ln -s sd ld && ln -s nowhere dang \
+   && touch -d '2001-02-03 04:05:06' f)
+w14es=(f h sd lf ld dang)
+w14esw=$(cd "$TMP/w14e/d" && python3 -c 'import os,sys
+for p in sys.argv[1:]:
+    for s in (os.stat(p) if os.path.exists(p) else None, os.lstat(p)):
+        print("-" if s is None else " ".join(map(str, [s.st_size, s.st_mode, int(s.st_mtime), s.st_dev, s.st_ino, s.st_nlink])) + " ")' "${w14es[@]}")
+[ "$(w14e ':‹l›""‹exists›[‹stat›⍕⋄_“-“🗲]␤‹lstat›⍕␤0;‹args›′‹l›€_' "${w14es[@]}")" = "rc=0 $w14esw|" ] \
+  && ok "‹stat› ‹lstat› give [size mode mtime dev ino nlink] as os.stat / os.lstat do (file, hard link, dir, symlinks, a dangling one)" \
+  || no "W14-E stat/lstat"
+w14ex=(f h sd lf ld dang missing f/x '' . / sd/)
+w14exw=$(cd "$TMP/w14e/d" && python3 -c 'import os.path,sys
+print("".join("%d%d%d" % tuple(0 if t(p) else 1 for t in (os.path.exists, os.path.isfile, os.path.isdir)) for p in sys.argv[1:]))' "${w14ex[@]}")
+[ "$(w14e ':‹l›"‹exists›Ṅ"‹isfile›Ṅ‹isdir›Ṅ0;‹args›′‹l›€_' "${w14ex[@]}")" = "rc=0 $w14exw|" ] \
+  && ok "‹exists› ‹isfile› ‹isdir› (zero-is-true) agree with os.path on ${#w14ex[@]} paths, never throwing (missing, ENOTDIR, '', dangling)" \
+  || no "W14-E exists/isfile/isdir"
+[ "$(w14e '“f“⊃“h“⊃‹samefile›Ṅ“lf“⊃“f“⊃‹samefile›Ṅ“f“⊃“sd“⊃‹samefile›Ṅ“sd“⊃“ld/“⊃‹samefile›Ṅ“f“⊃“zz“⊃‹samefile›')" = "rc=1 0010|GOLF: cannot stat zz (ENOENT)" ] \
+  && ok "‹samefile›: hard link and symlink 0, other file 1, dir through a symlink 0; a missing path throws" \
+  || no "W14-E samefile"
+# listdir: 1500 names (several getdents64 calls) with bytes 0x01-0xFF except
+# '/' and '\n', sorted bytewise as Python sorts bytes; . and .. left out; an
+# empty directory gives the empty list.
+python3 -c 'import os,random
+random.seed(14)
+os.makedirs("'"$TMP"'/w14e/d/big/sub")
+al = [b for b in range(1, 256) if b not in (10, 47)]
+names = set()
+while len(names) < 1500: names.add(bytes(random.choice(al) for _ in range(random.randint(1, 12))))
+names -= {b".", b".."}
+for n in names: open(os.path.join(b"'"$TMP"'/w14e/d/big", n), "wb").close()
+os.makedirs("'"$TMP"'/w14e/d/empty")'
+python3 -c 'import os,sys; sys.stdout.buffer.write(b"".join(n + b"\n" for n in sorted(os.listdir(b"'"$TMP"'/w14e/d/big"))))' > "$TMP/w14e/ld.exp"
+w14e ':‹l›⊐␤0;“big“⊃‹listdir›′‹l›€_' > /dev/null
+[ "$(cat "$TMP/w14e/err")" = "" ] && cmp -s "$TMP/w14e/out" "$TMP/w14e/ld.exp" \
+  && [ "$(w14e '“empty“⊃‹listdir›"≢Ṅ T Ṅ“sd/“⊃‹listdir›≢Ṅ')" = "rc=0 000|" ] \
+  && ok "‹listdir›: $(wc -l < "$TMP/w14e/ld.exp") entries with high and control bytes match sorted(os.listdir(bytes)); an empty dir is an empty list" \
+  || no "W14-E listdir"
+# Errors: verb, path, errno name, catchable, errno cell; errno names checked
+# against Python's for the same operation.
+w14eer=$(cd "$TMP/w14e/d" && python3 -c 'import os,errno
+def e(f, *a):
+    try: f(*a)
+    except OSError as x: return errno.errorcode[x.errno]
+print(" ".join([e(os.mkdir, "sd"), e(os.rmdir, "big"), e(os.unlink, "zz"), e(os.unlink, "sd"), e(os.listdir, "f"),
+                e(os.stat, "zz"), e(os.lstat, "f/x"), e(os.chdir, "f"), e(os.rename, "zz", "y"), e(os.rmdir, "f")]))')
+w14eeg=$(w14e ':‹t›‹catch›⊐“ “🗲;“sd“⊃′‹mkdir›‹t›“big“⊃′‹rmdir›‹t›“zz“⊃′‹unlink›‹t›“sd“⊃′‹unlink›‹t›“f“⊃′‹listdir›‹t›“zz“⊃′‹stat›‹t›“f/x“⊃′‹lstat›‹t›“f“⊃′‹chdir›‹t›“zz“⊃“y“⊃′‹rename›‹t›“f“⊃′‹rmdir›‹t›5179712⊙Ṅ')
+[ "$w14eeg" = "rc=0 cannot mkdir sd (EEXIST) cannot rmdir big (ENOTEMPTY) cannot unlink zz (ENOENT) cannot unlink sd (EISDIR) cannot listdir f (ENOTDIR) cannot stat zz (ENOENT) cannot lstat f/x (ENOTDIR) cannot chdir f (ENOTDIR) cannot rename zz (ENOENT) cannot rmdir f (ENOTDIR) 20|" ] \
+  && [ "$(printf '%s\n' "$w14eeg" | grep -o '([A-Z]*)' | tr -d '()' | tr '\n' ' ' | sed 's/ $//')" = "$w14eer" ] \
+  && [ "$(w14e '“nope“⊃‹mkdir›')" = "rc=0 |" ] && [ "$(w14e '“nope“⊃‹mkdir›')" = "rc=1 |GOLF: cannot mkdir nope (EEXIST)" ] \
+  && ok "failures throw 'cannot <verb> <path> (<ENAME>)' with Python's errno for each (EEXIST ENOTEMPTY ENOENT EISDIR ENOTDIR), catchable, errno in 5179712; uncaught: exit 1" \
+  || no "W14-E errors: $w14eeg / $w14eer"
+rmdir "$TMP/w14e/d/nope"
+# mkdir / makedirs / rename / unlink / rmdir / chdir / getcwd, then the tree
+# compared with what os would leave.
+w14em=$(w14e '“m“⊃‹mkdir›“m/a/b/c/“⊃‹makedirs›“m/a/b“⊃‹makedirs›“m/a/b/c“⊃‹makedirs›“m/a/b/c“⊃‹chdir›‹getcwd›⊐␤
+“../../x“⊃‹mkdir›“..“⊃‹chdir›“hi“⊃“c/f“⊃‹writefile›“c/f“⊃“c/g“⊃‹rename›“c/g“⊃‹readfile›⊐␤
+“hj“⊃“c/k“⊃‹writefile›“c/k“⊃“c/g“⊃‹rename›“c/g“⊃‹readfile›⊐␤“c/g“⊃‹unlink›“c“⊃‹rmdir›“../../..“⊃‹chdir›‹getcwd›⊐
+:‹t›‹catch›⊐;“f“⊃′‹makedirs›‹t›“f/x/y“⊃′‹makedirs›‹t›“f“⊃“sd“⊃′‹rename›‹t›')
+w14emw=$(cd "$TMP/w14e/d" && python3 -c 'import os
+print(os.path.realpath("m/a/b/c")); print("hi"); print("hj"); print(os.path.realpath("."), end="")')
+[ "$w14em" = "rc=0 ${w14emw}cannot mkdir f (EEXIST)cannot mkdir f/x (ENOTDIR)cannot rename f (EISDIR)|" ] \
+  && [ "$(cd "$TMP/w14e/d/m" && find . | sort | tr '\n' ' ')" = ". ./a ./a/b ./a/x " ] \
+  && [ "$(stat -c %a "$TMP/w14e/d/m")" = "$(mkdir "$TMP/w14e/um" && stat -c %a "$TMP/w14e/um")" ] \
+  && ok "mkdir, makedirs (trailing '/', existing dirs, exist_ok), chdir + getcwd = realpath, rename replaces atomically, unlink, rmdir; makedirs over a file is EEXIST / ENOTDIR as in os" \
+  || no "W14-E mkdir/makedirs/rename/chdir: $(printf '%s' "$w14em" | tr '\n' '~')"
+# rmtree: nested dirs and files, a symlink loop (loop -> .), a symlink to a
+# directory outside the tree (left intact), a dangling link; a missing path is
+# a no-op; a symlink given with a trailing '/' loses only the link; a file is
+# just unlinked.
+(cd "$TMP/w14e/d" && mkdir -p t/a/b/c out && echo keep > out/k && echo x > t/a/b/c/f && echo y > t/a/f \
+   && ln -s . t/a/loop && ln -s ../../out t/a/b/o && ln -s nowhere t/dang && ln -s out lo && echo z > plain)
+[ "$(w14e '“t“⊃‹rmtree›“t“⊃‹exists›Ṅ“t“⊃‹rmtree›“no/such“⊃‹rmtree›“plain/x“⊃‹rmtree›“lo/“⊃‹rmtree›“plain“⊃‹rmtree›“plain“⊃‹exists›Ṅ“lo“⊃‹lstat›')" = "rc=1 11|GOLF: cannot lstat lo (ENOENT)" ] \
+  && [ "$(cat "$TMP/w14e/d/out/k")" = keep ] && [ ! -e "$TMP/w14e/d/t" ] && [ ! -L "$TMP/w14e/d/lo" ] \
+  && ok "‹rmtree› deletes a tree with a symlink loop and an outward link without following either (out/k survives); missing is a no-op; 'link/' removes only the link" \
+  || no "W14-E rmtree: $(ls "$TMP/w14e/d")"
+# mkdtemp: under $TMPDIR (else /tmp), prefix + six of [a-z0-9_], mode 0700, a
+# new name each call.
+mkdir -p "$TMP/w14e/tmp"
+printf '%s' '“w14etest-“⊃‹mkdtemp›⊐␤“w14etest-“⊃‹mkdtemp›⊐' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14e/p" 2>/dev/null \
+  && chmod +x "$TMP/w14e/p"
+w14et=$(TMPDIR="$TMP/w14e/tmp" "$TMP/w14e/p")
+w14et1=$(printf '%s\n' "$w14et" | head -1); w14et2=$(printf '%s\n' "$w14et" | tail -1)
+w14eu=$(env -u TMPDIR "$TMP/w14e/p" | head -1); w14ev=$(TMPDIR= "$TMP/w14e/p" | head -1)
+printf '%s\n' "$w14et1" | grep -qx "$TMP/w14e/tmp/w14etest-[a-z0-9_]\{6\}" && [ "$w14et1" != "$w14et2" ] && [ "$(stat -c %a "$w14et1")" = 700 ] \
+  && [ -d "$w14et2" ] && [ "$(printf '%s\n' "$w14eu" "$w14ev" | grep -cx '/tmp/w14etest-[a-z0-9_]\{6\}')" = 2 ] &&[ -d "$w14eu" ] && [ -d "$w14ev" ] \
+  && [ "$(ls "$TMP/w14e/tmp" | wc -l)" = 2 ] \
+  && ok "‹mkdtemp›: \$TMPDIR/w14etest-XXXXXX (else /tmp, also for an empty \$TMPDIR), mode 0700, a fresh name each call" \
+  || no "W14-E mkdtemp: $w14et / $w14eu / $w14ev"
+rm -rf /tmp/w14etest-??????
+# The words through tools/golfc (pruned prelude): a scratch dir round trip.
+printf '%s' '“w14e“⊃‹mkdtemp›"→‹d›“x“⊃‹pathjoin›"→‹p›‹mkdir›“hi“⊃←‹p›“f“⊃‹pathjoin›‹writefile›←‹p›‹listdir›⍕←‹d›‹rmtree›←‹d›‹exists›Ṅ' > "$TMP/w14e/g.golfj"
+tools/golfc -j "$TMP/w14e/g.golfj" "$TMP/w14e/g" 2>/dev/null && [ "$(TMPDIR="$TMP/w14e/tmp" "$TMP/w14e/g")" = "[102] 1" ] \
+  && ok "golfc (pruned prelude): mkdtemp, mkdir, writefile, listdir, rmtree in one program" || no "W14-E golfc pruned"
+# REFERENCE.md's Filesystem examples print (stdout + stderr) what they say,
+# each in an empty directory (a mkdtemp path compares as JOB).
+w14ebad=""; w14en=0
+while IFS= read -r w14el; do
+  w14en=$((w14en+1)); mkdir -p "$TMP/w14e/doc$w14en"
+  w14ep=${w14el%%  ->*}; w14ep=${w14ep%"${w14ep##*[! ]}"}; w14ew=${w14el##*->  }
+  printf '%s' "$w14ep" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14e/p" 2>/dev/null && chmod +x "$TMP/w14e/p"
+  w14eg=$(cd "$TMP/w14e/doc$w14en" && TMPDIR="$TMP/w14e/tmp" "$TMP/w14e/p" 2>&1); w14eg=${w14eg%"${w14eg##*[! ]}"}
+  w14ej='s#[^ ]*/job-[a-z0-9_]\{6\}#JOB#'
+  [ "$(printf '%s' "$w14eg" | sed "$w14ej")" = "$(printf '%s' "$w14ew" | sed "$w14ej")" ] || w14ebad="$w14ebad [$w14ep]"
+done < <(sed -n '/^### Filesystem (W14-E)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14ebad" ] && [ "$w14en" -ge 12 ] \
+  && ok "REFERENCE.md's Filesystem examples print what they say ($w14en)" || no "REFERENCE Filesystem examples:$w14ebad"
+# === W14-J ===
+# Seeded generators and SHA-256.  Python is the oracle: random.Random(seed)
+# for every MT word (the same 32-bit outputs in the same order), a ten-line
+# xoshiro256** / splitmix64 for ‹rng›, hashlib for the digests.
+echo "W14-J: ‹rng› ‹mtrng› ‹rand› ‹randbits› ‹randbelow› ‹randint› ‹random53› ‹choice› ‹shuffle› ‹sample› ‹sha256› ‹sha256hex›"
+rm -rf "$TMP/w14j"; mkdir -p "$TMP/w14j"
+python3 - "$TMP/w14j" <<'PY'
+import random, sys, hashlib
+T = sys.argv[1]; R = random.Random(14); M = 2**64 - 1
+def lit(v):   # any 64-bit int as golf source (a literal stays below 2^31)
+    if 0 <= v < 2**31: return str(v)
+    u = v & M
+    return "%d 48≪%d 32≪|%d 16≪|%d|" % (u >> 48, (u >> 32) & 65535, (u >> 16) & 65535, u & 65535)
+def s(v): return v - 2**64 if v >> 63 else v
+def sh(l): return " ".join(map(str, l))
+prog, want = [], []
+# Fixed cases first: random.Random(42), the task's checks.
+py = random.Random(42); prog.append("42‹mtrng›→r")
+prog.append("←r1 6‹randint›Ṅ␤←r10⍳‹choice›Ṅ␤←r10⍳‹shuffle›⍕␤←r100⍳10‹sample›⍕␤←r1000⍳10‹sample›⍕␤")
+want += [str(py.randint(1, 6)), str(py.choice(range(10)))]
+l = list(range(10)); py.shuffle(l); want += [sh(l), sh(py.sample(range(100), 10)), sh(py.sample(range(1000), 10))]
+prog.append("20⍳⟦_←r‹random53›1 52≪<1﹢⟧€⍕␤")      # random() < 0.5, twenty times
+want.append(sh(0 if py.random() < 0.5 else 1 for _ in range(20)))
+prog.append("←r1 62≪‹randbelow›Ṅ␤←r1 62≪1﹢‹randbelow›Ṅ␤←r1 62≪1 62≪3﹢‹randint›Ṅ␤←r0 1 62≪-1 62≪‹randint›Ṅ␤")
+want += [str(py._randbelow(2**62)), str(py._randbelow(2**62 + 1)), str(py.randint(2**62, 2**62 + 3)), str(py.randint(-2**62, 2**62))]
+prog.append("←r1 63≪1 63≪1﹣‹randint›Ṅ␤←r0‹randbits›Ṅ␤←r63‹randbits›Ṅ␤←r33‹randbits›Ṅ␤←r‹rand›Ṅ␤")
+want += [str(py.randint(-2**63, 2**63 - 1)), "0", str(py.getrandbits(63)), str(py.getrandbits(33)), str(s(py.getrandbits(64)))]
+# Random sessions: seeds of one and two 32-bit chunks (and negative ones, as
+# |seed|), long runs that regenerate the 624 words many times, every word.
+for t in range(24):
+    seed = R.choice([0, 1, 2**32 - 1, 2**32, 2**63 - 1, -5, R.getrandbits(31), R.getrandbits(62)])
+    py = random.Random(seed); prog.append("%s‹mtrng›→r" % lit(seed))
+    for _ in range(R.randrange(5, 30)):
+        op = R.randrange(7)
+        if op == 0:
+            k = R.randrange(0, 65); prog.append("←r%d‹randbits›Ṅ␤" % k); want.append(str(s(py.getrandbits(k))))
+        elif op == 1:
+            n = R.choice([1, 2, 7, 2**31 + 3, 2**63 - 1, R.getrandbits(R.randrange(1, 63)) + 1])
+            prog.append("←r%s‹randbelow›Ṅ␤" % lit(n)); want.append(str(py._randbelow(n)))
+        elif op == 2:
+            lo = R.choice([0, -5, -2**62, -2**63]); hi = min(lo + R.choice([0, 1, 9, 2**62, 2**64 - 1]), 2**63 - 1)
+            prog.append("←r%s %s‹randint›Ṅ␤" % (lit(lo), lit(hi))); want.append(str(py.randint(lo, hi)))
+        elif op == 3:
+            n = R.randrange(1, 50); prog.append("←r%d⍳‹choice›Ṅ␤" % n); want.append(str(py.choice(range(n))))
+        elif op == 4:
+            n = R.randrange(0, 40); l = list(range(n)); py.shuffle(l); prog.append("←r%d⍳‹shuffle›⍕␤" % n); want.append(sh(l))
+        elif op == 5:   # n <= setsize: the pool branch; n > setsize: the set branch
+            n = R.choice([R.randrange(0, 30), R.randrange(22, 3000)]); k = R.randrange(0, min(n, 60) + 1)
+            prog.append("←r%d⍳%d‹sample›⍕␤" % (n, k)); want.append(sh(py.sample(range(n), k)))
+        else:
+            prog.append("←r‹random53›Ṅ␤"); a = py.getrandbits(32) >> 5; b = py.getrandbits(32) >> 6; want.append(str(a * 67108864 + b))
+    prog.append("1500⍳0⟦_←r32‹randbits›﹢⟧⇤Ṅ␤"); want.append(str(sum(py.getrandbits(32) for _ in range(1500))))
+# ‹rng›: xoshiro256** seeded by splitmix64.
+def xo(seed, n):
+    x = seed & M; st = []
+    for _ in range(4):
+        x = (x + 0x9e3779b97f4a7c15) & M; z = x
+        z = ((z ^ (z >> 30)) * 0xbf58476d1ce4e5b9) & M; z = ((z ^ (z >> 27)) * 0x94d049bb133111eb) & M
+        st.append(z ^ (z >> 31))
+    rl = lambda v, k: ((v << k) | (v >> (64 - k))) & M; out = []
+    for _ in range(n):
+        out.append(rl(st[1] * 5 & M, 7) * 9 & M); t = st[1] << 17 & M
+        st[2] ^= st[0]; st[3] ^= st[1]; st[1] ^= st[2]; st[0] ^= st[3]; st[2] ^= t; st[3] = rl(st[3], 45)
+    return out
+for seed in [0, 1, 12345, 2**63 - 1, -1]:
+    v = xo(seed, 4); prog.append("%s‹rng›→x←x‹rand›Ṅ␤←x‹rand›Ṅ␤←x13‹randbits›Ṅ␤←x‹random53›Ṅ␤" % lit(seed))
+    want += [str(s(v[0])), str(s(v[1])), str(v[2] >> 51), str(v[3] >> 11)]
+# SHA-256: the empty list, 'abc', every length 0..130 (the 55/56 and 64-byte
+# padding boundaries twice over), elements above 255 hashed by their low byte.
+d = bytes(R.randrange(256) for _ in range(130)); open(f"{T}/d130", "wb").write(d)
+prog.append("““⊃‹sha256hex›⊐␤“abc“⊃‹sha256hex›⊐␤“abc“⊃‹sha256›⍕␤")
+want += [hashlib.sha256(b"").hexdigest(), hashlib.sha256(b"abc").hexdigest(), sh(hashlib.sha256(b"abc").digest())]
+prog.append(r"‹args›0⊇‹readfile›→d 131⍳⟦←d\\↑‹sha256hex›⊐␤⟧€_ 300⍳256+‹sha256hex›⊐␤")
+want += [hashlib.sha256(d[:i]).hexdigest() for i in range(131)] + [hashlib.sha256(bytes(i & 255 for i in range(300))).hexdigest()]
+open(f"{T}/p.golfj", "w", encoding="utf-8").write("\n".join(prog) + "\n")
+open(f"{T}/want", "w").write("\n".join(want) + "\n")
+open(f"{T}/1m", "wb").write(bytes(R.randrange(256) for _ in range(1 << 20)))
+open(f"{T}/1m.hex", "w").write(hashlib.sha256(open(f"{T}/1m", "rb").read()).hexdigest() + "\n")
+PY
+w14jgc=$(python3 tools/codepage.py encode < "$TMP/w14j/p.golfj" | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14j/p" 2>/dev/null \
+  && chmod +x "$TMP/w14j/p" && "$TMP/w14j/p" "$TMP/w14j/d130" | sed 's/ *$//')
+[ "$w14jgc" = "$(cat "$TMP/w14j/want")" ] \
+  && ok "MT words equal random.Random (Random(42): randint choice shuffle sample, random() < 0.5; 2^62 ranges; 24 random sessions incl. 2-chunk and negative seeds, both sample branches); ‹rng› equals xoshiro256**; ‹sha256› equals hashlib at every length 0..130 ($(grep -c '' "$TMP/w14j/want") results)" \
+  || no "W14-J against Python: $(diff <(printf '%s\n' "$w14jgc") "$TMP/w14j/want" | head -4 | tr '\n' '|')"
+gin '‹readall›‹sha256hex›⊐' < /dev/null > /dev/null; w14jt0=$(date +%s%N)
+[ "$("$TMP/pin" < "$TMP/w14j/1m")" = "$(cat "$TMP/w14j/1m.hex")" ] \
+  && w14jms=$((($(date +%s%N) - w14jt0) / 1000000)) && [ "$w14jms" -lt 1000 ] \
+  && ok "‹sha256hex› of 1 MB of stdin equals hashlib, in ${w14jms} ms (under 1 s)" || no "W14-J sha256 1 MB (${w14jms:-?} ms)"
+# Failures: each throws a catchable message; uncaught it is GOLF: …, exit 1.
+w14je='1‹rng›→r ⟦←r0‹randbelow›⟧‹catch›⊐␤⟦←r0 1-‹randbits›⟧‹catch›⊐␤⟦←r65‹randbits›⟧‹catch›⊐␤⟦←r5 4‹randint›⟧‹catch›⊐␤⟦←r0⍳‹choice›⟧‹catch›⊐␤⟦←r3⍳4‹sample›⟧‹catch›⊐␤⟦←r3⍳0 1-‹sample›⟧‹catch›⊐␤⟦7‹rand›⟧‹catch›⊐␤⟦4⍳‹rand›⟧‹catch›⊐␤⟦“abc“‹sha256›⟧‹catch›⊐␤⟦←r⌫←r‹rand›⟧‹catch›⊐'
+[ "$(printf '%s' "$w14je" | gc)" = "$(printf 'randbelow: empty range\nrandbits: k out of range\nrandbits: k out of range\nrandint: empty range\nchoice: empty list\nsample: k out of range\nsample: k out of range\nnot a random generator\nnot a random generator\nsha256: not a list\nuse after free')" ] \
+  && [ "$(printf '%s' '5‹mtrng›9 8‹randint›Ṅ' | gc 2>&1; echo " rc=$?")" = "$(printf 'GOLF: randint: empty range\n rc=1')" ] \
+  && ok "failures: empty ranges, k out of range, empty choice, sample k > n or < 0, not a generator (an int, a list of the wrong shape, a freed one), sha256 of a byte block; uncaught: GOLF: …, exit 1" \
+  || no "W14-J failures: $(printf '%s' "$w14je" | gc 2>&1 | tr '\n' '|')"
+# Edges: k = 0 bits draws nothing; a one-value range; sample 0 / all; shuffle
+# of 0 and 1 elements; the words leave no blocks behind but their results;
+# a generator used inside € (re-entrant ⊡ words, no fixed cells).
+w14jx='7‹mtrng›→r←r0‹randbits›Ṅ←r5 5‹randint›Ṅ←r1‹randbelow›Ṅ←r9⍳0‹sample›≢Ṅ←r5⍳5‹sample›⍋⍕←r0⍳‹shuffle›≢Ṅ←r1⍳‹shuffle›⍕␤‹heapstats›_→n 100⍳"←r\\40‹sample›⌫"←r\\‹shuffle›⌫"‹sha256›⌫"‹sha256hex›⌫⌫ 3‹rng›⌫‹heapstats›_←n-Ṅ␤5⍳⟦←r\\1+‹randbelow›⟧€⍕'
+[ "$(printf '%s' "$w14jx" | gc | sed 's/ *$//')" = "$(printf '05000 1 2 3 4 00\n0\n%s' "$(python3 -c 'import random; r=random.Random(7); [r.getrandbits(0), r.randint(5,5), r._randbelow(1), r.sample(range(9),0), r.sample(range(5),5), r.shuffle([]), r.shuffle([0]), r.sample(range(100),40), r.shuffle(list(range(100)))]; print(*[r._randbelow(i+1) for i in range(5)])')")" ] \
+  && ok "edges: 0 bits, one-value ranges, sample of 0 and of all, shuffle of 0 and 1; no blocks leaked; inside € it keeps drawing as Python does" \
+  || no "W14-J edges: $(printf '%s' "$w14jx" | gc 2>&1 | tr '\n' '|')"
+# REFERENCE.md's "Random numbers and SHA-256" examples print what they say.
+w14jbad=""; w14jn=0
+while IFS= read -r w14jl; do
+  w14jxx=${w14jl%%  ->*}; w14jxx=${w14jxx%"${w14jxx##*[! ]}"}; w14jw=${w14jl##*->  }; w14jn=$((w14jn+1))
+  [ "$(printf '%s' "$w14jxx" | gc 2>&1 | sed 's/ *$//')" = "$w14jw" ] || w14jbad="$w14jbad [$w14jxx]"
+done < <(sed -n '/^### Random numbers and SHA-256 (W14-J)$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
+[ -z "$w14jbad" ] && [ "$w14jn" -ge 8 ] && grep -q '^# ===== W14-J =====$' lib/prelude.golfj \
+  && ok "REFERENCE.md's Random numbers and SHA-256 examples ($w14jn) print what they say" || no "W14-J examples ($w14jn):$w14jbad"
+# === W14-G ===
+# printf-style ‹format›, ‹fixed›, the str-method text words, little-endian
+# packing, hex and UTF-8.  First fixed cases (the REFERENCE examples, the
+# diagnostics, ‹catch›, no leak), then a Python oracle: one program a section,
+# compiled pruned (gcp), each line checked against Python's % operator,
+# Decimal ROUND_HALF_UP, str methods, struct and surrogateescape.
+echo "W14-G: ‹format› ‹printf› ‹fixed›, text, bytes, little-endian and UTF-8 words"
+w14gbad=""
+while IFS=$'\t' read -r w14gx w14gw; do
+  [ -z "$w14gx" ] && continue
+  w14gg=$(printf '%s' "$w14gx" | gc 2>&1 | tr '\n' '/' | sed 's/ *\/*$//')
+  [ "$w14gg" = "$w14gw" ] || w14gbad="$w14gbad [$w14gx => $w14gg]"
+done <<'W14GCASES'
+“%-6s|%05d|%x“⊃Ṿ“ab“⊃⍆42⍆255⍆‹format›⊐	ab    |00042|ff
+“%+.2d %c%%“⊃Ṿ7⍆65⍆‹printf›	+07 A%
+“[%5.2s] %X %o %b %u“⊃Ṿ“abc“⊃⍆255⍆8⍆5⍆0 1-⍆‹format›⊐	[   ab] FF 10 101 18446744073709551615
+“%s=%d“⊃Ṿ“n“⊃⍆1 63≪⍆‹format›⊐“ %s“⊃Ṿ0 12-⍆‹format›⊐	n=-9223372036854775808 -12
+1234567 1000000 3‹fixed›⊐	1.235
+0 5-10 0‹fixed›⊐ 0 1-1000 2‹fixed›⊐ 1 63≪1 0‹fixed›⊐	-10.00-9223372036854775808
+“ab“⊃6‹center›⊐“|“🗲“ab“⊃5‹ljust›⊐“|“🗲“ab“⊃1‹center›⊐	  ab  |ab   |ab
+“a.b.c“⊃“.“⊃“::“⊃‹replace›⊐ “ab“⊃0⍳“-“⊃‹replace›⊐	a::b::c-a-b-
+“a.b.c“⊃“.“⊃‹rfind›Ṅ“a.b.c“⊃“.“⊃‹count›Ṅ“a.b.c“⊃“.c“⊃‹endswith›Ṅ“abc“⊃0⍳‹count›Ṅ	3204
+“k=v=w“⊃“=“⊃‹partition›Ṅ\\⊐“,“🗲⊐“ “🗲“k=v=w“⊃“=“⊃‹rpartition›Ṅ\\⊐“,“🗲⊐“ “🗲“kvw“⊃“=“⊃‹partition›Ṅ\\⊐“,“🗲⊐	0k,v=w 0k=v,w 1kvw,
+“hello“⊃“el“⊃“ip“⊃‹translate›⊐ “hello“⊃“l“⊃0⍳‹translate›⊐ Ṿ0 1-⍆300⍆97⍆“a“⊃“b“⊃‹translate›⍕	hippoheo-1 300 98
+“abcd“⊃0 4‹le›‹hex›⊐ 0 2-2‹tole›"⍕0 2‹les›Ṅ 4⍳1 258 2‹setle›⍕	64636261254 255 -20 2 1 3
+“hi“⊃‹hexbytes›⊐ “68 69“⊃‹unhexbytes›⊐ “C3A9ff“⊃‹unhexbytes›‹utf8›⍕Ṿ8364⍆56575⍆‹unutf8›‹hexbytes›⊐	6869hi233 56575 e282acff
+7→‹count›⇡‹count›←‹count›Ṅ“aaa“⊃“a“⊃‹count›Ṅ	83
+“%d %d“⊃Ṿ1⍆‹format›	GOLF: format: not enough arguments
+:‹f›“%d“⊃Ṿ1⍆2⍆‹format›;′‹f›‹catch›⊐	format: too many arguments
+“%q“⊃Ṿ1⍆‹format›	GOLF: format: bad conversion %q
+“abc%-5“⊃Ṿ‹format›	GOLF: format: incomplete conversion
+“%x“⊃Ṿ“x“⊃⍆‹format›	GOLF: format: %x needs a number
+“%d“⊃5‹format›	GOLF: format: args must be a list
+“%d“Ṿ‹format›	GOLF: format: template must be a list
+1 0 2‹fixed›	GOLF: divide by zero
+“a“⊃0⍳‹partition›	GOLF: partition: empty separator
+“a“⊃0⍳‹rpartition›	GOLF: rpartition: empty separator
+“ab“⊃“a“⊃“xy“⊃‹translate›	GOLF: translate: from and to differ in length
+“ab“⊃Ṿ300⍆0⍳‹translate›	GOLF: translate: not a byte
+5 3‹tole›	GOLF: tole: width must be 1, 2, 4 or 8
+3⍳2 9 2‹setle›	GOLF: setle: offset out of range
+3⍳0 1-2‹les›	GOLF: le: offset out of range
+“ab“⊃1 2‹le›	GOLF: le: offset out of range
+“ff0“⊃‹unhexbytes›	GOLF: unhexbytes: odd number of hex digits
+“f f“⊃‹unhexbytes›	GOLF: unhexbytes: bad hex digit
+Ṿ55296⍆‹unutf8›	GOLF: unutf8: invalid code point 55296
+Ṿ0 1-⍆‹unutf8›	GOLF: unutf8: invalid code point -1
+Ṿ1114112⍆‹unutf8›	GOLF: unutf8: invalid code point 1114112
+“%5d %s %.1s %c %x %-4s|“⊃→t Ṿ3⍆“ab“⊃⍆“xy“⊃⍆65⍆255⍆7⍆→a ‹heapstats›_→n ←t←a‹format›⌫ 0 1-1000 5‹fixed›⌫ ‹heapstats›_←n-Ṅ	0
+W14GCASES
+[ -z "$w14gbad" ] && ok "W14-G fixed cases: format/printf conversions and flags, fixed, center/ljust, replace/rfind/count/endswith, partition/rpartition, translate, le/les/tole/setle, hex, UTF-8; every diagnostic; catchable; ‹format› and ‹fixed› free their temporaries; ‹count› as a variable still works" \
+  || no "W14-G fixed cases:$w14gbad"
+# REFERENCE.md's W14-G examples print (stdout + stderr) what the doc says.
+while IFS= read -r w14gl; do
+  w14gp=${w14gl%%  ->*}; w14gp=${w14gp%"${w14gp##*[! ]}"}; w14gw=${w14gl##*->  }
+  [ "$(printf '%s' "$w14gp" | gc 2>&1)" = "$w14gw" ] || w14gbad="$w14gbad [$w14gp]"
+done < <(sed -n '/^### Formatting, bytes and UTF-8 (W14-G)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w14gbad" ] && [ "$(sed -n '/^### Formatting, bytes and UTF-8 (W14-G)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 18 ] \
+  && ok "REFERENCE.md's W14-G examples print what they say" || no "REFERENCE W14-G examples:$w14gbad"
+# The Python reference compiler (boot/golfref.py) runs the W14-G words identically.
+w14go='“%-4s|%+05d|%X|%.1s“⊃Ṿ“ab“⊃⍆7⍆255⍆“xy“⊃⍆‹format›⊐7 2 1‹fixed›⊐“a-b-c“⊃“-“⊃“+“⊃‹replace›⊐“c3a9ff“⊃‹unhexbytes›‹utf8›"⍕‹unutf8›‹hexbytes›⊐0 3-4‹tole›0 4‹les›Ṅ'
+[ "$(printf '%s' "$w14go" | gref)" = "$(printf '%s' "$w14go" | gc)" ] && [ "$(printf '%s' "$w14go" | gc)" = "ab  |+0007|FF|x3.5a+b+c233 56575 c3a9ff-3" ] \
+  && ok "oracle: boot/golfref.py runs the W14-G words identically" || no "w14-g oracle"
+w14gsecs=$(python3 - "$TMP" <<'W14GPY'
+import random, struct, string, sys
+from decimal import Decimal, ROUND_HALF_UP, getcontext
+getcontext().prec = 80
+R = random.Random(1414)
+out = sys.argv[1]
+SAFE = string.ascii_letters + string.digits + " .,-=:;!?()[]<>@$&*_+|~^"
+progs = {}
+def emit(sec, code, want):
+    p, w = progs.setdefault(sec, ([], []))
+    p.append(code + '␤')
+    w.append(want)
+def gint(v):                       # any 64-bit int, no big literal in the source
+    return '“%s%x“⊃‹parsehex›' % ('-' if v < 0 else '', abs(v))
+def gn(v):                         # a small int
+    return str(v) if v >= 0 else '0 %d-' % -v
+def gs(s):
+    return '“%s“⊃' % s
+def rs(alpha, lo, hi):
+    return ''.join(R.choice(alpha) for _ in range(R.randint(lo, hi)))
+def ghex(b):
+    return '“%s“⊃‹unhexbytes›' % b.hex()
+# --- format vs Python's % (%b via the decimal digits of bin(v), %u as %d) ---
+for _ in range(160):
+    tpl = ''; py = ''; args = ''
+    for _ in range(R.randint(1, 4)):
+        lit = rs(SAFE, 0, 3)
+        if R.random() < 0.15:
+            lit += '%%'
+        tpl += lit; py += lit.replace('%%', '%')
+        conv = R.choice('duxXobcs')
+        flags = ''.join(f for f in '-0+ ' if R.random() < 0.3)
+        if conv != 'd':
+            flags = flags.replace('+', '').replace(' ', '')
+        width = str(R.randint(1, 12)) if R.random() < 0.6 else ''
+        prec = '.%d' % R.randint(0, 6) if R.random() < 0.4 and conv != 'c' else ''
+        spec = flags + width + prec
+        tpl += '%' + spec + conv
+        if conv == 'd':
+            v = R.choice([R.randint(-99, 99), R.randint(-2**63, 2**63 - 1), R.randint(-10**6, 10**6), -2**63])
+            args += gint(v) + '⍆'; py += ('%' + spec + 'd') % v
+        elif conv in 'uxXob':
+            v = R.choice([R.randint(0, 99), R.randint(0, 2**63 - 1), 0])
+            args += gint(v) + '⍆'
+            if conv == 'b':
+                py += ('%' + spec + 'd') % int(format(v, 'b'))
+            else:
+                py += ('%' + spec + conv.replace('u', 'd')) % v
+        elif conv == 'c':
+            v = R.randint(33, 126); args += gn(v) + '⍆'; py += ('%' + spec + 'c') % v
+        else:
+            if R.random() < 0.2:
+                v = R.randint(-10**9, 10**9); args += gn(v) + '⍆'
+            else:
+                v = rs(SAFE, 0, 8); args += gs(v) + '⍆'
+            py += ('%' + spec + 's') % (v,)
+    emit('fmt', gs(tpl) + 'Ṿ' + args + '‹format›⊐', py)
+# unsigned views of negatives, and printf
+for v in (-1, -255, -2**63, -2**40 - 7):
+    u = v & (2**64 - 1)
+    emit('fmt', gs('%x %X %o %u|%30b') + 'Ṿ' + gint(v) * 1 + '⍆' + (gint(v) + '⍆') * 4 + '‹format›⊐',
+         '%x %X %o %d|%30s' % (u, u, u, u, format(u, 'b')))
+emit('fmt', gs('<%5s|%-3d>') + 'Ṿ' + gs('ab') + '⍆7⍆‹printf›', '<   ab|7  >')
+# --- fixed vs Decimal ROUND_HALF_UP (half away from zero), no "-0" ---
+for _ in range(80):
+    n = R.choice([R.randint(-10**4, 10**4), R.randint(-10**15, 10**15), R.randint(-2**63, 2**63 - 1)])
+    d = R.choice([R.randint(1, 1000), 10**R.randint(0, 9), R.randint(1, 10**17)]) * R.choice([1, -1])
+    k = R.randint(0, 9)
+    q = (Decimal(n) / Decimal(d)).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
+    s = '{:f}'.format(q)
+    if q == 0:
+        s = s.lstrip('-')
+    emit('fixed', gint(n) + gint(d) + str(k) + '‹fixed›⊐', s)
+for n, d, k in ((5, 10, 0), (-5, 10, 0), (15, 100, 1), (-15, 100, 1), (9995, 1000, 2), (-1, 1000, 2), (1234567, 1000000, 3), (7, 1, 0), (2, 3, 0)):
+    q = (Decimal(n) / Decimal(d)).quantize(Decimal(1).scaleb(-k), rounding=ROUND_HALF_UP)
+    s = '{:f}'.format(q)
+    emit('fixed', gint(n) + gint(d) + str(k) + '‹fixed›⊐', s.lstrip('-') if q == 0 else s)
+# --- text words vs str methods ---
+for _ in range(60):
+    s = rs(SAFE.replace(' ', ''), 0, 6); w = R.randint(-2, 12)
+    emit('text', gs(s) + gn(w) + '‹center›⊐“|“🗲' + gs(s) + gn(w) + '‹ljust›⊐“|“🗲' + gs(s) + gn(w) + '‹pad›⊐',
+         s.center(w) + '|' + s.ljust(w) + '|' + s.rjust(w))
+for _ in range(80):
+    h = rs('ab', 0, 9); n = rs('ab', 0, 3); r = rs('xy', 0, 2)
+    want = '%d %d %d ' % (h.count(n), h.rfind(n), 0 if h.endswith(n) else 1) + h.replace(n, r)
+    code = gs(h) + gs(n) + '‹count›Ṅ“ “🗲' + gs(h) + gs(n) + '‹rfind›Ṅ“ “🗲' + gs(h) + gs(n) + '‹endswith›Ṅ“ “🗲' + gs(h) + gs(n) + gs(r) + '‹replace›⊐'
+    if n:
+        a, sep, b = h.partition(n); f = 0 if sep else 1
+        c, sep2, e = h.rpartition(n); g = 0 if sep2 else 1
+        if g:
+            c, e = h, ''
+        want += '|%d:%s:%s|%d:%s:%s' % (f, a, b, g, c, e)
+        code += '“|“🗲' + gs(h) + gs(n) + '‹partition›Ṅ\\\\“:“🗲⊐“:“🗲⊐“|“🗲' + gs(h) + gs(n) + '‹rpartition›Ṅ\\\\“:“🗲⊐“:“🗲⊐'
+    emit('text', code, want)
+for _ in range(40):
+    s = rs('abcdef', 0, 10); fr = ''.join(R.sample('abcdef', R.randint(0, 4)))
+    if R.random() < 0.3:
+        to = ''; py = s.encode().translate(None, fr.encode()).decode()
+    else:
+        to = ''.join(R.choice('ABCDEF') for _ in fr); py = s.translate(str.maketrans(fr, to))
+    emit('text', gs(s) + gs(fr) + gs(to) + '‹translate›⊐', py)
+# --- bytes: little-endian vs struct, hex round trips ---
+for _ in range(80):
+    w = R.choice((1, 2, 4, 8)); v = R.randint(-2**63, 2**63 - 1)
+    b = bytes(R.randrange(256) for _ in range(R.randint(w, 12))); o = R.randint(0, len(b) - w)
+    fmt = {1: 'b', 2: 'h', 4: 'i', 8: 'q'}[w]
+    tole = struct.pack('<' + fmt.upper(), v & ((1 << 8 * w) - 1)).hex()
+    le = struct.unpack_from('<' + fmt.upper(), b, o)[0]; les = struct.unpack_from('<' + fmt, b, o)[0]
+    nb = bytearray(b); nb[o:o + w] = bytes.fromhex(tole)
+    emit('bytes', gint(v) + str(w) + '‹tole›‹hexbytes›⊐“ “🗲' + gs('%u') + 'Ṿ' + ghex(b) + str(o) + ' ' + str(w) + '‹le›⍆‹format›⊐“ “🗲'
+         + ghex(b) + str(o) + ' ' + str(w) + '‹les›Ṅ“ “🗲' + ghex(b) + str(o) + gint(v) + str(w) + '‹setle›‹hexbytes›⊐',
+         '%s %d %d %s' % (tole, le, les, nb.hex()))
+for _ in range(30):
+    b = bytes(R.randrange(256) for _ in range(R.randint(0, 20)))
+    spaced = ' '.join(b[i:i + 1].hex().upper() if i % 2 else b[i:i + 1].hex() for i in range(len(b)))
+    emit('bytes', gs(spaced) + '‹unhexbytes›‹hexbytes›⊐', b.hex())
+# --- UTF-8 vs Python's surrogateescape ---
+for x in range(256):
+    emit('utf8', ghex(bytes([x])) + '‹utf8›"⍕‹unutf8›‹hexbytes›⊐',
+         ''.join('%d ' % ord(c) for c in bytes([x]).decode('utf-8', 'surrogateescape')) + '%02x' % x)
+def rbytes():
+    parts = []
+    for _ in range(R.randint(0, 6)):
+        k = R.random()
+        if k < 0.4:
+            cp = R.choice([R.randint(0x20, 0x7E), R.randint(0x80, 0x7FF), R.randint(0x800, 0xD7FF),
+                           R.randint(0xE000, 0xFFFF), R.randint(0x10000, 0x10FFFF)])
+            parts.append(chr(cp).encode())
+        elif k < 0.6:
+            parts.append(chr(R.randint(0x80, 0x10FFFF) if R.random() < .5 else R.randint(0x800, 0xFFFF)).encode('utf-8', 'surrogatepass')[:-1])
+        elif k < 0.8:
+            parts.append(bytes([R.randrange(256)]))
+        else:
+            parts.append(R.choice([b'\xc0\xaf', b'\xe0\x80\xaf', b'\xed\xa0\x80', b'\xf4\x90\x80\x80', b'\xf8\x88\x80\x80\x80', b'\xc2', b'\xef\xbf\xbd']))
+    return b''.join(parts)
+for _ in range(150):
+    b = rbytes()
+    emit('utf8', ghex(b) + '‹utf8›"⍕‹unutf8›‹hexbytes›⊐',
+         ''.join('%d ' % ord(c) for c in b.decode('utf-8', 'surrogateescape')) + b.hex())
+for _ in range(40):
+    cps = [R.choice([R.randint(0, 0x7F), R.randint(0x80, 0x7FF), R.randint(0x800, 0xD7FF), R.randint(0xDC80, 0xDCFF),
+                     R.randint(0xE000, 0xFFFF), R.randint(0x10000, 0x10FFFF)]) for _ in range(R.randint(0, 5))]
+    emit('utf8', 'Ṿ' + ''.join(gn(c) + '⍆' for c in cps) + '‹unutf8›‹hexbytes›⊐',
+         ''.join(map(chr, cps)).encode('utf-8', 'surrogateescape').hex())
+for sec, (p, w) in progs.items():
+    open('%s/w14g_%s.golfj' % (out, sec), 'w', encoding='utf-8').write('\n'.join(p) + '\n')
+    open('%s/w14g_%s.want' % (out, sec), 'w', encoding='utf-8').write('\n'.join(w) + '\n')
+print(' '.join(progs))
+W14GPY
+)
+w14gbad=""
+for w14gs in $w14gsecs; do
+  python3 tools/codepage.py encode < "$TMP/w14g_$w14gs.golfj" > "$TMP/w14g.gb" \
+    && python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w14g.gb" > "$TMP/w14g.src" && cat "$TMP/w14g.gb" >> "$TMP/w14g.src" \
+    && "$TMP/golf2" < "$TMP/w14g.src" > "$TMP/w14gp" 2>/dev/null && chmod +x "$TMP/w14gp" \
+    && "$TMP/w14gp" > "$TMP/w14g_$w14gs.got" 2>&1 && cmp -s "$TMP/w14g_$w14gs.want" "$TMP/w14g_$w14gs.got" \
+    || w14gbad="$w14gbad $w14gs($(diff "$TMP/w14g_$w14gs.want" "$TMP/w14g_$w14gs.got" 2>&1 | head -3 | tr '\n' ' '))"
+done
+[ "$w14gsecs" = "fmt fixed text bytes utf8" ] && [ -z "$w14gbad" ] \
+  && ok "W14-G Python oracle: 165 ‹format›/‹printf› vs %, 89 ‹fixed› vs Decimal HALF_UP, 200 text-word lines vs str, 110 le/tole/setle/hex vs struct, every byte 0-255 + 190 UTF-8 decode/encode round trips vs surrogateescape" \
+  || no "W14-G Python oracle:$w14gbad"
+
 # === W13-C ===
 echo "W13-C: ± ⊕ ⊖ ² ⊗ ⊘ map over lists; Ṁ Ṃ ⍘ ⍂ ⍃ Ċ ⍖ Ṕ ⍷ ℑ Ǧ ṭ (0xE4-0xEF); the A-Z digraph page"
 # The code page: each mnemonic encodes to its byte, each glyph round-trips
@@ -4455,7 +5161,7 @@ for l in lists:
 open(f"{T}/p.golfj", "w", encoding="utf-8").write("".join(prog))
 open(f"{T}/want", "w").write("\n".join(want) + "\n")
 PY
-w13cgc=$(gc < "$TMP/w13c/p.golfj" | sed 's/ *$//'); w13cgr=$(gref < "$TMP/w13c/p.golfj" | sed 's/ *$//')
+w13cgc=$(gcp < "$TMP/w13c/p.golfj" | sed 's/ *$//'); w13cgr=$(grefp < "$TMP/w13c/p.golfj" | sed 's/ *$//')
 [ "$w13cgc" = "$(cat "$TMP/w13c/want")" ] && [ "$w13cgr" = "$w13cgc" ] \
   && ok "Ṁ Ṃ ⍘ ⍂ (= ⌽ ′f⍀ ⌽) ⍃ Ċ ⍖ (stable, descending) Ṕ ⍷ ℑ equal Python on $(grep -c '' "$TMP/w13c/want") results over 15 lists (empty, duplicates, random; Ṁ Ṃ on INT64_MAX/MIN too); the oracle agrees" \
   || no "W13-C vs Python: $(diff <(printf '%s\n' "$w13cgc") "$TMP/w13c/want" | head -6 | tr '\n' ' ')"
@@ -4799,9 +5505,9 @@ for t in range(6):
 open(f"{T}/p.golfj", "w", encoding="utf-8").write("".join(progs))
 open(f"{T}/want", "w").write("\n".join(want) + "\n")
 PYEOF
-[ "$(gc < "$TMP/w13e/p.golfj" | sed 's/ *$//')" = "$(cat "$TMP/w13e/want")" ] \
+[ "$(gcp < "$TMP/w13e/p.golfj" | sed 's/ *$//')" = "$(cat "$TMP/w13e/want")" ] \
   && ok "random graphs, sequences and grids: bfs comps dijkstra uunion toposort, the four monotonic stacks, nsmallest/nlargest and gcomps match Python" \
-  || no "W13-E vs Python: $(diff <(gc < "$TMP/w13e/p.golfj" | sed 's/ *$//') "$TMP/w13e/want" | head -4 | tr '\n' ' ')"
+  || no "W13-E vs Python: $(diff <(gcp < "$TMP/w13e/p.golfj" | sed 's/ *$//') "$TMP/w13e/want" | head -4 | tr '\n' ' ')"
 # The oracle agrees on a mixed program; every digraph alias calls its word.
 w13eo='5Ṿ0⍆1⍆1⍆2⍆3⍆4⍆‹adj›"0‹bfs›⍕‹comps›⍕:p49-;“110;010;001“⊃59‹split›′p‹gcomps›Ṅ3⍳‹perms›‹sshow›Ṿ2⍆1⍆5⍆3⍆‹nextgreater›⍕5‹uf›0 1‹uunion›_‹ucount›Ṅ'
 [ "$(printf '%s' "$w13eo" | gref)" = "$(printf '%s' "$w13eo" | gc)" ] && [ -n "$(printf '%s' "$w13eo" | gc)" ] \

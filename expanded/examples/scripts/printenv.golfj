@@ -1,0 +1,10 @@
+#!/usr/bin/env golfrun
+# printenv — like printenv(1).  With tools/ on PATH (or run it as
+# `tools/golfrun examples/scripts/printenv.golfj …`):
+#   ./printenv.golfj            every KEY=VALUE, one per line, in envp order
+#   ./printenv.golfj HOME PATH  each variable's value, one per line; the exit
+#                               status is 1 if any of them is not set
+:‹say›⊐␤0;                       # print a code list and a newline; € wants a result
+:‹one›‹getenv›[‹say›⋄_1];        # set: print it, 0 · unset: drop the empty list, 1
+‹args›"≢[_‹environ›′‹say›€_0‹exit›]
+′‹one›€∑0≡1﹢‹exit›                # 0 if every name was set, else 1

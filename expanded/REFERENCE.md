@@ -251,9 +251,11 @@ goes for the raw forms `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`, and for the comparisons `< » 
 ## 3. The v2 code page
 
 The v2 language uses one byte for each operation, from the full 0–255 range.
-`tools/mkblob2.py` (atoms) and `tools/codepage.py` (compiler ops and library
-words) are the source of truth. `REGISTRY.md` records which bytes are taken.
-The tables below are generated from those files. Do not edit them by hand.
+`data/ops.tsv` (every byte's glyph, mnemonic and meaning) and
+`data/templates.txt` (the atoms' machine code) are the source of truth, read by
+`tools/mkblob2.py` and `tools/codepage.py`. `REGISTRY.md` records which bytes
+are taken. The tables below are generated from those files. Do not edit them by
+hand.
 
 <!-- BEGIN GENERATED: python3 tools/codepage.py reference -->
 ### Atoms
@@ -300,6 +302,7 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0xAB` | `⊣` | `\ctz` | x -> trailing zero bits (64 for 0) |
 | `0xAC` | `⊢` | `\clz` | x -> leading zero bits (64 for 0) |
 | `0xAD` | `⊥` | `\lsb` | x -> x & -x, the lowest set bit (0 for 0) |
+| `0xAE` | `⌁` | `\scall` | a1 a2 a3 a4 a5 a6 num -> result: raw six-argument syscall |
 
 ### Compiler ops
 
@@ -925,7 +928,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 381 in all after W13-H, helpers included), so a program has 643 for itself.
+has 526 in all after W14, helpers included), so a program has 498 for itself.
 
 ### Sorting by key
 
@@ -1367,7 +1370,7 @@ appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
 (and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words), the prelude has 381 long
-names, which leaves 643 for a program.
+names, which leaves 498 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -2009,11 +2012,384 @@ them all. The streams read their input lists in place and do not own them.
   `‹heapify›` of 1M ints 0.03 s over reading them, all 10! `‹perms›`
   0.52 s. Names that start with `‹_13e` are these words' helpers.
 
+### Processes (W14-B)
+
+The process words run other programs, the way a shell script or Python's
+`subprocess` does. An **argv** is a list of code lists, program first:
+`“ls -l“⊃32‹split›` is one, and so is `‹args›`. A program name with no `/`
+is looked up on `$PATH`, as `execvp` does. The child gets this process's
+environment. A **status** is the exit code `0`–`255`, or minus the signal
+number when a signal killed the child (`-9` for SIGKILL), as in Python's
+`returncode`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹run›` | `argv -> status` | run the program with this process's stdin, stdout and stderr, and wait for it |
+| `‹capture›` | `argv input -> out err status` | run it with `input` on its stdin, and collect its stdout and stderr as code lists. `input` is a code list, or `0` for `/dev/null`. One `poll(2)` loop feeds the input and drains both outputs, so no size of either deadlocks. A child that exits without reading all its input is not an error |
+| `‹capturet›` | `argv input ms -> out err status` | `‹capture›` with a time limit. When `ms` milliseconds pass, the child gets SIGKILL and the status is **`-256`**, with whatever output arrived. A negative `ms` means no limit |
+| `‹spawn›` | `argv io -> pid` | start the program and return at once. `io` is `0` to inherit fds 0, 1 and 2, or a 3-element list `[in out err]` of fds, where `-1` inherits that one |
+| `‹wait›` | `pid -> status` | wait for a child to end |
+| `‹waitr›` | `pid -> status kb` | the same, plus the child's peak resident set size in KB (`wait4`'s `ru_maxrss`) |
+| `‹exec›` | `argv ->` | replace this process with the program. Buffered output is flushed first. Returns only by throwing |
+| `‹pipe›` | `-> rfd wfd` | a new pipe, both ends close-on-exec. Pass an end to `‹spawn›` in `io`; `‹fread›`, `‹fwrite›` and `‹close›` work on it |
+| `‹kill›` | `pid sig ->` | send signal `sig` to `pid` |
+| `‹signame›` | `n -> list` | the signal's name, `SIGHUP` … `SIGSYS` for 1–31 (Python's `signal.Signals` names); any other `n` is `signal n` |
+
+```
+“printf hi“⊃32‹split›‹run›Ṅ                        ->  hi0
+“false“⊃32‹split›‹run›Ṅ                            ->  1
+“tr a-z A-Z“⊃32‹split›“golf“⊃‹capture›Ṅ\\⊐⊐         ->  0GOLF
+“sleep 5“⊃32‹split›0 100‹capturet›Ṅ__              ->  -256
+“sleep 5“⊃32‹split›0‹spawn›"9‹kill›‹wait›Ṅ         ->  -9
+“printf x“⊃32‹split›5Ṅ‹exec›7Ṅ                     ->  5x
+11‹signame›⊐ 64‹signame›⊐                          ->  SIGSEGVsignal 64
+“nosuch“⊃32‹split›‹run›                            ->  GOLF: cannot run nosuch (ENOENT)
+```
+
+```
+‹args›‹run›.                           # ./p sh -c 'exit 3'   exits 3
+‹pipe›→‹w›→‹r›                         # a child writing into a pipe:
+“date“⊃32‹split›3⍳1 ←‹w›⍈0 0 1-⍈2 0 1-⍈‹spawn›‹wait›_
+←‹w›‹close›←‹r›100‹fread›⊐             # prints the date
+```
+
+- **A program that cannot run is an error in the parent.** The child
+  reports `execve`'s errno back through a close-on-exec pipe, so `‹run›`,
+  `‹spawn›` and `‹capture›` throw `GOLF: cannot run nosuch (ENOENT)` (or
+  `EACCES` for a file that is not executable, and so on) instead of returning
+  a status of 127. A bad fd in `io` is `cannot run prog (EBADF)`. As with
+  `execvp`, when some `$PATH` entry gave `EACCES` and none ran, the error is
+  `EACCES`. An empty `$PATH` entry is the current directory, and with no
+  `$PATH` at all the search is `/bin:/usr/bin`. The other failures are
+  `cannot fork (EAGAIN)`, `cannot make a pipe (EMFILE)`, `cannot wait for pid
+  N (ECHILD)`, `cannot kill pid N (ESRCH)`, `cannot run an empty argv` and
+  `io is not 0 or [in out err]` (an `io` list that is not 3 long). All
+  of them go through `‹throw›`, so `‹catch›` catches them (see Errors).
+- **Output order.** Every word that forks flushes the output buffer first, so
+  what `Ṅ ⍕ 🗲 ⊐` printed comes out once, before the child's output.
+- **Timeouts.** After the kill, `‹capturet›` reaps the child and then reads
+  what is left in the pipes without blocking. A grandchild that still holds
+  them open (`sh -c 'sleep 9'` leaves a `sleep` behind) is not waited for and
+  not killed. A child that closes its stdout and stderr but keeps running is
+  killed at the limit too.
+- **`io` fds** may be given in any order (`[-1 2 1]` swaps stdout and stderr)
+  and may be close-on-exec: the child copies them above fd 2 before it moves
+  them onto 0, 1 and 2. The parent keeps its own copies, and closes them
+  with `‹close›` when it is done (a pipe's reader sees end of file only when
+  every write end is closed).
+- `‹capture›` holds both outputs in memory, as a byte buffer that doubles,
+  and widens each into a code list at the end (8 bytes a byte). While its loop
+  runs it ignores SIGPIPE, and it restores the old disposition afterwards. The
+  child is forked before that, so it starts with the usual SIGPIPE.
+- **Peak RSS.** `‹waitr›` is what `bench/leetcode/rss.golfj` (the Golf port
+  of `rss.py`) prints. It is the child's own peak. Python's
+  `RUSAGE_CHILDREN` reading in `rss.py` also counts the forked Python before
+  its `exec` (about 13 MB), so for a small child the two differ.
+
+Names that start with `‹_14b` are these words' helpers.
+### Environment and time (W14-D)
+
+The words a script needs from its process: the environment, the terminal,
+the clocks and its own resource use. They are long names on `⎈` and `⌁`, and
+each one is re-entrant (no fixed cells). Strings are **code lists**, as in
+"Text" and "Files".
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹getenv›` | `name -> value f` | look `name` up in the environment the program was started with. Set (an empty value too): `f` is `0` and `value` is its code list. Not set: `f` is `1` and `value` is the empty list. Zero-is-true, like `‹readline›`, so `‹getenv›[…⋄_…]` runs its first branch on a hit. The first matching entry wins; the empty name is never set |
+| `‹environ›` | `-> list` | every environment entry, `KEY=VALUE`, as a list of code lists in the order the kernel passed them (not sorted). An empty environment gives the empty list |
+| `‹isatty›` | `fd -> f` | `0` if `fd` is a terminal (the `TCGETS` ioctl succeeds), else `1`: a file, a pipe, `/dev/null`, a closed or negative fd |
+| `‹getpid›` | `-> pid` | the process id |
+| `‹exit›` | `code ->` | exit with status `code`. It is exactly `.`, given a name: it runs the flush hook first, so buffered output is written and a failed `‹assert›` still turns a status `0` into `1`; like `.`, it prints no implicit output. Not catchable |
+| `‹eputs›` | `list ->` | write a code list to stderr (fd 2). The stdout buffer is drained first, so on a terminal (or `2>&1`) the two streams keep their order. It is `2‹fwrite›` |
+| `‹now›` | `-> ns` | `CLOCK_MONOTONIC` in nanoseconds: never goes backwards, for timing (`‹now›…‹now›\\-`) |
+| `‹walltime›` | `-> ns` | `CLOCK_REALTIME` in nanoseconds since 1970-01-01 UTC (`1000000000/` gives Unix seconds) |
+| `‹sleep›` | `ms ->` | sleep for `ms` milliseconds (`clock_nanosleep` on the monotonic clock). A signal that interrupts it (`EINTR`) restarts it with the time left; a negative `ms` counts as `0` |
+| `‹rusage›` | `who -> list` | `getrusage(2)`: `who` `0` is this process, `-1` its waited-for children, `1` this thread. The list is `[user µs, system µs, maxrss KB]`. Linux keeps `maxrss` across `exec`, so a fresh process starts at its parent's high-water mark. A bad `who` throws `cannot getrusage (EINVAL)` |
+
+```
+“NO_SUCH_VAR“⊃‹getenv›Ṅ≢Ṅ               ->  10
+““⊃‹getenv›Ṅ≢Ṅ                          ->  10
+‹environ›T Ṅ                            ->  0
+99‹isatty›Ṅ                             ->  1
+0 1-‹isatty›Ṅ                           ->  1
+‹getpid›0≻Ṅ                             ->  -1
+‹now›‹now›≻Ṅ                            ->  0
+‹walltime›1000000000/1700000000≻Ṅ       ->  -1
+‹now›20‹sleep›‹now›\\-1000000/19≻Ṅ       ->  -1
+0‹rusage›≢Ṅ0 1-‹rusage›⍕                ->  30 0 0 
+:‹b›5‹rusage›;′‹b›‹catch›⊐              ->  cannot getrusage (EINVAL)
+7Ṅ3‹exit›8Ṅ                             ->  7
+```
+
+The last one exits with status `3`. On the command line:
+
+```
+HOME=/h ./p                  # p: “HOME“⊃‹getenv›Ṅ⊐  prints 0/h
+env -i A=1 B=2 ./p           # p: ‹environ›⍕         prints [65 61 49] [66 61 50]
+./p > out.txt                # p: 1‹isatty›Ṅ          prints 1 into out.txt; 0 on a terminal
+```
+
+A failure stores the positive errno in the cell `5179712` first, as the
+file words do. Names that start with `‹_14d` are these words' helpers.
+
+### Scripts (W14-D)
+
+`tools/golfrun` runs a program as a script:
+
+```sh
+tools/golfrun PROG.golfj [args...]   # glyph/mnemonic source, compiled with golfc -j
+tools/golfrun PROG.g2 [args...]      # any other name: raw code-page bytes (golfc)
+```
+
+It compiles the program with `tools/golfc` into a cache,
+`build/golfrun/<key>`, and then `exec`s the binary with the arguments, so
+stdin, stdout, stderr and the exit status are the program's own and
+`‹args›` sees exactly `args`. The key is a sha256 over the program, every file
+it includes (`⎘“path“`, followed recursively and resolved as golfc does: as
+written, then `lib/`, then `vendor/`, from the current directory),
+`lib/prelude.golfj`, `tools/golfc`, the compiler's sources and
+`build/golf2`. An edit to any of them recompiles; an unchanged script starts
+at once (a few tens of ms, where a compile takes about 150). A compile error is
+golfc's own (`GOLF: undefined word x at line 3`, exit 2), and nothing is
+cached. `rm -rf build/golfrun` clears the cache.
+
+**`#!` scripts.** `#` starts a comment in `.golfj` and in raw source, so a
+first line `#!/path/to/expanded/tools/golfrun`, or `#!/usr/bin/env golfrun`
+with `tools/` on `PATH`, costs nothing, and line numbers in errors still
+count it:
+
+```sh
+$ cat hello.golfj
+#!/usr/bin/env golfrun
+“hello, “🗲‹args›0⊇⊐␤
+$ chmod +x hello.golfj && PATH=$PWD/tools:$PATH ./hello.golfj world
+hello, world
+```
+
+`examples/scripts/` has three: `printenv.golfj` (like `printenv(1)`: every
+`KEY=VALUE`, or the named variables' values with exit status `1` if one is
+not set), `stopwatch.golfj` (sleeps, then reports the time that passed on
+`‹now›` and what `‹rusage›` says), and `procinfo.golfj` (pid, which of fds
+0–2 are terminals, the epoch, `HOME`, with an `‹eputs›` message and status
+`1` when it is not set).
+### Filesystem (W14-E)
+
+The filesystem words (W14-E) work on paths the way the file words do: a path
+is a **code list** (`“d/x“⊃`, an element of `‹args›`), and so is every name or
+path they return, always a NEW list. A flag is zero-is-true, like `∊` and
+`‹has›`, so `‹isdir›[…]` runs on a directory. They are the `os` / `os.path`
+calls the repo's Python tools use, each one or a few raw syscalls through `⎈`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹stat›` | `path -> info` | the list `[size mode mtime dev ino nlink]` of `path`, following symlinks: `st_size`, `st_mode` (type and permission bits, as Python's `st_mode`), `st_mtime` in whole seconds, `st_dev`, `st_ino`, `st_nlink`. A missing path throws |
+| `‹lstat›` | `path -> info` | the same, but a final symlink is described itself, not followed |
+| `‹exists›` | `path -> f` | `0` when `path` exists (after symlinks: a dangling link does not), else `1`. Never throws |
+| `‹isfile›` | `path -> f` | `0` for a regular file, after symlinks, else `1`. Never throws |
+| `‹isdir›` | `path -> f` | `0` for a directory, after symlinks, else `1`. Never throws |
+| `‹samefile›` | `a b -> f` | `0` when `a` and `b` are the same file (equal `dev` and `ino`: a hard link, a symlink and its target, `d` and `d/.`), else `1`. A missing path throws. This is what an include-once check needs instead of `realpath` |
+| `‹mkdir›` | `path ->` | create a directory, mode `0755` less the umask. An existing `path` throws (`EEXIST`) |
+| `‹makedirs›` | `path ->` | create every missing parent, then `path`. Nothing happens when `path` is already a directory (Python's `os.makedirs(path, exist_ok=True)`); a file in the way throws (`EEXIST`, or `ENOTDIR` for a parent) |
+| `‹unlink›` | `path ->` | remove a file or a symlink (a directory is `EISDIR`) |
+| `‹rmdir›` | `path ->` | remove an empty directory (`ENOTEMPTY` otherwise) |
+| `‹rename›` | `old new ->` | `rename(2)`: move `old` to `new`, atomically replacing a file `new` |
+| `‹listdir›` | `path -> names` | the names in a directory, without `.` and `..`, sorted bytewise (`‹lexcmp›` order, which is Python's `sorted` on bytes). An empty directory gives the empty list |
+| `‹rmtree›` | `path ->` | delete `path` and everything under it. It never follows a symlink: a link inside the tree, or `path` itself, is unlinked and its target left alone (a trailing `/` is dropped first, so `link/` also removes just the link). A missing `path` is not an error |
+| `‹mkdtemp›` | `prefix -> path` | create a new private directory (mode `0700`) `<tmp>/<prefix>XXXXXX` and return its path. `<tmp>` is `$TMPDIR` when it is set and non-empty, else `/tmp`; the six characters come from `getrandom(2)`, drawn from `a-z 0-9 _`. A name that exists is retried (up to 100 times) |
+| `‹getcwd›` | `-> path` | the current directory, an absolute path |
+| `‹chdir›` | `path ->` | change the current directory |
+| `‹pathjoin›` | `a b -> path` | `os.path.join(a, b)`: `a`, one `/` unless `a` is empty or already ends with one, then `b`. An absolute `b` replaces `a`, so `“a“ “/b“` gives `/b`, and an empty `b` gives `a/` |
+| `‹dirname›` | `path -> part` | `os.path.dirname`: everything before the last `/`, with trailing slashes dropped unless that is all it is (`/a` gives `/`, `//a` gives `//`, `a` gives the empty list) |
+| `‹basename›` | `path -> part` | `os.path.basename`: everything after the last `/` (`a/b/` gives the empty list) |
+
+```
+“a/b/c.txt“⊃‹dirname›⊐                        ->  a/b
+“a/b/“⊃‹basename›≢Ṅ                           ->  0
+“a“⊃“b“⊃‹pathjoin›⊐                           ->  a/b
+“a“⊃“/etc“⊃‹pathjoin›⊐                        ->  /etc
+“/etc“⊃‹isdir›Ṅ“nope“⊃‹exists›Ṅ               ->  01
+“t/u/v“⊃‹makedirs›“t“⊃‹listdir›⍕              ->  [117]
+“hi“⊃“a.txt“⊃‹writefile›“a.txt“⊃‹stat›0⊇Ṅ     ->  2
+“x“⊃‹mkdir›“x“⊃‹stat›1⊇12≫Ṅ                   ->  4
+“t“⊃‹rmtree›“t“⊃‹exists›Ṅ“gone“⊃‹rmtree›       ->  1
+“job-“⊃‹mkdtemp›"⊐“ “🗲‹basename›≢Ṅ            ->  /tmp/job-i0hftc 10
+“nope“⊃‹stat›                                 ->  GOLF: cannot stat nope (ENOENT)
+:‹f›“x“⊃‹rmdir›;′‹f›‹catch›⊐                   ->  cannot rmdir x (ENOENT)
+```
+
+Each example starts in an empty directory. The `4` is the mode's type field,
+`S_IFDIR >> 12`; the six characters after `job-` differ on every call.
+
+**A failure throws** through `‹throw›`, as the file words do (see "Files"):
+`GOLF: cannot <verb> <path> (<ENAME>)`, exit status 1, catchable with
+`‹catch›`. The verb is the word's name (`stat`, `lstat`, `mkdir`, `unlink`,
+`rmdir`, `rename`, `listdir`, `rmtree`, `mkdtemp`, `chdir`; `‹makedirs›`
+says `mkdir` and names the directory that failed, `‹rename›` names `old`),
+and `‹getcwd›` says `cannot getcwd (<ENAME>)`. Besides the file words'
+errno names, `ENOTEMPTY EXDEV EBUSY ERANGE` are named. The positive errno is
+stored in the cell `5179712` first, as there.
+
+Notes:
+
+- The info list of `‹stat›` is a fresh list each call; `0⊇` is the size and
+  `1⊇` the mode, so `1⊇61440$16384-` is `0` for a directory (`S_IFMT` is
+  `61440`, `S_IFDIR` `16384`, `S_IFREG` `32768`, `S_IFLNK` `40960`).
+- `‹listdir›` reads 32 KB of entries per `getdents64(2)` call and sorts with a
+  merge sort on `‹lexcmp›`: 20,000 entries list in about 0.02 s. `‹rmtree›`
+  recurses once per directory level, on the return stack.
+- None of the words keeps state in a fixed cell: each is a `⊡` word, so they
+  may run inside each other and inside `‹catch›`. Names that start with
+  `‹_14e` are these words' helpers.
+### Random numbers and SHA-256 (W14-J)
+
+Two seeded generators and a hash, for scripts that must reproduce what a
+Python tool did. A **generator** `r` is a small record (a tagged list) that
+every word below updates **in place**, so keep it in a variable and pass it
+again. Two kinds share the words, told apart by the record's first cell:
+
+- `‹mtrng›` is MT19937 seeded **exactly** as CPython's `random.Random(seed)`.
+  Every word then draws the same 32-bit outputs, in the same order, as the
+  Python method named in the table, so a Golf port of a Python script that
+  uses `random.Random(42)` makes the same choices.
+- `‹rng›` is xoshiro256\*\* seeded through splitmix64: four times smaller
+  (5 cells against 626) and faster. It has no Python twin.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹rng›` | `seed -> r` | a new xoshiro256\*\* generator. Its state is four splitmix64 outputs of `seed` (any 64-bit int) |
+| `‹mtrng›` | `seed -> r` | a new MT19937 generator, as `random.Random(seed)`: `init_by_array` over the 32-bit chunks of the seed, low chunk first. A negative seed is used as `\|seed\|`, as CPython does |
+| `‹rand›` | `r -> x` | 64 random bits (any int, negative too). MT: `getrandbits(64)`, so the first 32-bit output is the **low** half and the second the high half |
+| `‹randbits›` | `r k -> x` | `k` random bits, `0 ≤ k ≤ 64`, as `getrandbits(k)`: one 32-bit output for `k ≤ 32` (its top `k` bits), two above (low word first). `k = 0` gives `0` and draws nothing |
+| `‹randbelow›` | `r n -> x` | uniform in `[0, n)`, `n ≥ 1`, unbiased: `getrandbits(n.bit_length())` again until it is below `n`, which is CPython's `_randbelow_with_getrandbits` |
+| `‹randint›` | `r lo hi -> x` | uniform in `[lo, hi]`, as `randint(lo, hi)` (`lo + _randbelow(hi-lo+1)`). Any 64-bit range works, up to the whole of them |
+| `‹random53›` | `r -> x` | the 53-bit integer behind `random()`, which is this divided by 2^53: MT `a·2^26 + b` with `a`, `b` two outputs shifted right by 5 and 6. So `R.random() < 0.5` is `‹random53› 1 52≪<` (`-1` for true) |
+| `‹choice›` | `r list -> x` | a random element, as `choice(seq)` |
+| `‹shuffle›` | `r list -> list` | a **new** list in the order `shuffle` leaves a Python list in (Fisher–Yates from the back). The input is not changed |
+| `‹sample›` | `r list k -> list` | `k` elements at distinct positions, in pick order, as `sample(seq, k)`, both of its branches: the pool one when the list is short (`n ≤ 21 + 4^⌈log₄ 3k⌉`, the power only for `k > 5`) and the set one otherwise |
+| `‹sha256›` | `list -> digest` | the SHA-256 of a code list: a new list of the 32 digest bytes. Each element's low byte is hashed |
+| `‹sha256hex›` | `list -> list` | the same digest as 64 lowercase hex digits, a code list (`hashlib.sha256(b).hexdigest()`) |
+
+```
+42‹mtrng›→r←r1 6‹randint›Ṅ←r1 6‹randint›Ṅ←r1 6‹randint›Ṅ  ->  611
+42‹mtrng›“golf“⊃‹choice›)                              ->  g
+42‹mtrng›10⍳‹shuffle›⍕                                 ->  7 3 2 8 5 6 9 4 0 1
+42‹mtrng›100⍳5‹sample›⍕                                ->  81 14 3 94 35
+42‹mtrng›→r 8⍳⟦_←r‹random53›1 52≪<1﹢⟧€⍕               ->  1 0 0 0 1 1 1 0
+1 40≪3+‹mtrng›‹rand›Ṅ                                  ->  1122159575387338702
+7‹mtrng›8‹randbits›Ṅ                                   ->  82
+“abc“⊃‹sha256hex›16↑⊐                                  ->  ba7816bf8f01cfea
+““⊃‹sha256›≢Ṅ                                          ->  32
+‹readall›‹sha256hex›⊐                  # sha256sum, for stdin
+```
+
+In Python the first five are `random.Random(42)` followed by
+`[r.randint(1, 6) for _ in range(3)]`, `r.choice("golf")`, `r.shuffle(l)`
+for `l = list(range(10))`, `r.sample(range(100), 5)` and
+`[0 if r.random() < 0.5 else 1 for _ in range(8)]`.
+
+- **Failures** throw through `‹throw›`: `randbelow: empty range` (`n ≤ 0`),
+  `randint: empty range` (`hi < lo`), `randbits: k out of range`,
+  `choice: empty list`, `sample: k out of range` (`k < 0` or more than the
+  list holds), `sha256: not a list` (a `“…“` byte block: add `⊃`), and
+  `not a random generator` for anything that is not a list of 5 cells of
+  kind 0 or 626 of kind 1. A freed generator is `use after free`.
+- **Results are raw 64-bit ints.** `‹rand›`, `‹randbits› 64` and the
+  xoshiro words can return a value in the tag band `[0x7FFF<<48, 2^63)`,
+  which `+ - *` and `⍕` take for a list (see the notes after the
+  code-page tables); add such values
+  with the raw `﹢ ﹣ ﹡`, or draw fewer bits.
+- **Cost.** The words are `⊡` words with no fixed cells, so they nest and
+  recurse freely. A million `‹randbits›` or `‹rand›` draws take about 0.05 s
+  with either kind (MT twists its 624 words at a time);
+  hashing 1 MB of stdin takes about 0.07 s, `‹readall›` included. A generator
+  is an ordinary list: `⌫` frees it. Names that start with `‹_14j` are these
+  words' helpers.
+### Formatting, bytes and UTF-8 (W14-G)
+
+These words are for scripts: printf-style output, the Python string methods
+that "Text" lacks, binary records and UTF-8. Text is a **code list**, one
+byte per element (after `‹utf8›`, one code point per element). Every word that
+returns a list returns a NEW list and never writes its input. The one
+exception is `‹setle›`, which stores in place. A flag is zero-is-true, as for
+`‹startswith›`.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹format›` | `tpl args -> list` | printf. `tpl` is a code list and `args` a list of values. A conversion is `%`, then any of the flags `-` (left-justify), `0` (zero-pad; numbers only), `+` and space (a sign for a non-negative `%d`), then a width, then `.N`, then one of `d u x X o b c s %`. `%d` is signed decimal. `%u %x %X %o %b` read the int as **unsigned** 64-bit, like C, so `-1` gives sixteen `f`s. `%c` is one element with that code. `%s` takes a code list (an int prints in decimal). `.N` keeps at most N bytes of a `%s`, and gives a number at least N digits. `%%` is `%` |
+| `‹printf›` | `tpl args ->` | `‹format›`, then print it with `⊐` (buffered), then free it |
+| `‹fixed›` | `n d k -> list` | `n/d` with `k` decimals, rounded half away from zero, computed exactly in integers: `1234567 1000000 3` is `1.235`. A `-` is shown only when the rounded value is not zero. `k < 0` counts as `0`. `d = 0` is `GOLF: divide by zero`. The absolute value of `d` must stay below 2^63/10 |
+| `‹ljust›` | `list w -> list` | pad on the right with spaces to `w` (Python's `str.ljust`). It never truncates |
+| `‹center›` | `list w -> list` | pad both sides, exactly as Python's `str.center` does: when the padding is odd, the extra space goes on the left if `w` is odd |
+| `‹replace›` | `list old new -> list` | every non-overlapping `old`, left to right, replaced by `new` (`str.replace`). An empty `old` puts `new` in every gap, both ends included |
+| `‹rfind›` | `h n -> i` | the last index at which the list `n` occurs in `h`, or `-1`. The empty `n` is found at `≢h`. `‹find›` (LeetCode library) is the first |
+| `‹count›` | `h n -> k` | non-overlapping occurrences of `n` in `h`. The empty `n` gives `≢h + 1`, as in Python |
+| `‹endswith›` | `list s -> f` | `0` if `s` is a suffix of `list`, else `1`. The empty `s` always matches |
+| `‹partition›` | `list sep -> head tail f` | split at the first `sep`: what is before it, what is after it, and `0`. When `sep` is absent: a copy of `list`, the empty list, and `1` |
+| `‹rpartition›` | `list sep -> head tail f` | the same at the last `sep`. Absent is again `list [] 1`. Python's `rpartition` gives `('', '', s)` there instead |
+| `‹translate›` | `list from to -> list` | map bytes: every `from[i]` in `list` becomes `to[i]`. When `to` is empty, the bytes in `from` are deleted. Otherwise the lengths must match. An element outside `0`–`255` passes through unchanged |
+| `‹le›` | `list off w -> n` | the unsigned little-endian int in the `w` bytes at `off` (`w` is 1, 2, 4 or 8). Each element's low byte is used |
+| `‹les›` | `list off w -> n` | the same, sign-extended from `8w` bits |
+| `‹tole›` | `n w -> list` | the low `w` bytes of `n`, little-endian |
+| `‹setle›` | `list off n w -> list` | store the low `w` bytes of `n` at `off`, **in place**, and leave `list` |
+| `‹hexbytes›` | `list -> list` | two lowercase hex digits per byte: `“hi“⊃` gives `6869` |
+| `‹unhexbytes›` | `list -> list` | the inverse. Digits may be either case. Whitespace between two pairs is skipped |
+| `‹utf8›` | `list -> cps` | decode UTF-8 into code points. Decoding is strict: overlong forms, surrogates and anything past U+10FFFF are invalid. Each byte `b` of an invalid sequence becomes `0xDC00+b`, as Python's `surrogateescape` does, so no input fails |
+| `‹unutf8›` | `cps -> list` | encode code points as UTF-8. `0xDC80`–`0xDCFF` become the raw byte again, so `‹utf8›‹unutf8›` gives back any byte string |
+
+```
+“%-6s|%05d|%x“⊃Ṿ“ab“⊃⍆42⍆255⍆‹format›⊐            ->  ab    |00042|ff
+“%+.2d %c%%“⊃Ṿ7⍆65⍆‹printf›                        ->  +07 A%
+“[%5.2s] %X %o %b %u“⊃Ṿ“abc“⊃⍆255⍆8⍆5⍆0 1-⍆‹format›⊐  ->  [   ab] FF 10 101 18446744073709551615
+1234567 1000000 3‹fixed›⊐                           ->  1.235
+0 5-10 0‹fixed›⊐                                    ->  -1
+“ab“⊃6‹center›⊐“|“🗲“ab“⊃5‹ljust›⊐“|“🗲              ->    ab  |ab   |
+“a.b.c“⊃“.“⊃“::“⊃‹replace›⊐                         ->  a::b::c
+“a.b.c“⊃“.“⊃‹rfind›Ṅ“a.b.c“⊃“.“⊃‹count›Ṅ             ->  32
+“k=v=w“⊃“=“⊃‹partition›Ṅ\\⊐“,“🗲⊐                    ->  0k,v=w
+“k=v=w“⊃“=“⊃‹rpartition›Ṅ\\⊐“,“🗲⊐                   ->  0k=v,w
+“hello“⊃“el“⊃“ip“⊃‹translate›⊐                      ->  hippo
+“hello“⊃“l“⊃0⍳‹translate›⊐                          ->  heo
+“abcd“⊃0 4‹le›‹hex›⊐                                ->  64636261
+0 2-2‹tole›"⍕0 2‹les›Ṅ                              ->  254 255 -2
+4⍳1 258 2‹setle›⍕                                   ->  0 2 1 3 
+“68 69“⊃‹unhexbytes›⊐                               ->  hi
+“c3a9ff“⊃‹unhexbytes›‹utf8›⍕                        ->  233 56575 
+Ṿ8364⍆56575⍆‹unutf8›‹hexbytes›⊐                     ->  e282acff
+“%d %d“⊃Ṿ1⍆‹format›                                 ->  GOLF: format: not enough arguments
+```
+
+`Ṿ…⍆` builds the argument list (a vector is a list). The last line prints on
+stderr and exits 1. Errors go through `‹throw›`, so `‹catch›` catches them:
+
+- `‹format›`: `format: not enough arguments`, `format: too many arguments`,
+  `format: bad conversion %q`, `format: incomplete conversion` (a `%` at the
+  end), `format: %d needs a number` (a list given to a numeric conversion),
+  and `format: args must be a list` / `format: template must be a list`. A
+  `“…“` literal without `⊃` is not a list.
+- `partition: empty separator` (`rpartition: …` too), `translate: from and to
+  differ in length`, and `translate: not a byte` for a `from` element outside
+  `0`–`255`.
+- `le: width must be 1, 2, 4 or 8` and `le: offset out of range` when the `w`
+  bytes at `off` are not all inside the list. `‹les›` says `le:` too, and
+  `‹tole›` and `‹setle›` use their own names.
+- `unhexbytes: odd number of hex digits`, `unhexbytes: bad hex digit` (which
+  includes a space inside a pair), and `unutf8: invalid code point N` for a
+  negative N, one past `0x10FFFF`, or a surrogate outside `0xDC80`–`0xDCFF`.
+
+All of these are `⊡` words with no global state, so they are re-entrant.
+`‹format›` and `‹fixed›` free their temporaries, and variable-length results
+grow a vector. `run2.sh` checks the words against Python: `%`, `decimal`
+with `ROUND_HALF_UP`, the `str` methods, `struct`, and `surrogateescape` on
+every byte and on random UTF-8. Names that start with `‹_14g` are these
+words' helpers.
+
 ### Prelude pruning
 
 `tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your
-program can reach. The whole prelude compiles to about 125 KB of the 192 KB
-image cap; pruned, `1Ṅ` is a 13,527-byte binary and the ten
+program can reach. The whole prelude compiles to about 170 KB of the 192 KB
+image cap since W14 (about 125 KB before it), so `golfc -P` leaves a
+program only about 26 KB of its own; pruned, `1Ṅ` is a 13,587-byte binary and the ten
 `bench/leetcode/golf/` programs are 17–33 KB (24 KB on average; each was about
 125.7 KB). Compiling is faster too (about 100 ms instead of 170 ms for `1Ṅ`).
 

@@ -8,7 +8,8 @@
 #
 #     lib/prelude.golfj  +  lib/t*.golfj  +  the program
 #
-# all code-page encoded and concatenated, then fed to the bootstrapped golf2.
+# all code-page encoded and concatenated, then fed to the bootstrapped golf2 —
+# the prelude pruned to what the libraries and the program reach (W14-L).
 # The prelude comes first because the tool libraries are written on top of it
 # (A, X/Y, N, the raw atoms); the libraries come before the program because GOLF
 # requires definition before use.
@@ -33,14 +34,27 @@ GOLF2="$BUILD/golf2"
 [ -x "$GOLF2" ] || { echo "gtools/build: $GOLF2 missing (ladder failed)" >&2; exit 1; }
 
 src=$(mktemp); trap 'rm -f "$src"' EXIT
-cp="python3 $HERE/tools/codepage.py encode"
-$cp < "$HERE/lib/prelude.golfj" >> "$src"
-for lib in "$HERE"/lib/t*.golfj; do
-  [ -e "$lib" ] || continue                     # no tool libraries yet: fine
-  $cp < "$lib" >> "$src"
-done
-printf '\f' >> "$src"   # W11-3B: as in tools/golfc, compile errors count lines from the program
-$cp < "$prog" >> "$src"
+# W14-L: only the prelude the tool can reach, as tools/golfc compiles a program
+# (tools/golfprune.py: the roots are every name the tool libraries and the
+# program mention).  A tool here is built with the WHOLE prelude in view, and
+# the prelude only grows, so without this every tool would carry all of it and
+# the largest would meet the 192 KB program cap.
+python3 - "$HERE" "$prog" "$src" <<'PY'
+import glob, os, sys
+here, prog, src = sys.argv[1:]
+sys.path.insert(0, os.path.join(here, "tools"))
+import codepage, golfprune
+def enc(path):
+    with open(path, encoding="utf-8") as f:
+        return codepage.encode(f.read())
+libs = b"".join(enc(p) for p in sorted(glob.glob(os.path.join(here, "lib", "t*.golfj"))))
+body = enc(prog)
+pre = golfprune.prune(enc(os.path.join(here, "lib", "prelude.golfj")),
+                      golfprune.refs(libs) | golfprune.refs(body))
+with open(src, "wb") as f:
+    # W11-3B: as in tools/golfc, compile errors count lines from the program
+    f.write(pre + libs + b"\f" + body)
+PY
 
 "$GOLF2" < "$src" > "$out"
 chmod +x "$out"

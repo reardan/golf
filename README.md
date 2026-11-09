@@ -55,8 +55,8 @@ space, shown as glyphs; `tools/codepage.py` converts glyph/mnemonic source ⇄ r
 bytes and the compiler dispatches any byte in its template table. What it can do
 now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
 
-- **38 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
-  div/mod, shifts, 64-bit fetch/store, `brk`, negate/inc/dec/square/double/halve, popcount/trailing-/leading-zero count/low bit.
+- **39 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
+  div/mod, shifts, 64-bit fetch/store, `brk`, negate/inc/dec/square/double/halve, popcount/trailing-/leading-zero count/low bit, and a six-argument syscall.
 - a **list type** on a `brk`-grown heap (`[len, e0, …]`, 64-bit cells) with a
   GOLF standard library (`lib/prelude.golfj`): range, len, index, sum, product,
   reverse, filter, and a number/list printer.
@@ -84,11 +84,14 @@ now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
   `STARTUP` stashes the entry `rsp`, so a GOLF program can open a file and read
   its own `argv` instead of being a stdin-to-stdout filter forever.
 - **the repo's own build tools, written in GOLF** — `expanded/gtools/` holds
-  `encode`, `decode`, `mkblob`, `mkgolf2` and `hexcat`. They *shadow* the Python
-  originals rather than replacing them, and `test/gtools.sh` requires
+  `encode`, `decode`, `mkblob`, `mkgolf2`, `hexcat` and `tables`. They *shadow*
+  the Python originals rather than replacing them, and `test/gtools.sh` requires
   byte-identical output over the repo's real sources. `mkblob | encode |
   mkgolf2` regenerates the compiler's own source with no Python in the pipeline,
-  and that source still reaches the `golf2 == golf2'` fixpoint.
+  and that source still reaches the `golf2 == golf2'` fixpoint. The code page
+  and the template blob are source data (`expanded/data/ops.tsv`,
+  `expanded/data/templates.txt`), and `tables` builds every table output from
+  them — both compiler sources included — byte for byte with the Python.
 
 What the W11 round added, closing the gaps against Python and Rust that
 [`expanded/GAPS.md`](expanded/GAPS.md) lists (each word is in REFERENCE.md):
@@ -123,7 +126,10 @@ What the W11 round added, closing the gaps against Python and Rust that
   `tools/golfi` (a replaying REPL that shows the stack via `‹stack›`),
   `tools/golfgdb` (gdb by word name: break, backtrace, data stack), and
   `tools/golfdeps` (packages pinned by sha256 in `golf.deps`, fetched into
-  `vendor/`).
+  `vendor/`), and `tools/golfrun` (runs a program as a script: compiles it
+  once into a cache and execs it, so `#!/usr/bin/env golfrun` works; W14-D).
+- **scripting** — `‹getenv› ‹environ› ‹isatty› ‹getpid› ‹exit› ‹eputs›`,
+  `‹now› ‹walltime› ‹sleep› ‹rusage›` (W14-D); see `expanded/examples/scripts/`.
 
 So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J` — which
 before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both
@@ -159,7 +165,7 @@ result:
 GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
-`bash test/run2.sh` is **935 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **992 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# golfrun — run a GOLF program as a script (W14-D).
+#
+#   golfrun PROG.golfj [args...]   # glyph/mnemonic source (golfc -j)
+#   golfrun PROG.g2    [args...]   # any other name: raw code-page bytes (golfc)
+#
+# The program is compiled with tools/golfc into a cache, build/golfrun/<key>,
+# and then exec'd with the args, so its stdin, stdout, stderr and exit status
+# are the program's own.  The key is a sha256 over
+#   - the program's bytes and how it is compiled (-j or raw),
+#   - every file it includes (⎘“path“, recursively; resolved as golfc does:
+#     the path as written, then lib/, then vendor/, all from the current
+#     directory),
+#   - lib/prelude.golfj, tools/golfc and the files golfc builds golf2 and the
+#     cut prelude from (self/golf2.golfj, self/seed.golfv1, tools/mkblob2.py,
+#     tools/codepage.py, tools/golfprune.py), and build/golf2 itself,
+# so an edit to any of them recompiles and an unchanged script starts at once.
+# A compile error is golfc's (`GOLF: … at line N` on stderr), exit 2, and
+# nothing is cached.  `rm -rf build/golfrun` clears the cache.
+#
+# A script: make its first line `#!/abs/path/to/expanded/tools/golfrun` (or
+# `#!/usr/bin/env golfrun` with tools/ on PATH) and chmod +x it.  `#` starts a
+# comment in .golfj and in raw source, so the line costs nothing; the kernel
+# runs `golfrun ./script.golfj a b` and the program sees `a b` as ‹args›.
+set -eu
+self=$(readlink -f "${BASH_SOURCE[0]}")
+HERE=$(cd "$(dirname "$self")/.." && pwd)           # expanded/
+if [ $# -lt 1 ]; then
+  echo "usage: golfrun PROG.golfj|PROG.g2 [args...]" >&2; exit 2
+fi
+prog=$1; shift
+if [ ! -f "$prog" ]; then
+  echo "golfrun: no such program: $prog" >&2; exit 2
+fi
+case "$prog" in *.golfj) mode=-j;; *) mode=;; esac
+
+# The include closure.  An include is `⎘“path“`; in .golfj source ⎘ may be
+# spelled \import and “ \str.  In raw source the bytes are B6 8E path 8E.
+# Each path found is resolved like golfc (as written, lib/, vendor/); one that
+# resolves to nothing is skipped (golf2 reports it).  Over-approximation (an
+# include inside a comment or a string) only adds a file to the key.
+# incs_of runs in a subshell (`< <(…)`), so its LC_ALL=C (byte patterns) never
+# reaches the program's environment.
+q1=$'\xe2\x80\x9c'                                    # “
+glyph_re=$'(\xe2\x8e\x98|\\\\import)(\xe2\x80\x9c|\\\\str)[^\xe2\\\\]*(\xe2\x80\x9c|\\\\str)'
+raw_re=$'\xb6\x8e[^\x8e]*\x8e'
+incs_of() {                     # FILE -> one include path per line
+  local f=$1 m p
+  export LC_ALL=C
+  case "$f" in
+    *.golfj)
+      grep -aoE "$glyph_re" "$f" 2>/dev/null | while IFS= read -r m; do
+        m=${m#\\import}; m=${m#$'\xe2\x8e\x98'}
+        m=${m#"$q1"}; m=${m#\\str}
+        p=${m%%"$q1"*}; p=${p%%\\str*}
+        printf '%s\n' "$p"
+      done;;
+    *)
+      grep -aoE "$raw_re" "$f" 2>/dev/null | while IFS= read -r m; do
+        m=${m#$'\xb6\x8e'}; printf '%s\n' "${m%$'\x8e'}"
+      done;;
+  esac
+}
+files=("$prog"); seen=" "
+i=0
+while [ "$i" -lt "${#files[@]}" ]; do
+  f=${files[$i]}; i=$((i+1))
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    for c in "$p" "lib/$p" "vendor/$p"; do
+      if [ -f "$c" ]; then
+        r=$(readlink -f "$c")
+        case "$seen" in *" $r "*) ;; *) seen="$seen$r "; files+=("$c");; esac
+        break
+      fi
+    done
+  done < <(incs_of "$f")
+done
+
+keyof() {
+  { printf 'golfrun 1 mode=%s\n' "$mode"
+    for f in "${files[@]}"; do printf 'src %s\n' "$f"; sha256sum < "$f"; done
+    for f in lib/prelude.golfj tools/golfc self/golf2.golfj self/seed.golfv1 \
+             tools/mkblob2.py tools/codepage.py tools/golfprune.py build/golf2; do
+      printf 'dep %s\n' "$f"
+      if [ -f "$HERE/$f" ]; then sha256sum < "$HERE/$f"; else echo missing; fi
+    done
+  } | sha256sum | cut -c1-32
+}
+cache="$HERE/build/golfrun"; bin="$cache/$(keyof)"
+if [ ! -x "$bin" ]; then
+  mkdir -p "$cache"
+  tmp="$cache/.tmp.$$"
+  trap 'rm -f "$tmp"' EXIT
+  "$HERE/tools/golfc" $mode "$prog" "$tmp" || exit $?
+  # golfc may have just (re)built build/golf2, which is part of the key: file
+  # the binary under the key the fresh build/golf2 gives, so the next run hits.
+  bin="$cache/$(keyof)"
+  mv -f "$tmp" "$bin"
+  trap - EXIT
+fi
+exec "$bin" "$@"

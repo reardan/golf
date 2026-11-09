@@ -8,8 +8,9 @@ GOLF, compiled by the compiler they help build.
 
 They **shadow** the Python originals; they do not replace them.
 [`tools/mkblob2.py`](../tools/mkblob2.py) and
-[`tools/codepage.py`](../tools/codepage.py) remain the source of truth and the
-build path, exactly as [`boot/golfref.py`](../boot/golfref.py) shadows the
+[`tools/codepage.py`](../tools/codepage.py) remain the build path (since W14-L
+both read their tables from the source data in [`../data/`](../data), as
+`tables.golfj` here does), exactly as [`boot/golfref.py`](../boot/golfref.py) shadows the
 compiler without ever being on the bootstrap ladder. What makes the GOLF version
 trustworthy is [`test/gtools.sh`](../test/gtools.sh): every tool here must emit
 **byte-identical** output to its Python counterpart, for every real source file
@@ -25,7 +26,10 @@ build/gencode < self/golf2.golfj > /tmp/out.gb
 
 `gtools/build` is `tools/golfc` plus the tool libraries: it concatenates
 `lib/prelude.golfj`, then every `lib/t*.golfj`, then the program, and compiles
-the lot with the freshly bootstrapped `golf2`.
+the lot with the freshly bootstrapped `golf2`. Since W14-L the prelude is
+pruned first, as `tools/golfc` prunes it, to the definitions the libraries and
+the program reach (`tools/golfprune.py`), so a tool does not carry the whole
+prelude toward the 192 KB program cap.
 
 ## What makes this possible
 
@@ -49,6 +53,7 @@ Two additions in wave 8 (M-TOOL), both recorded in [`../REGISTRY.md`](../REGISTR
 | `decode.golfj` | `codepage.py decode` in GOLF, including `-m` mnemonic form |
 | `mkblob.golfj` | `data/blob.hex` → the `` ` `` blob escape, as `mkblob2.blob_escape()` emits it |
 | `mkgolf2.golfj` | the capstone: encode `self/golf2.golfj`, splice the blob, write `self/golf2.golf` |
+| `tables.golfj` | W14-L: everything the Python builds from the source data, from the same files — `build/gtables blob\|escape\|blobhex\|codepage\|seed\|golf2\|table\|reference\|check` |
 
 The shared GOLF words these programs are built from live one level up, in
 [`../lib/`](../lib): `tio.golfj` (files, streams, argv), `ttext.golfj` (byte
@@ -57,22 +62,39 @@ buffers, compare/find/slice, decimal and hex parsing), `tutf.golfj` (the
 a pool the prelude has never touched — so adding a tool word costs nothing
 scarce. See `../REGISTRY.md` §2.1.
 
-The two tables they read — [`../data/codepage.tsv`](../data/codepage.tsv) (byte
+### The source data and the derived tables
+
+Since W14-L the code page and the template blob are **hand-edited source
+data**, not Python literals:
+[`../data/ops.tsv`](../data/ops.tsv) (one row per op byte: table, byte,
+mnemonic, glyph, doc) and [`../data/templates.txt`](../data/templates.txt)
+(every atom's machine code in a small notation — hex bytes, named fragments
+with arguments, labels and jumps — documented at the top of the file).
+`tools/mkblob2.py` and `tools/codepage.py` read them, and so does
+`tables.golfj`, which expands the notation with a GOLF implementation of its
+own and builds every output the Python does: the blob and its escape, both
+derived tables below, `self/seed.golf` (the port of `build_seed()`),
+`self/golf2.golf`, `codepage.py table`, the REFERENCE.md block and `check`'s
+report. On a broken table it stops with the Python's own message
+(`data/templates.txt:40: …`, exit 1). `test/gtools.sh` diffs every command
+against the Python and the committed file, puts the two compiler sources it
+writes back on the ladder from `v1c` to the fixpoint, and feeds both sides the
+same broken tables.
+
+The two derived tables the older tools read — [`../data/codepage.tsv`](../data/codepage.tsv) (byte
 · mode · source · mnemonic · hex-encoded glyph, one row per code-page entry) and
 [`../data/blob.hex`](../data/blob.hex) (one `[key][len][data]` blob record per
 line, in emission order with the M-VEC overrides already substituted) — are
 **generated and checked in**. [`../tools/mktables.py`](../tools/mktables.py)
-writes them from `mkblob2.ATOMS` and `codepage.COMPILER`/`LIB`, so the Python
-tables stay the single source of truth and the registry discipline still applies
-to every byte; the GOLF tools only ever read the serialised form, because they
-cannot read a Python literal (and cannot carry the glyphs as GOLF string
-literals either — a `“...“` block cannot contain byte `0x8E`). Regenerate with
-`python3 tools/mktables.py` after touching either table; `test/selfcheck.sh`
-fails if what is committed is stale.
+(now a thin wrapper, also run by `python3 tools/mkblob2.py`) writes them from
+the source data above; `test/selfcheck.sh` fails if what is committed is
+stale. The glyphs travel hex-encoded because a GOLF `“...“` block cannot
+contain byte `0x8E`.
 
-## Not ported — no longer on purpose
+## Ported last: `build_seed()`
 
-`mkblob2.build_seed()` is still Python, but the reason it *had* to be is gone.
+`tables.golfj seed` builds `self/seed.golf` (W14-L). It was the last Python
+build step without a GOLF twin, and for a long time on purpose.
 It used to reuse `minimal/tools/mkblob.py`'s `WORDS` — the v1 compiler's own
 source text — and its `golf()` substring-rewrite pass, so porting it would have
 duplicated source that lived in the frozen `minimal/` tree, and a second copy of
@@ -82,5 +104,5 @@ exists to prevent.
 Since the minimal language moved to its own branch, the seed's source is
 `self/seed.golfv1` in this tree and `build_seed()` does what `mkgolf2` already
 does — strip comments and whitespace, splice the blob in at `@BLOB@`. The only
-difference is which comment syntax it strips. It is now an ordinary candidate
-for the next rung rather than a standing exception.
+difference is which comment syntax it strips, which made it an ordinary rung,
+and W14-L took it.

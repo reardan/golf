@@ -13,7 +13,9 @@ is cheap and reversible; discovering a collision after `self/seed.golf` and
 
 `Status` is `reserved` (allocated here, not implemented yet — do not use the
 byte/glyph/mnemonic for anything else) or `shipped` (live in
-`tools/mkblob2.py` / `tools/codepage.py` / `lib/prelude.golfj`).
+`data/ops.tsv` / `data/templates.txt` / `lib/prelude.golfj`; since W14-L the
+code page and the template blob are source data, read by `tools/mkblob2.py`,
+`tools/codepage.py` and the GOLF tool `gtools/tables.golfj`).
 
 The op-byte, mnemonic and glyph invariants are **machine-checked**:
 
@@ -44,7 +46,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **82** are now spent, leaving **29** free. It is partitioned as follows
+space; **83** are now spent, leaving **28** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -282,6 +284,7 @@ shipped one (`\pcnt`, not `\popc`: `\pop` is `⍅`), checked by
 | `0xAB` | `\ctz` | `⊣` | atom: `x -> n` trailing zero bits (`tzcnt`), 64 for 0, raw | W13-B | shipped |
 | `0xAC` | `\clz` | `⊢` | atom: `x -> n` leading zero bits (`lzcnt`), 64 for 0, raw | W13-B | shipped |
 | `0xAD` | `\lsb` | `⊥` | atom: `x -> x & -x`, the lowest set bit (0 for 0), raw | W13-B | shipped |
+| `0xAE` | `\scall` | `⌁` | atom: `a1 a2 a3 a4 a5 a6 num -> result`, the six-argument raw syscall (`⎈` sets only rdi rsi rdx). Spends one byte of the `0xA8`–`0xAF` headroom, as W11-3A did | W14-A | shipped |
 | `0xBD` | `\dig` | `ʘ` | compiler op, prefix: `ʘB` (B any byte) compiles exactly as the long name `‹_dgHH›`, HH = B in upper-case hex — a call, `′`, a chain link, a prefix's operand (`→ ← ⇒ ⇐ ⇡ ⇣ : ⊡ ⊚ ⊜`), a forward reference; undefined is `GOLF: undefined word ‹_dgHH›`. Cases in `self/golf2.golfj` (‹digraph›), the seed (spelled out in `G` and `t`) and `boot/golfref.py` | W13-B | shipped |
 
 W13-C's twelve one-byte prelude words (section `# ===== W13-C =====` of
@@ -441,6 +444,11 @@ Prelude long names in use (all **shipped**):
 | `‹bisect›` `‹bisectr›` `‹bsearch›` `‹append›` `‹groupby›` `‹mostcommon›` `‹union›` `‹inter›` `‹diff›` `‹argmax›` `‹argmin›` `‹any›` `‹all›` `‹countif›` `‹takewhile›` `‹dropwhile›` `‹chunk›` `‹prefix›` `‹rangesum›` `‹diffapply›` `‹lexcmp›` `‹gcd›` `‹lcm›` `‹abs›` `‹sign›` `‹powmod›` `‹isqrt›` `‹divmod›` `‹sieve›` `‹isdigit›` `‹isalpha›` `‹isalnum›` `‹isspace›` `‹isupper›` `‹islower›` `‹upper›` `‹lower›` `‹find›` `‹ispal›` (39), the helpers `‹_13d_rng›` `‹_13d_sub›` `‹_13d_a›` `‹_13d_cl›` `‹_13d_new›` `‹_13d_addall›` `‹_13d_fi›` `‹_13d_mm›` (names starting `‹_13d_` are reserved for them), and the 18 digraph names `‹_dg61›`…`‹_dg6D›` `‹_dg30›`…`‹_dg34›` (see §1.6 "Digraph page"): 65 in all | W13-D (**shipped**) | `===== W13-D =====` (the end of the file) |
 | `‹adj›` `‹dadj›` `‹wadj›` `‹dwadj›` `‹bfs›` `‹comps›` `‹toposort›` `‹dijkstra›` `‹gget›` `‹gset›` `‹nbrs4›` `‹nbrs8›` `‹gcomps›` `‹transpose›` `‹rot90›` `‹uf›` `‹ufind›` `‹uunion›` `‹ucount›` `‹memo›` `‹table1›` `‹table2›` `‹times›` `‹heapify›` `‹nsmallest›` `‹nlargest›` `‹pq2push›` `‹pq2pop›` `‹nextgreater›` `‹nextsmaller›` `‹prevgreater›` `‹prevsmaller›` `‹nextperm›` `‹perms›` `‹combs›` `‹subsets›` `‹cartesian›` (37), the 18 digraph aliases `‹_dg35›`–`‹_dg39›` `‹_dg6E›`–`‹_dg7A›` (see §1.6 "Digraph page"), and 21 helpers `‹_13e_…›` (the prefix `‹_13e` is reserved for them): 76 names | W13-E (**shipped**) | `# ===== W13-E =====` |
 | the helpers `‹_13h_cmp›` `‹_13h_bnd›` (the compose / bind kind words, whose addresses are a closure record's cell 2) and `‹_13h_comp›` `‹_13h_bind›` (the record builders `∘` and `⊸` forward to); names starting `‹_13h` are W13-H's | W13-H (**shipped**) | `# ===== W13-H =====` (end of the prelude) |
+| `‹spawn›` `‹wait›` `‹waitr›` `‹run›` `‹capture›` `‹capturet›` `‹exec›` `‹pipe›` `‹kill›` `‹signame›` (processes, REFERENCE "Processes (W14-B)"), and the helpers `‹_14b_ename›` `‹_14b_fail›` `‹_14b_pid›` `‹_14b_close›` `‹_14b_envp›` `‹_14b_path›` `‹_14b_cand›` `‹_14b_cands›` `‹_14b_frees›` `‹_14b_argvc›` `‹_14b_argvf›` `‹_14b_try›` `‹_14b_die›` `‹_14b_child›` `‹_14b_w4›` `‹_14b_st›` `‹_14b_now›` `‹_14b_reap›` `‹_14b_nb›` `‹_14b_ign›` `‹_14b_rst›` `‹_14b_rec›` `‹_14b_rd›` `‹_14b_out›` `‹_14b_drain›` `‹_14b_pf›` `‹_14b_cap0›`; names starting `‹_14b` are W14-B's | W14-B (**shipped**) | `# ===== W14-B =====` |
+| `‹getenv›` `‹environ›` `‹isatty›` `‹getpid›` `‹exit›` `‹eputs›` `‹now›` `‹walltime›` `‹sleep›` `‹rusage›`, and the helpers `‹_14d_envp›` `‹_14d_cstr›` `‹_14d_match›` `‹_14d_fail›`; names starting `‹_14d` are W14-D's | W14-D (**shipped**) | `# ===== W14-D =====` |
+| `‹stat›` `‹lstat›` `‹exists›` `‹isfile›` `‹isdir›` `‹samefile›` `‹mkdir›` `‹makedirs›` `‹unlink›` `‹rmdir›` `‹rename›` `‹listdir›` `‹rmtree›` `‹mkdtemp›` `‹getcwd›` `‹chdir›` `‹pathjoin›` `‹dirname›` `‹basename›` (19), and 11 helpers `‹_14e_en›` `‹_14e_fail›` `‹_14e_try›` `‹_14e_sc›` `‹_14e_st›` `‹_14e_mode›` `‹_14e_ms›` `‹_14e_rs›` `‹_14e_strip›` `‹_14e_cl›` `‹_14e_tmp›` (names starting `‹_14e` are reserved for them): 30 names | W14-E | `# ===== W14-E =====` |
+| `‹rng›` `‹mtrng›` `‹rand›` `‹randbits›` `‹randbelow›` `‹randint›` `‹random53›` `‹choice›` `‹shuffle›` `‹sample›` (seeded generators; `‹mtrng›` is CPython-exact MT19937) `‹sha256›` `‹sha256hex›`, and the helpers `‹_14j_rec›` `‹_14j_mtgen›` `‹_14j_mt32›` `‹_14j_xo›` `‹_14j_mix›` `‹_14j_b›` `‹_14j_below›` `‹_14j_ins›` `‹_14j_tab›` `‹_14j_h0›` `‹_14j_k›` `‹_14j_blk›`; names starting `‹_14j` are W14-J's | W14-J (**shipped**) | `# ===== W14-J =====` |
+| `‹format›` `‹printf›` `‹fixed›` `‹ljust›` `‹center›` `‹replace›` `‹rfind›` `‹count›` `‹endswith›` `‹partition›` `‹rpartition›` `‹translate›` `‹le›` `‹les›` `‹tole›` `‹setle›` `‹hexbytes›` `‹unhexbytes›` `‹utf8›` `‹unutf8›` (20), and 20 helpers `‹_14g_new›` `‹_14g_at›` `‹_14g_ff›` `‹_14g_app›` `‹_14g_rep›` `‹_14g_sp›` `‹_14g_lr›` `‹_14g_cut›` `‹_14g_wd›` `‹_14g_rng›` `‹_14g_hd›` `‹_14g_hv›` `‹_14g_hx›` `‹_14g_dec›` `‹_14g_enc›` `‹_14g_abs›` `‹_14g_ch›` `‹_14g_dg›` `‹_14g_emit›` `‹_14g_cv›` (the prefix `‹_14g` is reserved for them): 40 names. `‹count›` as a word does not disturb a program's `‹count›` variable (words and variables are separate) | W14-G | `# ===== W14-G =====` |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -759,6 +767,20 @@ anything beyond it goes back to the integrator. Decimals are what you type.
 | W13-I prelude pruning | none | a `tools/golfc` step only (`tools/golfprune.py`); the runtime and the compilers are unchanged |
 | W13-E LeetCode library | none | every W13-E word is a `⊡` word: its loop state is its own frame on the return stack, so it needs no scratch cell and no spill frame and is re-entrant. The streams (`‹perms›` `‹combs›` `‹subsets›` `‹cartesian›`) build their records with W12-A8's `‹_12a8_mk›`, which uses A8's cell 5181312 for a moment, as A8's own constructors do |
 
+### 3.4 W14 runtime cells
+
+Each W14 task has a private 64-byte block in the free headroom at `0x432000`
+(W14-B 4399104–4399167, W14-D 4399168–4399231, W14-E 4399232–4399295,
+W14-G 4399296–4399359, W14-J 4399360–4399423; W14-L none).
+
+| Task | Cells | Use |
+|---|---|---|
+| W14-B processes | none (its block 4399104–4399167 is unused) | every W14-B word is a `⊡` word or stateless; the syscall buffers (pipe2's fds, wait4's status and rusage, pollfds, clock_gettime, rt_sigaction) are `A` blocks freed after use, and the entry rsp cell 0x4F0040 is only read (envp) |
+| W14-D environment and time | none (its private block 4399168–4399231 is unused) | the leaves (`‹now› ‹walltime› ‹sleep› ‹isatty›`) keep the syscall's buffer on the data stack (zeros pushed, `⊷_` gives their address), `‹getenv› ‹environ› ‹rusage›` keep their state in `⊡` frames. On a failure `‹rusage›` stores the positive errno in W11-1B's errno cell 5179712 (§3.1) before it throws, as the file words do |
+| W14-E filesystem | none (its block 4399232 … 4399295 stays spare) | every word is a `⊡` word or calls only leaves; the C-string and list conversions are W11-1B's `‹_1b_tobytes›` / `‹_1b_tolist›`, and a failure stores the errno in W11-1B's errno cell 5179712, as the file words do |
+| W14-J generators and SHA-256 | none (its block 4399360–4399423 is unused) | every W14-J word is a `⊡` word; a generator's state is its own record (a list), SHA-256's state, schedule and constant tables are `A` blocks freed before it returns |
+| W14-G formatting, bytes, UTF-8 | none (its block 4399296–4399359 is unused) | every W14-G word is a `⊡` word: its state is its own frame, so it is re-entrant and needs no scratch cell |
+
 ---
 
 ## W9 — the gap-fix waves
@@ -770,7 +792,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 381 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13 and W13-H 4, helpers and digraph names included) — 1024 since W10-A, so 643 are left
+prelude now uses 526 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13, W13-H 4, W14-B 37, W14-D 14, W14-E 30, W14-G 40 and W14-J 24, helpers and digraph names included) — 1024 since W10-A, so 498 are left
 for a program compiled with the whole prelude (`golfc -P`, and run2.sh's `cat` pipelines); since W13-I plain `golfc` interns only the prelude names the program reaches, so it leaves more (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 
@@ -786,9 +808,21 @@ either; the decoders copy a literal's bytes back out raw.
 1. Add the row here first, `reserved`, with the wave that will ship it.
 2. Run `python3 tools/codepage.py check` — it must exit 0 *before* you write
    any code (the row is not yet in the tables) *and* after (the tables agree).
-3. Implement: `tools/mkblob2.py` (`ATOMS` template, for a real op) **and**
-   `boot/golfref.py` (oracle parity), a `tools/codepage.py` `LIB`/`COMPILER`
-   row, a `lib/prelude.golfj` definition for a word, and a `test/run2.sh` case.
+3. Implement. The code page and the template blob are **source data**
+   (W14-L): edit the data files, never a Python literal.
+   - `data/ops.tsv`: one TAB-separated row `table byte mnemonic glyph doc` —
+     table `A` for an atom, `C` for a compiler op, `L` for a library word (its
+     format is in the file's header). Its row order is the order of
+     `codepage.py table`, REFERENCE.md and the blob.
+   - `data/templates.txt`, for an atom: a `tpl BYTE` line with its machine
+     code, in the file's small notation (hex bytes, named fragments with
+     arguments, labels and `>label` jumps; documented at the top of the file).
+     A template that wraps another (a hook call, a check in front of an old
+     body) is an `override BYTE` built from the fragments there. An address the
+     template uses must also be the named constant in `tools/mkblob2.py`'s
+     memory map, which checks the data against it.
+   - then `boot/golfref.py` (oracle parity), a `lib/prelude.golfj` definition
+     for a word, and a `test/run2.sh` case.
    For a **compiler-logic** op (a prefix/token, not a template): write it in
    `self/golf2.golfj` — the compiler's source since M-SELF — *and* mirror it
    into `tools/mkblob2.py`'s v1-GOLF seed cases, or `test/selfcheck.sh`'s
@@ -799,5 +833,10 @@ either; the decoders copy a literal's bytes back out raw.
    top-level code and what it names, and drops definitions nothing names
    (W13-I; REFERENCE "Prelude pruning").
 4. Flip `reserved` → `shipped` in the same commit.
-5. Regenerate: `cd expanded && python3 tools/mkblob2.py`, then commit both
-   `self/seed.golf` and `self/golf2.golf` — they are generated, never edited.
+5. Regenerate: `cd expanded && python3 tools/mkblob2.py` (it rewrites
+   `self/seed.golf`, `self/golf2.golf`, `data/codepage.tsv` and
+   `data/blob.hex`) and `python3 tools/codepage.py reference --update
+   REFERENCE.md`, then commit them all — they are generated, never edited.
+   `test/selfcheck.sh` fails if any is stale, and `test/gtools.sh` builds every
+   one of them again with `gtools/tables.golfj` from the same data files and
+   requires the same bytes.
