@@ -107,7 +107,7 @@ What the W11 round added, closing the gaps against Python and Rust that
   ‹joinwith› ‹pad›`.
 - **programs up to 192 KB** (was an unchecked 64 KB), refused cleanly past it;
   `tools/golfc` compiles only the prelude a program reaches (W13-I: `1Ṅ` is
-  21 KB, not 183 KB; `golfc -P` keeps it all).
+  21 KB, not 182 KB; `golfc -P` keeps it all).
 - **includes** — `⎘“path“` compiles a file in place, once, looked up as written,
   then in `lib/`, then in `vendor/`.
 - **dicts and sets** — `‹dict› ‹put› ‹get› ‹has› ‹del› ‹keys› ‹vals› ‹set›
@@ -174,7 +174,7 @@ result:
 GOLF_V1C=/path/to/v1c bash test/run2.sh
 ```
 
-`bash test/run2.sh` is **992 assertions green**, the fixpoint included. Every
+`bash test/run2.sh` is **1001 assertions green**, the fixpoint included. Every
 number quoted in this README and in `expanded/DESIGN.md` — atom count, artifact
 sizes, this assertion count — is itself asserted by that suite, so a doc that
 drifts out of date fails the build instead of lying quietly.

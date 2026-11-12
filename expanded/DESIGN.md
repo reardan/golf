@@ -146,7 +146,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1397** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **5117** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **16908** bytes |
-| assertions in the run2 suite | **992** |
+| assertions in the run2 suite | **1001** |
 | assertions in the selfcheck suite | **69** |
 | assertions in the gtools differential suite | **57** |
 | the capstone, in op bytes | **46** |
@@ -569,7 +569,7 @@ the golf2 fixpoint included. In order:
   503 → 239 bytes (the ten that Jelly has: 177 → 115, Jelly 144) and from
   2.95 s to 2.21 s in total, every one still ahead of Python. Cost: 7 KB
   more in every binary (the input reader), and the whole prelude is within
-  13 KB of the image cap.
+  14 KB of the image cap.
 - **W10-A — forward references for every name; 1024 long names.** M2's
   pending-site lists were already indexed by name number, so a one-byte name
   needed no new mechanism, only permission: `e` and `X` now send any name that
@@ -777,7 +777,7 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   (`1Ṅ` is 13,527 bytes; the whole prelude, `golfc -P`, is 125,566), so about
   180 KB is left for a program's own code (after W14's scripting library the
   whole prelude is 169,944 bytes and `1Ṅ` 13,587, so `-P` leaves about 26 KB;
-  after W15 they are 182,805 and 20,986, so `-P` leaves about 13 KB;
+  after W15 they are 182,032 and 20,986, so `-P` leaves about 14 KB;
   run2.sh compiles its biggest generated programs pruned for that reason); an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).

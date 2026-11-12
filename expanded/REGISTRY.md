@@ -452,7 +452,7 @@ Prelude long names in use (all **shipped**):
 
 | names | wave | anchor |
 |---|---|---|
-| `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›`, and the helper `‹_inread›` (names starting `‹_in` are reserved for it) | W9-4C | `W9-4C-INPUT` |
+| `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›` (the helper `‹_inread›` went in W15; names starting `‹_in` stay reserved) | W9-4C | `W9-4C-INPUT` |
 | `‹throw›` | W11-0 (the stub; W11-3A rewrites it in place) | `W11-0` — defined right after `H`, ahead of `X` |
 | `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›`, and the helpers `‹_1b_tobytes›` `‹_1b_tolist›` `‹_1b_dec›` `‹_1b_ename›` `‹_1b_fail›` `‹_1b_wr›` | W11-1B (**shipped**) | `W11-1B Files` |
 | `‹flush›`, and the helpers `‹_1c_put›` `‹_1c_init›` | W11-1C (**shipped**) | `W11-1C buffered output` |
@@ -835,7 +835,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 526 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13, W13-H 4, W14-B 37, W14-D 14, W14-E 30, W14-G 40 and W14-J 24, helpers and digraph names included) — 1024 since W10-A, so 498 are left
+prelude now uses 560 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13, W13-H 4, W14-B 37, W14-D 14, W14-E 30, W14-G 40 and W14-J 24, W15 34 net of the retired `‹_inread›`, helpers and digraph names included) — 1024 since W10-A, so 464 are left
 for a program compiled with the whole prelude (`golfc -P`, and run2.sh's `cat` pipelines); since W13-I plain `golfc` interns only the prelude names the program reaches, so it leaves more (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

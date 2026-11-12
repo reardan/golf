@@ -985,7 +985,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 526 in all after W14, helpers included), so a program has 498 for itself.
+has 560 in all after W15, helpers included), so a program has 464 for itself.
 
 ### Sorting by key
 
@@ -1426,8 +1426,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words), the prelude has 381 long
-names, which leaves 498 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words, and since then W14's scripting library and W15's 34 names), the prelude has 560 long
+names, which leaves 464 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -2502,9 +2502,9 @@ words' helpers.
 ### Prelude pruning
 
 `tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your
-program can reach. The whole prelude compiles to about 183 KB of the 192 KB
+program can reach. The whole prelude compiles to about 182 KB of the 192 KB
 image cap since W15 (170 KB after W14, 125 KB before it), so `golfc -P` leaves a
-program only about 13 KB of its own; pruned, `1Ṅ` is a 20,986-byte binary (13,587
+program only about 14 KB of its own; pruned, `1Ṅ` is a 20,986-byte binary (13,587
 before W15: every program now carries the implicit-input reader) and the twenty
 `bench/leetcode/golf/` programs are 22–35 KB (27 KB on average). Compiling is faster too (about 100 ms instead of 170 ms for `1Ṅ`).
 

@@ -1901,14 +1901,19 @@ python3 boot/golfref.py < "$TMP/w10a.src" > "$TMP/w10a.ref" 2>/dev/null
 # their ends.  P are the prelude's, so the program adds 1024 - P.  (About 66 KB
 # with the prelude: past the old 64 KB image, inside W11-1E's 192 KB cap.)
 w10n=$((1024 - w93p)); w10s=""
-for k in $(seq 1 $w10n); do w10s="$w10s:‹v$k›$k→‹v$k›;"; done
+# (W15: the whole prelude left under 14 KB of the 192 KB image, so only one
+# name in eight — and the first and the last two, the ones run — is a variable
+# as well; the rest are empty words, 20 bytes each.)
+for k in $(seq 1 $w10n); do
+  if [ $((k % 8)) = 1 ] || [ "$k" -ge $((w10n-1)) ]; then w10s="$w10s:‹v$k›$k→‹v$k›;"; else w10s="$w10s:‹v$k›;"; fi
+done
 w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
 w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
 [ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z› at line 1" ] \
   && ok "1024 long names fill the table: one more (‹z›) is refused" || no "1024 cap: $(cat "$TMP/u.err")"
 w10s="${w10s/:‹z›;/}"
 [ "$(printf '%s' "$w10s" | und)" = "0" ] && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1$((w10n-1))$w10n" ] \
-  && ok "$w10n user long names (+ $w93p prelude) as words and variables, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
+  && ok "$w10n user long names (+ $w93p prelude) as words, one in eight a variable too, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
 
 # @@ W10-B-V1DIV @@
 echo "v1's / % (W10-B): unsigned as ever, but a zero divisor is a clean error, not SIGFPE"

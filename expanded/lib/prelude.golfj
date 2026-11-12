@@ -701,18 +701,18 @@
 :‹getc›5177424\fetch0\eq1\radd[1027 A"5177424\store0&\store0&8\radd\store_]
  5177424\fetch"\fetch&8\radd\fetch\rlt[‹flush›0&16\radd8192 0\sys"1\slt1\radd[__0 1\rsub^]&8\radd\store0&\store]
  "\fetch1\radd&\store"\fetch\radd15\radd?;
-# ‹_inread›  stop -> list f   bytes up to (not including) `stop` or end of
-# input.  f is 1 iff input ended with nothing read.  A growable block: s0
-# block · s2 capacity · s1 count · s4 the byte · s7 stop · s3 the new block and
-# s6 the copy index while doubling (the old block goes back via ⌫).  The loop
-# flag g = (b<0)|(b==stop) stays on the data stack across the append.
-:‹_inread›X5177496\store16"5177456\store1\radd A5177440\store0 5177448\store
- {‹getc›"5177472\store0\slt5177472\fetch5177496\fetch\eq|"[
-  5177448\fetch5177456\fetch\eq1\radd[5177456\fetch2\rmul"5177456\store1\radd A5177464\store
-   0 5177488\store{5177440\fetch5177488\fetch8\rmul\radd8\radd\fetch5177464\fetch5177488\fetch8\rmul\radd8\radd\store5177488\fetch1\radd"5177488\store5177448\fetch\rlt1\radd}
-   5177440\fetch\free5177464\fetch5177440\store]
-  5177472\fetch5177440\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store]}
- 5177448\fetch5177440\fetch\store5177440\fetch32767 48\shl|5177472\fetch0\slt5177448\fetch0\eq$\neg Y;
+# (‹_inread›, the ‹getc›-per-byte reader behind ‹readline›, stood here until
+# W15: ‹readline› is ‹_15_line› now, which scans the buffer a chunk at a time.)
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
 # (‹readall› is in the W12-P1 section: ‹readbytes›, then one widening pass.)
 :‹readline›‹_15_line›;
 # ‹words›, ‹num› and ‹ints› moved to the W12-P1 section at the end (pointer

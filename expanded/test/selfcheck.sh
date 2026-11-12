@@ -158,14 +158,16 @@ both locz "$TMP/src.locz"
 
 # W10-A: one-byte forward references — calls, ′ and a chain link to words
 # defined further down — and a program with 1024 long names (the prelude's
-# included), through both source forms.
+# included), through both source forms.  (W15: one name in eight, and the
+# last, is a variable as well; the rest are empty words — the whole prelude
+# leaves under 14 KB of the 192 KB image.)
 printf '%s' ':a"0-[_0^]1-b;:b"0-[_1^]1-a;3′d⍎Ṅ⊚mq≢÷;:q∑;5⍳mṄ7aṄ:d⊗;' \
   | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.fwd1"
 both fwd1 "$TMP/src.fwd1"
 [ "$("$TMP/new.fwd1" 2>/dev/null)" = "621" ] \
   && ok "prelude + one-byte forward references runs (W10-A)" || no "one-byte forward program output"
 w10p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
-python3 -c 'import sys; n=int(sys.argv[1]); sys.stdout.write("‹v%d›" % n + "".join(":‹v%d›%d→‹v%d›;" % (k, k, k) for k in range(1, n + 1)) + "←‹v%d›Ṅ" % n)' \
+python3 -c 'import sys; n=int(sys.argv[1]); sys.stdout.write("‹v%d›" % n + "".join((":‹v%d›%d→‹v%d›;" % (k, k, k)) if k % 8 == 1 or k == n else (":‹v%d›;" % k) for k in range(1, n + 1)) + "←‹v%d›Ṅ" % n)' \
   $((1024 - w10p)) | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.names1k"
 both names1k "$TMP/src.names1k"
 [ "$("$TMP/new.names1k" 2>/dev/null)" = "$((1024 - w10p))" ] \

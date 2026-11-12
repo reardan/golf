@@ -31,8 +31,8 @@ in the order it would pay:
 3. **Comparisons and `/ % ÷ ∣` do not vectorise.** `⊞` now broadcasts a
    scalar, which covers them at one more byte and a call per element; making
    them polymorphic like `+ - * ⌈ ⌊` needs templates in the blob.
-4. **The image cap.** The whole prelude is 183 KB of 192 KB. Pruned programs
-   are 21–35 KB, so nothing is tight for users, but `golfc -P` has 13 KB
+4. **The image cap.** The whole prelude is 182 KB of 192 KB. Pruned programs
+   are 21–35 KB, so nothing is tight for users, but `golfc -P` has 14 KB
    left and the test suite compiles its largest programs pruned. The next
    library round needs either denser code (M7) or the runtime cells moved up.
 5. **Text that looks like numbers.** Implicit input decides by the first
