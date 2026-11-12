@@ -107,7 +107,7 @@ What the W11 round added, closing the gaps against Python and Rust that
   ‹joinwith› ‹pad›`.
 - **programs up to 192 KB** (was an unchecked 64 KB), refused cleanly past it;
   `tools/golfc` compiles only the prelude a program reaches (W13-I: `1Ṅ` is
-  13.5 KB, not 125 KB; `golfc -P` keeps it all).
+  21 KB, not 183 KB; `golfc -P` keeps it all).
 - **includes** — `⎘“path“` compiles a file in place, once, looked up as written,
   then in `lib/`, then in `vendor/`.
 - **dicts and sets** — `‹dict› ‹put› ‹get› ‹has› ‹del› ‹keys› ‹vals› ‹set›
@@ -130,6 +130,15 @@ What the W11 round added, closing the gaps against Python and Rust that
   once into a cache and execs it, so `#!/usr/bin/env golfrun` works; W14-D).
 - **scripting** — `‹getenv› ‹environ› ‹isatty› ‹getpid› ‹exit› ‹eputs›`,
   `‹now› ‹walltime› ‹sleep› ‹rusage›` (W14-D); see `expanded/examples/scripts/`.
+- **implicit input and output** (W15) — a word that takes from the empty
+  stack gets stdin (the integers in it, or the first line of text), and the
+  value left at the end is printed: Best Time to Buy and Sell Stock is `⌊⍀-Ṁ`.
+- **structure adverbs** (W15) — `⋈` hash join (Two Sum is `⍘&-⋈`), `⍙` stack
+  cancel (Valid Parentheses is `⊖⊘⟦-⊕⟧⍙≢ṭ⊐`), `⥮` both directions, `⊞`
+  broadcast, `‹gdist›` grid BFS and `‹bfsf›` BFS over a function; a linear
+  radix sort behind `⍋`. The twenty `bench/leetcode` solutions are 239 bytes
+  in all, and the ten that also exist in Jelly are 115 bytes to Jelly's 144,
+  with linear or n log n algorithms where Jelly uses brute force.
 
 So `100⍳∑Ṅ` prints `4950`, and a Caesar cipher is `3→k“Hello“U←k+J` — which
 before implicit vectorization needed a closure, `3→k:f←k+;“Hello“U′f€J`. Both

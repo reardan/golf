@@ -85,6 +85,7 @@ GOLF_WORDS = %(words)r          # (name, start, end), by start
 GOLF_RTOP = %(rtop)#x            # return-stack top (segment end)
 GOLF_IMG = (%(lo)#x, %(hi)#x)    # the image's mapped bytes
 GOLF_ARGV = 0x4F0040             # STARTUP's stash of the entry rsp
+GOLF_BASE = 0x4F0C40             # the prelude's data-stack base (W11-4C; W15: the mmap'd stack), 0 in a bare program
 GOLF_PRO = 7                     # prologue length: 48 83 ED 08 8F 45 00
 GOLF_BY = {}
 for _n, _s, _e in GOLF_WORDS:
@@ -190,7 +191,7 @@ class GolfStack(gdb.Command):
     def invoke(self, arg, tty):
         n = int(gdb.parse_and_eval(arg)) if arg.strip() else 8
         _, _, sp = golf_entry()
-        depth = (golf_u64(GOLF_ARGV) - sp) // 8
+        depth = max(0, ((golf_u64(GOLF_BASE) or golf_u64(GOLF_ARGV)) - sp) // 8)
         print("data stack: depth %%d" %% depth)
         for k in range(min(n, depth)):
             v = golf_u64(sp + 8 * k)

@@ -143,9 +143,9 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **39** |
-| the template blob itself | **1395** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **5115** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **16906** bytes |
+| the template blob itself | **1397** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **5117** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **16908** bytes |
 | assertions in the run2 suite | **992** |
 | assertions in the selfcheck suite | **69** |
 | assertions in the gtools differential suite | **57** |
@@ -550,6 +550,26 @@ the golf2 fixpoint included. In order:
   a word only through an address computed at run time. run2's `>64 KB`
   (2000 statements), W12-O3 (2000 ops), W12-A5 (one program) and 256-field
   record tests are back to their original sizes, through `gcp`/`grefp`.
+- **W15 — the stack supplies the input; structures behind adverbs.** A
+  second LeetCode round asked why the fast solutions were still longer than
+  Jelly's brute force. Two answers. (1) Plumbing: every program began with an
+  input word and a `"`. Now the data stack lives in its own 256 MB mapping
+  with an unmapped page above its base, and a SIGSEGV handler written in GOLF
+  fills that page with the parsed input on the first underflow, so a word
+  that takes from the empty stack gets the input, any number of times, at no
+  cost to programs that never underflow (and the far guard page turns a
+  runaway push into a catchable `data stack overflow`). The compilers did not
+  change: it is prelude code plus one end-hook rule. (2) Loops: the
+  remaining long solutions were hand-written stack, hash and queue loops, so
+  each became a word that runs a small verb through that structure: `⋈` hash
+  join, `⍙` stack cancel, `⥮` both directions, `⊞` broadcasting a scalar,
+  `‹gdist›` grid BFS, `‹bfsf›` BFS over a function. With `⍋` and `‹grade›`
+  moved to an LSD radix sort, `‹readline›` to chunk scans, and table fast
+  paths for `Ṕ` and `‹mostcommon›`, the twenty `bench/leetcode` programs went
+  503 → 239 bytes (the ten that Jelly has: 177 → 115, Jelly 144) and from
+  2.95 s to 2.21 s in total, every one still ahead of Python. Cost: 7 KB
+  more in every binary (the input reader), and the whole prelude is within
+  13 KB of the image cap.
 - **W10-A — forward references for every name; 1024 long names.** M2's
   pending-site lists were already indexed by name number, so a one-byte name
   needed no new mechanism, only permission: `e` and `X` now send any name that
@@ -757,6 +777,7 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   (`1Ṅ` is 13,527 bytes; the whole prelude, `golfc -P`, is 125,566), so about
   180 KB is left for a program's own code (after W14's scripting library the
   whole prelude is 169,944 bytes and `1Ṅ` 13,587, so `-P` leaves about 26 KB;
+  after W15 they are 182,805 and 20,986, so `-P` leaves about 13 KB;
   run2.sh compiles its biggest generated programs pruned for that reason); an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).
