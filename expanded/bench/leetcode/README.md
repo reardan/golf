@@ -262,3 +262,51 @@ is not one of the twenty that `bench.sh` runs.
 reads the `stock` input in 0.07 s and 13 MB, against `‹ints›`'s 0.52 s and
 179 MB: the evidence for PLAN_W12's P1. The full write-up, with the Jelly
 timings and per-problem notes, is the doc linked from PLAN_W12.md.
+
+## Golf against Vyxal, 05AB1E and Nibbles (2026-11-13)
+
+The twenty problems are also solved in three golfing languages that often beat
+Jelly: `vyxal/*.vy` (Vyxal 2.21, its one-byte code page), `05ab1e/*.abe`
+(05AB1E, Elixir version, its code page) and `nibbles/*.nbl` (Nibbles,
+literate form; scored as its packed half-byte form, rounded up to bytes).
+They take the problem's LeetCode arguments rather than stdin (`rivals.py`'s
+`conv` gives the argument list of each), as the Jelly ones do.
+
+| | first ten | all twenty |
+|---|---|---|
+| Nibbles | 92 | 220 |
+| Vyxal | 99 | 297 |
+| Golf | 115 | 239 |
+| 05AB1E | 136 | 364 |
+| Jelly | 144 | — |
+
+Per problem (Golf / Vyxal / 05AB1E / Nibbles): twosum 4/12/14/8, parens
+10/2/8/13, stock 4/5/6/5, longsub 9/8/9/9, prodself 7/6/8/3, topk 6/11/10/8,
+islands 7/26/41/20, trap 9/12/16/8, slidemax 3/3/5/6, queens 56/14/19/12,
+search 3/2/2/3, koko 21/16/19/14, oranges 12/38/54/21, course 10/15/15/10,
+delay 16/54/57/31, redundant 16/15/15/9, coins 11/21/26/12, lcs 24/26/24/16,
+temps 6/8/11/7, bits 5/3/5/5.
+
+These rival solutions are a first pass, not expert golf, and most are brute
+force (O(n²) up to O(n!)): on `gen.py 0.001` inputs Vyxal and 05AB1E time out
+(60 s) on islands and oranges, and longsub and koko time out in one of them;
+Nibbles, which compiles through GHC, finishes all but islands. None can run the
+full-size inputs. The write-up, with timings and what Golf could borrow, is
+https://claude.ai/artifact/5rYuhM4qgfDYZjhZt6JkC7.
+
+```sh
+python3 gen.py 0.0001 small                     # tiny inputs + every edge case
+RIVALS_EXT=~/rivals python3 rivals.py nibbles   # or vyxal, 05ab1e, golf; --set DIR, TMO=seconds
+```
+
+`rivals.py` checks each solution against `py/` and prints its bytes and time.
+It needs `vyxal` on PATH (`pip install vyxal`), the 05AB1E escript at
+`$RIVALS_EXT/05AB1E/osabie` and the Nibbles binary at `$RIVALS_EXT/nibbles/nibbles`
+(GHC plus the `dlist split murmur-hash memoize` packages). Building 05AB1E
+without hex.pm: drop the `httpoison`, `excoveralls` and `mock` deps from
+`mix.exs` (only `.w`, read a URL, uses HTTPoison), copy `melpon/memoize`'s `lib/`
+into `lib/`, start `Memoize.Application` at the top of `main`, then
+`MIX_ENV=prod mix escript.build`. Nibbles needs the argument types when it
+compiles, so `rivals.py` passes `small/<problem>.txt`'s arguments to
+`nibbles -c` and `-hs`. 05AB1E evaluates an input line that starts with `[` as
+a list, so it cannot take a bracket string that starts with `[`.
