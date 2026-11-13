@@ -313,7 +313,7 @@
 # Z zip(l1 l2 fn)->list : elementwise fn over two lists, truncating to the
 # shorter (new[i] = fn(l1[i], l2[i])).  l2 is saved in s7, the common length
 # min(≢l1, ≢l2) in s2.
-:Z 1‹_13g_zip›[^]X5177464\store‹_2d_chk›5177496\store‹_2d_chk›5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"1\radd A"5177456\store\store
+:Z 1‹_15_zd›[^]1‹_13g_zip›[^]X5177464\store‹_2d_chk›5177496\store‹_2d_chk›5177440\store5177440\fetch\fetch5177496\fetch\fetch\rmin"1\radd A"5177456\store\store
  5177496\fetch5177440\fetch\rsub5177496\store5177456\fetch5177440\fetch\rsub5177472\store
  5177456\fetch\fetch8\rmul5177440\fetch\radd8\radd5177448\store5177440\fetch8\radd"5177440\store
  5177448\fetch\eq[{5177440\fetch\fetch5177440\fetch5177496\fetch\radd\fetch5177464\fetch\exec5177440\fetch5177472\fetch\radd\store5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
@@ -567,35 +567,9 @@
 #                  (0x7FFF<<48 | addr), so lists sort after every int below
 #                  0x7FFF<<48 and among
 #                  themselves by address — no structural ordering.
-# Iterative bottom-up merge sort, O(n log n), one X/Y frame however long the
-# list (no recursion, so the 28-frame spill stack is never at risk).  The input
-# is copied by `0↓` into src; dst is a second block from A of the same size;
-# each pass merges runs of width w from src into dst and the two swap; when w
-# reaches n the sorted cells are in src.  s0 src · s7 dst (both raw) · s2 n ·
-# s3 w · s1 i (left cursor) · s4 j (right cursor) · s5 mid · s6 hi.  The output
-# slot is k = i + j - mid, so no 9th cell is needed.  A merge step is branch-
-# free: both heads are read at CLAMPED indices min(i, mid-1) / min(j, hi-1) —
-# always inside [lo, hi), so an exhausted run is never read past — and
-#   F = (j < hi) & ((i >= mid) | (si >s sj))        (-1: take the right head)
-#   dst[k] = si + ((sj - si) & F);  j -= F;  i += 1 + F
-# Taking the left head on a tie is what makes it stable.
-:\sort X0\drop16\shl16>"5177440\store\fetch"5177456\store"1\radd A"5177496\store\store
- 1 5177464\store
- 1 5177456\fetch\rlt1\radd[{0 5177448\store{
-  5177448\fetch5177464\fetch\radd5177456\fetch\rmin"5177480\store"5177472\store5177464\fetch\radd5177456\fetch\rmin5177488\store
-  {5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
-   5177440\fetch5177472\fetch5177488\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
-   \sgt5177448\fetch5177480\fetch\rlt~|5177472\fetch5177488\fetch\rlt$
-   "5177440\fetch5177472\fetch5177488\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
-   5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
-   \rsub$5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch\radd
-   5177496\fetch5177448\fetch5177472\fetch\radd5177480\fetch\rsub8\rmul\radd8\radd\store
-   5177472\fetch&\rsub5177472\store5177448\fetch\radd1\radd5177448\store
-   5177448\fetch5177472\fetch\radd5177480\fetch\rsub5177488\fetch\rlt1\radd}
-  5177488\fetch5177448\store5177448\fetch5177456\fetch\rlt1\radd}
- 5177440\fetch5177496\fetch5177440\store5177496\store
- 5177464\fetch2\rmul5177464\store5177464\fetch5177456\fetch\rlt1\radd}]
- 5177440\fetch32767 48\shl| Y;
+# Since W15 it is ‹_15_sort›, an LSD radix sort (section W15, "the fast
+# sort"); it was an iterative bottom-up merge sort under one X/Y frame.
+:\sort‹_15_sort›;
 # ∊ member  l x -> f   0 if some cell of l equals x (≡: raw 64-bit equality,
 # so an inner list matches only the very same tagged list), 1 otherwise —
 # zero-is-true like T, so `∊[…]` runs on a hit.  The empty list gives 1.
@@ -727,20 +701,20 @@
 :‹getc›5177424\fetch0\eq1\radd[1027 A"5177424\store0&\store0&8\radd\store_]
  5177424\fetch"\fetch&8\radd\fetch\rlt[‹flush›0&16\radd8192 0\sys"1\slt1\radd[__0 1\rsub^]&8\radd\store0&\store]
  "\fetch1\radd&\store"\fetch\radd15\radd?;
-# ‹_inread›  stop -> list f   bytes up to (not including) `stop` or end of
-# input.  f is 1 iff input ended with nothing read.  A growable block: s0
-# block · s2 capacity · s1 count · s4 the byte · s7 stop · s3 the new block and
-# s6 the copy index while doubling (the old block goes back via ⌫).  The loop
-# flag g = (b<0)|(b==stop) stays on the data stack across the append.
-:‹_inread›X5177496\store16"5177456\store1\radd A5177440\store0 5177448\store
- {‹getc›"5177472\store0\slt5177472\fetch5177496\fetch\eq|"[
-  5177448\fetch5177456\fetch\eq1\radd[5177456\fetch2\rmul"5177456\store1\radd A5177464\store
-   0 5177488\store{5177440\fetch5177488\fetch8\rmul\radd8\radd\fetch5177464\fetch5177488\fetch8\rmul\radd8\radd\store5177488\fetch1\radd"5177488\store5177448\fetch\rlt1\radd}
-   5177440\fetch\free5177464\fetch5177440\store]
-  5177472\fetch5177440\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store]}
- 5177448\fetch5177440\fetch\store5177440\fetch32767 48\shl|5177472\fetch0\slt5177448\fetch0\eq$\neg Y;
+# (‹_inread›, the ‹getc›-per-byte reader behind ‹readline›, stood here until
+# W15: ‹readline› is ‹_15_line› now, which scans the buffer a chunk at a time.)
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
 # (‹readall› is in the W12-P1 section: ‹readbytes›, then one widening pass.)
-:‹readline›10‹_inread›;
+:‹readline›‹_15_line›;
 # ‹words›, ‹num› and ‹ints› moved to the W12-P1 section at the end (pointer
 # walks, no X/Y frame; ‹ints› scans this buffer directly), with ‹readbytes›.
 # ‹args›: argc-1 code lists.  argv[k+1] is at [rsp]+16+8k; its bytes are
@@ -1277,7 +1251,7 @@
 # shows everything below too, as it is one stack.  Cells: 5180488 sp ·
 # 5180496 depth · 5180504 index (4C spares).  Not re-entrant (a list printer
 # never calls it back).
-:‹stack›\spr_5180488\store5180480\fetch5180488\fetch\rsub3>5180496\store
+:‹stack›\spr_5180488\store5180480\fetch5180488\fetch\rsub3≫"63≫~$5180496\store
  60‹_1c_put›5180496\fetch N62‹_1c_put›0 5180504\store
  5180496\fetch0\eq[{32‹_1c_put›5180480\fetch5180504\fetch8\rmul\rsub8\rsub\fetch"T[1 48\shl\rsub Q 32767 48\shl]"T1\rsub[N 0]_
   5180504\fetch1\radd"5180504\store5180496\fetch\rlt1\radd}]E;
@@ -1721,15 +1695,8 @@
 # contract: the caller's stack is directly under x, and k may read and leave
 # values there — and the keys are then graded: l' = l[‹grade› keys].
 #
-# ‹grade› is ⍋'s bottom-up merge sort run on INDICES: src starts as n⍳ (from
-# R), dst is a second block of n cells from A; a merge step reads the two head
-# indices a b at ⍋'s clamped cursors and compares K[a] >s K[b], where K is the
-# key list's element 0 (5181120, slot A4); the rest — F, the branch-free pick
-# a + ((b-a)&F), j -= F, i += 1+F — is ⍋'s, with F parked in 5181128.  Taking
-# the left head on a tie keeps it stable.  s0..s7 are ⍋'s (s0 src · s7 dst ·
-# s2 n · s3 w · s1 i · s4 j · s5 mid · s6 hi) under one X/Y frame.  The sort
-# calls no user code (A and R come before it), so the two slot cells are
-# never live across a re-entry.  The losing block is given back with ⌫.
+# ‹grade› is ⍋'s sort run on INDICES (since W15 ‹_15_grade›, the radix sort
+# of section W15 with a key lookup per index; stable).  It calls no user code.
 # ⍒: X, k in s3, l's element 0 in s0; l k € gives the keys (€'s own frame
 # keeps ours, so k may itself call ⍒); ‹grade› the keys; then the gather
 # overwrites the permutation IN PLACE, perm[i] = l[perm[i]], walking a pointer
@@ -1737,22 +1704,7 @@
 # A throw inside k unwinds past all of this (‹catch› resets the spill stack);
 # the half-built key list is then leaked, never freed twice.  Both words check
 # their list with ‹_2d_chk› and tag their result.
-:‹grade›X‹_2d_chk›"8\radd5181120\store\fetch"5177456\store"R16\shl16>5177440\store"1\radd A"5177496\store\store
- 1 5177464\store
- 1 5177456\fetch\rlt1\radd[{0 5177448\store{
-  5177448\fetch5177464\fetch\radd5177456\fetch\rmin"5177480\store"5177472\store5177464\fetch\radd5177456\fetch\rmin5177488\store
-  {5177440\fetch5177448\fetch5177480\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
-   5177440\fetch5177472\fetch5177488\fetch1\rsub\rmin8\rmul\radd8\radd\fetch
-   &8\rmul5181120\fetch\radd\fetch&8\rmul5181120\fetch\radd\fetch\sgt
-   5177448\fetch5177480\fetch\rlt~|5177472\fetch5177488\fetch\rlt$
-   5181128\store&\rsub5181128\fetch$\radd
-   5177496\fetch5177448\fetch5177472\fetch\radd5177480\fetch\rsub8\rmul\radd8\radd\store
-   5177472\fetch5181128\fetch\rsub5177472\store5177448\fetch5181128\fetch\radd1\radd5177448\store
-   5177448\fetch5177472\fetch\radd5177480\fetch\rsub5177488\fetch\rlt1\radd}
-  5177488\fetch5177448\store5177448\fetch5177456\fetch\rlt1\radd}
- 5177440\fetch5177496\fetch5177440\store5177496\store
- 5177464\fetch2\rmul5177464\store5177464\fetch5177456\fetch\rlt1\radd}]
- 5177496\fetch\free5177440\fetch32767 48\shl| Y;
+:‹grade›‹_15_grade›;
 :\ksort X5177464\store"‹_2d_chk›8\radd5177440\store5177464\fetch M"5177448\store‹grade›16\shl16>
  "\fetch8\rmul&\radd8\radd&8\radd
  &&\eq[{"\fetch8\rmul5177440\fetch\radd\fetch&\store8\radd&&\eq}]__
@@ -2109,16 +2061,23 @@
 # S3 implicit output.  Running off the end of the program (the end-of-program
 # exit, blob record 5 — not `.`) calls through the END HOOK, 1C runtime cell
 # 5179808 (0x4F09A0, mkblob2.END_HOOK), before the flush hook.  ‹_13b_end›
-# prints the value left on the data stack when there is EXACTLY one above the
-# program's base — ⍕ for a list, Ṅ for anything else, no newline — and does
-# nothing otherwise.  The base is W11-4C's, recorded at prelude init in cell
-# 5180480 (‹stack›'s; the prelude's top level is stack-neutral, so it is the
-# program's base).  The hook is called from top level: `call` parks the
-# return address on the rbp stack via the prologue, so ⊷'s sp here is the
-# program's rsp.  Bare programs (golfc -n) and the compilers never fill the
-# cell, so nothing changes for them.
-# base - sp is 16 for one value: ⊷ runs with the base already pushed.
-:‹_13b_end›5180480\fetch\spr_\rsub16\rsub["T[Q\else N]];
+# prints the TOP value left on the data stack — ⍕ for a list, Ṅ for anything
+# else, no newline — when exactly one value is left, or (W15) when two or more
+# are left and the program has written nothing through the output buffer
+# (count cell 5179776 and drain offset 5179800 both still 0).  The base is
+# W11-4C's, cell 5180480; since W15 it is the implicit-input page G (see
+# section W15), so the count n is: the cells below the base, plus — when
+# implicit input was touched (cell 4399424 holds its value V) — the leading
+# cells of the page that no longer hold V (results the program wrote back over
+# input it consumed), up to 2.  The hook is called from top level: `call`
+# parks the return address on the rbp stack via the prologue, so ⊷'s sp here
+# is the program's rsp.  Bare programs (golfc -n) and the compilers never
+# fill the cell, so nothing changes for them.
+⊡‹_13b_end›⊷_⇒p5180480⊙⇒b4399424⊙⇒v
+ ⇐b⇐p﹣3≫"63≫~$⇒n
+ ⇐v[⋄⇐p⇐b⊔⇒q{⇐q⇐b4096﹢﹤1﹢[⇐q⊙⇐v≡~⇐n2﹤$1﹢⋄1]⋄⇐n1﹢⇒n⇐q8﹢⇒q}]
+ 5179776⊙5179800⊙|⇒w⇐n1﹣[0⇒w]
+ ⇐n[⋄⇐w[⇐p⊙"T[Q⋄N]]];
 :‹_13b_init›\ref‹_13b_end›5179808\store;
 ‹_13b_init›
 # ===== W13-C =====
@@ -2209,7 +2168,7 @@
 # to a pre-⋄ compiler with the long-name definitions cut out.)
 :‹_13c_xch›"5180920\fetch\rsub3>5180768\store5180896\fetch&\fetch‹_2b_find›
  "[_5180768\fetch‹_12p2_ins›1\neg⋄16\radd"\fetch5180888\store5180768\fetch&\store_5180888\fetch];
-:\prevocc‹dict›5180896\store‹_2d_chk›"8\radd5180920\store"\fetch"1\radd A"5180888\store\store5180888\fetch&\rsub5180912\store"\fetch8\rmul\radd8\radd5180904\store
+:‹_15_prevd›‹dict›5180896\store‹_2d_chk›"8\radd5180920\store"\fetch"1\radd A"5180888\store\store5180888\fetch&\rsub5180912\store"\fetch8\rmul\radd8\radd5180904\store
  5180920\fetch"5180904\fetch\eq[{‹_13c_xch›&5180912\fetch\radd\store8\radd"5180904\fetch\eq}]
  _5180920\fetch8\rsub5180912\fetch\radd32767 48\shl|;
 # ⍷ (0xEC)  l ′p -> i   the first i with p l[i] = 0 (zero-is-true, as ⌿), or
@@ -2306,16 +2265,20 @@
 # ‹mostcommon› l k -> l' the k most frequent values, most frequent first,
 #                        ties in order of first appearance (k is clamped to
 #                        [0, distinct]).  A ‹bump› counter, then ‹grade› of
-#                        the negated counts (stable).  O(n + u log u).
+#                        the negated counts (stable).  O(n + u log u).  W15:
+#                        when the values span less than 4n + 1024 the
+#                        counter is a plain table (‹_15_mc›), no hashing.
 # ‹union› a b -> l  ‹inter› a b -> l  ‹diff› a b -> l   set operations on
 #                        lists: each value once, in the order it first
 #                        appears in a (then in b, for ‹union›).  Values are
 #                        compared as dict keys (≣).  O(|a| + |b|) expected.
 ⊡‹append›⇒x⇒k"⇐k0‹getor›"⇒v"[_‹vec›]⇐x⍆"⇐v≡1﹢[_⋄⇒v"⇐k⇐v‹put›_];
 ⊡‹groupby›⇒f‹_13d_rng›⇒e⇒p‹dict›⇒d{⇐p⇐e≡⋄⇐p⊙⇐f⍎⇒y⇐d⇐y⇐p⊙‹append›_⇐p8﹢⇒p}⇐d;
-⊡‹mostcommon›⇒k‹_13d_rng›⇒e⇒p‹dict›⇒d{⇐p⇐e≡⋄⇐d⇐p⊙‹bump›_⇐p8﹢⇒p}
- ⇐d‹vals›"⇒w‹_13d_rng›⇒e⇒p{⇐p⇐e≡⋄⇐p⊙±⇐p⊛⇐p8﹢⇒p}
- ⇐w‹grade›⇒g⇐d‹keys›⇒y⇐k⇐g≢‹_13d_cl›⇒t⇐t1﹢A⇒r⇐t⇐r⊛
+⊡‹mostcommon›⇒k‹_13d_rng›⇒e⇒p0⇒y
+ ⇐p⇐e≡[⇐p⇐e‹_15_mm›&﹣⇒r⇒m⇐r⇐e⇐p﹣1≫1024﹢﹤1﹢[⇐p⇐e⇐m⇐r‹_15_mc›⇒w⇒y]]
+ ⇐y[‹dict›⇒d{⇐p⇐e≡⋄⇐d⇐p⊙‹bump›_⇐p8﹢⇒p}
+  ⇐d‹vals›"⇒w‹_13d_rng›⇒z⇒q{⇐q⇐z≡⋄⇐q⊙±⇐q⊛⇐q8﹢⇒q}⇐d‹keys›⇒y]
+ ⇐w‹grade›⇒g⇐k⇐g≢‹_13d_cl›⇒t⇐t1﹢A⇒r⇐t⇐r⊛
  ⇐g16≪16>8﹢⇒q⇐q⇐t8﹡﹢⇒z⇐r8﹢⇒o⇐y16≪16>8﹢⇒b
  {⇐q⇐z≡⋄⇐q⊙8﹡⇐b﹢⊙⇐o⊛⇐o8﹢⇒o⇐q8﹢⇒q}⇐w⌫⇐g⌫⇐y⌫⇐r32767 48≪|;
 # ‹_13d_new›  s v l -> s v   push onto v each x of l not yet in set s, adding it
@@ -2605,7 +2568,7 @@
 ⊡‹ufind›⇒x‹_2d_chk›"⊙1﹣⇒n⇐x⇐n<1﹢[⋄‹_13e_oor›]8﹢⇒p⇐x⇒r
  {⇐r3≪⇐p﹢⊙63≫⋄⇐r3≪⇐p﹢⊙⇒r}
  {⇐x⇐r≡⋄⇐x3≪⇐p﹢"⊙⇒y⇒z⇐r⇐z⊛⇐y⇒x}⇐r;
-⊡‹uunion›⇒b⇒a⇒u⇐u⇐a‹ufind›⇒a⇐u⇐b‹ufind›⇒b⇐a⇐b≡[⋄⇐u1^]
+⊡‹uunion›"T[‹_2d_chk›⇒a⇐a8﹢⊙⇐a16﹢⊙]⇒b⇒a⇒u⇐u⇐a‹ufind›⇒a⇐u⇐b‹ufind›⇒b⇐a⇐b≡[⋄⇐u1^]
  ⇐u16≪16>"⇒q8﹢⇒p⇐a3≪⇐p﹢⊙⇐b3≪⇐p﹢⊙≻[⋄⇐a⇐b⇒a⇒b]
  ⇐a3≪⇐p﹢⇒y⇐b3≪⇐p﹢⇒z⇐y⊙⇐z⊙﹢⇐y⊛⇐a⇐z⊛
  ⇐q"⊙3≪﹢⇒z⇐z⊙1﹣⇐z⊛⇐u0;
@@ -3626,3 +3589,286 @@
    ⇐a⇐m⇐j⇐p⇐n⇐i‹_14g_ch›⇐f⇐w⇐e‹_14g_cv›⇒j⇐i1﹢⇒i]}
  ⇐j⇐m≡[“format: too many arguments“U‹throw›];
 :‹printf›‹format›"⊐⌫;
+
+# ===== W15 =====
+# Implicit input, the fast sort, and the LeetCode round-2 words (REFERENCE
+# "Implicit input", "Structure adverbs").  Cells (REGISTRY §3.5): 4399424 V,
+# the implicit value (0 until the first underflow) · 4399432 G, the implicit
+# page = the program's stack base · 4399440 R, the data stack's low guard
+# page · 4399448 the signal block [act(4) dfl(4) ss(3)] · 4399456 the
+# SIGSEGV mask bit (1024), for rt_sigprocmask.
+#
+# --- implicit input ---
+# ‹_15_init› moves the data stack out of the kernel's stack into its own
+# mapping: [R low guard][256 MB of stack][G the implicit page][hard guard],
+# with rsp = G, so an empty stack sits right under an unmapped page.  Reading
+# or popping a cell the program never pushed faults there; ‹_15_segv›, the
+# SIGSEGV handler (on its own 64 KB signal stack), maps the page, fills its
+# 512 cells with V — ‹ints› when the next non-blank byte of stdin is a digit
+# or '-' (or stdin is empty), else the first line as a code list — and
+# returns with rt_sigreturn, which runs the faulting instruction again.  So
+# the stack behaves as if an endless supply of V lay under it.  A fault in
+# the low guard page is `data stack overflow` (through ‹throw›, with SIGSEGV
+# unblocked first so that a ‹catch› can carry on); any other fault puts the
+# default action back and returns into it, so it kills the process exactly
+# as before (the return-stack guard page among them: there the handler's own
+# prologue faults with SIGSEGV blocked, which is the same death).  If mmap
+# fails nothing is changed.  The handler is a GOLF word entered by the
+# kernel: its prologue parks the frame's return slot (the unused restorer)
+# and leaves rsp at the ucontext, whose cr2 (the fault address) is at +216;
+# `0 0 0 15⎈` with the data stack level again is rt_sigreturn.
+# ‹_15_peek› makes V as a LOOK-AHEAD: it moves the rest of stdin (the
+# buffer's unread bytes, then read(2) to end of input) into one stdin buffer
+# block, parses from that, and puts the read position back to 0 — so the
+# explicit input words still see everything, and a program that underflows
+# by accident loses no input.  The block is sized from lseek + fstat when
+# stdin is a file (one read, no copy), else it starts at 8 KB and doubles.
+⊡‹_15_isnum›‹_12p1_avail›[⋄0^]
+ 5177424⊙"⊙&﹢16﹢⇒p"8﹢⊙﹢16﹢⇒e
+ {⇐p⇐e≡[⇐p?"32≡23±$﹢9﹣4»⋄1]⋄⇐p1﹢⇒p}
+ ⇐p⇐e≡[⋄0^]⇐p?48﹣10﹤⇐p?45≡|1﹢;
+⊡‹_15_peek›‹flush›0⇒n0⇒e
+ 0 0 1 8⎈⇒o
+ ⇐o0≺[18A⇒t0⇐t0 5⎈[⇐t48﹢⊙⇐o﹣⇒e]⇐t⌫⇐e0≺1﹢[0⇒e]]
+ 5177424⊙⇒q0⇒u⇐q[⋄⇐q8﹢⊙⇐q⊙﹣⇒u]
+ ⇐u⇐e﹢8192﹢⇒c⇐c7﹢3≫3﹢A⇒s
+ ⇐q[⋄⇐q16﹢⇐q⊙﹢⇐s16﹢⇐u7﹢3≫‹_15_cpy›⇐q⌫]⇐u⇒n
+ {⇐c⇐n﹣4096﹤1﹢[⇐c1≪⇒c⇐c7﹢3≫3﹢A⇒t⇐s16﹢⇐t16﹢⇐n7﹢3≫‹_15_cpy›⇐s⌫⇐t⇒s]
+  0⇐s16﹢⇐n﹢⇐c⇐n﹣0⎈⇒r⇐r1≺[⇐n⇐r﹢⇒n0⋄1]}
+ 0⇐s⊛⇐n⇐s8﹢⊛⇐s5177424⊛
+ ‹_15_isnum›[‹ints›⋄‹readline›_]0⇐s⊛;
+⊡‹_15_segv›⊷_216﹢⊙⇒a
+ ⇐a4399432⊙﹣4096﹤1﹢[
+  4399432⊙4096 3 10⎈_
+  X‹_15_peek›⇒v Y
+  ⇐v4399424⊛
+  4399432⊙"4096﹢⇒e{"⇐e≡⋄⇐v&⊛8﹢}_
+  0 0 0 15⎈_]
+ ⇐a4399440⊙﹣4096﹤1﹢[1 4399456 0 8 0 0 14⌁_“data stack overflow“U‹throw›]
+ 11 4399448⊙32﹢0 8 0 0 13⌁_
+ 0 0 0 15⎈_;
+⊡‹_15_init›0 268443648 3 16418 0 1﹣0 9⌁⇒r
+ ⇐r0≺1﹢[^]
+ ⇐r4096 0 10⎈_⇐r268435456﹢⇒g⇐g8192 0 10⎈_
+ ⇐g4399432⊛⇐r4399440⊛1024 4399456⊛
+ 12A⇒b⇐b4399448⊛
+ ′‹_15_segv›⇐b⊛201326596⇐b8﹢⊛0⇐b16﹢⊛0⇐b24﹢⊛
+ 0⇐b32﹢⊛0⇐b40﹢⊛0⇐b48﹢⊛0⇐b56﹢⊛
+ 8192A⇐b64﹢⊛0⇐b72﹢⊛65536⇐b80﹢⊛
+ ⇐b64﹢0 0 131⎈_
+ 11⇐b0 8 0 0 13⌁_
+ ⇐g5180480⊛
+ ⊷⇒q_⇐g⇐q⊶;
+‹_15_init›
+#
+# --- the fast sort (⍋ and ‹grade›, so ⍒ ⍖ too) ---
+# LSD radix sort on key - min, taken unsigned (that keeps the signed order
+# for any 64-bit keys), so the passes cover only the bits the keys differ
+# in: 1M values below 65536 are one counting pass, 1M 32-bit values two.
+# Digits are 16 bits when n >= 32768 and the range needs more than one byte,
+# else 8.  Stable, O(n) a pass; under 13 elements an insertion sort.  The
+# passes alternate between two blocks; the loser and the count block go back
+# to ⌫, so a sort leaves exactly its result.  Every word is a ⊡ word and
+# calls no user code.
+#   ‹_15_ins›    P ->        insertion-sort raw block P in place, signed
+#   ‹_15_gins›   P k ->      the same on indices, by the keys at k (stable)
+#   ‹_15_radix›  S n -> D    n >= 2 cells of raw block S, sorted into a new D
+#   ‹_15_mm›     a e -> m x  signed min and max of the cells a .. e (a < e)
+#   ‹_15_gradix› X k n -> D  the index block X (identity) reordered by keys
+⊡‹_15_ins›"8﹢⇒b⊙3≪⇐b﹢⇒e⇐b8﹢⇒i
+ {⇐i⇐e<~⋄⇐i⊙⇒x⇐i⇒j{⇐j⇐b≡[⇐j8﹣⊙⇐x≻1﹢⋄1]⋄⇐j8﹣⊙⇐j⊛⇐j8﹣⇒j}⇐x⇐j⊛⇐i8﹢⇒i};
+⊡‹_15_gins›⇒k"8﹢⇒b⊙3≪⇐b﹢⇒e⇐b8﹢⇒i
+ {⇐i⇐e<~⋄⇐i⊙⇒x⇐x3≪⇐k﹢⊙⇒y⇐i⇒j{⇐j⇐b≡[⇐j8﹣⊙3≪⇐k﹢⊙⇐y≻1﹢⋄1]⋄⇐j8﹣⊙⇐j⊛⇐j8﹣⇒j}⇐x⇐j⊛⇐i8﹢⇒i};
+⊡‹_15_mm›⇒e"⊙"⇒m⇒x{"⇐e≡⋄"⊙⇒v⇐v⇐m≺1﹢[⇐v⇒m]⇐v⇐x≻1﹢[⇐v⇒x]8﹢}_⇐m⇐x;
+⊡‹_15_radix›⇒n8﹢⇒f
+ ⇐f⇐n3≪⇐f﹢‹_15_mm›&﹣⇒r⇒m
+ ⇐r[⇐f8﹣‹_13e_copy›^]
+ ⇐n1﹢A⇒d⇐n⇐d⊛
+ 8⇒w⇐n32767»⇐r255»$1﹢[16⇒w]1⇐w≪⇒k⇐k A⇒c
+ 0⇒h0⇒t0⇒i
+ {⇐r⇐h>0≡⇐h64≡|⋄
+  ⇐i1$[⇐d⇒o⋄⇐t[⇐n1﹢A⇒t⇐n⇐t⊛]⇐t⇒o]⇐o8﹢⇒g
+  ⇐c⇐k3≪&﹢⇒z{"⇐z≡⋄0&⊛8﹢}_
+  ⇐f⇐n3≪&﹢⇒z{"⇐z≡⋄"⊙⇐m﹣⇐h>⇐k1﹣$3≪⇐c﹢⇒u⇐u⊙1﹢⇐u⊛8﹢}_
+  ⇐g⇒u⇐c{"⇐c⇐k3≪﹢≡⋄"⊙3≪⇒z⇐u&⊛⇐u⇐z﹢⇒u8﹢}_
+  ⇐f⇐n3≪&﹢⇒z{"⇐z≡⋄"⊙"⇐m﹣⇐h>⇐k1﹣$3≪⇐c﹢⇒u⇐u⊙⊛⇐u⊙8﹢⇐u⊛8﹢}_
+  ⇐g⇒f⇐h⇐w﹢⇒h⇐i1﹢⇒i}
+ ⇐c⌫⇐o⇐d≡[⇐d⌫⋄⇐t[⋄⇐t⌫]]⇐o;
+⊡‹_15_gradix›⇒n⇒k⇒t
+ ⇐k⇐n3≪⇐k﹢‹_15_mm›&﹣⇒r⇒m
+ ⇐r[⇐t^]
+ ⇐n1﹢A⇒d⇐n⇐d⊛
+ 8⇒w⇐n32767»⇐r255»$1﹢[16⇒w]1⇐w≪⇒b⇐b A⇒c
+ 0⇒h0⇒i⇐t8﹢⇒f
+ {⇐r⇐h>0≡⇐h64≡|⋄
+  ⇐i1$[⇐d⇒o⋄⇐t⇒o]⇐o8﹢⇒g
+  ⇐c⇐b3≪&﹢⇒z{"⇐z≡⋄0&⊛8﹢}_
+  ⇐k⇐n3≪&﹢⇒z{"⇐z≡⋄"⊙⇐m﹣⇐h>⇐b1﹣$3≪⇐c﹢⇒u⇐u⊙1﹢⇐u⊛8﹢}_
+  ⇐g⇒u⇐c{"⇐c⇐b3≪﹢≡⋄"⊙3≪⇒z⇐u&⊛⇐u⇐z﹢⇒u8﹢}_
+  ⇐f⇐n3≪&﹢⇒z{"⇐z≡⋄"⊙"3≪⇐k﹢⊙⇐m﹣⇐h>⇐b1﹣$3≪⇐c﹢⇒u⇐u⊙⊛⇐u⊙8﹢⇐u⊛8﹢}_
+  ⇐g⇒f⇐h⇐w﹢⇒h⇐i1﹢⇒i}
+ ⇐c⌫⇐o⇐d≡[⇐d⌫⇐t⋄⇐t⌫⇐d];
+⊡‹_15_sort›‹_2d_chk›⇒s⇐s⊙⇒n
+ ⇐n13<1﹢[⇐s‹_13e_copy›"‹_15_ins›‹_13e_tag›^]
+ ⇐s⇐n‹_15_radix›‹_13e_tag›;
+⊡‹_15_grade›‹_2d_chk›⇒s⇐s⊙⇒n⇐n R‹_2d_chk›⇒x
+ ⇐n13<1﹢[⇐x⇐s8﹢‹_15_gins›⇐x‹_13e_tag›^]
+ ⇐x⇐s8﹢⇐n‹_15_gradix›‹_13e_tag›;
+#
+# --- line reading ---
+# ‹_15_line›  -> list f   ‹readline›, a buffer chunk at a time: find the
+# '\n' (or the chunk's end) in the stdin buffer, widen those bytes onto the
+# end of the result, carry on into the next chunk when no '\n' was found.
+# f is 0 when anything was read (an empty line included), 1 at end of input.
+#   ‹_15_cpy›  src dst n ->   copy n cells
+⊡‹_15_cpy›3≪⇒n⇒d⇐n&﹢⇒e{"⇐e≡⋄"⊙⇐d⊛⇐d8﹢⇒d8﹢}_;
+⊡‹_15_line›63⇒c⇐c1﹢A⇒b0⇒n0⇒x0⇒g
+ {⇐x[‹_12p1_avail›⋄1]⋄1⇒g
+  5177424⊙⇒s⇐s⊙⇐s﹢16﹢⇒p⇐s8﹢⊙⇐s﹢16﹢⇒e
+  ⇐p⇒q{⇐q⇐e≡[⇐q?10≡⋄1]⋄⇐q1﹢⇒q}
+  ⇐q⇐p﹣⇒m
+  ⇐n⇐m﹢⇐c»[⋄⇐n⇐m﹢⇐c1≪⊔⇒c⇐c1﹢A⇒t⇐b8﹢⇐t8﹢⇐n‹_15_cpy›⇐b⌫⇐t⇒b]
+  ⇐b⇐n3≪﹢8﹢⇒d{⇐p⇐q≡⋄⇐p?⇐d⊛⇐d8﹢⇒d⇐p1﹢⇒p}⇐n⇐m﹢⇒n
+  ⇐q⇐e≡[1⇒x⇐q1﹢⇒q]
+  ⇐q⇐s﹣16﹣⇐s⊛}
+ ⇐n⇐b⊛⇐b‹_13e_tag›⇐g1=;
+#
+# --- structure adverbs and words ---
+# Each runs its argument through a data structure, so the efficient
+# algorithm is one byte and a small verb (REFERENCE "Structure adverbs").
+# All are ⊡ words: re-entrant, and a function runs with the caller's stack
+# under its arguments (the threading contract).
+#
+# ⍙ (0x99, \cancel)  l ′p -> l'   reduce l through a STACK: each x in turn
+# cancels the top t of the stack (both go) when `t x p` is 0, else it is
+# pushed; l' is what is left, bottom first.  O(n) calls of p.
+⊡‹_15_cancel›⇒f‹_2d_chk›"⊙⇒n8﹢⇒p⇐n‹_13e_new›"⇒r8﹢"⇒b⇒d⇐n3≪⇐p﹢⇒e
+ {⇐p⇐e≡⋄⇐d⇐b≡[⇐d8﹣⊙⇐p⊙⇐f⍎⋄1][⇐d8﹣⇒d⋄⇐p⊙⇐d⊛⇐d8﹢⇒d]⇐p8﹢⇒p}
+ ⇐d⇐b﹣3≫⇐r⊛⇐r‹_13e_tag›;
+:\cancel‹_15_cancel›;
+# ⥮ (0x9A, \both)  l ′f -> a b   f both ways: a = f l, and b = f of l
+# reversed, reversed back (when it is a list), so b[i] is f's answer coming
+# from the right.  The reversed copy and f's second result are freed.
+⊡‹_15_both›⇒f⇒l⇐l⇐f⍎⇐l V⇒t⇐t⇐f⍎⇒u
+ ⇐u T[⇐u V⇐u⌫⋄⇐u]⇐u⇐t≡[⇐t⌫];
+:\both‹_15_both›;
+# ⋈ (0x98, \hjoin)  x y -> pairs   the streaming hash join: for each i in
+# order, when some earlier j < i has x[j] = y[i], the pair `j i` (the latest
+# such j) is appended to the flat result.  x[i] becomes visible after y[i]
+# is looked up, so an element never matches itself.  Cells compare raw (≡).
+# One open-addressing table of [key, index] slots, load <= 1/2, freed at
+# the end.  O(≢x + ≢y) expected.
+#   ‹_15_hfind›  base mask key -> slot   key's slot, or the empty one
+#                (index -1) where it would go
+⊡‹_15_hfind›⇒k⇒m⇒b⇐k1540483477﹡"29>=⇐m$⇒s
+ {⇐s4≪⇐b﹢⇒p⇐p8﹢⊙1﹢[1⋄⇐p⊙⇐k≡]⋄⇐s1﹢⇐m$⇒s}⇐p;
+⊡‹_15_join›‹_2d_chk›⇒y‹_2d_chk›⇒x
+ 4⇒m{⇐m⇐x⊙1≪<~⋄⇐m1≪⇒m}
+ ⇐m1≪‹_13e_new›0 1﹣‹_13e_fill›⇒t⇐t8﹢⇒b⇐m1﹣⇒m
+ 0⇒i Ṿ⇒r
+ {⇐i⇐y⊙≡⋄
+  ⇐b⇐m⇐y⇐i3≪﹢8﹢⊙‹_15_hfind›8﹢⊙⇒j
+  ⇐j1﹢[⋄⇐r⇐j⍆⇐i⍆⇒r]
+  ⇐i⇐x⊙<1﹢[⇐x⇐i3≪﹢8﹢⊙⇒k⇐b⇐m⇐k‹_15_hfind›⇒p⇐k⇐p⊛⇐i⇐p8﹢⊛]
+  ⇐i1﹢⇒i}
+ ⇐t⌫⇐r;
+:\hjoin‹_15_join›;
+# ⊞ broadcast.  ‹_15_zd›  a b f 1 -> r 0 | a b f 1   ⊞'s first driver: when
+# a or b is not a list, the scalar pairs with every element of the other
+# (f(a, b[i]) or f(a[i], b); two scalars are just f(a, b)).
+⊡‹_15_bz›⇒f⇒b⇒a
+ ⇐a T⇒s⇐s⇐b T$[⋄⇐a⇐b⇐f⍎^]
+ ⇐s[⇐a⋄⇐b]‹_2d_chk›"⊙⇒n8﹢⇒p
+ ⇐n‹_13e_new›"⇒r8﹢⇒d⇐n3≪⇐p﹢⇒e
+ {⇐p⇐e≡⋄⇐s[⇐p⊙⇐b⋄⇐a⇐p⊙]⇐f⍎⇐d⊛⇐p8﹢⇒p⇐d8﹢⇒d}
+ ⇐r‹_13e_tag›;
+⊡‹_15_zd›⇒o⇒f⇒b⇒a⇐a T⇐b T|[⇐a⇐b⇐f⇐o^]⇐a⇐b⇐f‹_15_bz›0;
+# ‹where›  l -> idx   the indices of the non-zero elements, ascending.
+⊡‹where›‹_2d_chk›"⊙⇒n8﹢⇒p⇐n‹_13e_new›"⇒r8﹢"⇒b⇒d⇐n3≪⇐p﹢⇒e⇐p⇒s
+ {⇐p⇐e≡⋄⇐p⊙[⋄⇐p⇐s﹣3≫⇐d⊛⇐d8﹢⇒d]⇐p8﹢⇒p}
+ ⇐d⇐b﹣3≫⇐r⊛⇐r‹_13e_tag›;
+# ‹gdist›  g src wall -> dist   multi-source BFS over a grid (a list of
+# rows): the 4-neighbour step count from the nearest cell equal to `src`,
+# never entering a cell equal to `wall`.  The result is FLAT, row-major,
+# ≢g × ≢g[0] cells: 0 at a source and at a wall, -1 where nothing reaches.
+# So `⊔⍁` (the unsigned maximum) is the farthest distance, or -1 when some
+# open cell is cut off: Rotting Oranges.  O(cells): the marks sit in a block
+# with a blocked border, so the walk tests no bounds, and the queue holds
+# mark addresses.  A row shorter than the first is `ragged grid`.
+#   ‹_15_gpad›  g src wall -> P Q t   the padded marks (-2 blocked, -1 open,
+#               0 source), the queue with the sources in it, and its tail
+#   ‹_15_gbfs›  Q t k ->              the flood; k = 8 × the padded width
+⊡‹_15_gpad›⇒w⇒s⇒g⇐g⊙⇒r⇐g8﹢⊙‹_2d_chk›⊙⇒c⇐c2﹢⇒k
+ ⇐r2﹢⇐k﹡‹_13e_new›0 2﹣‹_13e_fill›⇒d
+ ⇐r⇐c﹡1﹢‹_13e_new›⇒q⇐q8﹢⇒t
+ ⇐d8﹢⇐k3≪﹢8﹢⇒p
+ 0⇒i{⇐i⇐r≡⋄
+  ⇐g⇐i3≪﹢8﹢⊙‹_2d_chk›⇒x⇐x⊙⇐c<1﹢[“ragged grid“U‹throw›]
+  ⇐x8﹢⇒x⇐c3≪⇐x﹢⇒e
+  {⇐x⇐e≡⋄⇐x⊙⇒v⇐v⇐w≡[⇐v⇐s≡[0 1﹣⇐p⊛⋄0⇐p⊛⇐p⇐t⊛⇐t8﹢⇒t]]⇐x8﹢⇒x⇐p8﹢⇒p}
+  ⇐p16﹢⇒p⇐i1﹢⇒i}
+ ⇐d⇐q⇐t;
+⊡‹_15_gbfs›⇒k⇒t8﹢⇒h
+ {⇐h⇐t≡⋄⇐h⊙⇒u⇐h8﹢⇒h⇐u⊙1﹢⇒n
+  ⇐u8﹣⇒v⇐v⊙1﹢[⇐n⇐v⊛⇐v⇐t⊛⇐t8﹢⇒t]
+  ⇐u8﹢⇒v⇐v⊙1﹢[⇐n⇐v⊛⇐v⇐t⊛⇐t8﹢⇒t]
+  ⇐u⇐k﹣⇒v⇐v⊙1﹢[⇐n⇐v⊛⇐v⇐t⊛⇐t8﹢⇒t]
+  ⇐u⇐k﹢⇒v⇐v⊙1﹢[⇐n⇐v⊛⇐v⇐t⊛⇐t8﹢⇒t]};
+⊡‹gdist›⇒w⇒s‹_2d_chk›⇒g⇐g⊙⇒r⇐r[0R^]
+ ⇐g⇐s⇐w‹_15_gpad›⇒t⇒q⇒d
+ ⇐g8﹢⊙‹_2d_chk›⊙⇒c
+ ⇐q⇐t⇐c2﹢3≪‹_15_gbfs›⇐q⌫
+ ⇐r⇐c﹡‹_13e_new›⇒o⇐o8﹢⇒y
+ ⇐d8﹢⇐c2﹢3≪﹢8﹢⇒p
+ 0⇒i{⇐i⇐r≡⋄⇐c3≪⇐p﹢⇒e{⇐p⇐e≡⋄⇐p⊙"2﹢[_0]⇐y⊛⇐y8﹢⇒y⇐p8﹢⇒p}⇐p16﹢⇒p⇐i1﹢⇒i}
+ ⇐d⌫⇐o‹_13e_tag›;
+# ‹bfsf›  n s ′f -> dist   BFS over the vertices 0 … n-1 of a graph given by
+# a FUNCTION: `v f` is v's neighbours, a list (or one int); a neighbour
+# outside 0 … n-1 is ignored, so f need not test bounds.  dist is the hop
+# count from s, -1 where unreachable.  f runs once a vertex, with the
+# caller's stack under v, and a list it returns is freed (f must make it:
+# `&+` over a list of steps does).  O(n + edges).
+⊡‹bfsf›⇒f⇒s⇒n⇐s⇐n<1﹢[⋄‹_13e_oor›]
+ ⇐n‹_13e_new›0 1﹣‹_13e_fill›"⇒o8﹢⇒d
+ ⇐n‹_13e_new›"⇒q8﹢"⇒h⇒t
+ 0⇐s3≪⇐d﹢⊛⇐s⇐t⊛⇐t8﹢⇒t
+ {⇐h⇐t≡⋄⇐h⊙⇒u⇐h8﹢⇒h⇐u3≪⇐d﹢⊙1﹢⇒w
+  ⇐u⇐f⍎⇒l
+  ⇐l T[⇐l‹_2d_chk›"⊙3≪&﹢8﹢⇒e8﹢⇒p
+    {⇐p⇐e≡⋄⇐p⊙⇒v⇐v⇐n<1﹢[⇐v3≪⇐d﹢⊙1﹢[⇐w⇐v3≪⇐d﹢⊛⇐v⇐t⊛⇐t8﹢⇒t]]⇐p8﹢⇒p}
+    ⇐l⌫
+   ⋄⇐l⇒v⇐v⇐n<1﹢[⇐v3≪⇐d﹢⊙1﹢[⇐w⇐v3≪⇐d﹢⊛⇐v⇐t⊛⇐t8﹢⇒t]]]}
+ ⇐q⌫⇐o‹_13e_tag›;
+# The W15 digraphs (REGISTRY §1.6): punctuation second bytes.
+:‹_dg40›‹gdist›;
+:‹_dg3E›‹bfsf›;
+:‹_dg24›‹last›;
+:‹_dg3D›‹uf›;
+:‹_dg25›‹chunk›;
+:‹_dg2F›‹dadj›;
+:‹_dg7C›‹dwadj›;
+:‹_dg3F›‹where›;
+#
+# --- small-range fast paths (no hashing) ---
+# ‹_15_mc›  p e m r -> y w   ‹mostcommon›'s counter for values in m .. m+r:
+# y the distinct values in first-seen order, w their negated counts.
+# ‹_15_prev›  l -> l'   Ṕ: when the values span less than 4n + 1024, the last
+# index of each value lives in a table; otherwise the dict version
+# (‹_15_prevd›, the W13-C body).
+⊡‹_15_mc›⇒r⇒m⇒e⇒p
+ ⇐r1﹢‹_13e_new›0‹_13e_fill›8﹢⇐m3≪﹣⇒t
+ ⇐e⇐p﹣3≫⇐r1﹢⊓‹_13e_new›⇒y⇐y8﹢⇒o
+ {⇐p⇐e≡⋄⇐p⊙⇒x⇐x3≪⇐t﹢⇒c⇐c⊙⇒v⇐v[⇐x⇐o⊛⇐o8﹢⇒o]⇐v1﹢⇐c⊛⇐p8﹢⇒p}
+ ⇐o⇐y﹣3≫1﹣⇒u⇐u⇐y⊛
+ ⇐u‹_13e_new›⇒w⇐w8﹢⇒q⇐y8﹢⇒p
+ {⇐p⇐o≡⋄⇐p⊙3≪⇐t﹢⊙±⇐q⊛⇐q8﹢⇒q⇐p8﹢⇒p}
+ ⇐t⇐m3≪﹢8﹣⌫⇐y‹_13e_tag›⇐w‹_13e_tag›;
+⊡‹_15_prev›"‹_2d_chk›"⊙⇒n8﹢⇒p⇐n3≪⇐p﹢⇒e
+ ⇐n[‹_15_prevd›^]
+ ⇐p⇐e‹_15_mm›&﹣⇒r⇒m
+ ⇐r⇐n2≪1024﹢﹤[‹_15_prevd›^]
+ _⇐r1﹢‹_13e_new›0 1﹣‹_13e_fill›8﹢⇐m3≪﹣⇒t
+ ⇐n‹_13e_new›⇒o⇐o8﹢⇒q0⇒i
+ {⇐p⇐e≡⋄⇐p⊙3≪⇐t﹢⇒c⇐c⊙⇐q⊛⇐i⇐c⊛⇐i1﹢⇒i⇐q8﹢⇒q⇐p8﹢⇒p}
+ ⇐t⇐m3≪﹢8﹣⌫⇐o‹_13e_tag›;
+:\prevocc‹_15_prev›;

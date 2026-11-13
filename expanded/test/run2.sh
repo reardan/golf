@@ -1901,14 +1901,19 @@ python3 boot/golfref.py < "$TMP/w10a.src" > "$TMP/w10a.ref" 2>/dev/null
 # their ends.  P are the prelude's, so the program adds 1024 - P.  (About 66 KB
 # with the prelude: past the old 64 KB image, inside W11-1E's 192 KB cap.)
 w10n=$((1024 - w93p)); w10s=""
-for k in $(seq 1 $w10n); do w10s="$w10s:‹v$k›$k→‹v$k›;"; done
+# (W15: the whole prelude left under 14 KB of the 192 KB image, so only one
+# name in eight — and the first and the last two, the ones run — is a variable
+# as well; the rest are empty words, 20 bytes each.)
+for k in $(seq 1 $w10n); do
+  if [ $((k % 8)) = 1 ] || [ "$k" -ge $((w10n-1)) ]; then w10s="$w10s:‹v$k›$k→‹v$k›;"; else w10s="$w10s:‹v$k›;"; fi
+done
 w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
 w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
 [ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z› at line 1" ] \
   && ok "1024 long names fill the table: one more (‹z›) is refused" || no "1024 cap: $(cat "$TMP/u.err")"
 w10s="${w10s/:‹z›;/}"
 [ "$(printf '%s' "$w10s" | und)" = "0" ] && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1$((w10n-1))$w10n" ] \
-  && ok "$w10n user long names (+ $w93p prelude) as words and variables, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
+  && ok "$w10n user long names (+ $w93p prelude) as words, one in eight a variable too, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
 
 # @@ W10-B-V1DIV @@
 echo "v1's / % (W10-B): unsigned as ever, but a zero divisor is a clean error, not SIGFPE"
@@ -3467,8 +3472,9 @@ for w12z4a in parens islands slidemax; do
   "$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/$w12z4a.golfj" "$TMP/z4lc/$w12z4a" > /dev/null 2>&1 || w12z4bad="$w12z4bad [compile $w12z4a]"
 done
 grep -q '⊛' bench/leetcode/golf/parens.golfj bench/leetcode/golf/islands.golfj bench/leetcode/golf/slidemax.golfj && w12z4bad="$w12z4bad [raw ⊛ left]"
-# (W13-F: parens now keeps its stack on the data stack under €, islands is ʘ7 ‹gcomps›.)
-grep -q '€' bench/leetcode/golf/parens.golfj && grep -q 'ʘ7' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
+# (W13-F: parens kept its stack on the data stack under €, islands is ʘ7 ‹gcomps›.
+# W15: parens is the stack-cancel adverb ⍙.)
+grep -q '⍙' bench/leetcode/golf/parens.golfj && grep -q 'ʘ7' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
 for w12z4a in '([]{})' '([)]' '((' '())' '}' '{[()()]}'; do
   [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/parens")" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/parens.py)" ] || w12z4bad="$w12z4bad [parens $w12z4a]"
 done
@@ -3478,7 +3484,7 @@ done
 for w12z4a in '3 1 3 -1 -3 5 3 6 7' '1 4 2 9' '2 9 8 7 6 5' '4 1 2 3 4 5 6' '3 5 5 5 5'; do
   [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/slidemax" | sed 's/ *$//')" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/slidemax.py)" ] || w12z4bad="$w12z4bad [slidemax $w12z4a]"
 done
-[ -z "$w12z4bad" ] && ok "LeetCode parens (since W13-F the data stack under €), islands (since W13-F ʘ7 ‹gcomps›) and slidemax (deque, since W12-A5 one ⊟) lost their raw stacks and still answer like the Python solutions" \
+[ -z "$w12z4bad" ] && ok "LeetCode parens (since W15 the stack-cancel adverb ⍙), islands (since W13-F ʘ7 ‹gcomps›) and slidemax (deque, since W12-A5 one ⊟) lost their raw stacks and still answer like the Python solutions" \
   || no "W12-Z4 LeetCode rewrites:$w12z4bad"
 w12z4bad=""; w12z4n=0
 while IFS= read -r w12z4l; do
@@ -4335,13 +4341,14 @@ r = codepage.digraphs(f.name); os.unlink(f.name)
 assert r == [(0x2B, "‹flush›", "test plus"), (0x2D, "(own body)", "")], r
 assert codepage.digraph_glyph(0x2B) == "ʘ+" and codepage.digraph_glyph(0x52) == "ʘR"
 PY
-# S3: implicit output — exactly one value left at the end is printed.
+# S3: implicit output — exactly one value left at the end is printed; since
+# W15 the top of two or more is printed too when nothing has been written.
 [ "$(printf '%s' '5⍳' | gc)" = "0 1 2 3 4 " ] && [ "$(printf '%s' '2 3*' | gc)" = "6" ] \
-  && [ "$(printf '%s' '1 2' | gc | wc -c)" = 0 ] && [ "$(printf '%s' '' | gc | wc -c)" = 0 ] \
+  && [ "$(printf '%s' '1 2' | gc)" = 2 ] && [ "$(printf '%s' '' | gc | wc -c)" = 0 ] \
   && [ "$(printf '%s' '5 0.' | gc | wc -c)" = 0 ] && [ "$(printf '%s' '0 1-' | gc)" = "-1" ] \
   && [ "$(printf '%s' '7Ṅ“ “🗲8' | gc)" = "7 8" ] && [ "$(printf '%s' '3⍳′⍳€' | gc)" = "[] [0] [0 1] " ] \
   && [ "$(printf '%s' ':f5;f' | gc)" = "5" ] && [ "$(printf '%s' '1 2 9Ṅ' | gc)" = "9" ] \
-  && ok "implicit output: one int via Ṅ, one list via ⍕ (nested too), none for 0 or 2+ values or after ." || no "W13-B implicit output"
+  && ok "implicit output: one int via Ṅ, one list via ⍕ (nested too), the top of 2+ only when nothing was written, none for 0 values or after ." || no "W13-B implicit output"
 [ "$(printf '%s' '7' | python3 tools/codepage.py encode | "$TMP/golf2" > "$TMP/p" 2>/dev/null && chmod +x "$TMP/p" && "$TMP/p" | wc -c)" = 0 ] \
   && [ "$(printf '%s' '5 0“m“⊃‹assert›' | gc 2>&1; echo " rc=$?")" = "$(printf 'FAIL: m\n5 rc=1')" ] \
   && ok "no prelude (bare golf2): nothing printed; after a failed ‹assert› the value prints, then exit 1" || no "W13-B implicit output bare/assert"
@@ -4808,7 +4815,10 @@ open(f"{T}/want", "w").write("\n".join(want) + "\n")
 open(f"{T}/1m", "wb").write(bytes(R.randrange(256) for _ in range(1 << 20)))
 open(f"{T}/1m.hex", "w").write(hashlib.sha256(open(f"{T}/1m", "rb").read()).hexdigest() + "\n")
 PY
-w14jgc=$(python3 tools/codepage.py encode < "$TMP/w14j/p.golfj" | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w14j/p" 2>/dev/null \
+# (W15: compiled with the prelude it reaches, as golfc does — this program's
+# ~20 KB no longer fit beside the WHOLE prelude under the 192 KB image cap.)
+w14jgc=$(python3 tools/codepage.py encode < "$TMP/w14j/p.golfj" > "$TMP/w14j/p.gb" \
+  && python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w14j/p.gb" | cat - "$TMP/w14j/p.gb" | "$TMP/golf2" > "$TMP/w14j/p" 2>/dev/null \
   && chmod +x "$TMP/w14j/p" && "$TMP/w14j/p" "$TMP/w14j/d130" | sed 's/ *$//')
 [ "$w14jgc" = "$(cat "$TMP/w14j/want")" ] \
   && ok "MT words equal random.Random (Random(42): randint choice shuffle sample, random() < 0.5; 2^62 ranges; 24 random sessions incl. 2-chunk and negative seeds, both sample branches); ‹rng› equals xoshiro256**; ‹sha256› equals hashlib at every length 0..130 ($(grep -c '' "$TMP/w14j/want") results)" \
@@ -5700,7 +5710,7 @@ w13isz(){ stat -c%s "$TMP/w13i/$1"; }
 w13ic one '1Ṅ' >/dev/null; w13ic onep '1Ṅ' -P >/dev/null
 (cd "$TMP/w13i" && GOLFC_FULL=1 "$EXP/tools/golfc" -j one.golfj onee)
 printf '%s' '1Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w13i/onef"
-[ "$("$TMP/w13i/one")" = 1 ] && [ "$(w13isz one)" -lt 16384 ] && cmp -s "$TMP/w13i/onep" "$TMP/w13i/onef" && cmp -s "$TMP/w13i/onee" "$TMP/w13i/onef" \
+[ "$("$TMP/w13i/one")" = 1 ] && [ "$(w13isz one)" -lt 24576 ] && cmp -s "$TMP/w13i/onep" "$TMP/w13i/onef" && cmp -s "$TMP/w13i/onee" "$TMP/w13i/onef" \
   && ok "1Ṅ is a $(w13isz one)-byte binary ($(w13isz onef) with the whole prelude); golfc -P and GOLFC_FULL=1 are the old binary byte for byte" \
   || no "W13-I trivial: $(w13isz one) / $(w13isz onef)"
 # The split is exact: with every name reached, the pruned prelude IS the
@@ -5817,6 +5827,85 @@ w13fq=$(cat "$w13fL/golf/parens.golfj")
 [ "$(python3 -c "print('('*100000+'[]'*7+')'*100000)" | gin "$w13fq")" = true ] || w13fbad="$w13fbad [parens deep]"
 [ "$(printf ')(\n' | gin "$w13fq")$(printf '}\n' | gin "$w13fq")$(printf '\n' | gin "$w13fq")" = falsefalsetrue ] || w13fbad="$w13fbad [parens edge]"
 [ -z "$w13fbad" ] && ok "topk's ‹mostcommon› form agrees; parens holds 100k open brackets and starts with a closer correctly" || no "W13-F forms:$w13fbad"
+
+# === W15 ===
+echo "W15: implicit input, the data stack's own mapping, the radix sort, the chunked line reader, structure adverbs ⋈ ⍙ ⥮ and ⊞ broadcast"
+# Implicit input: a take from the empty stack is ‹ints› (first non-blank byte
+# a digit or '-', or no input) or the next line, any number of times.
+[ "$(printf '7 1 5 3 6 4' | gin '⌊⍀-Ṁ')" = 5 ] && [ "$(printf '1 2 3' | gin '+')" = "2 4 6 " ] \
+  && [ "$(printf 'hello world\nx' | gin '≢')" = 11 ] && [ "$(printf '' | gin '≢')" = 0 ] \
+  && [ "$(printf ' \n -5 2' | gin '∑')" = -3 ] && [ "$(printf '3 1 3 -1 -3 5 3 6 7' | gin '⍘⌈⊟')" = "3 3 5 5 6 7 " ] \
+  && [ "$(printf 'ab\n' | gin '"⧺⊐')" = abab ] && [ "$(printf '4 5' | gin '_____+++')" = "16 20 " ] \
+  && ok "implicit input: ints when stdin starts with a digit or '-' (or is empty), else the first line; every take is the same list" || no "W15 implicit input"
+# It is a look-ahead: the explicit input words still read everything, and a
+# word that underflows by accident (′Ṅ€ stores one result per element) loses nothing.
+[ "$(printf 'ab\ncde\n' | gin '⏎_≢Ṅ≢Ṅ⏎_≢Ṅ⏎\\_Ṅ')" = 2331 ] && [ "$(printf '1 2 3' | gin '∑Ṅℤ∑Ṅ‹readall›≢Ṅ')" = 660 ] \
+  && [ "$(printf 'abc' | gin '2⍳′Ṅ€_‹readall›≢Ṅ')" = 013 ] && [ "$(printf '5 6' | gin '∑Ṅ‹getc›Ṅ')" = 1153 ] \
+  && ok "implicit input is a look-ahead: ⏎ ℤ ‹readall› ‹getc› still read from where the program was; an accidental underflow keeps stdin" || no "W15 look-ahead"
+# Implicit output with it: input the program took is not a value left; results
+# written back over it are; the top of 2+ prints only when nothing was written.
+[ "$(printf '4 5 6' | gin '⍘')" = 4 ] && [ "$(printf '4 5 6' | gin '⍘Ṅ')" = "45 6 " ] && [ "$(printf '4 5 6' | gin '_' | wc -c)" = 0 ] \
+  && [ "$(printf '4 5 6' | gin '"')" = "4 5 6 " ] && [ "$(printf '4 5 6' | gin '' | wc -c)" = 0 ] && [ "$(printf '4 5 6' | gin '∑‹stack›_')" = "<0>" ] \
+  && [ "$(printf '%s' '1 2 3“x“🗲' | gc)" = x ] && [ "$(printf '%s' '8 9' | gc)" = 9 ] \
+  && ok "implicit output: consumed input does not count, a result over it does; the top of two prints only if nothing was written" || no "W15 implicit output"
+# The data stack is 256 MB of its own: overflow is a catchable GOLF: error;
+# a wild read and a return-stack overflow still die of SIGSEGV; bare programs are untouched.
+[ "$(printf '%s' '{1 0}' | gc 2>&1; echo " rc=$?")" = "$(printf 'GOLF: data stack overflow\n rc=1')" ] \
+  && [ "$(printf '%s' '⟦{1 0}⟧‹catch›⊐␤7Ṅ⟦{1 0}⟧‹catch›≢Ṅ' | gc 2>&1)" = "$(printf 'data stack overflow\n719')" ] \
+  && [ "$(printf '%s' '0→i{7⇡i←i1000000≡}‹stack›' | gc | cut -c1-13)" = "<1000000> 7 7" ] \
+  && [ "$(printf '%s' '1Ṅ0⊙Ṅ' | gc >/dev/null 2>&1; echo $?)" = 139 ] && [ "$(printf '%s' ':f f;f' | gc >/dev/null 2>&1; echo $?)" = 139 ] \
+  && [ "$(printf '%s' '7 48+)' | python3 tools/codepage.py encode | "$TMP/golf2" > "$TMP/w15b" && chmod +x "$TMP/w15b" && "$TMP/w15b")" = 7 ] \
+  && ok "data stack overflow at 256 MB is 'GOLF: data stack overflow' (exit 1, catchable twice); 1M values deep is fine; other faults still SIGSEGV; a bare program runs" || no "W15 data stack"
+# The radix sort behind ⍋ and ‹grade›: against Python's sort on every size
+# class (insertion < 13, 8-bit digits, 16-bit digits from 32768) and key range.
+python3 - "$TMP" <<'PY'
+import random, sys
+T = sys.argv[1]; R = random.Random(15); want = []; inp = []
+for n in [0, 1, 2, 12, 13, 14, 255, 1000, 33000, 40000]:
+    for lo, hi in [(0, 0), (0, 5), (-3, 250), (-70000, 70000), (-2**63, 2**62), (2**40, 2**40 + 300)]:   # (an int with 0x7FFF on top would read as a list)
+        if n > 1000 and (lo, hi) in [(0, 0), (2**40, 2**40 + 300)]: continue
+        a = [R.randint(lo, hi) for _ in range(n)]
+        inp.append(" ".join(map(str, [n] + a)))
+        want.append(" ".join(map(str, sorted(a))) + (" " if a else ""))
+        want.append(" ".join(map(str, sorted(range(n), key=lambda i: a[i]))) + (" " if a else ""))
+open(f"{T}/w15s.in", "w").write("\n".join(inp) + "\n")
+open(f"{T}/w15s.want", "w").write("\n".join(want) + "\n")
+PY
+[ "$(gin 'ℤ→a 0→i{←a←i⊇→n ←a←i⊕↓←n↑"⍋⍕␤‹grade›⍕␤ ←i←n+⊕"→i ←a≢≡}' < "$TMP/w15s.in")" = "$(cat "$TMP/w15s.want")" ] \
+  && [ "$(printf '%s' '5⍳"⍋≡Ṅ 3⍳⌽"⍋_⍕ 6⍳⟦2%⟧⍒⍕ 6⍳⟦2%⟧⍖⍕' | gc)" = "02 1 0 0 2 4 1 3 5 1 3 5 0 2 4 " ] \
+  && ok "⍋ and ‹grade› equal Python's sorted on $(grep -c '' "$TMP/w15s.in") lists (sizes 0..40000, ranges one value..-2^63..2^62); ⍋ returns a new list, ⍒ ⍖ stay stable" || no "W15 radix sort"
+# ‹readline› a chunk at a time: lines that end on, before and after the 8192-byte buffer edge.
+python3 -c "
+import sys
+L=[0,1,8191,8192,8193,0,20000,16384,5]
+sys.stdout.write(''.join('x'*n+'\n' for n in L)+'tail')" > "$TMP/w15l.in"
+[ "$(gin '{⏎"[_≢Ṅ32)0]}' < "$TMP/w15l.in")" = "0 1 8191 8192 8193 0 20000 16384 5 4 " ] \
+  && [ "$(printf 'a\n\nb' | gin '⏎_⊐⏎Ṅ≢Ṅ⏎_⊐⏎Ṅ≢Ṅ')" = "a00b10" ] \
+  && ok "⏎ reads lines across buffer refills (8191, 8192, 8193, 20000 bytes), an empty line, and a last line with no newline" || no "W15 readline"
+# REFERENCE.md's "Structure adverbs (W15)" examples print what they say.
+w15bad=""
+while IFS= read -r w15l; do
+  w15p=${w15l%%  ->*}; w15p=${w15p%"${w15p##*[! ]}"}; w15w=${w15l##*->  }
+  [ "$(printf '%s' "$w15p" | gc 2>&1)" = "$w15w" ] || w15bad="$w15bad [$w15p]"
+done < <(sed -n '/^### Structure adverbs (W15)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w15bad" ] && [ "$(sed -n '/^### Structure adverbs (W15)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 9 ] \
+  && ok "REFERENCE.md's Structure adverbs examples print what they say" || no "REFERENCE W15 examples:$w15bad"
+# Edges: nothing to join / cancel; ⊞ with two scalars, a scalar on either
+# side and two lists (unchanged); ‹gdist› on a ragged grid; ‹bfsf› ignoring
+# out-of-range neighbours; ‹uunion› with the pair as a list.
+[ "$(printf '%s' '3⍳"10+⋈≢Ṅ 0⍳"⋈≢Ṅ 0⍳-⍙≢Ṅ 1⍳-⍙⍕ 3⍳"⧺-⍙⍕' | gc)" = "0000 0 1 2 0 1 2 " ] \
+  && [ "$(printf '%s' '3 5≻⊞Ṅ 3⍳1+⊞⍕ 1 3⍳+⊞⍕ 3⍳"*⊞⍕ 0⍳5-⊞≢Ṅ' | gc)" = "01 2 3 1 2 3 0 1 4 0" ] \
+  && [ "$(printf '%s' ':g“12 1“⊃ʘW50 48ʘ@;′g‹catch›⊐' | gc)" = "ragged grid" ] \
+  && [ "$(printf '%s' '“/29“⊃48-4 1⟦&+⟧ʘ>⍕_' | gc)" = "1 0 2 1 " ] \
+  && [ "$(printf '%s' '5ʘ=→u ←u 2⍳ʘuṄ←u 2⍳⌽ʘuṄ←u 3 4ʘuṄ_' | gc)" = "010" ] \
+  && ok "⋈ ⍙ on empty and unmatched input; ⊞ scalar/list in both orders; ‹gdist› ragged grid error; ‹bfsf› ignores neighbours outside 0..n-1; ‹uunion› takes [a b]" || no "W15 edges"
+# Byte rows, adverb quoting (⍙ ⥮ are in blob record 6), pruned build and the oracle.
+[ "$(printf '%s' '\hjoin\cancel\both' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "98999a" ] \
+  && [ "$(printf '%s' '⋈⍙⥮' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "98999a" ] \
+  && grep -q '^rec 06 .* 99 9A$' data/templates.txt \
+  && [ "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕' | gcp)" = "24 12 8 6 ca0 3 1 4 2 5 " ] \
+  && [ "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gref)" = "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gc)" ] \
+  && ok "⋈ ⍙ ⥮ are 0x98–0x9A; ⍙ ⥮ quote the token before them; the pruned build and the oracle (boot/golfref.py) agree" || no "W15 bytes / pruned / oracle"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \

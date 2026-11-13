@@ -58,7 +58,7 @@ Name your own words with lowercase letters. The prelude also runs a few
 instructions first. They find the heap (`⌸ brk`) and switch on the list
 dispatch of `+ - * ⌈ ⌊`. Without the prelude (`golfc -n`) those five ops work
 on integers only. `golfc` compiles only the prelude words your program can
-reach, so a program pays for what it uses (`1Ṅ` is 13.5 KB; see "Prelude
+reach, so a program pays for what it uses (`1Ṅ` is 21 KB; see "Prelude
 pruning" in section 3; `golfc -P` keeps the whole prelude).
 
 **Ending.** Running off the end of the program calls `exit(0)`. `.` exits
@@ -351,7 +351,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0x4F` | `🗲` | `\puts` | `O` | print a “...” byte string |
 | `0x55` | `⊃` | `\chars` | `U` | byte string -> list of char codes |
 | `0x4A` | `⊐` | `\join` | `J` | print a code list as text (cell -> byte) |
-| `0x5A` | `⊞` | `\zip` | `Z` | zip(l1, l2, fn) -> list (elementwise) |
+| `0x5A` | `⊞` | `\zip` | `Z` | zip(l1, l2, fn) -> list (elementwise); a non-list operand pairs with every element (W15) |
 | `0xC0` | `∔` | `\vadd` | — | polymorphic add (int/list, elementwise, broadcast) |
 | `0xC1` | `∸` | `\vsub` | — | polymorphic sub (int/list, elementwise, broadcast) |
 | `0xC2` | `⨰` | `\vmul` | — | polymorphic mul (int/list, elementwise, broadcast) |
@@ -366,7 +366,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xCC` | `↑` | `\take` | — | take: list n -> first n (n<0: last \|n\|; clamped to len) |
 | `0xCD` | `↓` | `\drop` | — | drop: list n -> all but first n (n<0: all but last \|n\|) |
 | `0xCA` | `⌫` | `\free` | — | free(list\|block): release an A block to the free list |
-| `0xCE` | `⍋` | `\sort` | — | sort: list -> new list, ascending signed (stable merge sort) |
+| `0xCE` | `⍋` | `\sort` | — | sort: list -> new list, ascending signed (stable; an LSD radix sort since W15) |
 | `0xCF` | `∊` | `\memb` | — | member: list x -> 0 if x is an element, else 1 |
 | `0xD0` | `⊸` | `\bind` | — | bind: x ′f -> ′g; g pushes the captured x, then calls f |
 | `0xD1` | `⍀` | `\scan` | — | scan: l ′f -> l'; inclusive, l'[0] = l[0], l'[i] = f(l'[i-1], l[i]) |
@@ -400,6 +400,9 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0xED` | `ℑ` | `\indices` | — | indices: l -> l [0..n-1] (keeps l) |
 | `0xEE` | `Ǧ` | `\lookup` | — | alias of ‹getor›: d k x -> v, k's value or x when absent |
 | `0xEF` | `ṭ` | `\tfword` | — | alias of ‹tf›: f -> list, “true“ when f is 0, else “false“ |
+| `0x98` | `⋈` | `\hjoin` | — | hash join: x y -> pairs; flat `j i` for each i whose y[i] equals an earlier x[j] (the latest j < i) |
+| `0x99` | `⍙` | `\cancel` | — | stack cancel: l ′p -> l'; x cancels the stack top t when `t x p` is 0, else is pushed |
+| `0x9A` | `⥮` | `\both` | — | both ways: l ′f -> a b; a = f l, b = f of l reversed, reversed back |
 
 ### Digraph page
 
@@ -407,6 +410,9 @@ Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the 
 
 | digraph | bytes | long name | word | meaning |
 |---|---|---|---|---|
+| `ʘ$` | `BD 24` | `‹_dg24›` | `‹last›` |  |
+| `ʘ%` | `BD 25` | `‹_dg25›` | `‹chunk›` |  |
+| `ʘ/` | `BD 2F` | `‹_dg2F›` | `‹dadj›` |  |
 | `ʘ0` | `BD 30` | `‹_dg30›` | `‹argmin›` |  |
 | `ʘ1` | `BD 31` | `‹_dg31›` | `‹abs›` |  |
 | `ʘ2` | `BD 32` | `‹_dg32›` | `‹isdigit›` |  |
@@ -417,6 +423,10 @@ Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the 
 | `ʘ7` | `BD 37` | `‹_dg37›` | `‹gcomps›` |  |
 | `ʘ8` | `BD 38` | `‹_dg38›` | `‹nbrs8›` |  |
 | `ʘ9` | `BD 39` | `‹_dg39›` | `‹combs›` |  |
+| `ʘ=` | `BD 3D` | `‹_dg3D›` | `‹uf›` |  |
+| `ʘ>` | `BD 3E` | `‹_dg3E›` | `‹bfsf›` |  |
+| `ʘ?` | `BD 3F` | `‹_dg3F›` | `‹where›` |  |
+| `ʘ@` | `BD 40` | `‹_dg40›` | `‹gdist›` |  |
 | `ʘA` | `BD 41` | `‹_dg41›` | `‹assert›` |  |
 | `ʘB` | `BD 42` | `‹_dg42›` | `‹startswith›` |  |
 | `ʘC` | `BD 43` | `‹_dg43›` | `‹catch›` |  |
@@ -469,6 +479,7 @@ Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the 
 | `ʘx` | `BD 78` | `‹_dg78›` | `‹cartesian›` |  |
 | `ʘy` | `BD 79` | `‹_dg79›` | `‹memo›` |  |
 | `ʘz` | `BD 7A` | `‹_dg7A›` | `‹transpose›` |  |
+| `ʘ\|` | `BD 7C` | `‹_dg7C›` | `‹dwadj›` |  |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -646,7 +657,7 @@ W13-A adds three spellings that make programs shorter and compile to the same
 code as the longer forms.
 
 **Adverbs quote the token in front of them (S1).** These words take a
-function: `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣`, and W13's `⍂ ⍃ ⍖ ⍷`. When one of them comes
+function: `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣`, W13's `⍂ ⍃ ⍖ ⍷`, and W15's `⍙ ⥮`. When one of them comes
 **immediately** after a call token, with no whitespace in between, the
 compiler pushes that token's address instead of calling it, exactly as `′`
 would. So `f€` means `′f€`. A call token is an atom (`² ⊕ ⌊ ≡ …`), a v1
@@ -819,7 +830,11 @@ holds the fd the buffer drains to; `0` means fd 1.
 **Implicit output (W13-B).** When the program runs off its end (not `.`)
 with exactly one value left on the data stack above the program's base, that
 value is printed: with `⍕` if it is a list (`T` says list), else with `Ṅ`.
-No newline is added. Zero values, or two or more, print nothing. It is the
+No newline is added. With two or more values left, the top one is printed the
+same way if the program has written nothing so far (W15), so a program that
+has not printed its answer need not clear what is under it. Zero values print
+nothing, and neither do two or more once something has been written. Input
+the program took implicitly (W15, "Input") is not a value left. It is the
 prelude's: the end-of-program exit calls the end hook (cell `0x4F09A0`,
 `5179808`) before the final flush, and only the prelude fills it, so a bare
 program (`golfc -n`) and the compilers are unchanged. A string literal is a
@@ -834,7 +849,8 @@ A program whose last value is junk (a dict, a running minimum) ends with `_`.
 1 2 9Ṅ                   ->  9
 ```
 
-`1 2` prints nothing (two values), and so does `5 0.` (`.` skips it).
+`1 2` prints `2` (two values, nothing written yet), `1 2 9Ṅ` prints only the
+`9`, and `5 0.` prints nothing (`.` skips it).
 
 ### Input
 
@@ -860,6 +876,47 @@ from your program. Text arrives as a **code list**, one byte per element, which
 ‹readbytes›🗲             # cat, at one byte per byte of input
 ‹readbytes›⊃≢Ṅ           # printf 'ab\n' | ./len   prints 3
 ```
+
+**Implicit input (W15).** A program that takes a value from an empty stack
+gets its input, so most programs need no input word at all. The first time
+the stack runs empty the runtime looks at what is left of stdin. If its first
+non-blank byte is a digit or `-`, or there is nothing, the input is every
+integer in it, the list `‹ints›` gives. Otherwise it is the next line as a
+code list, as `‹readline›` gives it. Every value taken from the empty stack
+is that list, however many are taken, so a program reads as a function of
+its input:
+
+| program | stdin | prints | how |
+|---|---|---|---|
+| `∑` | `1 2 3` | `6` | the sum of the input |
+| `+` | `1 2 3` | `2 4 6 ` | both operands are the input |
+| `⌊⍀-Ṁ` | `7 1 5 3 6 4` | `5` | `⌊⍀` takes the prices, `-` takes them again under the running minimum |
+| `⍘⌈⊟` | `3 1 3 -1 -3 5 3 6 7` | `3 3 5 5 6 7 ` | `⍘` splits "k, then the list" into the list and `k` |
+| `≢` | `hello world` | `11` | a line of text is a code list |
+
+- It is a **look-ahead**: stdin is not consumed. `ℤ`, `⏎`, `⎕` and the other
+  input words still read from where the program had got to, so `⏎_` followed
+  by an implicit read gives the first line and then the second, and a program
+  that pops one value too many by mistake does not lose its input.
+- All the copies are **one list**. Do not free it or store into it; the list
+  words never do.
+- Text that may begin with a digit or `-` has to be read with `⏎_` or `⎕`:
+  the look at the first byte would take it for numbers.
+- A program that takes from the empty stack with a terminal on stdin waits
+  for the end of input, like any program that reads stdin.
+- At most 512 values can be taken below the program's base; one more is a
+  plain SIGSEGV, as any wild read is.
+
+How it works: the prelude's first act (W15) is to move the data stack onto
+256 MB of its own, mapped lazily, with one unmapped page above the base and
+one below the far end. Taking from the empty stack faults on the page above;
+a SIGSEGV handler (a Golf word, on its own 64 KB signal stack) maps that
+page, fills it with the input value and returns to the faulting instruction.
+A program that never underflows pays nothing. A fault on the page at the far
+end is a data stack that has grown past 256 MB (33 million values): the
+handler raises `data stack overflow` through `‹throw›`, so it is a `GOLF:`
+error and catchable. Any other fault puts the default action back and dies
+as before. A bare program (`golfc -n`) has no handler and the kernel's stack.
 
 `ℤ`, `⎕` and `⏎` are one-byte aliases of `‹ints›`, `‹readall›` and
 `‹readline›` (see "One-byte aliases").
@@ -928,7 +985,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 526 in all after W14, helpers included), so a program has 498 for itself.
+has 560 in all after W15, helpers included), so a program has 464 for itself.
 
 ### Sorting by key
 
@@ -1369,8 +1426,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words), the prelude has 381 long
-names, which leaves 498 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words, and since then W14's scripting library and W15's 34 names), the prelude has 560 long
+names, which leaves 464 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1482,6 +1539,64 @@ in cache: `0′+⇤` about 1.9 ns (4.0 before), `′⊕€` 2.2 (4.6), `′⌈�
 
 The last line takes the fast path too. Its elements are lists, so each `+`
 hands them to `∔`, as the function call would have.
+### Structure adverbs (W15)
+
+The solutions that are both short and fast have one shape: a small verb, and
+a word that runs it through a data structure. `⌈⊟` is "max, through a
+monotonic deque", `ʘn` is "next greater, through a stack". W15 adds the
+structures the LeetCode set was still writing loops for. Each is linear (the
+hash join expected linear), a `⊡` word, and re-entrant.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `⋈` (`0x98`, `\hjoin`) | `x y -> pairs` | **hash join.** For each `i`, in order, whose `y[i]` equals an earlier `x[j]` (`j < i`; the latest such `j`), the flat pair `j i`. One pass with an open-addressing table: `x[i]` goes in after `y[i]` is looked up. Two Sum is `⍘&-⋈`: `x` is the numbers, `y` is `target - x` |
+| `⍙` (`0x99`, `\cancel`) | `l ′p -> l'` | **stack cancel.** Go through `l` with a stack: `x` cancels the top `t` (both go) when `t x p` leaves `0`, else `x` is pushed. The result is what is left on the stack, bottom first. `p` is not called on an empty stack. An adverb: `-⍙` is `′-⍙` |
+| `⥮` (`0x9A`, `\both`) | `l ′f -> a b` | **both ways.** `a` is `f l`; `b` is `f` of `l` reversed, reversed back. `f` takes a list and gives a list. An adverb, usually on a block: `⟦1*⍃⟧⥮` is the products before and the products after each element |
+| `⊞` | `l n ′f -> l'` or `n l ′f -> l'` | **broadcast (new in `⊞`).** When one of `⊞`'s two operands is not a list it pairs with every element of the other, in that operand order: `l 3≻⊞` is each `x 3≻`, and `7 l %⊞` is each `7 x %`. Two non-lists is just `f`. This is how the atoms that do not vectorise (`/ % ÷ ∣ ≡ ≺ ≻ $ \| =`) go over a list |
+| `‹where›` (`ʘ?`) | `l -> idx` | the indices of the non-zero elements, ascending. After a comparison (true is `-1`) it is "the positions where" |
+| `‹gdist›` (`ʘ@`) | `g src wall -> dist` | **grid BFS from many sources.** `g` is a list of equal-length rows. `dist`, flat in row order, is the number of 4-neighbour steps from the nearest cell equal to `src`, never stepping onto a cell equal to `wall`. A wall is `0`, a source is `0`, a cell no source reaches is `-1`. `ragged grid` if the rows differ in length |
+| `‹bfsf›` (`ʘ>`) | `n s ′f -> dist` | **BFS over an implicit graph** on the vertices `0 … n-1` from `s`: `f` is called as `v f -> list` and gives `v`'s neighbours (the list is freed; entries outside `0 … n-1` are ignored). `dist[v]` is the number of steps, `-1` if unreached. `f` runs on the caller's stack, so it can read what lies under `n` |
+
+```
+“abbaca“⊃-⍙⊐                              ->  ca
+“([]{()})“⊃⊖⊘⟦-⊕⟧⍙≢Ṅ                      ->  0
+4⍳⊕⟦1*⍃⟧⥮*⍕                               ->  24 12 8 6 
+“abcabc“⊃"⋈⍕                              ->  0 3 1 4 2 5 
+5⍳3≻⊞⍕                                    ->  0 0 0 0 -1 
+7 5⍳⊕%⊞⍕                                  ->  0 1 1 3 2 
+5⍳"*3∣⊞ʘ?⍕                                ->  1 2 4 
+“211 110 011“⊃ʘW50 48ʘ@⍕                  ->  0 1 2 1 2 0 0 3 4 
+3⍳⊕"*13 0⟦&+⟧ʘ>⍕_                         ->  0 1 2 3 1 2 3 4 2 1 2 3 3 
+```
+
+- Line 1 removes adjacent equal pairs until none is left (`t x -` is `0` for
+  equal). Line 2 is Valid Parentheses: `⊖⊘` maps `( )` to `19 20`, `[ ]` to
+  `45 46` and `{ }` to `61 62`, so a closer is its opener plus one, and
+  `t x - ⊕` is `0` exactly for a matching pair. The string is valid when
+  nothing is left.
+- Line 3 is Product of Array Except Self without division: `1*⍃` is the
+  exclusive scan (the product of everything before), `⥮` gives it from both
+  ends, `*` multiplies the two.
+- Line 8 is Rotting Oranges: the minutes are the largest distance (`⊔⍁`),
+  and a fresh orange that is never reached makes the smallest one `-1`.
+- Line 9 is Coin Change as a shortest path: the vertices are the amounts
+  `0 … 12`, and `&+` adds every coin (the list under `n`) to `v`. The answer
+  for 12 with coins `1 4 9` is the last entry, `3`.
+- **New digraphs:** `ʘ? ‹where›` `ʘ@ ‹gdist›` `ʘ> ‹bfsf›` `ʘ$ ‹last›`
+  `ʘ= ‹uf›` `ʘ% ‹chunk›` `ʘ/ ‹dadj›` `ʘ| ‹dwadj›`.
+- `‹uunion›` also takes the pair as one list, `u [a b] -> u f`, so a list of
+  edges filters straight through it: `⟦ʘu⊖⟧⌿` keeps the edges whose ends were
+  already connected.
+- **Sorting is linear.** `⍋` and `‹grade›` (so `⍒ ⍖` and everything built on
+  them) are an LSD radix sort on `key - min` since W15: the passes cover only
+  the bits the keys differ in, 16 bits at a time for long lists and 8 for
+  short ones, and under 13 elements it is an insertion sort. It is stable and
+  takes any 64-bit keys. 1M random 32-bit ints sort in about 0.09 s over
+  reading them (the merge sort took 0.54 s).
+- `‹readline›` (`⏎`) now scans the input buffer a chunk at a time instead of
+  calling `‹getc›` per byte: a 2 MB line is read in 0.03 s.
+- Names that start with `‹_15` are these words' helpers.
+
 ### Windows and fixpoints
 
 W12-A5 and W12-A6 add two higher-order words. Both keep the threading
@@ -1917,7 +2032,7 @@ root, and the set count last).
 |---|---|---|
 | `‹uf›` | `n -> u` | `n` singletons |
 | `‹ufind›` | `u x -> root` | the root of `x`, compressing the path |
-| `‹uunion›` | `u a b -> u f` | merge the sets of `a` and `b` (union by size); `f` is `0` when they were apart and are now one, `1` when they already were |
+| `‹uunion›` | `u a b -> u f` | merge the sets of `a` and `b` (union by size); `f` is `0` when they were apart and are now one, `1` when they already were. Since W15 the pair may be one list: `u [a b] -> u f` |
 | `‹ucount›` | `u -> k` | the number of sets |
 
 **Dynamic programming.**
@@ -2387,11 +2502,11 @@ words' helpers.
 ### Prelude pruning
 
 `tools/golfc` (W13-I) compiles only the part of `lib/prelude.golfj` that your
-program can reach. The whole prelude compiles to about 170 KB of the 192 KB
-image cap since W14 (about 125 KB before it), so `golfc -P` leaves a
-program only about 26 KB of its own; pruned, `1Ṅ` is a 13,587-byte binary and the ten
-`bench/leetcode/golf/` programs are 17–33 KB (24 KB on average; each was about
-125.7 KB). Compiling is faster too (about 100 ms instead of 170 ms for `1Ṅ`).
+program can reach. The whole prelude compiles to about 182 KB of the 192 KB
+image cap since W15 (170 KB after W14, 125 KB before it), so `golfc -P` leaves a
+program only about 14 KB of its own; pruned, `1Ṅ` is a 20,986-byte binary (13,587
+before W15: every program now carries the implicit-input reader) and the twenty
+`bench/leetcode/golf/` programs are 22–35 KB (27 KB on average). Compiling is faster too (about 100 ms instead of 170 ms for `1Ṅ`).
 
 | flag | prelude |
 |---|---|
@@ -2488,8 +2603,9 @@ not found`), `‹cadd›` `‹csub›` `‹cmul›` (`integer overflow`, see Che
 arithmetic above), every list word and `⍎` of a freed closure (`use after
 free`, see Memory and Closures above), the file
 words (`cannot open x.txt (ENOENT)` …), the spill stack (`spill stack
-exhausted`, about 4000 nested list words deep) and the divisor check of `/ %
-÷ ∣` (`divide by zero`). Not catchable: a return-stack overflow (a recursion
+exhausted`, about 4000 nested list words deep), the divisor check of `/ %
+÷ ∣` (`divide by zero`), and since W15 a data stack grown past its 256 MB
+(`data stack overflow`, see "Input"). Not catchable: a return-stack overflow (a recursion
 past ~138k plain calls dies of SIGSEGV on the guard page), any other signal,
 `.` (exit is exit), and compile errors (`GOLF: undefined word x at line 3` …,
 below), which exit 2. So does a program whose binary would pass 192 KB
@@ -2543,7 +2659,7 @@ from the prelude word `‹stack›`, which any program can call:
 
 | word | stack effect | meaning |
 |---|---|---|
-| `‹stack›` | `->` | print the data stack bottom to top without changing it: `<depth>`, then each value (an int as `Ṅ` prints it, a list in brackets as `⍕` prints an inner one), then a newline |
+| `‹stack›` | `->` | print the data stack bottom to top without changing it: `<depth>`, then each value (an int as `Ṅ` prints it, a list in brackets as `⍕` prints an inner one), then a newline. It shows what lies above the program's base: a result written back over implicit input the program consumed (W15) is not counted |
 
 ```
 1 2 3⍳‹stack›                    ->  <3> 1 2 [0 1 2]
@@ -2662,7 +2778,9 @@ skipped. Plain gdb still works alongside: `stepi`, `x/8gx $rsp`,
 when stopped inside a prologue). `tools/golfgdb --emit FILE prog` only writes
 the script (use it with `gdb -x FILE prog`); `--batch-script CMDS prog` runs
 `gdb -batch` with the script and then the commands in CMDS, which is how the
-suite tests it. It needs gdb with Python (any distribution gdb).
+suite tests it. It needs gdb with Python (any distribution gdb). A program
+that takes implicit input (W15) stops once in gdb on the SIGSEGV that
+fetches it: `continue`, or `handle SIGSEGV nostop noprint pass` first.
 
 Walkthrough: a word reached through two nested calls.
 
@@ -2923,26 +3041,27 @@ Ifmmp
 
 Here are three of the twenty problems in `bench/leetcode/`, in the form the
 benchmark runs (its README has all twenty, notes on each, and the timings).
-Each one reads its input from stdin: `tools/golfc -j ex.golfj ex && ./ex <
+Each one takes its input from stdin: `tools/golfc -j ex.golfj ex && ./ex <
 input`. The `stdin` block is a sample input and the `text` block is the
 exact output. `test/run2.sh` (block W12-O5) checks both. It also checks that
 each program here is the same text as its file in `bench/leetcode/golf/`.
-None of them prints anything itself: each leaves its answer as the only
-value on the stack, and implicit output prints it (`Ṅ` for a number, `⍕`
-for a list).
+None of them reads or prints anything itself. The input is implicit (W15,
+"Input"): a word that takes from the empty stack gets the list of numbers.
+The answer is the value left on the stack, and implicit output prints it
+(`Ṅ` for a number, `⍕` for a list).
 
 <!-- LEETCODE BEGIN -->
 
-**Best Time to Buy and Sell Stock (121), `stock.golfj`, 6 bytes.** Buy on one
-day and sell on a later one, for the largest profit, or 0. `ℤ` reads the
-prices. `"⌊⍀` keeps them and makes the running minimum, the cheapest buy up
-to each day (`⌊⍀` is `′⌊⍀`: an adverb quotes the atom in front of it).
-`-` subtracts it from every price, which gives the profit of selling on that
-day, and `Ṁ` takes the largest. The first difference is always `0`, so a
-falling market prints `0`.
+**Best Time to Buy and Sell Stock (121), `stock.golfj`, 4 bytes.** Buy on one
+day and sell on a later one, for the largest profit, or 0. `⌊⍀` takes the
+prices and makes the running minimum, the cheapest buy up to each day (`⌊⍀`
+is `′⌊⍀`: an adverb quotes the atom in front of it). `-` needs a second
+operand under that, finds the stack empty and takes the prices again, so it
+gives the profit of selling on each day, and `Ṁ` takes the largest. The
+first difference is always `0`, so a falling market prints `0`.
 
 ```golfj
-ℤ"⌊⍀-Ṁ
+⌊⍀-Ṁ
 ```
 
 ```stdin
@@ -2953,16 +3072,17 @@ falling market prints `0`.
 5
 ```
 
-**Trapping Rain Water (42), `trap.golfj`, 11 bytes.** The water over a bar is
+**Trapping Rain Water (42), `trap.golfj`, 9 bytes.** The water over a bar is
 the lower of the highest bar to its left and the highest bar to its right,
-less its own height. `"⌈⍀` is the running maximum from the left. `&⌈⍂` is
-the running maximum from the right: `⍂` is the right scan, `⌽`, `⍀`, `⌽` in
-one word. `⌊` takes the smaller of the two at each bar, `\\-` subtracts the
-heights, and `∑` adds up the water. Both maxima include the bar itself, so
-no term is negative.
+less its own height. `⌈⍀` is the running maximum from the left, of the
+heights it takes from the input. `&` reaches under it for the heights again,
+and `⌈⍂` is their running maximum from the right: `⍂` is the right scan,
+`⌽`, `⍀`, `⌽` in one word. `⌊` takes the smaller of the two at each bar,
+`\\-` subtracts the heights (a third copy, swapped on top), and `∑` adds up
+the water. Both maxima include the bar itself, so no term is negative.
 
 ```golfj
-ℤ"⌈⍀&⌈⍂⌊\\-∑
+⌈⍀&⌈⍂⌊\\-∑
 ```
 
 ```stdin
@@ -2973,14 +3093,14 @@ no term is negative.
 6
 ```
 
-**Sliding Window Maximum (239), `slidemax.golfj`, 4 bytes.** The input is
-the window size `k`, then the numbers. `⍘` splits the list into its tail and
-its head, which is just the numbers and `k` on top. `⌈⊟` is the window
+**Sliding Window Maximum (239), `slidemax.golfj`, 3 bytes.** The input is
+the window size `k`, then the numbers. `⍘` splits the input into its tail
+and its head, which is just the numbers and `k` on top. `⌈⊟` is the window
 reduce, the maximum of every window of `k` numbers. With `⌈` (or `⌊`), `⊟`
 runs a monotonic deque, so it is O(n) for any `k`.
 
 ```golfj
-ℤ⍘⌈⊟
+⍘⌈⊟
 ```
 
 ```stdin

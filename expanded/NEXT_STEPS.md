@@ -10,6 +10,35 @@ the `v1c` binary pinned by `../SEEDS`) is never touched.
 
 ## Where we are
 
+**W15 — implicit input and structure adverbs — has landed** (DESIGN.md "The
+record", REFERENCE "Input" and "Structure adverbs (W15)",
+[`bench/leetcode/`](bench/leetcode/README.md)). The twenty LeetCode
+solutions are 239 bytes (503 before); the ten that Jelly has are 115 to
+Jelly's 144, with the fast algorithms. What that round found and left open,
+in the order it would pay:
+
+1. **Blocks cannot see `⊡` locals.** N-Queens is 56 of the 115 bytes because
+   its recursion has to be a named `⊡` word with its loop spelled out: a
+   `⟦ ⟧` block runs with the frame of whoever calls it. A block that captured
+   its definer's frame (a frame-closure record, as `∘` and `⊸` are records)
+   would let "for each set bit" or "sum over children" be adverbs. It needs
+   the three compilers, so it belongs with M7.
+2. **Temporaries are never reclaimed.** A vector expression inside a loop
+   (`koko`'s predicate, `lcs`'s fold) leaks every intermediate list: correct,
+   but page faults are now most of those two run times. An arena that a fold
+   or search resets per iteration, or a reference count on list temporaries,
+   is the next speed step that needs no codegen.
+3. **Comparisons and `/ % ÷ ∣` do not vectorise.** `⊞` now broadcasts a
+   scalar, which covers them at one more byte and a call per element; making
+   them polymorphic like `+ - * ⌈ ⌊` needs templates in the blob.
+4. **The image cap.** The whole prelude is 182 KB of 192 KB. Pruned programs
+   are 21–35 KB, so nothing is tight for users, but `golfc -P` has 14 KB
+   left and the test suite compiles its largest programs pruned. The next
+   library round needs either denser code (M7) or the runtime cells moved up.
+5. **Text that looks like numbers.** Implicit input decides by the first
+   byte, so `longsub` still pays two bytes for `⏎_`. A one-byte "the input
+   as text" word would close that.
+
 **W11 — the Python/Rust gap round — has landed** (four waves, sixteen tasks;
 [`GAPS.md`](GAPS.md) "After W11" has the per-area summary). Correctness and
 I/O: the list tag moved to the top-16 value `0x7FFF`, file words, an 8 KB

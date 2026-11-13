@@ -143,7 +143,7 @@ L	57	filter	⌿	filter(list, pred) -> list (keep where pred==0)
 L	4F	puts	🗲	print a “...” byte string
 L	55	chars	⊃	byte string -> list of char codes
 L	4A	join	⊐	print a code list as text (cell -> byte)
-L	5A	zip	⊞	zip(l1, l2, fn) -> list (elementwise)
+L	5A	zip	⊞	zip(l1, l2, fn) -> list (elementwise); a non-list operand pairs with every element (W15)
 
 # --- W2 LIB rows ---
 # M-TAG shape-polymorphic operators (REGISTRY.md §1.2).  High-byte prelude
@@ -169,7 +169,7 @@ L	CD	drop	↓	drop: list n -> all but first n (n<0: all but last |n|)
 L	CA	free	⌫	free(list|block): release an A block to the free list
 
 # --- W9-4B LIB rows: list words (prelude anchor W9-4B-LISTWORDS2) ---
-L	CE	sort	⍋	sort: list -> new list, ascending signed (stable merge sort)
+L	CE	sort	⍋	sort: list -> new list, ascending signed (stable; an LSD radix sort since W15)
 L	CF	memb	∊	member: list x -> 0 if x is an element, else 1
 
 # --- W11-2C LIB row: closures by value (prelude anchor W11-2C bind) ---
@@ -224,3 +224,8 @@ L	EC	findfirst	⍷	find first: l ′p -> i; first i where p l[i] is 0 (stops the
 L	ED	indices	ℑ	indices: l -> l [0..n-1] (keeps l)
 L	EE	lookup	Ǧ	alias of ‹getor›: d k x -> v, k's value or x when absent
 L	EF	tfword	ṭ	alias of ‹tf›: f -> list, “true“ when f is 0, else “false“
+# W15: three structure words (lib/prelude.golfj, section W15).  0x98-0x9F was
+# headroom for the atom range; W15 gives it to prelude words (REGISTRY §1).
+L	98	hjoin	⋈	hash join: x y -> pairs; flat `j i` for each i whose y[i] equals an earlier x[j] (the latest j < i)
+L	99	cancel	⍙	stack cancel: l ′p -> l'; x cancels the stack top t when `t x p` is 0, else is pushed
+L	9A	both	⥮	both ways: l ′f -> a b; a = f l, b = f of l reversed, reversed back

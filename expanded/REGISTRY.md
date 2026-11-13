@@ -46,12 +46,13 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **83** are now spent, leaving **28** free. It is partitioned as follows
+space; **86** are now spent, leaving **25** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
 |---------------|------------------------------------------------------------|
 | `0x91`–`0x97` | Raw scalar atoms (wave 0) — the non-polymorphic arithmetic the prelude's own pointer math uses, so M-VEC can make the ASCII bytes polymorphic without the dispatcher recursing |
+| `0x98`–`0x9F` | High-byte prelude words (W15 released it: it was headroom for the raw-atom range, which still has a spare of its own, `0x97`). Same rule as `0xD0`–`0xD7`; §1.7 |
 | `0xA0`–`0xA7` | M4 atoms (wave 1) — signed compare, shifts, 64-bit fetch/store, `brk` |
 | `0xB0`–`0xBF` | Future compiler-logic ops (prefixes/tokens handled in golf2's `t`, like `ref`/`str`/`→`/`←`) — since M-SELF written in `self/golf2.golfj`, and mirrored into `mkblob2.py`'s v1-GOLF seed |
 | `0xC0`–`0xCF` | High-byte prelude words (wave 2) — words that need a byte of their own instead of a scarce ASCII letter |
@@ -59,8 +60,9 @@ so waves never contend:
 | `0xD8`–`0xEF` | High-byte prelude words, continued again (W12-0 released the old "chain syntax / M4c" reservation: chain syntax shipped at `0xB0`). Same rule as `0xD0`–`0xD7`: only for a word that earns a byte |
 | `0xF0`–`0xFF` | User extension space — never allocated by the language      |
 
-Gaps between the ranges (`0x98`–`0x9F`, `0xA8`–`0xAF`) are deliberate headroom
-for the range immediately above them; do not fill them opportunistically.
+The gap between the ranges (`0xA8`–`0xAF`) is deliberate headroom
+for the range immediately above it; do not fill it opportunistically (the
+other gap, `0x98`–`0x9F`, went to prelude words in W15, see the table).
 W11-0 spent the first of that headroom deliberately: `0xA8`–`0xAB` continue
 the M4 atom range (`0xA0`–`0xA7` is full) for W11-3A's stack-pointer atoms
 (§1.3). The budget line above counts only what the tables in
@@ -310,12 +312,25 @@ is a prefix of it; `\tfword` for `‹tf›`.
 
 With them `0xD8`–`0xEF` is full.
 
+### 1.7 W15 assignments
+
+W15's three structure words (REFERENCE "Structure adverbs (W15)"), the first
+bytes of `0x98`–`0x9F`. `⍙` and `⥮` are adverbs (S1: blob record 6), `⋈` is
+not. `0x9B`–`0x9F` are free.
+
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0x98` | `\hjoin` | `⋈` | prelude: `x y -> pairs` hash join, flat `j i` for each `i` whose `y[i]` equals an earlier `x[j]` | W15 | shipped |
+| `0x99` | `\cancel` | `⍙` | prelude: `l ′p -> l'` stack cancel: `x` cancels the top `t` when `t x p` is 0, else is pushed | W15 | shipped |
+| `0x9A` | `\both` | `⥮` | prelude: `l ′f -> a b`, `f l` and `f` of the reversed list reversed back | W15 | shipped |
+
 ### 1.6 Digraph page
 
 `ʘ` + byte `B` calls the long name `‹_dgHH›` (`HH` = `B` in uppercase hex).
 The second byte is partitioned (ASCII printable only): `A`–`Z` W13-C,
 `a`–`m` and `0`–`4` W13-D, `n`–`z` and `5`–`9` W13-E; `+` and `-` are
-W13-B's test bytes, defined only in test programs, never in the prelude. A
+W13-B's test bytes, defined only in test programs, never in the prelude;
+W15 opened the punctuation with `? @ > $ = % / |`. A
 library gives a word a digraph by defining `:‹_dgHH›‹realname›;` (or the word
 itself under that name); `tools/codepage.py reference` scans the prelude for
 those definitions and generates REFERENCE.md's "Digraph page" table. This is
@@ -386,6 +401,14 @@ its `‹_dgHH›`.
 | `ʘ7` | `‹_dg37›` | `‹gcomps›` | W13-E | shipped |
 | `ʘ8` | `‹_dg38›` | `‹nbrs8›` | W13-E | shipped |
 | `ʘ9` | `‹_dg39›` | `‹combs›` | W13-E | shipped |
+| `ʘ?` | `‹_dg3F›` | `‹where›` | W15 | shipped |
+| `ʘ@` | `‹_dg40›` | `‹gdist›` | W15 | shipped |
+| `ʘ>` | `‹_dg3E›` | `‹bfsf›` | W15 | shipped |
+| `ʘ$` | `‹_dg24›` | `‹last›` | W15 | shipped |
+| `ʘ=` | `‹_dg3D›` | `‹uf›` | W15 | shipped |
+| `ʘ%` | `‹_dg25›` | `‹chunk›` | W15 | shipped |
+| `ʘ/` | `‹_dg2F›` | `‹dadj›` | W15 | shipped |
+| `ʘ\|` | `‹_dg7C›` | `‹dwadj›` | W15 | shipped |
 | `ʘ+`, `ʘ-` | `‹_dg2B›`, `‹_dg2D›` | test programs only (run2 block W13-B) | W13-B | reserved (tests) |
 
 W13-C picked the 26 most used prelude long names with no byte of their own
@@ -429,7 +452,7 @@ Prelude long names in use (all **shipped**):
 
 | names | wave | anchor |
 |---|---|---|
-| `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›`, and the helper `‹_inread›` (names starting `‹_in` are reserved for it) | W9-4C | `W9-4C-INPUT` |
+| `‹getc›` `‹readall›` `‹readline›` `‹words›` `‹num›` `‹ints›` `‹args›` (the helper `‹_inread›` went in W15; names starting `‹_in` stay reserved) | W9-4C | `W9-4C-INPUT` |
 | `‹throw›` | W11-0 (the stub; W11-3A rewrites it in place) | `W11-0` — defined right after `H`, ahead of `X` |
 | `‹open›` `‹create›` `‹close›` `‹fread›` `‹fwrite›` `‹readfile›` `‹writefile›`, and the helpers `‹_1b_tobytes›` `‹_1b_tolist›` `‹_1b_dec›` `‹_1b_ename›` `‹_1b_fail›` `‹_1b_wr›` | W11-1B (**shipped**) | `W11-1B Files` |
 | `‹flush›`, and the helpers `‹_1c_put›` `‹_1c_init›` | W11-1C (**shipped**) | `W11-1C buffered output` |
@@ -449,6 +472,7 @@ Prelude long names in use (all **shipped**):
 | `‹stat›` `‹lstat›` `‹exists›` `‹isfile›` `‹isdir›` `‹samefile›` `‹mkdir›` `‹makedirs›` `‹unlink›` `‹rmdir›` `‹rename›` `‹listdir›` `‹rmtree›` `‹mkdtemp›` `‹getcwd›` `‹chdir›` `‹pathjoin›` `‹dirname›` `‹basename›` (19), and 11 helpers `‹_14e_en›` `‹_14e_fail›` `‹_14e_try›` `‹_14e_sc›` `‹_14e_st›` `‹_14e_mode›` `‹_14e_ms›` `‹_14e_rs›` `‹_14e_strip›` `‹_14e_cl›` `‹_14e_tmp›` (names starting `‹_14e` are reserved for them): 30 names | W14-E | `# ===== W14-E =====` |
 | `‹rng›` `‹mtrng›` `‹rand›` `‹randbits›` `‹randbelow›` `‹randint›` `‹random53›` `‹choice›` `‹shuffle›` `‹sample›` (seeded generators; `‹mtrng›` is CPython-exact MT19937) `‹sha256›` `‹sha256hex›`, and the helpers `‹_14j_rec›` `‹_14j_mtgen›` `‹_14j_mt32›` `‹_14j_xo›` `‹_14j_mix›` `‹_14j_b›` `‹_14j_below›` `‹_14j_ins›` `‹_14j_tab›` `‹_14j_h0›` `‹_14j_k›` `‹_14j_blk›`; names starting `‹_14j` are W14-J's | W14-J (**shipped**) | `# ===== W14-J =====` |
 | `‹format›` `‹printf›` `‹fixed›` `‹ljust›` `‹center›` `‹replace›` `‹rfind›` `‹count›` `‹endswith›` `‹partition›` `‹rpartition›` `‹translate›` `‹le›` `‹les›` `‹tole›` `‹setle›` `‹hexbytes›` `‹unhexbytes›` `‹utf8›` `‹unutf8›` (20), and 20 helpers `‹_14g_new›` `‹_14g_at›` `‹_14g_ff›` `‹_14g_app›` `‹_14g_rep›` `‹_14g_sp›` `‹_14g_lr›` `‹_14g_cut›` `‹_14g_wd›` `‹_14g_rng›` `‹_14g_hd›` `‹_14g_hv›` `‹_14g_hx›` `‹_14g_dec›` `‹_14g_enc›` `‹_14g_abs›` `‹_14g_ch›` `‹_14g_dg›` `‹_14g_emit›` `‹_14g_cv›` (the prefix `‹_14g` is reserved for them): 40 names. `‹count›` as a word does not disturb a program's `‹count›` variable (words and variables are separate) | W14-G | `# ===== W14-G =====` |
+| `‹where›` `‹gdist›` `‹bfsf›` (REFERENCE "Structure adverbs (W15)"; `⋈ ⍙ ⥮` have bytes, §1.7), and 21 helpers `‹_15_both›` `‹_15_bz›` `‹_15_cancel›` `‹_15_cpy›` `‹_15_gbfs›` `‹_15_gins›` `‹_15_gpad›` `‹_15_grade›` `‹_15_gradix›` `‹_15_hfind›` `‹_15_init›` `‹_15_ins›` `‹_15_isnum›` `‹_15_join›` `‹_15_line›` `‹_15_mm›` `‹_15_peek›` `‹_15_radix›` `‹_15_segv›` `‹_15_sort›` `‹_15_zd›` (the implicit-input stack and its SIGSEGV handler, the radix sort behind `⍋` and `‹grade›`, the chunked `‹readline›`, `⊞`'s broadcast driver, and the bodies of the three byte words); names starting `‹_15` are W15's | W15 (**shipped**) | `# ===== W15 =====` (end of the prelude) |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no
@@ -781,6 +805,25 @@ W14-G 4399296–4399359, W14-J 4399360–4399423; W14-L none).
 | W14-J generators and SHA-256 | none (its block 4399360–4399423 is unused) | every W14-J word is a `⊡` word; a generator's state is its own record (a list), SHA-256's state, schedule and constant tables are `A` blocks freed before it returns |
 | W14-G formatting, bytes, UTF-8 | none (its block 4399296–4399359 is unused) | every W14-G word is a `⊡` word: its state is its own frame, so it is re-entrant and needs no scratch cell |
 
+### 3.5 W15 runtime cells
+
+W15 takes the next 64-byte block of the `0x432000` headroom, 4399424–4399487.
+
+| Cell | Use |
+|---|---|
+| 4399424 | `V`, the implicit-input value (a tagged list), `0` until the first take from the empty stack. The end hook `‹_13b_end›` reads it to tell input from results |
+| 4399432 | `G`, the address of the implicit page: the program's data-stack base (also in W11-4C's cell 5180480), the top of the 256 MB stack mapping. Mapped PROT_NONE until the first fault |
+| 4399440 | `R`, the low end of the stack mapping: one PROT_NONE guard page, whose fault is `data stack overflow` |
+| 4399448 | the raw block that holds the `rt_sigaction` record (handler `‹_15_segv›`, flags `SA_SIGINFO\|SA_ONSTACK\|SA_RESTORER` with no restorer, since the handler ends in `rt_sigreturn` itself, and a zero mask), at +32 the all-zero record that puts the default action back for a fault that is not ours, and from +64 the `sigaltstack` record for the 64 KB signal stack |
+| 4399456 | the 8-byte signal mask `1024` (SIGSEGV), for the `rt_sigprocmask` unblock before the overflow error is thrown |
+| 4399464–4399487 | spare |
+
+The data stack itself is not in the image: `‹_15_init›` (the prelude's last
+top-level line) maps 256 MB + 3 pages `MAP_NORESERVE`, anonymous, and moves
+`rsp` to the top page's start. The kernel's own stack keeps only what the
+loader put there (argv, envp), which `‹args›` and `‹getenv›` still read
+through STARTUP's stash at `0x4F0040`.
+
 ---
 
 ## W9 — the gap-fix waves
@@ -792,7 +835,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 526 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13, W13-H 4, W14-B 37, W14-D 14, W14-E 30, W14-G 40 and W14-J 24, helpers and digraph names included) — 1024 since W10-A, so 498 are left
+prelude now uses 560 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13, W13-H 4, W14-B 37, W14-D 14, W14-E 30, W14-G 40 and W14-J 24, W15 34 net of the retired `‹_inread›`, helpers and digraph names included) — 1024 since W10-A, so 464 are left
 for a program compiled with the whole prelude (`golfc -P`, and run2.sh's `cat` pipelines); since W13-I plain `golfc` interns only the prelude names the program reaches, so it leaves more (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 
