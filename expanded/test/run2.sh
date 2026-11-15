@@ -5907,6 +5907,57 @@ done < <(sed -n '/^### Structure adverbs (W15)$/,/^### /p' REFERENCE.md | sed -n
   && [ "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gref)" = "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gc)" ] \
   && ok "⋈ ⍙ ⥮ are 0x98–0x9A; ⍙ ⥮ quote the token before them; the pruned build and the oracle (boot/golfref.py) agree" || no "W15 bytes / pruned / oracle"
 
+# === W16-D ===
+echo "W16-D: text-marked lists print as text in implicit output; ʀ inclusive range; ℓ (B) line; ʘ( balanced brackets"
+# The text mark: ⊃ ṭ ⏎ ℓ ⎕ and text implicit input make text; ⌽ ↑ ↓ keep it,
+# ⧺ keeps it only when both sides have it; other words (and ⍕) print numbers.
+[ "$(printf '%s' '“ab“⊃' | gc)" = ab ] && [ "$(printf '%s' '“ab“⊃⍕' | gc)" = "97 98 " ] \
+  && [ "$(printf '%s' '0ṭ' | gc)" = true ] && [ "$(printf '%s' '7ṭ' | gc)" = false ] && [ "$(printf '%s' '0‹tf›' | gc)" = true ] \
+  && [ "$(printf '%s' '“abc“⊃⌽' | gc)" = cba ] && [ "$(printf '%s' '“abc“⊃2↑' | gc)" = ab ] && [ "$(printf '%s' '“abc“⊃1↓' | gc)" = bc ] \
+  && [ "$(printf '%s' '“ab“⊃“c“⊃⧺' | gc)" = abc ] && [ "$(printf '%s' '“ab“⊃2⍳⧺' | gc)" = "97 98 0 1 " ] \
+  && [ "$(printf '%s' '“ab“⊃1+' | gc)" = "98 99 " ] && [ "$(printf '%s' '3⍳' | gc)" = "0 1 2 " ] \
+  && [ "$(printf '%s' '“ab“⊃99⍆100⍆101⍆' | gc)" = abcde ] && [ "$(printf '%s' '1 2“ab“⊃' | gc)" = ab ] \
+  && [ "$(printf '%s' '“ab“⊃⊐“cd“⊃' | gc)" = abcd ] \
+  && [ "$(printf 'hey\nyo\n' | gin '⏎_')" = hey ] && [ "$(printf 'hey\nyo\n' | gin '⎕')" = "$(printf 'hey\nyo')" ] \
+  && [ "$(printf 'hello\n' | gin '⌽')" = olleh ] && [ "$(printf '1 2 3\n' | gin '⌽')" = "3 2 1 " ] \
+  && ok "text mark: ⊃ ṭ ⏎ ⎕ and text implicit input print as text; ⌽ ↑ ↓ keep it, ⧺ of two texts, ⍆'s growth; ⍕ and arithmetic print numbers; the top of 2+ too" || no "W16-D text mark"
+# The mark lives in the A header (bit 40): ⌫ and the free lists still work,
+# a reused block starts unmarked, and ‹heapstats› balances.
+[ "$(printf '%s' '“abcdef“⊃⌫5⍳' | gc)" = "0 1 2 3 4 " ] && [ "$(printf '%s' '“ab“⊃"⌫⌫' | gc 2>&1)" = "GOLF: double free" ] \
+  && [ "$(printf '%s' '‹heapstats›→a→b“xy“⊃⌫“xy“⊃⌫‹heapstats›←a-Ṅ←b-Ṅ' | gc)" = 00 ] \
+  && [ "$(printf '%s' '0→i{“abcdefghij“⊃⌽⌫⇡i←i5000≡}←iṄ' | gc)" = 5000 ] \
+  && ok "a text list frees like any other (no double-free or class mix-up), a reused block is plain, ‹heapstats› balances" || no "W16-D text mark and the allocator"
+# ʀ: the inclusive range.
+[ "$(printf '%s' '3ʀ' | gc)" = "0 1 2 3 " ] && [ "$(printf '%s' '0ʀ≢Ṅ' | gc)" = 1 ] && [ "$(printf '%s' '100ʀ∑' | gc)" = 5050 ] \
+  && [ "$(printf '%s' '\irange' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = 9f ] \
+  && [ "$(printf '5' | gin '∑ʀ♯€')" = "0 1 1 2 1 2 " ] \
+  && ok "ʀ (0x9F) is [0..n]; Counting Bits is ∑ʀ♯€" || no "W16-D ʀ"
+# ℓ: the next line without its newline, the empty list at end of input.
+[ "$(printf 'ab\ncd\n' | gin 'ℓ')" = ab ] && [ "$(printf 'ab\ncd\n' | gin 'ℓ_ℓ')" = cd ] \
+  && [ "$(printf 'ab\ncd' | gin 'ℓ_ℓ≢Ṅℓ≢Ṅ')" = 20 ] && [ "$(printf '' | gin 'ℓ≢')" = 0 ] && [ "$(printf '\n' | gin 'ℓ≢')" = 0 ] \
+  && [ "$(printf '%s' '\lineℓB' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = 424242 ] \
+  && [ "$(printf 'abcabcbb\n' | gin 'ℓṔ⌈⍀ℑ\\-Ṁ')" = 3 ] \
+  && ok "ℓ (B) reads a line without its newline, the empty list at end of input; Longest Substring is ℓṔ⌈⍀ℑ\\-Ṁ" || no "W16-D ℓ"
+# ʘ(: balanced brackets, O(n) on a heap stack, any depth.
+[ "$(printf '%s' '“(a[b]{c})“⊃ʘ(Ṅ“(]“⊃ʘ(Ṅ“((“⊃ʘ(Ṅ“))“⊃ʘ(Ṅ““⊃ʘ(Ṅ“([)]“⊃ʘ(Ṅ“{[]}“⊃ʘ(Ṅ“xyz“⊃ʘ(Ṅ' | gc)" = "0-1-1-10-100" ] \
+  && [ "$(printf '()[]{}\n' | gin 'ʘ(ṭ')" = true ] && [ "$(printf '(]\n' | gin 'ʘ(ṭ')" = false ] && [ "$(printf '(\n' | gin 'ʘ(ṭ')" = false ] \
+  && [ "$(python3 -c "print('('*300000+'[]'+')'*300000)" | gin 'ʘ(ṭ')" = true ] \
+  && [ "$(python3 -c "print('{'*300000+')'*300000)" | gin 'ʘ(ṭ')" = false ] \
+  && [ "$(printf '%s' '\dig(' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = bd28 ] \
+  && ok "ʘ( ‹balanced›: (), [], {} balanced and nested, others ignored; 300000 deep; Valid Parentheses is ʘ(ṭ" || no "W16-D ʘ("
+# REFERENCE.md's W16 examples print what they say; course ends in ṭ with no ⊐;
+# the pruned build and the oracle agree.
+w16bad=""
+while IFS= read -r w16l; do
+  w16p=${w16l%%  ->*}; w16p=${w16p%"${w16p##*[! ]}"}; w16w=${w16l##*->  }
+  [ "$(printf '%s' "$w16p" | gc 2>&1)" = "$w16w" ] || w16bad="$w16bad [$w16p]"
+done < <(sed -n '/^### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w16bad" ] && [ "$(sed -n '/^### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && [ "$(printf '2\n1 0\n' | gin '⍘\\ʘ/ʘo\\_ṭ')" = true ] && [ "$(printf '2\n1 0 0 1\n' | gin '⍘\\ʘ/ʘo\\_ṭ')" = false ] \
+  && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gcp)" = "true0 1 2 3 ba" ] \
+  && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gref)" = "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gc)" ] \
+  && ok "REFERENCE.md's W16 examples print what they say; Course Schedule ends in ṭ; pruned build and oracle agree" || no "W16-D docs / course / pruned / oracle:$w16bad"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

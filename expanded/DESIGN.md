@@ -146,7 +146,7 @@ against the thing it describes, so none of it can go stale quietly.
 | the template blob itself | **1397** bytes |
 | the generated bootstrap seed (`self/seed.golf`) | **5117** bytes |
 | the generated v2 compiler (`self/golf2.golf`) | **16908** bytes |
-| assertions in the run2 suite | **1001** |
+| assertions in the run2 suite | **1007** |
 | assertions in the selfcheck suite | **69** |
 | assertions in the gtools differential suite | **57** |
 | the capstone, in op bytes | **46** |
@@ -919,6 +919,16 @@ unbuilt, and three defects this list does not yet cover — see
   ints, so the largest int the list words treat as a number is
   9223090561878065151. Non-polymorphic atoms (`⊕`, `Ṅ`, `\radd`) still take
   `INT64_MAX` as a plain word.
+- **Text is a mark on the block, not a type (W16-D).** Implicit output prints
+  a list as text when the list carries the text mark, bit 40 of its `A`
+  header cell (the capacity; REGISTRY §3 "Every `A` block has a header
+  cell"). The words that make text set it (`⊃`, `‹tf›`, `⏎`, `ℓ`, `⎕`, text
+  implicit input), the ones that only reorder or slice keep it (`⌽ ↑ ↓`, `⧺`
+  of two text lists, `⍆`'s growth), and everything else makes a plain list.
+  The tag could not carry it: `T`, the M-VEC filter and every list word's
+  `16≪16>` mask read all 16 tag bits and all 48 address bits, while the
+  header is read only by `A`, `⌫` and the vector growth. Only implicit
+  output looks at the mark; `⍕` and `⊐` print as they always did.
 - **Nesting depth is bounded by the spill stack, now generously (W10-C).**
   Every scratch-using looping word frames its scratch with `X`/`Y` (`⍳ ∑ ∏ ⌽`
   use none since W12-P3); recursive `⍕`, `≣` and `⍤` take one frame per level,

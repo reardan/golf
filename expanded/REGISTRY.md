@@ -46,7 +46,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **86** are now spent, leaving **25** free. It is partitioned as follows
+space; **87** are now spent, leaving **24** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -316,7 +316,7 @@ With them `0xD8`–`0xEF` is full.
 
 W15's three structure words (REFERENCE "Structure adverbs (W15)"), the first
 bytes of `0x98`–`0x9F`. `⍙` and `⥮` are adverbs (S1: blob record 6), `⋈` is
-not. `0x9B`–`0x9F` are free.
+not. `0x9B`–`0x9E` are free (W16 assigns them); `0x9F` is W16-D's `ʀ`, below.
 
 | Byte | Mnemonic | Glyph | Meaning | Task | Status |
 |------|----------|-------|---------|------|--------|
@@ -324,13 +324,20 @@ not. `0x9B`–`0x9F` are free.
 | `0x99` | `\cancel` | `⍙` | prelude: `l ′p -> l'` stack cancel: `x` cancels the top `t` when `t x p` is 0, else is pushed | W15 | shipped |
 | `0x9A` | `\both` | `⥮` | prelude: `l ′f -> a b`, `f l` and `f` of the reversed list reversed back | W15 | shipped |
 
+W16 (agent D) takes `0x9F` and the letter `B` (§2):
+
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0x9F` | `\irange` | `ʀ` | prelude: `n -> [0..n]`, the inclusive range (`⍳` of `n+1`) | W16-D | shipped |
+| `0x42` | `\line` | `ℓ` | prelude letter `B`: `-> list`, the next line of stdin without its `\n`, text-marked; end of input: the empty list | W16-D | shipped |
+
 ### 1.6 Digraph page
 
 `ʘ` + byte `B` calls the long name `‹_dgHH›` (`HH` = `B` in uppercase hex).
 The second byte is partitioned (ASCII printable only): `A`–`Z` W13-C,
 `a`–`m` and `0`–`4` W13-D, `n`–`z` and `5`–`9` W13-E; `+` and `-` are
 W13-B's test bytes, defined only in test programs, never in the prelude;
-W15 opened the punctuation with `? @ > $ = % / |`. A
+W15 opened the punctuation with `? @ > $ = % / |`, W16-D took `(`. A
 library gives a word a digraph by defining `:‹_dgHH›‹realname›;` (or the word
 itself under that name); `tools/codepage.py reference` scans the prelude for
 those definitions and generates REFERENCE.md's "Digraph page" table. This is
@@ -409,6 +416,7 @@ its `‹_dgHH›`.
 | `ʘ%` | `‹_dg25›` | `‹chunk›` | W15 | shipped |
 | `ʘ/` | `‹_dg2F›` | `‹dadj›` | W15 | shipped |
 | `ʘ\|` | `‹_dg7C›` | `‹dwadj›` | W15 | shipped |
+| `ʘ(` | `‹_dg28›` | `‹balanced›` | W16-D | shipped |
 | `ʘ+`, `ʘ-` | `‹_dg2B›`, `‹_dg2D›` | test programs only (run2 block W13-B) | W13-B | reserved (tests) |
 
 W13-C picked the 26 most used prelude long names with no byte of their own
@@ -426,7 +434,8 @@ Uppercase letters are the pool.
 `G` broadcast int⊙list · `H` heap-pointer address · `I` index · `J` join ·
 `K` broadcast list⊙int · `L` len · `M` map · `N` print signed decimal · `O` puts ·
 `P` product · `Q` show · `R` range · `S` sum · `T` shape test · `U` chars ·
-`V` reverse · `W` filter · `X` push spill frame · `Y` pop spill frame · `Z` zip.
+`V` reverse · `W` filter · `X` push spill frame · `Y` pop spill frame · `Z` zip ·
+`B` line (`ℓ`, W16-D).
 
 **Assigned (do not use for anything else):**
 
@@ -439,8 +448,8 @@ Uppercase letters are the pool.
 | `K` | broadcast `list ⊙ int` | W2 | shipped |
 | `G` | broadcast `int ⊙ list` | W2 | shipped |
 
-**Free:** `B`, `C` — reserved, unassigned. That is the *entire* remaining
-uppercase pool. Anything after them needs a high byte from `0xC0`–`0xCF` (§1.2)
+**Free:** `C` — reserved, unassigned (W16-D took `B` for `ℓ`). That is the
+*entire* remaining uppercase pool. Anything after them needs a high byte from `0xC0`–`0xCF` (§1.2)
 or — since M2 (W9-3A) shipped — a **long name** `‹name›`, which costs nothing
 scarce: 1024 per program (W10-A; 256 before), up to 60 bytes each, and a library word with a long
 name may even be defined after the words that call it. Long names need no
@@ -704,6 +713,16 @@ Notes:
   caller — the prelude, `lib/t*.golfj`, `gtools/` — only ever touches the
   payload, so the header changed no caller; it costs 8 bytes per block plus
   the rounding (at most 2x, and only for blocks of ≤ 256 cells).
+- **Bit 40 of a live block's header is the TEXT MARK (W16-D).** A list made
+  as text (`⊃ ‹tf› ⏎ ℓ ⎕`, text implicit input; kept by `⌽ ↑ ↓`, by `⧺` when
+  both sides have it, and by `⍆`'s growth) has `header | 2^40`; implicit
+  output prints such a list with `⊐`. A capacity never reaches 2^40 cells, so
+  the bit is free; `A` writes the whole header on both paths (bump and pop),
+  so a reused block starts unmarked, and the two readers of a live capacity,
+  `⌫` and the vector growth (`⍆`, `‹_12z4_vgrow›`), mask it off with `24≪24>`.
+  A freed block's header is negative and never reads as marked (the test is
+  `header >> 40 == 1`, logical). The length cell and the tag are untouched,
+  so no list word reads a text list differently.
 - **The heap/return-stack collision is gone.** Until M-MEM a bump heap grew up
   from `0x500000` while the return stack grew down from `0xC00000` inside the
   same 8 MB BSS: a list of ~917k cells met the stack and the program died. The
@@ -835,7 +854,7 @@ W9 word — slice, unique, index-of, flatten, the input words (shipped by W9-4C,
 *name*, not a byte; `0xC8`–`0xCF` is now
 fully allocated. **Shipped** (W9-4B part 2): `‹slice›` `‹indexof›` `‹unique›`
 `‹flatten›`, the prelude's first long names. With W9-4C's input words the
-prelude now uses 560 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13, W13-H 4, W14-B 37, W14-D 14, W14-E 30, W14-G 40 and W14-J 24, W15 34 net of the retired `‹_inread›`, helpers and digraph names included) — 1024 since W10-A, so 464 are left
+prelude now uses 564 of the long-name slots (W11-0 added `‹throw›`; W11-1B, 1C and 1D 27 more, W11-2B 15, W11-2D 3, W11-3A 6, W11-3C 3, W11-4B 5, W11-4C 1, W12-P1 8, W12-O1 2, W12-P2 5, W12-Z4 12, W12-P3 23, W12-A4 1, W12-A5 10, W12-O3 4, W12-A8 47, W12-O6 1, W13-B 2, W13-C 35 (26 digraph words and 9 helpers), W13-D 65, W13-E 76, W13-G 13, W13-H 4, W14-B 37, W14-D 14, W14-E 30, W14-G 40 and W14-J 24, W15 34 net of the retired `‹_inread›`, W16-D 4 (`‹balanced›`, `‹_dg28›` and the text-mark helpers `‹_16_tx›` `‹_16_is›`), helpers and digraph names included) — 1024 since W10-A, so 460 are left
 for a program compiled with the whole prelude (`golfc -P`, and run2.sh's `cat` pipelines); since W13-I plain `golfc` interns only the prelude names the program reaches, so it leaves more (run2.sh's W9-3A block counts them, so this stays honest). A task that needs anything not listed here asks the
 integrator; it does not pick it.
 

@@ -403,6 +403,8 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0x98` | `⋈` | `\hjoin` | — | hash join: x y -> pairs; flat `j i` for each i whose y[i] equals an earlier x[j] (the latest j < i) |
 | `0x99` | `⍙` | `\cancel` | — | stack cancel: l ′p -> l'; x cancels the stack top t when `t x p` is 0, else is pushed |
 | `0x9A` | `⥮` | `\both` | — | both ways: l ′f -> a b; a = f l, b = f of l reversed, reversed back |
+| `0x9F` | `ʀ` | `\irange` | — | inclusive range: n -> [0..n] (⍳ of n+1) |
+| `0x42` | `ℓ` | `\line` | `B` | next line of stdin without its \n, text-marked (⏎ with the flag dropped; end of input: empty list) |
 
 ### Digraph page
 
@@ -412,6 +414,7 @@ Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the 
 |---|---|---|---|---|
 | `ʘ$` | `BD 24` | `‹_dg24›` | `‹last›` |  |
 | `ʘ%` | `BD 25` | `‹_dg25›` | `‹chunk›` |  |
+| `ʘ(` | `BD 28` | `‹_dg28›` | `‹balanced›` |  |
 | `ʘ/` | `BD 2F` | `‹_dg2F›` | `‹dadj›` |  |
 | `ʘ0` | `BD 30` | `‹_dg30›` | `‹argmin›` |  |
 | `ʘ1` | `BD 31` | `‹_dg31›` | `‹abs›` |  |
@@ -813,7 +816,7 @@ every raw `)` or `(`. `)` and `(` themselves are not buffered: still one
 
 | word | stack effect | meaning |
 |---|---|---|
-| `‹tf›` | `f -> list` | the code list `true` when `f` is `0`, else `false`, printed with `⊐`. This is zero-is-true, like `[`, `∊` and `‹has›`. A comparison `≡ ≺ ≻ < »` pushes `-1` for true, so add `1+` first (`-1` becomes `0`). Each call makes a new list |
+| `‹tf›` | `f -> list` | the code list `true` when `f` is `0`, else `false`, printed with `⊐` (or left for implicit output, which prints it as text since W16). This is zero-is-true, like `[`, `∊` and `‹has›`. A comparison `≡ ≺ ≻ < »` pushes `-1` for true, so add `1+` first (`-1` becomes `0`). Each call makes a new list |
 
 ```
 0‹tf›⊐                   ->  true
@@ -829,7 +832,8 @@ holds the fd the buffer drains to; `0` means fd 1.
 
 **Implicit output (W13-B).** When the program runs off its end (not `.`)
 with exactly one value left on the data stack above the program's base, that
-value is printed: with `⍕` if it is a list (`T` says list), else with `Ṅ`.
+value is printed: with `⊐` if it is a **text** list (W16, below), with `⍕` if
+it is any other list (`T` says list), else with `Ṅ`.
 No newline is added. With two or more values left, the top one is printed the
 same way if the program has written nothing so far (W15), so a program that
 has not printed its answer need not clear what is under it. Zero values print
@@ -838,13 +842,27 @@ the program took implicitly (W15, "Input") is not a value left. It is the
 prelude's: the end-of-program exit calls the end hook (cell `0x4F09A0`,
 `5179808`) before the final flush, and only the prelude fills it, so a bare
 program (`golfc -n`) and the compilers are unchanged. A string literal is a
-byte block, not a list, so a lone `“…“` prints as its address; end with `🗲`.
+byte block, not a list, so a lone `“…“` prints as its address; end with `🗲`,
+or make it a list with `⊃` (a text list, so it prints as text).
 A program whose last value is junk (a dict, a running minimum) ends with `_`.
+
+**Text lists (W16).** A list made as text carries a *text mark*, and implicit
+output prints a marked list as `⊐` would, so a text answer needs no `⊐`.
+The words that make text: `⊃` (a string literal or byte block), `‹tf›`/`ṭ`,
+`⏎`/`‹readline›`, `ℓ`, `⎕`/`‹readall›`, and implicit input when it is a line.
+`⌽ ↑ ↓` keep the mark of their list, `⧺` keeps it when both lists have it,
+and `⍆` keeps it when the vector grows. Every other word makes an unmarked
+list (`“ab“⊃1+` is numbers again). Only implicit output looks at the mark:
+`⍕` still prints numbers and `⊐` prints text, marked or not.
 
 ```
 5⍳                       ->  0 1 2 3 4 
 2 3*                     ->  6
-“ab“⊃                    ->  97 98 
+“ab“⊃                    ->  ab
+“ab“⊃⍕                   ->  97 98 
+“abc“⊃⌽                  ->  cba
+“ab“⊃1+                  ->  98 99 
+3 3≡1+ṭ                  ->  true
 7Ṅ“ “🗲8                 ->  7 8
 1 2 9Ṅ                   ->  9
 ```
@@ -919,7 +937,8 @@ error and catchable. Any other fault puts the default action back and dies
 as before. A bare program (`golfc -n`) has no handler and the kernel's stack.
 
 `ℤ`, `⎕` and `⏎` are one-byte aliases of `‹ints›`, `‹readall›` and
-`‹readline›` (see "One-byte aliases").
+`‹readline›` (see "One-byte aliases"). `ℓ` (W16, the letter `B`) is `⏎`
+without the flag: the next line, or the empty list at end of input.
 
 The stdin words share one 8 KB buffer, so `‹readline›`, `‹getc›`,
 `‹readall›`, `‹readbytes›` and `‹ints›` may be mixed freely (`‹readall›`,
@@ -985,7 +1004,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 ```
 
 The four words use 4 of the 1024 long names a program may have (the prelude
-has 560 in all after W15, helpers included), so a program has 464 for itself.
+has 564 in all after W16-D, helpers included), so a program has 460 for itself.
 
 ### Sorting by key
 
@@ -1426,8 +1445,8 @@ It prints `count word` once for each distinct word, in order of first
 appearance. `‹tally›` gets each word with the stack under it, puts the dict
 under it with `\\` (swap) and bumps. Names that start with `‹_2b` and
 `‹_12p2` are these words' helpers. With them
-(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words, and since then W14's scripting library and W15's 34 names), the prelude has 560 long
-names, which leaves 464 for a program.
+(and W11-2D's `‹heapstats›` and two helpers, and W11-3A's `‹catch›` and five, and W11-3C's three checked words, and W11-4B's two test words and three helpers, and W11-4C's `‹stack›`, and W12-P1's `‹readbytes›` and seven helpers, and W12-O1's two helpers, and W12-P2's three dict words and two helpers, and W12-Z4's seven vector and deque words and five helpers, and W12-P3's twenty-three helpers, and W12-A4's `‹grade›`, and W13-B's two implicit-output helpers, and W13-C's 26 digraph words and nine helpers, and W13-D's 39 LeetCode words, eight helpers and 18 digraph names, and W13-E's 76 LeetCode-library names, and W13-G's thirteen fast-path helpers, and W13-H's four closure words, and since then W14's scripting library and W15's 34 names, and W16-D's four), the prelude has 564 long
+names, which leaves 460 for a program.
 
 ### Threading state through `€ ⇤ ⌿ ⊞`
 
@@ -1596,6 +1615,39 @@ hash join expected linear), a `⊡` word, and re-entrant.
 - `‹readline›` (`⏎`) now scans the input buffer a chunk at a time instead of
   calling `‹getc›` per byte: a 2 MB line is read in 0.03 s.
 - Names that start with `‹_15` are these words' helpers.
+
+### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)
+
+Four small additions for answers that are text, ranges and lines. The text
+mark is described under "Output" ("Text lists"): a list made by `⊃ ṭ ⏎ ℓ ⎕`
+or text implicit input prints as text when implicit output prints it.
+
+| word | bytes | stack effect | meaning |
+|---|---|---|---|
+| `ʀ` | `0x9F` (`\irange`) | `n -> list` | the inclusive range `[0 .. n]`: `⍳` of `n+1` |
+| `ℓ` | `B` (`\line`) | `-> list` | the next line of stdin without its `\n`, text-marked: `⏎` with the flag dropped. At end of input, the empty list |
+| `ʘ(` | `BD 28` (`‹balanced›`) | `l -> f` | `0` when the brackets `( ) [ ] { }` of the code list `l` are balanced and properly nested (every other byte is ignored), else `-1`. One pass, O(n), with the open brackets on a heap block, so any depth works |
+
+```
+3ʀ                       ->  0 1 2 3 
+0ʀ∑                      ->  0
+“{[()]}x“⊃ʘ(Ṅ            ->  0
+“([)]“⊃ʘ(Ṅ               ->  -1
+“(“⊃ʘ(ṭ                  ->  false
+“a(b)c“⊃ʘ(ṭ              ->  true
+“golf“⊃2↑                ->  go
+“go“⊃“lf“⊃⧺⌽             ->  flog
+```
+
+`ℓ` reads stdin, so it has no example here: `printf 'ab\ncd\n' | ./p` with
+`ℓ_ℓ` prints `cd`, and with `ℓℓℓ≢` prints `0` (the third line is past the
+end). Valid Parentheses is `ʘ(ṭ` (input `()[]{}` prints `true`), Course
+Schedule ends in `ṭ` with no `⊐`, and Counting Bits is `∑ʀ♯€`.
+
+How the mark is kept: bit 40 of the list block's header cell (the cell in
+front of the length, which holds the block's capacity; DESIGN.md "Text
+mark"). The length and the elements are untouched, so every list word reads
+a text list exactly as before.
 
 ### Windows and fixpoints
 
