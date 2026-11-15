@@ -3212,7 +3212,7 @@ open(f"{T}/o1.want", "w").write("\n".join(want) + "\n")
 open(f"{T}/o1.bare", "w", encoding="utf-8").write("".join(bare))
 open(f"{T}/o1.n", "w").write(str(len(bare)))
 PYEOF
-[ "$(gcp < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] && [ "$(gref < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] \
+[ "$(gcp < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] && [ "$(grefp < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] \
   && ok "on $(cat "$TMP/o1.n") int cases (INT64_MAX/MIN, MAX-1, the old [2^48,2^49) band, 0x7F<<48, a tag-band int below the heap, -1 0 7) the six give Python's 64-bit result, golf2 and oracle" \
   || no "W12-O1 ints: $(diff <(gcp < "$TMP/o1.prog") "$TMP/o1.want" | head -5 | tr '\n' ' ')"
 w12o1y=$(printf '%*s' "$(cat "$TMP/o1.n")" '' | tr ' ' Y)
