@@ -348,6 +348,28 @@ def _numchk(scalar):
     assert len(tpl) == 22 + len(scalar)
     return tpl
 
+# W16: ≡ ≺ ≻ ÷ ∣ ⌹ / % and ♯ ⊣ ⊢ ⊥ map over lists (`def bpoly` / `def
+# upoly`).  The int path tests the top byte only; the op's own hook cell
+# (hook_addr) is loaded only when that byte is 0x7F.  The hook returns either
+# to the scalar body (not a list) or past it (a list, mapped): the body's
+# length is what lib/prelude.golfj's ‹_w16_h…› add to the return address.
+BPOLY_ATOMS = (0x87, 0xA0, 0xA1, 0x8A, 0x8B, 0x97)   # ≡ ≺ ≻ ÷ ∣ ⌹ (+ / % above)
+UPOLY_ATOMS = (0xAA, 0xAB, 0xAC, 0xAD)               # ♯ ⊣ ⊢ ⊥
+def _bpoly(byte, scalar):
+    """Wrap a binary scalar template in the W16 top-byte check (29 bytes)."""
+    tpl = TPL.call("bpoly", [_u32(hook_addr(byte)), list(scalar)])
+    assert len(tpl) == 29 + len(scalar) <= 255, (byte, len(tpl))
+    return tpl
+def _upoly(byte, scalar):
+    """Wrap a unary scalar template in the W16 top-byte check (22 bytes)."""
+    tpl = TPL.call("upoly", [_u32(hook_addr(byte)), list(scalar)])
+    assert len(tpl) == 22 + len(scalar), (byte, len(tpl))
+    return tpl
+def w16_body_len(byte):
+    """The scalar body length the W16 hook for `byte` skips."""
+    t = OVERRIDES[byte]
+    return len(t) - (29 if byte not in UPOLY_ATOMS else 22)
+
 # The data must say what these names say: every override is checked against
 # the builder it is documented as, with the builder's arguments taken from the
 # constants above — so a hook address typed wrong in the data file fails here.
@@ -356,8 +378,14 @@ for _b in _POLY_V1:
     assert OVERRIDES[_b] == _poly(_b, v1.TEMPLATES[chr(_b)]), f"override {_b:02X}"
 for _b in _POLY_ATOMS:
     assert OVERRIDES[_b] == _poly(_b, _ATOM_TPL[_b]), f"override {_b:02X}"
-for _b in map(ord, "/%"):                                       # W10-B
-    assert OVERRIDES[_b] == _udivchk(v1.TEMPLATES[chr(_b)]), f"override {_b:02X}"
+for _b in map(ord, "/%"):                                       # W10-B, W16
+    assert OVERRIDES[_b] == _bpoly(_b, _udivchk(v1.TEMPLATES[chr(_b)])), f"override {_b:02X}"
+for _b in BPOLY_ATOMS:                                          # W16
+    assert OVERRIDES[_b] == _bpoly(_b, _ATOM_TPL[_b]), f"override {_b:02X}"
+for _b in UPOLY_ATOMS:                                          # W16
+    assert OVERRIDES[_b] == _upoly(_b, _ATOM_TPL[_b]), f"override {_b:02X}"
+# ⌹ is ÷'s divchk with a ceiling tail (data/templates.txt `def ceilpush`).
+assert _ATOM_TPL[0x97] == TPL.call("divchk", [TPL.call("negxor"), TPL.call("ceilpush")])
 for _b in map(ord, ".)("):                                      # W11-1C
     assert OVERRIDES[_b] == _FLUSH_CALL + list(v1.TEMPLATES[chr(_b)]), f"override {_b:02X}"
 for _b in NUMCHK_BYTES:                                         # W12-O1
