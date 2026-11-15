@@ -106,7 +106,8 @@ The first `golfc` run builds the compiler ladder into `build/`
 ## 2. The v1 core
 
 These are the ops GOLF had before v2. They are inherited unchanged, except
-that `+ - *` now also act on lists (see the note below the table). The cells
+that `+ - *` and (since W16) `/ %` now also act on lists (see the note below
+the table). The cells
 are 64-bit, so `+ - * / %` work on all 64 bits.
 
 ### Operators
@@ -120,8 +121,8 @@ are 64-bit, so `+ - * / %` work on all 64 bits.
 | `0x2B` | `+` | `( a b -- a+b )` | add, wrapping at 64 bits. On lists it works elementwise |
 | `0x2D` | `-` | `( a b -- a-b )` | subtract. The result is `0` when `a == b`, so it also tests equality. On lists it works elementwise |
 | `0x2A` | `*` | `( a b -- a*b )` | multiply (low 64 bits). On lists it works elementwise |
-| `0x2F` | `/` | `( a b -- a/b )` | **unsigned** 64-bit divide (`0 1-2/` is 2^63-1). `÷` is the signed one. Dividing by 0 prints `GOLF: divide by zero` to fd 2 and exits 1 |
-| `0x25` | `%` | `( a b -- a%b )` | **unsigned** 64-bit remainder. `∣` is the signed one. Dividing by 0 prints `GOLF: divide by zero` to fd 2 and exits 1 |
+| `0x2F` | `/` | `( a b -- a/b )` | **unsigned** 64-bit divide (`0 1-2/` is 2^63-1). `÷` is the signed one. Dividing by 0 prints `GOLF: divide by zero` to fd 2 and exits 1. On lists it works elementwise (W16) |
+| `0x25` | `%` | `( a b -- a%b )` | **unsigned** 64-bit remainder. `∣` is the signed one. Dividing by 0 prints `GOLF: divide by zero` to fd 2 and exits 1. On lists it works elementwise (W16) |
 | `0x3C` | `<` | `( a b -- f )` | `-1` if `a < b` **unsigned**, else `0`. `≺` is the signed one |
 | `0x40` | `@` | `( addr -- v )` | fetch a **32-bit** value, zero-extended. `⊙` fetches a full 64-bit cell |
 | `0x21` | `!` | `( v addr -- )` | store the low **32 bits** of `v`. `⊛` stores a full 64-bit cell |
@@ -164,10 +165,15 @@ itself) the hook cell is zero, so nothing is ever called and the atoms
 compute on the bits. On a list, `⊕` costs about 2.5 ns per element in one
 pass, against about 4.5 for `′⊕€` (see `bench/RESULTS.md`, W13-C).
 
-The bitwise atoms `~ $ | = > ≪ ≫` and the bit atoms `♯ ⊣ ⊢ ⊥` (W13-B) stay **raw** on purpose. They work on a
-list's bits with no check, because building and stripping the tag
-(`32767 48≪|`, `16≪16>`) is bit arithmetic on exactly those values. The same
-goes for the raw forms `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`, and for the comparisons `< » ≡ ≺ ≻`.
+Since W16 the comparisons `≡ ≺ ≻`, the divisions `/ % ÷ ∣ ⌹` and the bit
+atoms `♯ ⊣ ⊢ ⊥` map over lists too, with the same broadcast as `+ - *`
+(see "Comparisons, divisions and bit atoms on lists (W16)"). The bitwise atoms
+`~ $ | = > ≪ ≫` stay **raw** on purpose. They work on a list's bits with no
+check, because building and stripping the tag (`32767 48≪|`, `16≪16>`) is
+bit arithmetic on exactly those values. The same goes for the raw forms
+`﹢ ﹣ ﹡ ⊓ ⊔ ﹤` and the unsigned comparisons `< »`. To compare two lists'
+cells (their addresses) rather than their elements, spell it raw: `﹣1﹤` is
+`≡`, and `&&﹤==63≫` is `≺` (`&&»==63≫` is `≻`).
 
 ### Special forms
 
@@ -276,11 +282,11 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0x84` | `⊗` | `\dbl` | TOS * 2 (a list: elementwise, any depth) |
 | `0x85` | `⊘` | `\hlv` | TOS >> 1 (a list: elementwise, any depth) |
 | `0x86` | `»` | `\gt` | a b -> (a>b unsigned ? -1 : 0) |
-| `0x87` | `≡` | `\eq` | a b -> (a==b ? -1 : 0) |
+| `0x87` | `≡` | `\eq` | a b -> (a==b ? -1 : 0); lists: elementwise, broadcast |
 | `0x88` | `⌈` | `\max` | a b -> max(a,b) signed |
 | `0x89` | `⌊` | `\min` | a b -> min(a,b) signed |
-| `0x8A` | `÷` | `\sdv` | a b -> a/b signed (b=0: error exit 1) |
-| `0x8B` | `∣` | `\smd` | a b -> a%b signed (b=0: error exit 1) |
+| `0x8A` | `÷` | `\sdv` | a b -> a/b signed (b=0: error exit 1); lists: elementwise, broadcast |
+| `0x8B` | `∣` | `\smd` | a b -> a%b signed (b=0: error exit 1); lists: elementwise, broadcast |
 | `0x8D` | `⍎` | `\exec` | pop a function (a code address, or a ∘ ⊸ closure record), call it |
 | `0x91` | `﹢` | `\radd` | raw add (never polymorphic) |
 | `0x92` | `﹣` | `\rsub` | raw sub (never polymorphic) |
@@ -288,8 +294,9 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0x94` | `⊓` | `\rmin` | raw unsigned min (never polymorphic) |
 | `0x95` | `⊔` | `\rmax` | raw unsigned max (never polymorphic) |
 | `0x96` | `﹤` | `\rlt` | raw unsigned less -1/0 (never polymorphic) |
-| `0xA0` | `≺` | `\slt` | a b -> (a<b signed ? -1 : 0) |
-| `0xA1` | `≻` | `\sgt` | a b -> (a>b signed ? -1 : 0) |
+| `0x97` | `⌹` | `\cdiv` | a b -> ceil(a/b) signed (b=0: error exit 1); lists: elementwise, broadcast |
+| `0xA0` | `≺` | `\slt` | a b -> (a<b signed ? -1 : 0); lists: elementwise, broadcast |
+| `0xA1` | `≻` | `\sgt` | a b -> (a>b signed ? -1 : 0); lists: elementwise, broadcast |
 | `0xA2` | `≪` | `\shl` | shift left (by TOS) |
 | `0xA3` | `≫` | `\sar` | arithmetic shift right (by TOS) |
 | `0xA4` | `⊙` | `\fetch` | addr -> v, full 64-bit cell |
@@ -298,10 +305,10 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0xA7` | `⎈` | `\sys` | a1 a2 a3 num -> result: raw syscall |
 | `0xA8` | `⊷` | `\spr` | -> sp bp: push rsp (as before the atom), then rbp |
 | `0xA9` | `⊶` | `\spw` | sp bp ->: set rbp, then rsp (both stacks jump) |
-| `0xAA` | `♯` | `\pcnt` | x -> number of 1 bits (popcount) |
-| `0xAB` | `⊣` | `\ctz` | x -> trailing zero bits (64 for 0) |
-| `0xAC` | `⊢` | `\clz` | x -> leading zero bits (64 for 0) |
-| `0xAD` | `⊥` | `\lsb` | x -> x & -x, the lowest set bit (0 for 0) |
+| `0xAA` | `♯` | `\pcnt` | x -> number of 1 bits (popcount) (a list: elementwise, any depth) |
+| `0xAB` | `⊣` | `\ctz` | x -> trailing zero bits (64 for 0) (a list: elementwise, any depth) |
+| `0xAC` | `⊢` | `\clz` | x -> leading zero bits (64 for 0) (a list: elementwise, any depth) |
+| `0xAD` | `⊥` | `\lsb` | x -> x & -x, the lowest set bit (0 for 0) (a list: elementwise, any depth) |
 | `0xAE` | `⌁` | `\scall` | a1 a2 a3 a4 a5 a6 num -> result: raw six-argument syscall |
 
 ### Compiler ops
@@ -971,7 +978,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 | word | stack effect | meaning |
 |---|---|---|
 | `‹slice›` | `list i n -> list` | the `n` elements starting at index `i`. A negative `i` counts from the end (`-1` is the last element) and is then clamped to `0`. An `i` at or past the end gives an empty list. `n` is clamped to what is left, and a negative `n` counts as `0` |
-| `‹indexof›` | `list x -> i` | index of the first element equal to `x`, or `-1` when there is none. Equality is `≡`'s raw cell equality, so an inner list is found only as that very list |
+| `‹indexof›` | `list x -> i` | index of the first element equal to `x`, or `-1` when there is none. Equality is raw cell equality (`﹣1﹤`, what `≡` was before W16), so an inner list is found only as that very list |
 | `‹unique›` | `list -> list` | the first occurrence of each distinct element, in the original order. It uses a hash set, so it runs in O(n) expected time |
 | `‹flatten›` | `list -> list` | every int in a nested list, depth-first, as one flat list. It works at any depth, because it loops one level at a time instead of recursing |
 
@@ -1795,6 +1802,61 @@ The third example prints `7` and then `0`: the closure was freed, so the
 bytes in use are back where they were. The fourth makes and frees 100,000
 compositions.
 
+### Comparisons, divisions and bit atoms on lists (W16)
+
+`≡ ≺ ≻` (compare), `/ % ÷ ∣ ⌹` (divide) and `♯ ⊣ ⊢ ⊥` (bits) now work on
+lists, the way `+ - *` and `± ⊕` do. A binary one maps elementwise and
+broadcasts a scalar: list with int, int with list, list with list (to the
+shorter length), and an element that is itself a list maps again, to any
+depth. A unary one maps over every element, to any depth. The result is a new
+list; the operands are not changed.
+
+```
+5⍳2/⍕          ->  0 0 1 1 2 
+5⍳3≡⍕          ->  0 0 0 -1 0 
+1 5⍳≺⍕         ->  0 0 -1 -1 -1 
+5⍳2∣0≡⍕        ->  -1 0 -1 0 -1 
+3⍳′⍳€2≻⍕       ->  [] [0] [0 0] 
+5⍳♯⍕           ->  0 1 1 2 1 
+7 2⌹Ṅ          ->  4
+0 7-2⌹Ṅ        ->  -3
+5⍳3⌹⍕          ->  0 1 1 1 2 
+5⍳0÷⍕          ->  GOLF: divide by zero
+```
+
+**`⌹` (`\cdiv`, 0x97) is ceiling division**, `a b -> ⌈a/b⌉`, signed, rounding
+toward +infinity for every sign combination (`7 2⌹` is 4, `-7 2⌹` is -3,
+`7 -2⌹` is -3, `-7 -2⌹` is 4). It is checked like `÷`: a zero divisor prints
+`GOLF: divide by zero` to fd 2 and exits 1 (or raises it inside a
+`‹catch›`), and `INT64_MIN -1⌹` is `INT64_MIN`, as `÷` gives. The usual
+`a+b-1 b÷` spelling is wrong for negative operands and can overflow; `⌹`
+is neither. Koko Eating Bananas is `⍘&Ṁ1\\⟦→k&←k⌹∑&≻⟧ʘh`: `←k⌹` divides
+every pile by `k`, rounding up.
+
+What changed for code that relied on the old meaning:
+
+- **`≡` on two lists compares elements now**, not addresses: `l l≡` is a
+  list of `-1`s. Write `﹣1﹤` for "is this the same cell" (`l m﹣1﹤`), or
+  `≣` for structural equality (`≣` is unchanged). `≺ ≻` likewise; their raw
+  signed spellings are `&&﹤==63≫` and `&&»==63≫`, and `63≫` is `0≺`.
+- `x 0≡` on a list gives a list of flags, so a "is it zero" test on a value
+  that may be a list is `1﹤` (`x <u 1`).
+- `Ṅ` of a list still prints the tagged word as a number; the prelude spells
+  its own compares and divisions so that nothing it does changes on a list.
+
+**Cost.** On integers each of these ops pays one compare-and-branch on the
+top byte of each operand (`cmp byte [rsp+7],0x7F`, then `[rsp+15]` for the
+second): in a 300M-iteration loop (`5 300000000{"7≡_⊖"1﹤}`, best of 5 on
+a shared machine), about +0.1 to +0.5 ns per op (`≡` 0.51 → 0.67 s, `≺`
+0.55 → 0.63, `♯` 0.45 → 0.47; `/ ∣` within noise of the `div` itself).
+Only a value whose top byte is `0x7F` reaches the hook, which maps only a
+tagged value whose address is in the list heap, so `INT64_MAX` and the other
+large integers stay numbers. Without the prelude (`golfc -n`, the compiler
+itself) the hook cells are zero and the atoms are raw. Each use is 29 bytes
+of code longer (22 for the unary ones). On a list the map calls the atom
+once per element (`5⍳3⌹` calls `⌹`'s thunk five times), so it costs a few
+ns per element.
+
 ### Checked arithmetic
 
 The bare `+ - *` (and `﹢ ﹣ ﹡`) wrap at 64 bits, silently. The checked words
@@ -1831,9 +1893,10 @@ would take for a list, see Known limits in `DESIGN.md`) is just a number here,
 The last two exit with status 1 (the message is on stderr). The sixth shows
 the bare increment wrapping. Overflow is found from the wrapped result `r`:
 for `‹cadd›` when `(a^r)&(b^r)` is negative, for `‹csub›` when `(a^b)&(a^r)`
-is, and for `‹cmul›` when `a≠0` and either `r÷a ≠ b` or `a = -1, b = INT64_MIN`
-(the one case the divide test misses, since `÷` defines `INT64_MIN÷-1` as
-`INT64_MIN`).
+is, and for `‹cmul›` when the high 64 bits of the exact 128-bit product
+(computed from 32-bit halves) are not `r`'s sign, `r≫63`. Through W15
+`‹cmul›` tested `r÷a ≠ b`; W16 made `÷` map over lists, so the test changed
+to keep these words scalar.
 
 ### LeetCode library: search, counting, lists, math, text
 
