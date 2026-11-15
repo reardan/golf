@@ -161,3 +161,7 @@ EF	ED	L	tfword	E1B9AD
 98	ED	L	hjoin	E28B88
 99	ED	L	cancel	E28D99
 9A	ED	L	both	E2A5AE
+9B	ED	L	prune	E28DA5
+9C	ED	L	distinct	E1B88C
+9D	ED	L	firstwhere	E28DAD
+9E	ED	L	exself	E28D9C

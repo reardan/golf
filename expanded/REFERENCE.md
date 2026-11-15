@@ -403,6 +403,10 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0x98` | `⋈` | `\hjoin` | — | hash join: x y -> pairs; flat `j i` for each i whose y[i] equals an earlier x[j] (the latest j < i) |
 | `0x99` | `⍙` | `\cancel` | — | stack cancel: l ′p -> l'; x cancels the stack top t when `t x p` is 0, else is pushed |
 | `0x9A` | `⥮` | `\both` | — | both ways: l ′f -> a b; a = f l, b = f of l reversed, reversed back |
+| `0x9B` | `⍥` | `\prune` | — | pruned permutations: n ′ok -> perms; the permutations of 0..n-1 (lexicographic) whose every prefix passes ok (ok leaves 0); a failing prefix is never extended |
+| `0x9C` | `Ḍ` | `\distinct` | — | all distinct: l -> f; 0 when no two elements are equal (lists by ≣), else -1 |
+| `0x9D` | `⍭` | `\firstwhere` | — | first where: l ′f -> x; the first element for which f leaves non-zero (f is not called after it), else -1 |
+| `0x9E` | `⍜` | `\exself` | — | except self: l ′f -> l'; l'[i] = f folded over every element but l[i] (f associative; O(n)); fewer than 2 elements: empty reduce |
 
 ### Digraph page
 

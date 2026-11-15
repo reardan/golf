@@ -229,3 +229,7 @@ L	EF	tfword	ṭ	alias of ‹tf›: f -> list, “true“ when f is 0, else “fa
 L	98	hjoin	⋈	hash join: x y -> pairs; flat `j i` for each i whose y[i] equals an earlier x[j] (the latest j < i)
 L	99	cancel	⍙	stack cancel: l ′p -> l'; x cancels the stack top t when `t x p` is 0, else is pushed
 L	9A	both	⥮	both ways: l ′f -> a b; a = f l, b = f of l reversed, reversed back
+L	9B	prune	⍥	pruned permutations: n ′ok -> perms; the permutations of 0..n-1 (lexicographic) whose every prefix passes ok (ok leaves 0); a failing prefix is never extended
+L	9C	distinct	Ḍ	all distinct: l -> f; 0 when no two elements are equal (lists by ≣), else -1
+L	9D	firstwhere	⍭	first where: l ′f -> x; the first element for which f leaves non-zero (f is not called after it), else -1
+L	9E	exself	⍜	except self: l ′f -> l'; l'[i] = f folded over every element but l[i] (f associative; O(n)); fewer than 2 elements: empty reduce
