@@ -728,7 +728,10 @@ echo "Tool library lib/tio.golfj (M-TOOL): a die · b open · c read · d write 
 # compiled program, which is the only way a NUL-terminated path gets in — a
 # “…“ literal is a counted block, not a C string, so argv is what `b` is fed.
 python3 tools/codepage.py encode < lib/tio.golfj > "$TMP/tio.gb"
-tio(){ cat "$TMP/pre.gb" "$TMP/tio.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/tp" 2>/dev/null \
+# prn FILES…: the prelude pruned to what FILES reach, then FILES — the whole
+# prelude plus a tool library no longer fits the image cap (W16).
+prn(){ cat "$@" > "$TMP/prn.gb"; python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/prn.gb"; cat "$TMP/prn.gb"; }
+tio(){ python3 tools/codepage.py encode > "$TMP/tio.c.gb"; prn "$TMP/tio.gb" "$TMP/tio.c.gb" | "$TMP/golf2" > "$TMP/tp" 2>/dev/null \
          && chmod +x "$TMP/tp" && "$TMP/tp" "$@"; }
 printf 'GOLF tio\n' > "$TMP/tio-in"                    # 9 bytes, this harness's own file
 # The library's whole point in one line, used twice below (a small file and a
@@ -774,7 +777,7 @@ printf '%s' '0→i{65g ←i1\radd→i ←i 20000\rlt1\radd}f' | tio > "$TMP/tio-
 # a file and once from a PIPE, where a short read is the rule and not the
 # exception.  `build/gencode < self/golf2.golfj` is exactly this shape.
 printf '%s' '0 e N E _' | python3 tools/codepage.py encode > "$TMP/tioslurp.gb"
-cat "$TMP/pre.gb" "$TMP/tio.gb" "$TMP/tioslurp.gb" | "$TMP/golf2" > "$TMP/tps" 2>/dev/null && chmod +x "$TMP/tps"
+prn "$TMP/tio.gb" "$TMP/tioslurp.gb" | "$TMP/golf2" > "$TMP/tps" 2>/dev/null && chmod +x "$TMP/tps"
 [ "$("$TMP/tps" < "$TMP/tio-big" 2>/dev/null)" = "200003" ] \
   && ok "e slurp of fd 0 (a redirected file)" || no "slurp stdin"
 [ "$(cat "$TMP/tio-big" | "$TMP/tps" 2>/dev/null)" = "200003" ] \
@@ -790,7 +793,7 @@ printf '%s' '2 h 1 b 5177520\store 79g 75g 10g f' | tio "$TMP/tio-in" "$TMP/tio-
 # The error policy, end to end: a missing file is a message on fd 2 and status
 # 1, not a 0 length that quietly produces an empty artifact.
 printf '%s' '1 h 0 b _ “not reached“O' | python3 tools/codepage.py encode > "$TMP/tiodie.gb"
-cat "$TMP/pre.gb" "$TMP/tio.gb" "$TMP/tiodie.gb" | "$TMP/golf2" > "$TMP/tpd" 2>/dev/null && chmod +x "$TMP/tpd"
+prn "$TMP/tio.gb" "$TMP/tiodie.gb" | "$TMP/golf2" > "$TMP/tpd" 2>/dev/null && chmod +x "$TMP/tpd"
 tiomsg=$("$TMP/tpd" "$TMP/no-such-file-here" 2>&1 >/dev/null); tiost=$?
 [ "$tiost" = 1 ] && [ "$tiomsg" = "tio: cannot open file for reading" ] \
   && ok "a die: open of a missing file -> fd 2 + exit 1" || no "die on open failure"
@@ -812,7 +815,7 @@ echo "Tool text library (lib/ttext.golfj): byte ranges, compare/find, decimal, h
 # prefix).  Flags are zero-is-true, like `T` and like `[` itself; not-found and
 # bad-digit are -1, which is why every check below prints with the signed Ṅ.
 python3 tools/codepage.py encode < lib/ttext.golfj > "$TMP/ttext.gb"
-gtt(){ cat "$TMP/pre.gb" "$TMP/ttext.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
+gtt(){ python3 tools/codepage.py encode > "$TMP/tt.c.gb"; prn "$TMP/ttext.gb" "$TMP/tt.c.gb" | "$TMP/golf2" > "$TMP/p" 2>/dev/null \
          && chmod +x "$TMP/p" && "$TMP/p"; }
 # i is-digit, j is-ASCII-letter.  195 is a UTF-8 lead byte: Python's isalpha()
 # would call the character it starts a letter, j calls it not one (by design —
@@ -908,7 +911,7 @@ python3 tools/codepage.py encode < lib/tutf.golfj > "$TMP/tutf.gb" 2>/dev/null \
 # process substitution reads it), and the compiled binary is then handed the
 # real data/codepage.tsv -- `t` takes a BUFFER, not a path, so the table library
 # is testable with no file I/O and no dependency on lib/tio.golfj.
-gt(){ cat "$TMP/pre.gb" "$TMP/tutf.gb" <(python3 tools/codepage.py encode) | "$TMP/golf2" > "$TMP/tup" 2>/dev/null \
+gt(){ python3 tools/codepage.py encode > "$TMP/tu.c.gb"; prn "$TMP/tutf.gb" "$TMP/tu.c.gb" | "$TMP/golf2" > "$TMP/tup" 2>/dev/null \
         && chmod +x "$TMP/tup" && "$TMP/tup" < data/codepage.tsv; }
 # Every case first slurps stdin into a heap buffer and hands `t` (buf len); `t`
 # leaves the record count, which the lookup cases drop with `_`.  `\gets` is
@@ -3483,8 +3486,9 @@ for w12z4a in parens islands slidemax; do
 done
 grep -q '⊛' bench/leetcode/golf/parens.golfj bench/leetcode/golf/islands.golfj bench/leetcode/golf/slidemax.golfj && w12z4bad="$w12z4bad [raw ⊛ left]"
 # (W13-F: parens kept its stack on the data stack under €, islands is ʘ7 ‹gcomps›.
-# W15: parens is the stack-cancel adverb ⍙.)
-grep -q '⍙' bench/leetcode/golf/parens.golfj && grep -q 'ʘ7' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
+# W15: parens is the stack-cancel adverb ⍙; W16: the balanced-brackets
+# digraph ʘ(.)
+grep -q 'ʘ(' bench/leetcode/golf/parens.golfj && grep -q 'ʘ7' bench/leetcode/golf/islands.golfj && grep -q '⊟' bench/leetcode/golf/slidemax.golfj || w12z4bad="$w12z4bad [new words missing]"
 for w12z4a in '([]{})' '([)]' '((' '())' '}' '{[()()]}'; do
   [ "$(printf '%s\n' "$w12z4a" | "$TMP/z4lc/parens")" = "$(printf '%s\n' "$w12z4a" | python3 bench/leetcode/py/parens.py)" ] || w12z4bad="$w12z4bad [parens $w12z4a]"
 done
@@ -3737,8 +3741,10 @@ cmp -s "$TMP/a7.sbin" "$TMP/a7.bin" && cmp -s "$TMP/a7.rbin" "$TMP/a7.bin" && [ 
 [ "$(python3 tools/codepage.py decode < <(printf '%s' '\else' | python3 tools/codepage.py encode))" = "⋄" ] \
   && ok "\\else encodes to 0xB8 and decodes as ⋄" || no "⋄ code page"
 # bench/leetcode/golf/queens.golfj's column loop is a {c⋄body} since W12-A7.
-w12a7q=""; grep -q '⋄' bench/leetcode/golf/queens.golfj || w12a7q=" [no ⋄]"
-"$EXP/tools/golfc" -j "$EXP/bench/leetcode/golf/queens.golfj" "$TMP/a7q" > /dev/null 2>&1 || w12a7q="$w12a7q [compile]"
+# (W16 rewrote the bench solution with ⍥; its W15 bitmask form is kept here.)
+printf '%s\n' '⊡s⇒r⇒l⇒cc0≡±lr|~c$⇒v{v0≡⋄v⊥"v=⇒v"c=\\"l|⊗\\r|⊘s+};∑1\\≪⊖0"s' > "$TMP/a7q.golfj"
+w12a7q=""; grep -q '⋄' "$TMP/a7q.golfj" || w12a7q=" [no ⋄]"
+"$EXP/tools/golfc" -j "$TMP/a7q.golfj" "$TMP/a7q" > /dev/null 2>&1 || w12a7q="$w12a7q [compile]"
 for w12a7n in 1 2 3 4 5 6 7 8; do
   [ "$(echo $w12a7n | "$TMP/a7q")" = "$(echo $w12a7n | python3 bench/leetcode/py/queens.py)" ] || w12a7q="$w12a7q [n=$w12a7n]"
 done
@@ -4130,7 +4136,7 @@ while IFS= read -r w12o6l; do
   [ "$(printf '%s' "$w12o6x" | gc 2>&1 | sed 's/ *$//')" = "$w12o6w" ] || w12o6bad="$w12o6bad [$w12o6x]"
 done < <(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -- '  ->  ')
 [ -z "$w12o6bad" ] && [ "$(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md | grep -c -- '  ->  ')" -ge 5 ] \
-  && grep -q 'ṭ⊐' bench/leetcode/golf/parens.golfj \
+  && grep -q 'ṭ' bench/leetcode/golf/parens.golfj \
   && ok "REFERENCE.md's ‹tf› examples print what they say; Valid Parentheses prints through ṭ (‹tf›)" || no "W12-O6 examples:$w12o6bad"
 # === W12-O4 ===
 echo "W12-O4: bench/leetcode/golf/* — answers match Python on gen.py 0.001 inputs; bytes never grow past README.md"
@@ -5962,6 +5968,16 @@ echo "W16-D: text-marked lists print as text in implicit output; ʀ inclusive ra
   && ok "ʘ( ‹balanced›: (), [], {} balanced and nested, others ignored; 300000 deep; Valid Parentheses is ʘ(ṭ" || no "W16-D ʘ("
 # REFERENCE.md's W16 examples print what they say; course ends in ṭ with no ⊐;
 # the pruned build and the oracle agree.
+w16bad=""
+while IFS= read -r w16l; do
+  w16p=${w16l%%  ->*}; w16p=${w16p%"${w16p##*[! ]}"}; w16w=${w16l##*->  }
+  [ "$(printf '%s' "$w16p" | gc 2>&1)" = "$w16w" ] || w16bad="$w16bad [$w16p]"
+done < <(sed -n '/^### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w16bad" ] && [ "$(sed -n '/^### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
+  && [ "$(printf '2\n1 0\n' | gin '⍘\\ʘ/ʘo\\_ṭ')" = true ] && [ "$(printf '2\n1 0 0 1\n' | gin '⍘\\ʘ/ʘo\\_ṭ')" = false ] \
+  && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gcp)" = "true0 1 2 3 ba" ] \
+  && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gref)" = "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gc)" ] \
+  && ok "REFERENCE.md's W16 examples print what they say; Course Schedule ends in ṭ; pruned build and oracle agree" || no "W16-D docs / course / pruned / oracle:$w16bad"
 
 # === W16-B ===
 echo "W16-B: ≡ ≺ ≻ / % ÷ ∣ and ♯ ⊣ ⊢ ⊥ map over lists; ⌹ ceiling division; the prelude compares raw"
@@ -6045,12 +6061,14 @@ w16bad=""
 while IFS= read -r w16l; do
   w16p=${w16l%%  ->*}; w16p=${w16p%"${w16p##*[! ]}"}; w16w=${w16l##*->  }
   [ "$(printf '%s' "$w16p" | gc 2>&1)" = "$w16w" ] || w16bad="$w16bad [$w16p]"
-done < <(sed -n '/^### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
-[ -z "$w16bad" ] && [ "$(sed -n '/^### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 8 ] \
-  && [ "$(printf '2\n1 0\n' | gin '⍘\\ʘ/ʘo\\_ṭ')" = true ] && [ "$(printf '2\n1 0 0 1\n' | gin '⍘\\ʘ/ʘo\\_ṭ')" = false ] \
-  && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gcp)" = "true0 1 2 3 ba" ] \
-  && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gref)" = "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gc)" ] \
-  && ok "REFERENCE.md's W16 examples print what they say; Course Schedule ends in ṭ; pruned build and oracle agree" || no "W16-D docs / course / pruned / oracle:$w16bad"
+done < <(sed -n '/^### Comparisons, divisions and bit atoms on lists (W16)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w16bad" ] && [ "$(sed -n '/^### Comparisons, divisions and bit atoms on lists (W16)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 10 ] \
+  && ok "REFERENCE.md's W16 examples print what they say" || no "REFERENCE W16 examples:$w16bad"
+# Byte, mnemonic, the pruned build and the oracle.
+[ "$(printf '%s' '\cdiv⌹' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "9797" ] \
+  && [ "$(printf '%s' '5⍳3⌹⍕5⍳2≡⍕8⍳♯⍕7⍳3%⍕' | gcp)" = "0 1 1 1 2 0 0 -1 0 0 0 1 1 2 1 2 2 3 0 1 2 0 1 2 0 " ] \
+  && [ "$(printf '%s' '5⍳3⌹⍕5⍳2≡⍕8⍳♯⍕7⍳3%⍕' | gref)" = "$(printf '%s' '5⍳3⌹⍕5⍳2≡⍕8⍳♯⍕7⍳3%⍕' | gc)" ] \
+  && ok "⌹ is 0x97 (\\cdiv); the pruned build and the oracle (boot/golfref.py) agree" || no "W16 byte / pruned / oracle"
 
 # === W16-A ===
 echo "W16-A: input references ① ②, derived verbs (an adverb after an adverb), blocks that read their ⊡ word's locals"
@@ -6162,6 +6180,7 @@ done < <(sed -n '/^### Input references, derived verbs and block locals (W16)$/,
 [ -z "$w16bad" ] && [ "$w16n" -ge 6 ] && [ "$(w16i '②①0*⟦&0⌈⍃\\①≡⊞-⌈⌈⍀⟧⇤Ṁ' 'abcde\nace\n')" = "3" ] \
   && ok "REFERENCE.md's W16 examples print what they say ($w16n, and the LCS row)" || no "REFERENCE W16 examples:$w16bad"
 
+
 # === W16-C ===
 echo "W16-C: ⍥ pruned permutations, Ḍ distinct, ⍭ first where, ⍜ except self (0x9B-0x9E)"
 # Byte rows and adverb quoting (⍥ ⍭ ⍜ are in blob record 6, Ḍ is not).
@@ -6265,16 +6284,6 @@ w16co='4⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥⍕5⍳⊕*⍜⍕3⍳′⍳€≢⍭⍕“abc
   && [ "$(printf '%s' "$w16co" | gcp)" = "[1 3 0 2] [2 0 3 1] 120 60 40 30 24 0 -1-1" ] \
   && [ "$(printf '%s' "$w16co" | gref)" = "$(printf '%s' "$w16co" | gc)" ] \
   && ok "REFERENCE.md's W16 examples print what they say; pruned build and oracle agree" || no "W16-C examples / pruned / oracle:$w16cbad"
-
-done < <(sed -n '/^### Comparisons, divisions and bit atoms on lists (W16)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
-[ -z "$w16bad" ] && [ "$(sed -n '/^### Comparisons, divisions and bit atoms on lists (W16)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 10 ] \
-  && ok "REFERENCE.md's W16 examples print what they say" || no "REFERENCE W16 examples:$w16bad"
-# Byte, mnemonic, the pruned build and the oracle.
-[ "$(printf '%s' '\cdiv⌹' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "9797" ] \
-  && [ "$(printf '%s' '5⍳3⌹⍕5⍳2≡⍕8⍳♯⍕7⍳3%⍕' | gcp)" = "0 1 1 1 2 0 0 -1 0 0 0 1 1 2 1 2 2 3 0 1 2 0 1 2 0 " ] \
-  && [ "$(printf '%s' '5⍳3⌹⍕5⍳2≡⍕8⍳♯⍕7⍳3%⍕' | gref)" = "$(printf '%s' '5⍳3⌹⍕5⍳2≡⍕8⍳♯⍕7⍳3%⍕' | gc)" ] \
-  && ok "⌹ is 0x97 (\\cdiv); the pruned build and the oracle (boot/golfref.py) agree" || no "W16 byte / pruned / oracle"
-
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

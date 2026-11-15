@@ -147,29 +147,29 @@ lower its number.
 | problem | bytes |
 |---|---|
 | twosum | 4 |
-| parens | 10 |
+| parens | 3 |
 | stock | 4 |
-| longsub | 9 |
-| prodself | 7 |
+| longsub | 8 |
+| prodself | 2 |
 | topk | 6 |
 | islands | 7 |
-| trap | 9 |
+| trap | 7 |
 | slidemax | 3 |
-| queens | 56 |
+| queens | 14 |
 | search | 3 |
-| koko | 21 |
+| koko | 13 |
 | oranges | 12 |
-| course | 10 |
+| course | 9 |
 | delay | 16 |
-| redundant | 16 |
+| redundant | 11 |
 | coins | 11 |
-| lcs | 24 |
+| lcs | 19 |
 | temps | 6 |
-| bits | 5 |
+| bits | 3 |
 
-Total 239: the first ten 115 (177 before W15's rewrite, 411 before
-W13-F's, 655 before W12-6's, 898 at the baseline above), the second ten
-124 (326 before W15).
+Total 161: the first ten 58 (115 before W16's rewrite, 177 before W15's,
+411 before W13-F's, 655 before W12-6's, 898 at the baseline above), the
+second ten 103 (124 before W16, 326 before W15).
 
 ### Notes
 

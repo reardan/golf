@@ -3348,17 +3348,18 @@ first difference is always `0`, so a falling market prints `0`.
 5
 ```
 
-**Trapping Rain Water (42), `trap.golfj`, 9 bytes.** The water over a bar is
+**Trapping Rain Water (42), `trap.golfj`, 7 bytes.** The water over a bar is
 the lower of the highest bar to its left and the highest bar to its right,
-less its own height. `⌈⍀` is the running maximum from the left, of the
-heights it takes from the input. `&` reaches under it for the heights again,
-and `⌈⍂` is their running maximum from the right: `⍂` is the right scan,
-`⌽`, `⍀`, `⌽` in one word. `⌊` takes the smaller of the two at each bar,
-`\\-` subtracts the heights (a third copy, swapped on top), and `∑` adds up
-the water. Both maxima include the bar itself, so no term is negative.
+less its own height. `⌈⍀` is the running maximum from the left, and `⥮`
+right after it (an adverb after an adverb, W16) runs that derived verb both
+ways: the running maximum from the left and, reversed back, the one from the
+right, of the heights it takes from the input. `⌊` takes the smaller of the
+two at each bar, `\\-` subtracts the heights (a second copy, swapped on top),
+and `∑` adds up the water. Both maxima include the bar itself, so no term is
+negative.
 
 ```golfj
-⌈⍀&⌈⍂⌊\\-∑
+⌈⍀⥮⌊\\-∑
 ```
 
 ```stdin
