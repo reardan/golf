@@ -93,6 +93,8 @@ BA	ED	C	vdec	E287A3
 BB	ED	C	blk	E29FA6
 BC	ED	C	endblk	E29FA7
 BD	ED	C	dig	CA98
+BE	ED	C	inone	E291A0
+BF	ED	C	intwo	E291A1
 52	E-	L	range	E28DB3
 53	E-	L	sum	E28891
 4C	E-	L	len	E289A2

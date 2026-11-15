@@ -328,6 +328,8 @@ Single-byte tokens the compiler handles itself (prefixes, delimiters, definition
 | `0xBB` | `⟦` | `\blk` | opens an inline block: ⟦ … ⟧ is an anonymous word compiled in place; ⟧ pushes its address |
 | `0xBC` | `⟧` | `\endblk` | closes an inline block and pushes its address |
 | `0xBD` | `ʘ` | `\dig` | prefix: ʘB (any byte B) is the long name ‹_dgHH›, HH = B in upper-case hex (see Digraph page) |
+| `0xBE` | `①` | `\inone` | line 1 of the input, typed: one int, a list of ints, or the line as a code list (look-ahead, cached) |
+| `0xBF` | `②` | `\intwo` | line 2 of the input, typed like ① |
 
 ### Library words
 
@@ -701,13 +703,14 @@ for a named word. Its body is a `:` word's: `^` returns from the block, and
 blocks nest. It costs what a `:` word plus a `′` does: one `jmp` over the
 body and one `push imm32`.
 
-- In a `⊡` word, a block cannot reach the word's locals. The block is called
+- In a `⊡` word, a block cannot write the word's locals. The block is called
   later, by whatever it is passed to (`€` and the rest call it under their own
-  frames), so `rbp` is not the word's. Rather than read a wrong cell, the
-  compiler refuses: inside a block in a `⊡` word, `⇒x` and `⇐x`, and a bare
-  `x`, `⇡x` or `⇣x` naming one of the word's locals, are `GOLF: block uses
-  local x`, exit 2. A `^` in such a block is the plain return and releases no
-  frame. Pass a value in on the stack instead, or bind it with `⊸`.
+  frames), so `rbp` is not the word's. Inside a block in a `⊡` word, `⇒x`,
+  and `⇡x` or `⇣x` naming one of the word's locals, are `GOLF: block uses
+  local x`, exit 2. Since W16 a block may **read** them (`⇐x`, bare `x`),
+  through the word's link cell: see "Input references, derived verbs and
+  block locals (W16)". A `^` in such a block is the plain return and releases
+  no frame.
 - A block in a `⊚` chain is `GOLF: ⟦ inside a chain`, and a `⟧` with no `⟦`
   open (inside the innermost `[`, `{` or `⟦`) is `GOLF: ⟧ outside a block`.
   A `⋄` belongs to the innermost `[` or `{`, so one directly inside a block is
@@ -738,6 +741,98 @@ same five bytes.
 
 In the last line, the first `a` calls the word `a` (100), `⇒a` names the local,
 and the second `a` is the local.
+
+### Input references, derived verbs and block locals (W16)
+
+W16-A adds three things that make short programs shorter: two bytes that name
+the input's first two lines, an adverb that takes another adverb's result,
+and blocks that can read the locals of the `⊡` word they are written in.
+
+**Input references: `①` and `②` (`\inone` / `\intwo`, `0xBE` / `0xBF`).**
+`①` pushes line 1 of the input and `②` line 2, **typed**: the line is split
+on blanks, and
+
+- one token that is an integer (an optional `-`, then digits) is that int;
+- two or more tokens that are all integers are the list of them;
+- anything else (a token that is not an integer, an empty or a missing line)
+  is the line itself as a code list, without its newline.
+
+| program | stdin | prints | how |
+|---|---|---|---|
+| `①②‹stack›` | `3 4 -5` `hello world` | `<2> [3 4 -5] [104 101 …]` | ints, then text |
+| `①②‹stack›` | `42` `7 x` | `<2> 42 [55 32 120]` | one int; `x` makes line 2 text |
+| `②①0*⟦&0⌈⍃\\①≡⊞-⌈⌈⍀⟧⇤Ṁ` | `abcde` `ace` | `3` | Longest Common Subsequence, 20 bytes |
+| `⏎_⊐⏎_⊐①⊐②⊐` | `a` `b` | `abab` | `⏎` reads on; `①` `②` still see lines 1 and 2 |
+
+- They are **look-ahead**, like implicit input (W15): nothing is consumed,
+  so `⏎`, `ℤ`, `⎕` and implicit input read from where the program had got
+  to, and `①` is the input's first line whatever the program has read. Using
+  both `①` and implicit input in one program is fine.
+- Each is made **once**: every `①` is the same value (`①①≡` is `-1` for a
+  list). Do not free it or store into it.
+- They work anywhere a literal does: at top level, in `:` and `⊡` words, in
+  `⟦ … ⟧` blocks and in `⊚` chains, where `①` is a value, not a link. A call
+  token is never quoted before them, and they are never quoted themselves.
+- How: the compiler compiles `①` as a call to the prelude's `‹_in1›` (`②`:
+  `‹_in2›`; `golfc`'s pruning keeps them) and sets the prelude's flag word
+  `‹_inflag›`. At start-up, before the program runs, the prelude sees the
+  flag, moves all of stdin into its input buffer (as implicit input does)
+  and types the first two lines. So a program that uses `①` or `②` waits for
+  the end of its input before it starts, and one that does not pays nothing.
+  Without the prelude (`golfc -n`) `①` is `GOLF: undefined word ‹_in1›`.
+  Names that start with `‹_in` are the prelude's input helpers.
+
+**Derived verbs: an adverb after an adverb.** S1 quotes the call token in
+front of an adverb: `⌈⍀` is `′⌈⍀`. When a **second** adverb follows the
+first directly (`x A B`, no blanks), it takes the function `x A` made — the
+derived verb — as if written `⟦x A⟧B`. More adverbs extend the chain:
+`x A B C` is `⟦⟦x A⟧B⟧C`. For two adverbs the bytes are exactly those of
+`⟦x A⟧B`; a longer chain builds each block after the one before it instead of
+inside it, with the same meaning.
+
+```golfj
+“31415“⊃48-⌈⍀⥮⌊⍕                ->  3 3 4 4 5 
+“010210132121“⊃48-"⌈⍀⥮⌊\\-∑Ṅ    ->  6
+3⍳⟦1+⍳⟧€+⍀€⟦⍕⟧€_                ->  0 0 1 0 1 3 
+```
+
+- Line 1: `⌈⍀⥮` is "prefix maxima, both ways": `⥮` runs `⌈⍀` from the left
+  and from the right. Line 2 is Trapping Rain Water: the lower of the two,
+  minus the heights, summed (`⌈⍀⥮⌊\\-∑` reads its heights as implicit input
+  in `bench/leetcode/golf/trap.golfj`). Line 3 maps the running sum over each
+  of three lists: `+⍀€` is `⟦+⍀⟧€`.
+- Whitespace still separates: in `⌈⍀ ⥮` the `⥮` quotes nothing new (it is a
+  call of `⥮` on whatever is below), and `⌈ ⍀⥮` quotes `⍀` for `⥮`, as before
+  W16. A token that is not a quoted call token (a number, a `⟧`, a local)
+  starts no chain.
+
+**Blocks read their word's locals.** In a `⊡` word, a `⟦ … ⟧` block may now
+**read** the word's locals: `⇐x`, or a bare `x`, of a local the word has
+named before the block. The block is called later, from wherever it was
+passed to, so the compiler reaches the word's frame through the word's
+**link cell** instead of `rbp`: a word with such a block points the cell at
+its frame on entry and puts the old value back on every exit (`;` and every
+`^`), so a recursive word's blocks read their own activation's locals.
+
+```golfj
+⊡‹add›⇒k⇒l ⇐l⟦k+⟧€;5⍳10‹add›⍕                                    ->  10 11 12 13 14 
+⊡‹v›⇒k⇒f 2⍳⟦k+⟧€⇐f⍎;⊡‹w›⇒a ⟦a*⟧100‹v›;3‹w›⍕                     ->  300 303 
+⊡‹q›⇒r⇒l⇒c⇐c←F≡[⋄1^]←N⍳⟦1\\≪"cl|r|$["c|\\"l|1≪\\r|1≫‹q›⋄_0]⟧€∑;8→N 255→F 0 0 0‹q›Ṅ   ->  92
+```
+
+- Line 2: `‹w›`'s block, called by `‹v›` while `‹v›`'s own block reads `‹v›`'s
+  `k`, still reads `‹w›`'s `a`: every word has its own cell.
+- Line 3 is N-Queens with bitmasks: `‹q›` maps a block over the columns, and
+  the block reads the word's `c l r` and calls `‹q›` again.
+- **Writes are still refused**: `⇒x`, `⇡x` and `⇣x` of a word's local inside
+  a block, and `⇐x` of a local the word has not named yet, are
+  `GOLF: block uses local x`, exit 2.
+- Do not call such a block after its word has returned (store it and call it
+  later): it would read whatever frame the cell points at then.
+- Cost: only a word whose block reads a local pays — one hidden local and two
+  small stubs after its body (its `sub rbp`/`add rbp` become calls to them).
+  A read is 13 bytes instead of 5. The cells are one per name number, at
+  `0x434000 + 8*name` (REGISTRY.md §3.6).
 ### More one-byte words
 
 W13-C adds twelve one-byte prelude words, `0xE4`–`0xEF`, for the shapes that
@@ -2694,7 +2789,7 @@ wrote it, not by the encoded copy `golfc` hands the compiler.
 | `⋄ outside [ ] or { } at …` · `⋄ twice in one block at …` | a `⋄` with no `[` or `{` open (top level, the body of a word, after a `]`) · a second `⋄` in one `[ ]` or `{ }` (W12-A7) |
 | `⇡ needs a variable at …` · `⇣ needs a variable at …` | a `⇡`/`⇣` not followed by a letter or a `‹long name›` (W12-Z2) |
 | `⟧ outside a block at …` · `⟦ inside a chain at …` | a `⟧` whose innermost open `[`/`{`/`⟦` is not a `⟦` · a `⟦` in the body of a `⊚` chain (W13-A) |
-| `block uses local x at …` | inside a `⟦ … ⟧` in a `⊡` word: any `⇒x`/`⇐x`, or a bare `x` / `⇡x` / `⇣x` naming one of the word's locals (W13-A) |
+| `block uses local x at …` | inside a `⟦ … ⟧` in a `⊡` word: a `⇒x`, or a `⇡x` / `⇣x` naming one of the word's locals (W13-A), or a `⇐x` of a local the word has not named yet (since W16 a block may read the word's locals) |
 | `program too large` | the binary would pass 192 KB. No place: it is the size of the whole image |
 
 ```

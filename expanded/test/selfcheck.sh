@@ -374,15 +374,15 @@ w13aw='0 1 4 9 16 0 1 3 6 10 1 2 3 4 0 1 4 9 1 2 3 1 2 3 1 2 3 1 2 3 -5 -4 -3 0 
 [ "$("$TMP/new.w13a" 2>/dev/null)" = "$w13aw" ] && cmp -s "$TMP/old.w13a" "$TMP/new.w13a" \
   && ok "golf2 == seed on the W13-A program, and it runs" || no "W13-A program: $("$TMP/new.w13a" 2>/dev/null) / seed $("$TMP/old.w13a" 2>/dev/null)"
 w13ab=""
-for w13ac in '⟧|⟧ outside a block' '[⟧]|⟧ outside a block' '⊚g ⟦1⟧;|⟦ inside a chain' '⊡f⇒a 3⍳⟦a+⟧€;|block uses local a' \
-             '⊡f⇒a ⟦⇐a⟧;|block uses local a' '⊡f⟦⇒b⟧;|block uses local b' '⊡f⇒a ⟦⇡a⟧;|block uses local a'; do
+for w13ac in '⟧|⟧ outside a block' '[⟧]|⟧ outside a block' '⊚g ⟦1⟧;|⟦ inside a chain' '⊡f⇒a 3⍳⟦⇒a⟧€;|block uses local a' \
+             '⊡f⟦⇐a⟧⇒a;|block uses local a' '⊡f⟦⇒b⟧;|block uses local b' '⊡f⇒a ⟦⇡a⟧;|block uses local a'; do
   cat "$TMP/pre.gb" <(printf '%s' "${w13ac%%|*}" | python3 tools/codepage.py encode) > "$TMP/badblk.src"
   "$TMP/seed"  < "$TMP/badblk.src" > "$TMP/badblk.old" 2>"$TMP/badblk.olderr"; sst=$?
   "$TMP/golf2" < "$TMP/badblk.src" > "$TMP/badblk.new" 2>"$TMP/badblk.newerr"; gst=$?
   [ "$sst" = 2 ] && [ "$gst" = 2 ] && [ ! -s "$TMP/badblk.old" ] && [ ! -s "$TMP/badblk.new" ] && [ ! -s "$TMP/badblk.olderr" ] \
     && [ "$(cat "$TMP/badblk.newerr")" = "GOLF: ${w13ac#*|} at line 1" ] || w13ab="$w13ab [${w13ac%%|*}: seed $sst, golf2 $gst]"
 done
-[ -z "$w13ab" ] && ok "both refuse a stray ⟧, a ⟦ in a chain and a local inside a ⟦ in a ⊡ word, exit 2 (W13-A)" || no "W13-A rejection differs:$w13ab"
+[ -z "$w13ab" ] && ok "both refuse a stray ⟧, a ⟦ in a chain and a write to a local inside a ⟦ in a ⊡ word, exit 2 (W13-A; W16-A reads are fine)" || no "W13-A rejection differs:$w13ab"
 
 # === W13-INT ===
 echo "W13-INT: ʘ digraphs through A's dispatch (S1 quoting, links, prefixes) — seed and golf2 agree"
@@ -393,6 +393,19 @@ printf '%s' "$w13is" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > 
 both w13i "$TMP/src.w13i"
 [ "$("$TMP/new.w13i" 2>/dev/null)" = "1 2 3 -1 0 1 431683" ] && cmp -s "$TMP/old.w13i" "$TMP/new.w13i" \
   && ok "golf2 == seed on the ʘ program, and ʘx€ quotes (W13-INT)" || no "W13-INT ʘ program: $("$TMP/new.w13i" 2>/dev/null) / seed $("$TMP/old.w13i" 2>/dev/null)"
+
+# === W16-A ===
+echo "W16-A: ① ②, derived verbs and block locals — seed and golf2 agree"
+# Derived verbs (two and three adverbs, a long name), a ⊡ word whose blocks
+# read its locals (bare and ⇐, nested, with ^ exits, recursion), and ① ② at
+# top level, in a chain and in a block (‹_inflag›'s push patched by both).
+w16s='“31415“⊃48-⌈⍀⥮⌊⍕:‹g›+;3⍳⟦1+⍳⟧€‹g›⍀€⟦⍕⟧€_2⍳⟦_2⍳⟦_“3152“⊃48-⟧€⟧€⌈⍀€€‹flatten›⍕⊡‹q›⇒r⇒l⇒c⇐c←F≡[⋄1^]←N⍳⟦1\\≪"cl|r|$["c|\\"l|1≪\\r|1≫‹q›⋄_0]⟧€∑;6→N 63→F 0 0 0‹q›Ṅ⊡‹p›⇒a⇒b 3⍳⟦⟦⇐a+⟧⍎b*⟧€⍕⇐a 7≡[⋄99^]1;1 2‹p›Ṅ 3 7‹p›Ṅ①Ṅ⊚‹h›② ① +;‹h›Ṅ2⍳⟦②+⟧€⍕'
+printf '%s' "$w16s" | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - > "$TMP/src.w16"
+both w16 "$TMP/src.w16"
+w16w='3 3 4 4 5 0 0 1 0 1 3 3 3 5 5 3 3 5 5 3 3 5 5 3 3 5 5 42 3 4 121 24 27 9910155 6 '
+[ "$(printf '10\n5\n' | "$TMP/new.w16" 2>/dev/null)" = "$w16w" ] && cmp -s "$TMP/old.w16" "$TMP/new.w16" \
+  && ok "golf2 == seed on the W16-A program (⌈⍀⥮, ⌈⍀€€, N-Queens through a block, ① ② in a chain and a block), and it runs" \
+  || no "W16-A program: $(printf '10\n5\n' | "$TMP/new.w16" 2>/dev/null) / seed $(printf '10\n5\n' | "$TMP/old.w16" 2>/dev/null)"
 
 echo
 echo "self/golf2.golfj: $(wc -c < self/golf2.golfj) bytes of hand-written v2 GOLF"

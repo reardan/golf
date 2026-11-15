@@ -183,8 +183,8 @@
 # without claiming a slot: name -> name slot+1, or name 0).  T: k -> ; k is 0
 # for inc, 8 for dec (the modrm's /0 or /1).  x must be a letter or a long
 # name; golf2 says `GOLF: ⇡ needs a variable`, the seed exits 2.
-:Mm56+@[0^]0m80+!{m80+@m88+@-[0^]"m80+@4*m96++@-[m56+@2-[2.]m80+@1+^]m80+@1+m80+!0}; # M: name -> name s (W13-A: m56 = 2, a ⟦ block in a ⊡ word: a named local exits 2)
-:TG"256<1+["65-26<&97-26<+[2.]]M"[_72o255o\4+o37o8*5111808+w^]1-8*\_72o255o\69+oo; # T: k -> ; ⇡/⇣'s bytes
+:Mm56+@[0^]0m80+!{m80+@m88+@-[0^]"m80+@4*m96++@-[m80+@1+^]m80+@1+m80+!0}; # M: name -> name s (W16-A: from a ⟦ block too; the caller decides)
+:TG"256<1+["65-26<&97-26<+[2.]]M"[_72o255o\4+o37o8*5111808+w^]m56+@2-[2.]1-8*\_72o255o\69+oo; # T: k -> ; ⇡/⇣'s bytes (a named local from a ⟦ block: exit 2)
 # W13-A — the default token (golf2.golfj: ‹inrec› ‹quoted› ‹plain›; its
 # comments have the rules).  A: ch key -> 0 iff ch is a byte of blob record
 # key's body (scratch m176 the byte, m180 the cursor, m184 the end — W11-3B's
@@ -193,7 +193,32 @@
 # (the adverbs) quote the name with X — a long name always, a one-byte name
 # unless it is in record 7 (the bytes that never quote) — else e as before.
 :Af"2+m180+!1+?m180+@+m184+!m176+!{m180+@m184+@-[1^]m180+@?m176+@-[0^]m180+@1+m180+!0}; # A: ch key -> f
-:pM"[_(Q!Q@6A["256<[X^]"7A[e^]X^]e^]1-8*\_72o139o69oo80o; # p: name -> ; bare local, quote, or e
+# W16-A: an adverb after an adverb.  ~ (golf2.golfj: ‹derive›) replaces S1's
+# X: name -> ; with the adverb A in Q.  It takes A (m220), reads the next byte
+# into Q, and when that is another adverb compiles `x A` as a ⟦ … ⟧ block
+# (jmp site m224) whose address (m216, 0 while the operand is still ′x) is the
+# next adverb's operand, and so on; then | (‹dpush›: the operand, ′x or the
+# block) and the last adverb.  m212 holds the name.
+:|m216+@"[_m212+@X^]Lw;                                 # |: push the derived verb's operand
+:~m212+!0m216+!{Q@m220+!(Q!Q@6A"[233oPm224+!0w1E|m220+@e94Em224+@km224+@4+606208-m216+!]}|m220+@e; # ~: name -> ; ′x A, or ⟦x A⟧ under a further adverb
+# W16-A: a ⟦ block READS its ⊡ word's locals through the word's link cell,
+# 4407296 + 8*name (m244 the word's name).  $ (golf2: ‹linkread›): name s ->
+# ; claims the hidden slot on the first such read (m208 = slot+1, its table
+# entry the non-name 2000) and emits mov rax,[cell] · mov rax,[rax+d] · push
+# rax.  = (‹linkstubs›): after a
+# link word's epilogue, stub A (m232: sub rbp,8k · save the cell in the
+# hidden slot · cell = rbp · ret) and stub B (m236: restore the cell · add
+# rbp,8k · ret); `;`'s call (site m228) goes to B, and the m92 list's sites
+# become `call A` (the prologue's, which holds 0) or `call B` (each ^'s):
+# the 7-byte rbp adjust whose imm32 is at s turns into `call t` and 66 90
+# (golf2's ‹linkcall›); m240 is the walk's next site.  Then m208 = 0.
+# W16-A: > (golf2: ‹inref›): d -> ; ① (d = '1') or ② ('2') — a call to
+# ‹_ind›, then the immediate of ‹_inflag›'s `push 0` (right after its
+# prologue, record 1) set to 1 when the prelude has defined it.
+:>n95b105b110bbien95b105b110b102b108b97b103biY@"[_^]1f1+?+1+1\!; # >: d -> ; ① / ②
+:$\_m208+@[m88+@16<[2.]2000m88+@4*m96++!m88+@1+"m88+!m208+!]1-8*72o139o4o37om244+@8*4407296+w72o139o64oo80o; # $: name s -> ; a block's read of a local
+:=Pm232+!72o129o237om88+@8*w72o139o4o37om244+@8*4407296+w72o137o69om208+@1-8*o72o137o44o37om244+@8*4407296+w195oPm236+!72o139o69om208+@1-8*o72o137o4o37om244+@8*4407296+w72o129o197om88+@8*w195om236+@m228+@4+-m228+@!{m92+@@m240+!m236+@m240+@[_m232+@]m92+@2+-m92+@2-!232m92+@3-,102m92+@2+,144m92+@3+,m240+@m92+!m92+@1<}0m208+!; # =: the link stubs
+:pM"[_(Q!Q@6A["256<[~^]"7A[e^]~^]e^]m56+@2-[$^]1-8*\_72o139o69oo80o; # p: name -> ; bare local, quote (W16-A: derive), or e
 # ---------------------------------------------------------------------------
 # W11-4A — records, ⊜‹point›‹x›‹y›; (0xB7).  At compile time the header becomes
 # the words golf2's ‹defrecord› emits (see self/golf2.golfj, Records):
@@ -219,7 +244,7 @@
 # never reached the fork, so its links are emitted here as plain calls, and a ⊡
 # word releases its frame.  Then the ordinary epilogue and backpatch, which are
 # the same for every kind of definition.
-"59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!{m92+@@m88+@8*m92+@!m92+!m92+@1<}72o129o197om88+@8*w]94Ek^] # ';' end def -- and close a chain
+"59-[_m32+@1-[0m32+!m36+@1-[m40+@e]m36+@2-[m40+@em44+@e]]m56+@1-[0m56+!m208+@[{m92+@@m88+@8*m92+@!m92+!m92+@1<}72o129o197om88+@8*w]m208+@1<[232oPm228+!0w]]94Em208+@1<[=]k^] # ';' end def -- and close a chain
 # W12-A7: `[` and `{` push a tag above their address (golf2.golfj's dispatcher
 # header has the table): 1000001 `[`, 1000002 `{`, 1000003 after `[…⋄`,
 # 1000004 after `{c⋄` (the exit site sits between it and the target).  `]`
@@ -292,9 +317,9 @@
 # local, or a long local outside a ⊡ word stops the compile: golf2 says which on fd 2; this seed, in v1
 # GOLF, can only exit(2).  Same status, same asymmetry as `e` above, gated by
 # test/selfcheck.sh.
-"177-[_G"233oP4+\Y!RP0w1E72o129o237oPm92+!0w0m88+!1m56+!^] # 0xB1  ⊡  define a word owning a frame of locals
+"177-[_G"m244+!"233oP4+\Y!RP0w1E72o129o237oPm92+!0w0m88+!0m208+!1m56+!^] # 0xB1  ⊡  define a word owning a frame of locals
 "178-[_Gl88o72o137o69oo^]                               # 0xB2  ⇒x pop TOS into local x (a..z or ‹name›)
-"179-[_Gl72o139o69oo80o^]                               # 0xB3  ⇐x push local x
+"179-[_Gm56+@2-[M"[_l]$^]l72o139o69oo80o^]                               # 0xB3  ⇐x push local x
 "185-[_0T^]                                             # 0xB9  ⇡x increment variable x in place (W12-Z2)
 "186-[_8T^]                                             # 0xBA  ⇣x decrement it
 
@@ -344,6 +369,8 @@
 # jmp and pushes the block's address.
 "187-[_m32+@1-[2.]233oP0w1Em56+@"1<[2m56+!]1000005^]     # 0xBB  ⟦  open an inline block
 "188-[_1000005-[m56+!94E"k4+606208-Lw^]2.]               # 0xBC  ⟧  close it, push its address
+"190-[_49>^]                                            # 0xBE  ①  line 1 of the input, typed (W16-A)
+"191-[_50>^]                                            # 0xBF  ②  line 2
 "189-[_(n95b100b103b"16/"10<[7+]48+b16%"10<[7+]48+bi]  # 0xBD  ʘ  a digraph, ‹_dgHH› as a token (W13-B): falls through to LINK and p
 "180-[_N]                                               # 0xB4  ‹  a long name used as a token
 

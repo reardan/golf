@@ -18,9 +18,9 @@ The rule (REFERENCE "Prelude pruning"):
     includes), in top-level prelude code, or in the body of a kept definition:
     a one-byte name, a `‹long name›`, `ʘB` (= ‹_dgHH›) and the operand of every
     prefix op (′ → ← ⇡ ⇣) all count, so quotes, chains, aliases and forward
-    references are covered.  Two compiler ops call prelude words the source
-    does not spell: a 3+-link chain `⊚` forks through ⑂, and a record header
-    `⊜` calls ⍳ and I — they reach those too.
+    references are covered.  Compiler ops that call prelude words the source
+    does not spell reach those too: a 3+-link chain `⊚` forks through ⑂, a
+    record header `⊜` calls ⍳ and I, and W16-A's ① ② call ‹_in1› ‹_in2›.
   * Every definition of a reached name is kept, transitively; the rest are
     dropped.  A dropped definition leaves its newlines behind, so prelude line
     numbers do not move.
@@ -56,6 +56,8 @@ FORK = 0xC7                              # ⑂: what a 3+-link chain calls
 # (golfref: ⊚'s fork; ⊜'s constructor ⍳ and accessors I, and the bytes its
 # setters spell, kept in case any of them becomes a word one day).
 IMPLIED = {mkblob2.CHAIN_BYTE: (FORK,),
+           # W16-A: ① ② call ‹_in1› ‹_in2› (and set ‹_inflag›, top-level kept)
+           **{b: (nm,) for b, nm in mkblob2.IN_NAMES.items()},
            mkblob2.REC_BYTE: (ord("R"), ord("I"), ord("&"), ord("_"),
                               ord("\\"), ord(">"), 0xA2, 0x91, 0xA5)}
 

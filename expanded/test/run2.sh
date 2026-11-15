@@ -4292,12 +4292,12 @@ w13asame '5⍳⟦"*⟧€⍕' '5⍳:x"*;′x€⍕' && w13asame '⟦⟦1+⟧€�
   && ok "blocks run: as € ⌿ arguments, nested, ⍎, ^ returns from the block (also in a ⊡ word); the oracle agrees" || no "S2 programs"
 w13abad=""
 for w13ad in '⟧|⟧ outside a block' '[⟧]|⟧ outside a block' '{⟧}|⟧ outside a block' '⊚g ⟦1⟧;|⟦ inside a chain' \
-             '⟦1⋄2⟧|⋄ outside [ ] or { }' '⊡f⇒a 3⍳⟦a+⟧€;|block uses local a' '⊡f⇒‹n› ⟦⇐‹n›⟧;|block uses local ‹n›' \
-             '⊡f⟦⇒b⟧;|block uses local b' '⊡f⇒a ⟦⇡a⟧;|block uses local a' '⊡f⇒a ⟦⟦a⟧⟧;|block uses local a'; do
+             '⟦1⋄2⟧|⋄ outside [ ] or { }' '⊡f⇒a 3⍳⟦⇒a⟧€;|block uses local a' '⊡f⇒‹n› ⟦⟦⇒‹n›⟧⟧;|block uses local ‹n›' \
+             '⊡f⟦⇒b⟧;|block uses local b' '⊡f⇒a ⟦⇡a⟧;|block uses local a' '⊡f⇒a ⟦⟦⇣a⟧⟧;|block uses local a' '⊡f⟦⇐z⟧⇒z;|block uses local z'; do
   [ "$(w13ae "${w13ad%%|*}")" = "2 GOLF: ${w13ad#*|} at line 1 | 2 GOLF: ${w13ad#*|} at line 1" ] || w13abad="$w13abad [${w13ad%%|*}: $(w13ae "${w13ad%%|*}")]"
 done
 [ -z "$w13abad" ] && [ "$(printf '%s' '⊡f⇒a ⟦⇡q←qṄ⟧⍎a;5fṄ' | gc)" = "15" ] \
-  && ok "a stray ⟧, a ⟦ in a chain, ⋄ directly in a block and any local inside a ⟦ in a ⊡ word: exit 2, golf2 and the oracle alike (a variable is fine)" \
+  && ok "a stray ⟧, a ⟦ in a chain, ⋄ directly in a block, a write to a local (or a read of one not named yet) inside a ⟦ in a ⊡ word: exit 2, golf2 and the oracle alike (a variable is fine; W16-A: reads are)" \
   || no "S2 errors:$w13abad"
 # S4: a bare local is ⇐x's bytes; it shadows a word only after it is named.
 w13asame '⊡f⇒a⇒‹b›a ‹b›*a+;' '⊡f⇒a⇒‹b›⇐a⇐‹b›*⇐a+;' && ! w13asame ':a 1;⊡f a⇒a a;' ':a 1;⊡f⇐a⇒a a;' \
@@ -5957,6 +5957,116 @@ done < <(sed -n '/^### Text lists, `ʀ`, `ℓ` and `ʘ(` (W16)$/,/^### /p' REFER
   && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gcp)" = "true0 1 2 3 ba" ] \
   && [ "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gref)" = "$(printf '%s' '“(x)“⊃ʘ(ṭ⊐3ʀ⍕“ab“⊃⌽' | gc)" ] \
   && ok "REFERENCE.md's W16 examples print what they say; Course Schedule ends in ṭ; pruned build and oracle agree" || no "W16-D docs / course / pruned / oracle:$w16bad"
+
+# === W16-A ===
+echo "W16-A: input references ① ②, derived verbs (an adverb after an adverb), blocks that read their ⊡ word's locals"
+# ① ② typed: one int, a list of ints, else the line as a code list (also an
+# empty or a missing line); look-ahead (⏎ before and after still reads every
+# line) and cached (the same list twice); with implicit input; in a ⊡ word, a
+# block and a chain; the whole prelude and a bare program.
+w16i(){ printf '%s' "$1" > "$TMP/w16i.golfj"; tools/golfc ${3:-} -j "$TMP/w16i.golfj" "$TMP/w16i" 2>&1 && printf "$2" | "$TMP/w16i" 2>&1; }
+[ "$(w16i '①②‹stack›' '3 4 -5\nhello world\n')" = "<2> [3 4 -5] [104 101 108 108 111 32 119 111 114 108 100]" ] \
+  && [ "$(w16i '①②‹stack›' '42\n7 x\n')" = "<2> 42 [55 32 120]" ] \
+  && [ "$(w16i '①②‹stack›' '  -3  \n\n')" = "<2> -3 []" ] \
+  && [ "$(w16i '①②‹stack›' '1 2a\n-\n')" = "<2> [49 32 50 97] [45]" ] \
+  && [ "$(w16i '①②‹stack›' 'abc')" = "<2> [97 98 99] []" ] \
+  && [ "$(w16i '①②‹stack›' '')" = "<2> [] []" ] \
+  && [ "$(w16i '①②‹stack›' ' 12 \n 5 6 \n')" = "<2> 12 [5 6]" ] \
+  && ok "① ② are typed: one int, a list of ints, else the line as a code list (an empty or missing line too)" || no "W16-A ① ② typing: $(w16i '①②‹stack›' '42\n7 x\n')"
+[ "$(w16i '⏎_⊐⏎_⊐①⊐②⊐' 'a\nb\n')" = "abab" ] \
+  && [ "$(w16i '①_⏎_⊐⏎_⊐' 'a\nb\n')" = "ab" ] \
+  && [ "$(w16i 'ℤ∑Ṅ①∑Ṅ②∑Ṅ' '1 2\n3 4\n')" = "1037" ] \
+  && [ "$(w16i '①①≡Ṅ②"≡Ṅ' '1 2\nxy\n')" = "-1-1" ] \
+  && [ "$(w16i '①+⍕' '1 2\n3\n')" = "2 4 " ] \
+  && [ "$(w16i '∑①*Ṅ' '10\n3\n')" = "130" ] \
+  && ok "① ② look ahead (⏎ ℤ before or after still read every line) and are cached; implicit input in the same program" || no "W16-A ① ② look-ahead: $(w16i '⏎_⊐⏎_⊐①⊐②⊐' 'a\nb\n')"
+[ "$(w16i '⊡‹f›⇒a①⇐a+;7‹f›Ṅ 3⍳⟦①+⟧€⍕⊚‹g›①+;4‹g›Ṅ⊚‹h›② ① +;‹h›Ṅ' '10\n5\n')" = "1710 11 12 1415" ] \
+  && [ "$(w16i '①Ṅ' ' -12\n' -P)" = "-12" ] \
+  && [ "$(w16i '①' '1\n' -n)" = "GOLF: undefined word ‹_in1› at line 1" ] \
+  && [ "$(w16i '‹_inflag›Ṅ' '')" = "0" ] && [ "$(w16i '①_‹_inflag›Ṅ' '')" = "1" ] \
+  && [ "$(printf '%s' '\inone\intwo' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "bebf" ] \
+  && ok "① ② work in a ⊡ word, a block and a chain (a value, not a link), with the whole prelude; bare: undefined ‹_in1›; ‹_inflag› is set only by a program that uses them; \\inone \\intwo are 0xBE 0xBF" \
+  || no "W16-A ① ② places: $(w16i '⊡‹f›⇒a①⇐a+;7‹f›Ṅ 3⍳⟦①+⟧€⍕⊚‹g›①+;4‹g›Ṅ⊚‹h›② ① +;‹h›Ṅ' '10\n5\n')"
+# LeetCode 1143 (lcs) in 20 bytes, against Python's DP on random pairs, and
+# golfc (pruned), the oracle and the seed-built compiler agree.
+python3 - "$TMP" <<'PY'
+import random, sys
+T = sys.argv[1]; R = random.Random(16); ins = []; want = []
+for n, m in [(1, 1), (1, 5), (7, 3), (20, 20), (40, 1), (60, 45)]:
+    a = "".join(R.choice("abcd") for _ in range(n)); b = "".join(R.choice("abc") for _ in range(m))
+    p = [0] * (m + 1)
+    for ch in a:
+        c = [0] * (m + 1)
+        for j in range(1, m + 1):
+            c[j] = p[j - 1] + 1 if ch == b[j - 1] else max(p[j], c[j - 1])
+        p = c
+    ins.append(a + "\n" + b + "\n"); want.append(str(p[m]))
+for k, x in enumerate(ins):
+    open(f"{T}/w16l{k}.in", "w").write(x)
+open(f"{T}/w16l.want", "w").write(" ".join(want))
+PY
+printf '%s' '②①0*⟦&0⌈⍃\\①≡⊞-⌈⌈⍀⟧⇤Ṁ' > "$TMP/w16l.golfj"
+tools/golfc -j "$TMP/w16l.golfj" "$TMP/w16l" 2>/dev/null
+python3 tools/codepage.py encode < "$TMP/w16l.golfj" > "$TMP/w16l.gb"
+python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w16l.gb" | cat - "$TMP/w16l.gb" | python3 boot/golfref.py > "$TMP/w16lr" 2>/dev/null; chmod +x "$TMP/w16lr"
+w16lg=""; w16lr=""; for k in 0 1 2 3 4 5; do w16lg="$w16lg $("$TMP/w16l" < "$TMP/w16l$k.in")"; w16lr="$w16lr $("$TMP/w16lr" < "$TMP/w16l$k.in")"; done
+[ "${w16lg# }" = "$(cat "$TMP/w16l.want")" ] && [ "$w16lr" = "$w16lg" ] && [ "$(wc -c < "$TMP/w16l.gb")" = 20 ] \
+  && ok "② ① LCS (20 bytes) equals Python's DP on six random pairs; golfc's pruned prelude keeps ‹_in1› ‹_in2›; the oracle agrees" || no "W16-A LCS: ${w16lg# } / oracle${w16lr} / want $(cat "$TMP/w16l.want")"
+# Derived verbs: x A B is exactly ⟦x A⟧B's bytes, and a chain x A B C means
+# ⟦⟦x A⟧B⟧C (its blocks are built one after the other, not nested, so only
+# the output is compared); whitespace keeps the old meaning.
+w16abad=""
+for w16ap in '⌈⍀⥮|⟦⌈⍀⟧⥮' ':f+;f⍀€|:f+;⟦f⍀⟧€' ':‹g›+;‹g›⍀€|:‹g›+;⟦‹g›⍀⟧€' '⌈⍀ ⥮|′⌈⍀ ⥮' '⌈ ⍀⥮|⌈ ′⍀⥮' '+⍀\\€|′+⍀\\€' '3⍀€|3′⍀€'; do
+  w13asame "${w16ap%%|*}" "${w16ap#*|}" || w16abad="$w16abad [${w16ap%%|*}]"
+done
+[ -z "$w16abad" ] && [ "$(printf '%s' '“31415“⊃48-⌈⍀⥮⌊⍕␤3⍳⟦1+⍳⟧€+⍀€⟦⍕⟧€_␤4⍳⌈⍀⥮⍕⍕' | gc)" = "$(printf '3 3 4 4 5 \n0 0 1 0 1 3 \n3 3 3 3 0 1 2 3 ')" ] \
+  && [ "$(printf '%s' '2⍳⟦_2⍳⟦_“3152“⊃48-⟧€⟧€⌈⍀€€‹flatten›⍕' | gc)" = "3 3 5 5 3 3 5 5 3 3 5 5 3 3 5 5 " ] \
+  && [ "$(printf '%s' '2⍳⟦_2⍳⟦_“3152“⊃48-⟧€⟧€⌈⍀€€‹flatten›⍕' | gref)" = "3 3 5 5 3 3 5 5 3 3 5 5 3 3 5 5 " ] \
+  && [ "$(printf '%s' '“31415“⊃48-⌈⍀⥮⌊⍕3⍳⟦1+⍳⟧€+⍀€⟦⍕⟧€_' | gref)" = "3 3 4 4 5 0 0 1 0 1 3 " ] \
+  && ok "an adverb after an adverb takes the derived verb: x A B compiles to ⟦x A⟧B's bytes (chains, words, long names); a blank keeps the old meaning; the oracle agrees" \
+  || no "W16-A derived verbs:$w16abad"
+# Trapping Rain Water in 7 bytes, ⌈⍀⥮⌊\-∑, against Python on random heights
+# (and the empty and one-element lists).
+python3 - "$TMP" <<'PY'
+import random, sys
+T = sys.argv[1]; R = random.Random(42); ins = []; want = []
+for n in [0, 1, 2, 3, 10, 100, 1000]:
+    h = [R.randint(0, 50) for _ in range(n)]
+    w = sum(min(max(h[:i + 1]), max(h[i:])) - h[i] for i in range(n))
+    ins.append(" ".join(map(str, h)) + "\n"); want.append(str(w))
+for k, x in enumerate(ins):
+    open(f"{T}/w16t{k}.in", "w").write(x)
+open(f"{T}/w16t.want", "w").write(" ".join(want))
+PY
+printf '%s' '⌈⍀⥮⌊\\-∑' > "$TMP/w16t.golfj"; tools/golfc -j "$TMP/w16t.golfj" "$TMP/w16t" 2>/dev/null
+w16tg=""; for k in 0 1 2 3 4 5 6; do w16tg="$w16tg $("$TMP/w16t" < "$TMP/w16t$k.in" 2>&1)"; done
+[ "${w16tg# }" = "$(cat "$TMP/w16t.want")" ] && [ "$(python3 tools/codepage.py encode < "$TMP/w16t.golfj" | wc -c)" = 7 ] \
+  && ok "Trapping Rain Water is ⌈⍀⥮⌊\\-∑ (7 bytes) and equals Python on seven height lists" || no "W16-A trap: ${w16tg# } / want $(cat "$TMP/w16t.want")"
+# Blocks read the word's locals: bitmask N-Queens recursing through a block
+# (n = 1..8), ⇐x and bare x, nested blocks, ^ returns, a block of one word
+# called from inside another link word, and a word with no such block costs
+# nothing (the same bytes as before: its ⊡ prologue is still `sub rbp`).
+w16q='⊡‹q›⇒r⇒l⇒c⇐c←F≡[⋄1^]←N⍳⟦1\\≪"cl|r|$["c|\\"l|1≪\\r|1≫‹q›⋄_0]⟧€∑;'
+[ "$(printf '%s' "$w16q"'8⍳⟦1+"→N 1\\≪1-→F 0 0 0‹q›⟧€⍕' | gc)" = "1 0 0 2 10 4 40 92 " ] \
+  && [ "$(printf '%s' "$w16q"'6→N 63→F 0 0 0‹q›Ṅ' | gref)" = "4" ] \
+  && [ "$(printf '%s' '⊡‹p›⇒a⇒b 3⍳⟦⇐a+b*⟧€⍕⇐a 7≡[⋄99^]1;1 2‹p›Ṅ 3 7‹p›Ṅ⊡‹d›⇒a 2⍳⟦⟦a+⟧€⟧⍎⍕;5‹d›' | gc)" = "2 3 4 121 24 27 995 6 " ] \
+  && [ "$(printf '%s' '⊡‹v›⇒k⇒f 2⍳⟦k+⟧€⇐f⍎;⊡‹w›⇒a ⟦a*⟧100‹v›;3‹w›⍕' | gc)" = "300 303 " ] \
+  && [ "$(printf '%s' '⊡‹v›⇒k⇒f 2⍳⟦k+⟧€⇐f⍎;⊡‹w›⇒a ⟦a*⟧100‹v›;3‹w›⍕' | gref)" = "300 303 " ] \
+  && printf '%s' '⊡f⇒a 3⟦1+⟧⍎ a;' | python3 tools/codepage.py encode | "$TMP/golf2" > "$TMP/w16c" 2>/dev/null \
+  && od -An -tx1 "$TMP/w16c" | tr -d ' \n' | grep -q '4881ed08000000.*4881c508000000' \
+  && ! od -An -tx1 "$TMP/w16c" | tr -d ' \n' | grep -q '00404300' \
+  && printf '%s' '⊡f⇒a 3⟦a+⟧⍎ a;' | python3 tools/codepage.py encode | "$TMP/golf2" > "$TMP/w16c" 2>/dev/null \
+  && od -An -tx1 "$TMP/w16c" | tr -d ' \n' | grep -q '4883ed088f4500e8........6690.*488b042530434300488b400050.*e8........ff75004883c508c34881ed10000000488b04253043430048894508' \
+  && ok "a ⟦ in a ⊡ word reads the word's locals (⇐x, bare, nested, after ^, recursion: N-Queens 1..8; a block passed to another link word); a word without such a block is unchanged; the oracle agrees" \
+  || no "W16-A block locals: $(printf '%s' "$w16q"'8⍳⟦1+"→N 1\\≪1-→F 0 0 0‹q›⟧€⍕' | gc)"
+# REFERENCE.md's W16 examples print what they say.
+w16bad=""; w16n=0
+while IFS= read -r w16l; do
+  w16p=${w16l%%  ->*}; w16p=${w16p%"${w16p##*[! ]}"}; w16w=${w16l##*->  }; w16n=$((w16n+1))
+  [ "$(printf '%s' "$w16p" | gc 2>&1)" = "$w16w" ] || w16bad="$w16bad [$w16p]"
+done < <(sed -n '/^### Input references, derived verbs and block locals (W16)$/,/^### /p' REFERENCE.md | sed -n '/^```golfj$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w16bad" ] && [ "$w16n" -ge 6 ] && [ "$(w16i '②①0*⟦&0⌈⍃\\①≡⊞-⌈⌈⍀⟧⇤Ṁ' 'abcde\nace\n')" = "3" ] \
+  && ok "REFERENCE.md's W16 examples print what they say ($w16n, and the LCS row)" || no "REFERENCE W16 examples:$w16bad"
 
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
