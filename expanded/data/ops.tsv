@@ -229,3 +229,5 @@ L	EF	tfword	ṭ	alias of ‹tf›: f -> list, “true“ when f is 0, else “fa
 L	98	hjoin	⋈	hash join: x y -> pairs; flat `j i` for each i whose y[i] equals an earlier x[j] (the latest j < i)
 L	99	cancel	⍙	stack cancel: l ′p -> l'; x cancels the stack top t when `t x p` is 0, else is pushed
 L	9A	both	⥮	both ways: l ′f -> a b; a = f l, b = f of l reversed, reversed back
+L	9F	irange	ʀ	inclusive range: n -> [0..n] (⍳ of n+1)
+L	42	line	ℓ	next line of stdin without its \n, text-marked (⏎ with the flag dropped; end of input: empty list)
