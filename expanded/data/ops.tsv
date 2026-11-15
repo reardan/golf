@@ -50,15 +50,15 @@ A	85	hlv	⊘	TOS >> 1 (a list: elementwise, any depth)
 
 # Comparison / selection / signed arithmetic (result -1/0 like '<')
 A	86	gt	»	a b -> (a>b unsigned ? -1 : 0)
-A	87	eq	≡	a b -> (a==b ? -1 : 0)
+A	87	eq	≡	a b -> (a==b ? -1 : 0); lists: elementwise, broadcast
 
 # W9-1A: ⌈ ⌊ are SIGNED; unsigned max/min stay available as the raw ⊔ ⊓ below
 A	88	max	⌈	a b -> max(a,b) signed
 A	89	min	⌊	a b -> min(a,b) signed
 
 # W9-2B: ÷ ∣ are CHECKED (see `def divchk` in data/templates.txt)
-A	8A	sdv	÷	a b -> a/b signed (b=0: error exit 1)
-A	8B	smd	∣	a b -> a%b signed (b=0: error exit 1)
+A	8A	sdv	÷	a b -> a/b signed (b=0: error exit 1); lists: elementwise, broadcast
+A	8B	smd	∣	a b -> a%b signed (b=0: error exit 1); lists: elementwise, broadcast
 
 # Quotations: ⍎ calls a code address or a ∘ ⊸ closure record (W13-H)
 A	8D	exec	⍎	pop a function (a code address, or a ∘ ⊸ closure record), call it
@@ -71,9 +71,12 @@ A	94	rmin	⊓	raw unsigned min (never polymorphic)
 A	95	rmax	⊔	raw unsigned max (never polymorphic)
 A	96	rlt	﹤	raw unsigned less -1/0 (never polymorphic)
 
+# W16: ceiling division, in the raw-atom range's spare byte (REGISTRY §1.2)
+A	97	cdiv	⌹	a b -> ceil(a/b) signed (b=0: error exit 1); lists: elementwise, broadcast
+
 # M4 atoms: signed compare, shifts, 64-bit cells
-A	A0	slt	≺	a b -> (a<b signed ? -1 : 0)
-A	A1	sgt	≻	a b -> (a>b signed ? -1 : 0)
+A	A0	slt	≺	a b -> (a<b signed ? -1 : 0); lists: elementwise, broadcast
+A	A1	sgt	≻	a b -> (a>b signed ? -1 : 0); lists: elementwise, broadcast
 A	A2	shl	≪	shift left (by TOS)
 A	A3	sar	≫	arithmetic shift right (by TOS)
 A	A4	fetch	⊙	addr -> v, full 64-bit cell
@@ -89,11 +92,11 @@ A	A7	sys	⎈	a1 a2 a3 num -> result: raw syscall
 A	A8	spr	⊷	-> sp bp: push rsp (as before the atom), then rbp
 A	A9	spw	⊶	sp bp ->: set rbp, then rsp (both stacks jump)
 
-# W13-B: bit atoms, RAW like the other bitwise atoms
-A	AA	pcnt	♯	x -> number of 1 bits (popcount)
-A	AB	ctz	⊣	x -> trailing zero bits (64 for 0)
-A	AC	clz	⊢	x -> leading zero bits (64 for 0)
-A	AD	lsb	⊥	x -> x & -x, the lowest set bit (0 for 0)
+# W13-B: bit atoms (W16: elementwise on a list, like ± ⊕)
+A	AA	pcnt	♯	x -> number of 1 bits (popcount) (a list: elementwise, any depth)
+A	AB	ctz	⊣	x -> trailing zero bits (64 for 0) (a list: elementwise, any depth)
+A	AC	clz	⊢	x -> leading zero bits (64 for 0) (a list: elementwise, any depth)
+A	AD	lsb	⊥	x -> x & -x, the lowest set bit (0 for 0) (a list: elementwise, any depth)
 
 # W14-A: the six-argument syscall
 A	AE	scall	⌁	a1 a2 a3 a4 a5 a6 num -> result: raw six-argument syscall
