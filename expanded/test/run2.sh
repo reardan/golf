@@ -4140,7 +4140,8 @@ done < <(sed -n '/^\*\*Booleans (W12-O6)/,/^Output still pending/p' REFERENCE.md
   && ok "REFERENCE.md's ‹tf› examples print what they say; Valid Parentheses prints through ṭ (‹tf›)" || no "W12-O6 examples:$w12o6bad"
 # === W12-O4 ===
 echo "W12-O4: bench/leetcode/golf/* — answers match Python on gen.py 0.001 inputs; bytes never grow past README.md"
-# The twenty problems (the W12 ten and W13-F's ten) and their ceilings are
+# The hundred problems (the W12 ten, W13-F's ten and P100's eighty, whose
+# inputs come from gen/<name>.py) and their ceilings are
 # bench/leetcode/README.md's "Byte ceilings" table; bytes are counted as
 # bytes.sh counts them (code-page bytes, newlines dropped).  gen.py seeds
 # random.Random(42), so its inputs are the same every run; it also writes
@@ -4156,15 +4157,15 @@ while read -r w12o4p w12o4c; do
   w12o4b=$(tr -d '\n' < "$TMP/lc.gb" | wc -c)
   [ "$w12o4b" -le "$w12o4c" ] || w12o4bad="$w12o4bad [$w12o4p: $w12o4b bytes > $w12o4c]"
   cat "$TMP/pre.gb" "$TMP/lc.gb" | "$TMP/golf2" > "$TMP/lcbin" 2>/dev/null; chmod +x "$TMP/lcbin"
-  for w12o4i in "$w12o4D/$w12o4p".txt "$w12o4D/$w12o4p"[0-9].txt; do
+  for w12o4i in "$w12o4D/$w12o4p".txt "$w12o4D/$w12o4p"[0-9].txt "$w12o4D/$w12o4p"[0-9][0-9].txt; do
     [ -f "$w12o4i" ] || continue
     [ "$("$TMP/lcbin" < "$w12o4i" 2>&1 | tr -s ' \n' '  ' | sed 's/ *$//')" \
       = "$(python3 "$w12o4L/py/$w12o4p.py" < "$w12o4i" | tr -s ' \n' '  ' | sed 's/ *$//')" ] \
       || w12o4bad="$w12o4bad [$w12o4p: wrong answer on $(basename "$w12o4i")]"
   done
 done < <(sed -n '/^### Byte ceilings$/,/^### /p' "$w12o4L/README.md" | sed -n 's/^| \([a-z]*\) | \([0-9]*\) |$/\1 \2/p')
-[ "$w12o4n" = 20 ] && [ -z "$w12o4bad" ] \
-  && ok "the 20 LeetCode solutions give Python's answers on tiny inputs, each within its README byte ceiling" \
+[ "$w12o4n" = 100 ] && [ -z "$w12o4bad" ] \
+  && ok "the 100 LeetCode solutions give Python's answers on tiny inputs, each within its README byte ceiling" \
   || no "W12-O4 leetcode ($w12o4n problems):$w12o4bad"
 # === W12-Z1 ===
 echo "W12-Z1: one-byte aliases ℤ ⎕ ⏎ Ḋ Ġ Ṗ Ḳ Ḃ Ṿ (0xDB-0xE3) of the hottest long names"
@@ -5802,30 +5803,32 @@ for w13ip in twosum parens stock longsub prodself topk islands trap slidemax que
 done
 [ -z "$w13ibad" ] && ok "the ten bench/leetcode programs: the same answers pruned and whole, $((w13isum / 10)) bytes on average" || no "W13-I bench:$w13ibad"
 # === W13-F ===
-echo "W13-F: bench/leetcode has twenty problems; ceilings are tight; pyg/ and the W13 forms agree with py/"
+echo "W13-F: bench/leetcode has a hundred problems; ceilings are tight; pyg/ and the W13 forms agree with py/"
 # W12-O4 (above) runs the golf solutions against README.md's ceilings.  Here:
-# the twenty names in README.md's "Byte ceilings" table are bench.sh's and
-# bytes.sh's lists, in order; each has golf/ py/ pyg/ cpp/ files; each
-# ceiling is the solution's size exactly (so a shrink must lower it) and
-# "Total N" is their sum.
-w13fL=bench/leetcode; w13fbad=""; w13fsum=0
+# bench.sh and bytes.sh take their list from README.md's "Byte ceilings"
+# table; each problem has golf/ py/ notes/ files, the first twenty pyg/ and
+# cpp/ too, the eighty after them a gen/<name>.py; each ceiling is the
+# solution's size exactly (so a shrink must lower it) and "Total N" is their sum.
+w13fL=bench/leetcode; w13fbad=""; w13fsum=0; w13fk=0
 w13fn=$(sed -n '/^### Byte ceilings$/,/^### /p' "$w13fL/README.md" | sed -n 's/^| \([a-z]*\) | \([0-9]*\) |$/\1 \2/p')
-w13fnames=$(printf '%s\n' "$w13fn" | cut -d' ' -f1 | tr '\n' ' ' | sed 's/ $//')
+w13fnames=$(printf '%s\n' "$w13fn" | head -20 | cut -d' ' -f1 | tr '\n' ' ' | sed 's/ $//')   # the twenty with pyg/
 for w13fs in bench.sh bytes.sh; do
-  [ "$(sed -n '/^for p in /,/; do$/p' "$w13fL/$w13fs" | tr -d '\\\n' | sed 's/^for p in *//; s/; do$//; s/  */ /g')" = "$w13fnames" ] \
-    || w13fbad="$w13fbad [$w13fs list]"
+  grep -q "sed -n '/^### Byte ceilings\$/,/^### /p' README.md" "$w13fL/$w13fs" || w13fbad="$w13fbad [$w13fs list]"
 done
 while read -r w13fp w13fc; do
-  for w13ff in golf/$w13fp.golfj py/$w13fp.py pyg/$w13fp.py cpp/$w13fp.cpp; do
+  w13fk=$((w13fk + 1))
+  w13ffs="golf/$w13fp.golfj py/$w13fp.py notes/$w13fp.md"
+  [ $w13fk -le 20 ] && w13ffs="golf/$w13fp.golfj py/$w13fp.py pyg/$w13fp.py cpp/$w13fp.cpp" || w13ffs="$w13ffs gen/$w13fp.py"
+  for w13ff in $w13ffs; do
     [ -f "$w13fL/$w13ff" ] || w13fbad="$w13fbad [missing $w13ff]"
   done
   [ "$(python3 tools/codepage.py encode < "$w13fL/golf/$w13fp.golfj" | tr -d '\n' | wc -c)" = "$w13fc" ] \
     || w13fbad="$w13fbad [$w13fp: ceiling $w13fc is not its size]"
   w13fsum=$((w13fsum + w13fc))
 done <<< "$w13fn"
-[ "$(printf '%s\n' "$w13fn" | wc -l)" = 20 ] && [ -z "$w13fbad" ] \
+[ "$(printf '%s\n' "$w13fn" | wc -l)" = 100 ] && [ "$(printf '%s\n' "$w13fn" | cut -d' ' -f1 | sort -u | wc -l)" = 100 ] && [ -z "$w13fbad" ] \
   && sed -n '/^### Byte ceilings$/,/^### /p' "$w13fL/README.md" | grep -q "^Total $w13fsum:" \
-  && ok "README's twenty ceilings are bench.sh's and bytes.sh's problems, each solution's exact size, total $w13fsum" \
+  && ok "README's hundred ceilings are distinct problems with their files, each solution's exact size, total $w13fsum" \
   || no "W13-F ceilings / lists ($w13fsum):$w13fbad"
 # Golfed Python gives py/'s answers on the gate's inputs (gen.py 0.001 and its edge cases).
 rm -rf "$TMP/w13f"; python3 "$w13fL/gen.py" 0.001 "$TMP/w13f"; w13fbad=""

@@ -1,0 +1,4 @@
+410 Split Array Largest Sum, Hard. Input: `k`, then the numbers (500k ints in 0 … 10^4, k ≤ 50). Output: the minimised largest sum.
+Golf `⍘_"Ṁ\\∑⟦→v⍘\\⟦\\&+"←v≻[\\_⋄_\\⊖\\]⟧⍁_1≺⟧ʘh`, 36 bytes: `‹bsearch›` (`ʘh`) on the answer over `[max, sum)`. The predicate takes the input again (`⍘\\` leaves `k` under the numbers) and runs the greedy split as a `⍁` fold: when `acc + x` would pass `v` the piece restarts at `x` and the `k` under the fold is decremented (threading). `v` is feasible while what is left of `k` is at least 1 (`1≺` is 0 then). O(n log sum).
+Full: `  full  golf 0.332s  py 0.650s  OK`
+Gaps: the fold's block cannot capture the candidate `v` (no closure over a block argument short of `⊸`), so it goes through a global. `②` would give the numbers, but a one-number line types as an int, so `⍘` is used. Implicit input is only taken from an empty stack, so the bounds cannot be `⍘_Ṁ∑` (the `∑` sums the max).

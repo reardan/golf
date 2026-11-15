@@ -1,0 +1,4 @@
+13 Roman to Integer, Easy. Input: one numeral on a line (the large input is a million `M`s and a random numeral; LeetCode stops at 3999).
+Golf `205558\\%7%⟦⍳10⌈∏9995%⟧€"⌈⍂&≻⊗⊕*∑`, 32 bytes: `205558 % c % 7` hashes I X C M V L D to 0…6, and 10^e mod 9995 (10^e is `⍳10⌈∏`, the product of e tens) is 1 10 100 1000 5 50 500. A value is subtracted when a larger one stands anywhere to its right (`v ≺` suffix max `⌈⍂`, the same as "the next is larger" for a valid numeral), so the answer is Σ v·(1+2·flag).
+Full: `full  golf 0.421s  py 0.149s  OK` (slower than Python: a block call and a small list per character)
+Gaps: a 7-entry lookup table costs 23 of the 32 bytes. There is no list literal and no gather (`⊇` takes one int index, `l [i j]⊇` is `index out of range`), so char → value needs a per-element block; no integer power (`⍳10⌈∏`) and no vectorised powmod.
