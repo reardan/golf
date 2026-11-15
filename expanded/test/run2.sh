@@ -5556,8 +5556,9 @@ for w13gl in '41⍳17-' '40⍳9-' '7⍳′⍳€' '0⍳' '1⍳9+'; do
   done
   case "$w13gl" in 7*) ;; *) for w13ga in ⊕ ⊖ ± ² ⊗ ⊘; do for w13gw in ′A€ ′A⌿; do
     w13gp="$w13gp${w13gl}50+${w13gw/A/$w13ga}⍕␤"; w13gs="$w13gs:s${w13ga}0﹢;${w13gl}50+${w13gw/A/s}⍕␤"; done; done;; esac
-  w13go=$(printf '%s' "$w13gp" | gc 2>&1)
-  { [ -n "$w13go" ] && [ "$w13go" = "$(printf '%s' "$w13gs" | gc 2>&1)" ]; } || w13gbad="$w13gbad [$w13gl]"
+  # pruned (gcp): with the whole prelude these programs pass the image cap
+  w13go=$(printf '%s' "$w13gp" | gcp 2>&1)
+  { [ -n "$w13go" ] && [ "$w13go" = "$(printf '%s' "$w13gs" | gcp 2>&1)" ]; } || w13gbad="$w13gbad [$w13gl]"
 done
 [ -z "$w13gbad" ] && ok "each fast path prints what the general path prints (10 binary atoms × ⇤ ⍀ ⍸ ⊞ ⍁, 6 unary × € ⌿; flat, nested and empty lists)" \
   || no "W13-G fast vs general, on the lists:$w13gbad"
@@ -5902,7 +5903,7 @@ done < <(sed -n '/^### Structure adverbs (W15)$/,/^### /p' REFERENCE.md | sed -n
 # Byte rows, adverb quoting (⍙ ⥮ are in blob record 6), pruned build and the oracle.
 [ "$(printf '%s' '\hjoin\cancel\both' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "98999a" ] \
   && [ "$(printf '%s' '⋈⍙⥮' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "98999a" ] \
-  && grep -q '^rec 06 .* 99 9A$' data/templates.txt \
+  && grep -q '^rec 06 .* 99 9A\( \|$\)' data/templates.txt \
   && [ "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕' | gcp)" = "24 12 8 6 ca0 3 1 4 2 5 " ] \
   && [ "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gref)" = "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gc)" ] \
   && ok "⋈ ⍙ ⥮ are 0x98–0x9A; ⍙ ⥮ quote the token before them; the pruned build and the oracle (boot/golfref.py) agree" || no "W15 bytes / pruned / oracle"

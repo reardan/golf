@@ -46,7 +46,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **86** are now spent, leaving **25** free. It is partitioned as follows
+space; **90** are now spent, leaving **21** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
