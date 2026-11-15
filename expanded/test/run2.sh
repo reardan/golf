@@ -5112,7 +5112,7 @@ w13ct=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2 as m
 want = {0x80: (0xF7, 5), 0x81: (0x04, 4), 0x82: (0x0C, 4), 0x83: (0x0F, 6), 0x84: (0x24, 4), 0x85: (0x2C, 4)}
 print(all(m.OVERRIDES[b][20:22] == [0xFF, 0xD0] and (m.OVERRIDES[b][22 + 2], len(m.OVERRIDES[b]) - 22) == want[b] for b in m.NUMCHK_BYTES),
       len({v[0] for v in want.values()}) == 6)')
-[ "$w13ct" = "True True" ] && grep -qF '5180888\fetch"247\eq1\radd[_‹_13c_neg›^]"4\eq1\radd[_‹_13c_inc›^]"12\eq1\radd[_‹_13c_dec›^]"15\eq1\radd[_‹_13c_sqr›^]36\eq1\radd[‹_13c_dbl›^]‹_13c_hlv›' lib/prelude.golfj \
+[ "$w13ct" = "True True" ] && grep -qF '5180888\fetch"247﹣[_‹_13c_neg›^]"4﹣[_‹_13c_inc›^]"12﹣[_‹_13c_dec›^]"15﹣[_‹_13c_sqr›^]36﹣[‹_13c_dbl›^]‹_13c_hlv›' lib/prelude.golfj \
   && ok "S5's hook matches the templates: call rax is the last thing before each scalar body, whose third byte (distinct for the six) and length are the ones the hook dispatches on" \
   || no "W13-C S5 template layout: $w13ct"
 # Elementwise, to any depth, mixed ints and lists, the original untouched;
@@ -5546,6 +5546,8 @@ w13g=""; for w13ga in ′+ ′- ′* ′⌈ ′⌊ ′∔ ′∸ ′⨰ ′⩌ �
 # element and the paired loop), lists of lists (each element then goes to ∔ …
 # from inside the fast loop), and the empty list.  The unary atoms get the
 # list + 50: ⊘ of a negative is in the tag band, and ⍕ would print it as a list.
+# (W16: compiled pruned, gcp: with the whole prelude the biggest pass the
+# 192 KB image cap.)
 w13gbad=""
 for w13gl in '41⍳17-' '40⍳9-' '7⍳′⍳€' '0⍳' '1⍳9+'; do
   w13gp=""; w13gs=""
@@ -5557,8 +5559,8 @@ for w13gl in '41⍳17-' '40⍳9-' '7⍳′⍳€' '0⍳' '1⍳9+'; do
   done
   case "$w13gl" in 7*) ;; *) for w13ga in ⊕ ⊖ ± ² ⊗ ⊘; do for w13gw in ′A€ ′A⌿; do
     w13gp="$w13gp${w13gl}50+${w13gw/A/$w13ga}⍕␤"; w13gs="$w13gs:s${w13ga}0﹢;${w13gl}50+${w13gw/A/s}⍕␤"; done; done;; esac
-  w13go=$(printf '%s' "$w13gp" | gc 2>&1)
-  { [ -n "$w13go" ] && [ "$w13go" = "$(printf '%s' "$w13gs" | gc 2>&1)" ]; } || w13gbad="$w13gbad [$w13gl]"
+  w13go=$(printf '%s' "$w13gp" | gcp 2>&1)
+  { [ -n "$w13go" ] && [ "$w13go" = "$(printf '%s' "$w13gs" | gcp 2>&1)" ]; } || w13gbad="$w13gbad [$w13gl]"
 done
 [ -z "$w13gbad" ] && ok "each fast path prints what the general path prints (10 binary atoms × ⇤ ⍀ ⍸ ⊞ ⍁, 6 unary × € ⌿; flat, nested and empty lists)" \
   || no "W13-G fast vs general, on the lists:$w13gbad"
@@ -5873,7 +5875,7 @@ open(f"{T}/w15s.in", "w").write("\n".join(inp) + "\n")
 open(f"{T}/w15s.want", "w").write("\n".join(want) + "\n")
 PY
 [ "$(gin 'ℤ→a 0→i{←a←i⊇→n ←a←i⊕↓←n↑"⍋⍕␤‹grade›⍕␤ ←i←n+⊕"→i ←a≢≡}' < "$TMP/w15s.in")" = "$(cat "$TMP/w15s.want")" ] \
-  && [ "$(printf '%s' '5⍳"⍋≡Ṅ 3⍳⌽"⍋_⍕ 6⍳⟦2%⟧⍒⍕ 6⍳⟦2%⟧⍖⍕' | gc)" = "02 1 0 0 2 4 1 3 5 1 3 5 0 2 4 " ] \
+  && [ "$(printf '%s' '5⍳"⍋﹣1﹤Ṅ 3⍳⌽"⍋_⍕ 6⍳⟦2%⟧⍒⍕ 6⍳⟦2%⟧⍖⍕' | gc)" = "02 1 0 0 2 4 1 3 5 1 3 5 0 2 4 " ] \
   && ok "⍋ and ‹grade› equal Python's sorted on $(grep -c '' "$TMP/w15s.in") lists (sizes 0..40000, ranges one value..-2^63..2^62); ⍋ returns a new list, ⍒ ⍖ stay stable" || no "W15 radix sort"
 # ‹readline› a chunk at a time: lines that end on, before and after the 8192-byte buffer edge.
 python3 -c "
