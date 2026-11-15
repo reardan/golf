@@ -46,7 +46,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **86** are now spent, leaving **25** free. It is partitioned as follows
+space; **88** are now spent, leaving **23** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -323,6 +323,30 @@ not. `0x9B`–`0x9F` are free.
 | `0x98` | `\hjoin` | `⋈` | prelude: `x y -> pairs` hash join, flat `j i` for each `i` whose `y[i]` equals an earlier `x[j]` | W15 | shipped |
 | `0x99` | `\cancel` | `⍙` | prelude: `l ′p -> l'` stack cancel: `x` cancels the top `t` when `t x p` is 0, else is pushed | W15 | shipped |
 | `0x9A` | `\both` | `⥮` | prelude: `l ′f -> a b`, `f l` and `f` of the reversed list reversed back | W15 | shipped |
+
+### 1.8 W16 assignments
+
+W16-A's two compiler ops, at the end of the compiler-logic range
+`0xB0`–`0xBF` (which they fill). Letters-only mnemonics, prefix-free against
+every shipped one (`codepage.py check`); the glyphs were unused.
+
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0xBE` | `\inone` | `①` | compiler op: line 1 of the input, typed (one int, a list of ints, or the line as a code list), look-ahead and cached. Compiles like a literal (never a link, never quoted) to a call to the prelude's `‹_in1›`, and sets the prelude flag word `‹_inflag›` (its `push 0` becomes `push 1`) so the prelude's init takes the first two lines before the program runs. Cases in `self/golf2.golfj` (‹inref›), the seed (`>`) and `boot/golfref.py`; `tools/golfprune.py` keeps `‹_in1›` | W16-A | shipped |
+| `0xBF` | `\intwo` | `②` | compiler op: line 2 of the input, typed like `①`; a call to `‹_in2›` | W16-A | shipped |
+
+**Derived verbs** (W16-A; no new byte). An adverb byte (record 6) directly
+after an adverb that S1 applied to a quoted call token takes the derived verb:
+`x A B` compiles as `⟦x A⟧B`, and so on down a chain (golf2's `‹derive›`, the
+seed's `~`, the oracle's S1 branch).
+
+**Block locals** (W16-A; no new byte). A `⟦ … ⟧` in a `⊡` word reads the
+word's locals through the word's link cell (§3.6).
+
+W16-A prelude names: `‹_in1›` `‹_in2›` `‹_inflag›` `‹_in_ws›` `‹_in_typed›`
+`‹_in_snap›` `‹_in_init›` (section `# ===== W16 =====`; names starting `‹_in`
+were already reserved for the input words' helpers), and W15's `‹_15_peek›`
+split into `‹_15_load›` (move stdin into the buffer) and the parse.
 
 ### 1.6 Digraph page
 
@@ -618,12 +642,13 @@ both forms are given here and the decimal is the one you type.
 | `m+160`…`m+172` | 4260000 · 4260004 · 4260008 · 4260012 | **W11-2A** include state in the **seed** only: open-include depth · include-once table count · the fd being entered or left · the table-copy countdown. The path's length is M2's `m+64`. (`self/golf2.golfj` keeps the first three in its variable bank, as `‹depth›` `‹includes›` `‹fd›`) | shipped (W11-2A) |
 | `m+176`…`m+188` | 4260016 · 4260020 · 4260024 · 4260028 | **W13-A**, in the **seed** only: `m+176`, `m+180` and `m+184` hold `A`'s byte, cursor and end while it scans blob record 6 or 7 (S1). `m+188` is spare. `self/golf2.golfj` keeps the same three in its variable bank as `‹probe›` `‹rp›` `‹rend›`, plus `‹peekpos›`. Before W13 these cells were **W11-3B** compiler scratch, four 4-byte cells, **unused**: W11-3B shipped without them. Source positions and the `-g` flag live in `self/golf2.golfj`'s variable bank (`‹pos›` = line·64 + file, `‹debug›`, `‹at›`), the saved position of include level `k` (0–7) in the bank cell of the unspellable name `k` (`0x4E0000 + 8k`, golf2's process only), and a forward reference's first-use `‹pos›` in the last placeholder of its pending-site list (where `0` used to end it). The seed reports no messages, so it keeps none of this. Spare for a later front-end owner | spare (W11-3B) |
 | `m+192`…`m+204` | 4260032 · 4260036 · 4260040 · 4260044 | **W11-4A** record state in the **seed** only, four 4-byte cells: the record's name number · its field count · the field being emitted · the spelling copy's byte pointer (`self/golf2.golfj` keeps them in its variable bank, as `‹record›` `‹fields›` `‹field›` `‹from›`, plus `‹upto›`) | shipped (W11-4A) |
-| `m+208` | 4260048 | **first free compiler scratch** | free |
+| `m+208`…`m+244` | 4260048–4260084 | **W16-A**, in the **seed** only: derived verbs and block locals (§3.6) | shipped (W16-A) |
+| `m+248` | 4260088 | **first free compiler scratch** | free |
 | `m+2048`–`m+4095` | 0x410800–0x410FFF | **RETIRED** (W10-A) — v1's dictionary (`m+2048 + 4*name`; M2 ran its long names into `m+3072`…). Neither `golf2` nor `seed` touches it any more (v1c, a frozen binary, still uses it in its own process); do not encroach anyway, it is what v1 documents | free |
 | `m+4096`–`0x42FFFF` | 0x411000 | **RETIRED** (W11-1E) — the compilers' old output buffer (64 KB, to `0x420FFF`); it moved to `0x494000` below so a program may be 192 KB. Free in the compiler's process; part of a big program's image in a compiled one | free |
 | `0x430000`–`0x43FFFF` | 4390912– | **RETIRED** (W10-A) — M2's long-name region (the 256-name table and its heads), moved up below. W11-0 re-allocated parts of it (next three rows); the rest stays free | free |
 | `0x430000`–`0x431FFF` | 4390912–4399103 | **W11-1C output buffer**, 8192 bytes, compiled programs only: `Ṅ ⍕ ␤ 🗲 ⊐` (and `‹fmt›`-based printers) append here; the pending-byte count is `0x4F0980` below. BSS, so untouched it costs no RAM | shipped (W11-1C) |
-| `0x432000`–`0x437DFF` | 4399104–4423167 | free (headroom, e.g. if 1C's buffer grows) | free |
+| `0x432000`–`0x437DFF` | 4399104–4423167 | free (headroom, e.g. if 1C's buffer grows), but for the 64-byte task blocks of §3.4–3.5 and W16-A's `0x434000`–`0x43683F` (link cells and the `①` `②` cells, §3.6) | free |
 | `0x437E00`–`0x437FFF` | 4423168–4423679 | **W13-G runtime cells**: the fast paths of `€ ⌿ ⇤ ⍁ ⍀ ⍸ ⊞` for atom functions. 4423168 … 4423295 the kind cache (8 × [f, kind]) · 4423296 4423304 4423312 `‹_13g_same›`'s pointers and countdown · 4423328 kind · 4423336 cache entry · 4423344 result block · 4423352 list · 4423360 f · 4423400 `⊞`'s l2 · 4423408 pre-filter qword · 4423424 … 4423448 result deltas · 4423456 … 4423480 `⊞`'s l2 deltas · 4423488 … 4423512 `⍸`'s index bases · 4423520 end pointer · 4423528 the re-entrancy mark G · 4423376 NA, the last image word found not to be an atom. Live only inside the `‹_13g_…›` drivers, which run no user code (prelude section W13-G). 4423320 `‹_13g_try›`'s candidate · 4423368 the running value / `⌿`'s write pointer. Spare: 4423384, 4423392, 4423416, 4423536 … 4423672 | shipped (W13-G) |
 | `0x438000`–`0x43BFFF` | 4423680–4440063 | **W11-2A include state, compiler-only**, both compilers. `0x438000` (4423680): the path being included as `[len:4][≤250 bytes][0]`; `open` takes the C string at `0x438004`, and for the `lib/` retry the length cell is overwritten with the bytes `lib/`, making `0x438000` the C string `lib/path`. `0x438100` (4423936): the saved `dup(0)` of each open include level, 4 bytes each, 8 levels. `0x438200` (4424192): the include-once table, 60 entries of 256 bytes, path `k` at `0x438200 + 256*k` in the same `[len:4][bytes]` form; ends `0x43BE00`. `mkblob2.IMPORT_*` names them | shipped (W11-2A) |
 | `0x43C000`–`0x43FFFF` | 4440064–4456447 | **W11-4A record state, compiler-only**, both compilers. `0x43C000` (4440064): the field table of the `⊜` being read, field `k`'s name number at `0x43C000 + 4*k`, 256 fields (to `0x43C3FF`). `0x43F000` (4452352): the C string `vendor/path` for the third include try — `vendor/` then the path and its NUL copied from `0x438004` (≤ 258 bytes). `0x43FF00` (4456192): the seed's spelling-copy countdown. The rest is free. `mkblob2.REC_FIELDS` / `REC_MAX` / `VENDOR_PATH` name them | shipped (W11-4A) |
@@ -823,6 +848,26 @@ top-level line) maps 256 MB + 3 pages `MAP_NORESERVE`, anonymous, and moves
 `rsp` to the top page's start. The kernel's own stack keeps only what the
 loader put there (argv, envp), which `‹args›` and `‹getenv›` still read
 through STARTUP's stash at `0x4F0040`.
+
+### 3.6 W16 runtime cells
+
+W16-A takes `0x434000`–`0x43683F` of the free headroom (4407296–4417599).
+
+| Cell | Use |
+|---|---|
+| 4407296 + 8·name (`0x434000`–`0x4367FF`) | **link cells**, one per name number (0–1279): the frame (`rbp`) of the innermost running activation of the `⊡` word with that name, for the `⟦ … ⟧` blocks in it that read its locals. Only such a word writes its cell: stub A (entry) saves the old value in a hidden local and stores `rbp`, stub B (every exit) puts it back. `mkblob2.LINK_TABLE`. Compiler side, both compilers keep the word's name (golf2 `‹wname›`, seed `m+244`) and the hidden slot (`‹linkslot›`, seed `m+208`, slot+1 or 0); the hidden slot's table entry is the non-name 2000 |
+| 4417536 | `①`'s value (a tagged list or an int), made once, never freed |
+| 4417544 | `②`'s value |
+| 4417552 | 1 once both are made (`‹_in_snap›` ran), else 0 |
+| 4417560–4417599 | spare |
+
+Seed-side compiler scratch (`m+208`…`m+244`, the first free cells): `m+208`
+the hidden link slot · `m+212` the name `~` quotes · `m+216` the derived
+operand's block (0 = still `′x`) · `m+220` the adverb · `m+224` a block's jmp
+site · `m+228` `;`'s `call B` site · `m+232` stub A · `m+236` stub B · `m+240`
+the frame-list walk's next site · `m+244` the `⊡` word's name. `m+248` is the
+first free cell now. `self/golf2.golfj` keeps the same state in its variable
+bank (`‹linkslot› ‹dblk› ‹adv› ‹dsite› ‹lsite› ‹stubA› ‹stubB› ‹nx› ‹wname›`).
 
 ---
 

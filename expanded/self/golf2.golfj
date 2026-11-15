@@ -166,6 +166,12 @@
 # and ‹peekpos› (‹pos› after the one-byte peek).  J gains a third value: 2
 # inside a ⟦ block of a ⊡ word (the block cannot reach the word's frame).
 #
+# W16-A adds nine.  ‹adv› ‹dblk› ‹dsite› live only inside ‹derive› (an
+# adverb after an adverb); ‹wname› ‹linkslot› for the span of one ⊡
+# definition (its name, for its link cell, and its hidden link slot+1, 0 =
+# none); ‹lsite› ‹stubA› ‹stubB› ‹nx› only inside `;` (‹linkstubs›) and, for
+# ‹lsite›, inside ‹inref› (① ②), both idle between tokens.
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -178,7 +184,7 @@
 # ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹digraph› ‹hexit› ‹forward› ‹resolve›
 # ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
 # g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
-# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹step› ‹inrec› ‹quoted› ‹plain› ‹badglyph› t H (W13-A: the four before t).  The M2 words have long names for the same reason their state
+# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹linkcell› ‹linkread› ‹linkcall› ‹linkstubs› ‹step› ‹inrec› ‹quoted› ‹dpush› ‹derive› ‹plain› ‹badglyph› t H (W13-A: the four before t; W16-A: ‹inref› after ‹digraph›, the four link words, ‹dpush› ‹derive›).  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -2293,8 +2299,8 @@ e
 
 :‹plain›    # ‹plain› : a bare local, a quoted token, or e        [ name -> ]
 →b
-‹named›     # S4: slot+1 of a local this ⊡ word has named (‹named› refuses
-"           #   one from inside a ⟦ block), else 0
+‹named›     # S4: slot+1 of a local this ⊡ word has named (W16-A: from a
+"           #   ⟦ block too, read through the link cell below), else 0
 [           # not a local:
 _
 ←‹pos›      #   S1: peek at the next byte, on the token's own line

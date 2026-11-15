@@ -3889,6 +3889,7 @@
 #   ‹_in_ws›     a -> f       0 when the byte at a is blank (W15's test)
 #   ‹_in_typed›  p e -> v     the line in the bytes p .. e-1, typed
 #   ‹_in_snap›   ->           load stdin, type its first two lines
+#   ‹_in_init›   ->           the init line's word: ‹_in_snap› if flagged
 :‹_inflag›0;
 :‹_in_ws›?"32≡23±$﹢9﹣4»;
 ⊡‹_in_typed›⇒e⇒p0⇒k0⇒g⇐p⇒q
@@ -3912,4 +3913,5 @@
  ⇐p⇒q{⇐q⇐e≡[⇐q?10≡⋄1]⋄⇐q1﹢⇒q}⇐p⇐q‹_in_typed›4417544⊛;
 :‹_in1›4417552⊙[‹_in_snap›]4417536⊙;
 :‹_in2›4417552⊙[‹_in_snap›]4417544⊙;
-‹_inflag›[⋄‹_in_snap›]
+:‹_in_init›‹_inflag›1﹣[‹_in_snap›];
+‹_in_init›
