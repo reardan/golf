@@ -3212,9 +3212,9 @@ open(f"{T}/o1.want", "w").write("\n".join(want) + "\n")
 open(f"{T}/o1.bare", "w", encoding="utf-8").write("".join(bare))
 open(f"{T}/o1.n", "w").write(str(len(bare)))
 PYEOF
-[ "$(gc < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] && [ "$(gref < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] \
+[ "$(gcp < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] && [ "$(gref < "$TMP/o1.prog")" = "$(cat "$TMP/o1.want")" ] \
   && ok "on $(cat "$TMP/o1.n") int cases (INT64_MAX/MIN, MAX-1, the old [2^48,2^49) band, 0x7F<<48, a tag-band int below the heap, -1 0 7) the six give Python's 64-bit result, golf2 and oracle" \
-  || no "W12-O1 ints: $(diff <(gc < "$TMP/o1.prog") "$TMP/o1.want" | head -5 | tr '\n' ' ')"
+  || no "W12-O1 ints: $(diff <(gcp < "$TMP/o1.prog") "$TMP/o1.want" | head -5 | tr '\n' ' ')"
 w12o1y=$(printf '%*s' "$(cat "$TMP/o1.n")" '' | tr ' ' Y)
 mkdir -p "$TMP/o1"; cp "$TMP/o1.bare" "$TMP/o1/b.golfj"
 (cd "$TMP/o1" && "$EXP/tools/golfc" -n -j b.golfj b > /dev/null 2>&1 && ./b > b.out 2>&1; echo $? > b.rc)
@@ -3400,9 +3400,9 @@ want.append("0 0")
 open(f"{T}/z4cap.prog", "w", encoding="utf-8").write("".join(prog))
 open(f"{T}/z4cap.want", "w").write("\n".join(want) + "\n")
 PYEOF
-[ "$(gc < "$TMP/z4cap.prog")" = "$(cat "$TMP/z4cap.want")" ] \
+[ "$(gcp < "$TMP/z4cap.prog")" = "$(cat "$TMP/z4cap.want")" ] \
   && ok "‹heapstats› through 11 doublings (3 → 8191 elements): one live block of (cap+1)*8 bytes, ≢ and ∑ right at every step; ⌫ of the grown vector gives back exactly that block" \
-  || no "W12-Z4 capacity: $(diff <(gc < "$TMP/z4cap.prog") "$TMP/z4cap.want" | head -4 | tr '\n' ' ')"
+  || no "W12-Z4 capacity: $(diff <(gcp < "$TMP/z4cap.prog") "$TMP/z4cap.want" | head -4 | tr '\n' ' ')"
 [ "$(printf '%s' '5⍳→l ←l7⍆_ ←l≢Ṅ␤←l8⍆_ ←l"≢Ṅ⍕␤←l9⍆﹣1﹤Ṅ␤3‹vecn›→v‹heapstats›_→n←v1⍆2⍆3⍆_‹heapstats›_←n-Ṅ' | gc)" \
     = "$(printf '6\n70 1 2 3 4 7 8 \n0\n0')" ] \
   && ok "⍆ on a ⍳ list appends in place into its spare room (5⍳ holds 7, so the 8th push moves it: ﹣1﹤ 0); 3‹vecn› takes 3 pushes without a growth" || no "W12-Z4 in-place / vecn"
@@ -5731,7 +5731,7 @@ w13isz(){ stat -c%s "$TMP/w13i/$1"; }
 w13ic one '1Ṅ' >/dev/null; w13ic onep '1Ṅ' -P >/dev/null
 (cd "$TMP/w13i" && GOLFC_FULL=1 "$EXP/tools/golfc" -j one.golfj onee)
 printf '%s' '1Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w13i/onef"
-[ "$("$TMP/w13i/one")" = 1 ] && [ "$(w13isz one)" -lt 24576 ] && cmp -s "$TMP/w13i/onep" "$TMP/w13i/onef" && cmp -s "$TMP/w13i/onee" "$TMP/w13i/onef" \
+[ "$("$TMP/w13i/one")" = 1 ] && [ "$(w13isz one)" -lt 28672 ] && cmp -s "$TMP/w13i/onep" "$TMP/w13i/onef" && cmp -s "$TMP/w13i/onee" "$TMP/w13i/onef" \
   && ok "1Ṅ is a $(w13isz one)-byte binary ($(w13isz onef) with the whole prelude); golfc -P and GOLFC_FULL=1 are the old binary byte for byte" \
   || no "W13-I trivial: $(w13isz one) / $(w13isz onef)"
 # The split is exact: with every name reached, the pruned prelude IS the
@@ -5790,13 +5790,14 @@ printf '1Ṅ\n\n5qṄ\n' > "$TMP/w13i/bad.golfj"
   && [ "$(cd "$TMP/w13i" && "$EXP/tools/golfc" -j bad.golfj bad 2>&1)" = "GOLF: undefined word q at line 3" ] \
   && ok "golfc -g maps the $(grep -c . "$TMP/w13i/one.map") kept words of 1Ṅ (-P: $(grep -c . "$TMP/w13i/onef.map")); errors keep the program's line numbers" || no "W13-I map/lines"
 # The ten bench/leetcode programs: pruned and whole-prelude binaries agree on
-# small generated inputs, and each is well under 40 KB now (125 KB before).
+# small generated inputs, and each is under 48 KB (125 KB before W13-I; 40 KB
+# until W16 grew the prelude top level and the words queens/topk reach).
 python3 bench/leetcode/gen.py 0.001 "$TMP/w13i/in" > /dev/null
 w13ibad=""; w13isum=0
 for w13ip in twosum parens stock longsub prodself topk islands trap slidemax queens; do
   tools/golfc -j "bench/leetcode/golf/$w13ip.golfj" "$TMP/w13i/b"; tools/golfc -P -j "bench/leetcode/golf/$w13ip.golfj" "$TMP/w13i/bf"
   w13isum=$((w13isum + $(w13isz b)))
-  { [ "$("$TMP/w13i/b" < "$TMP/w13i/in/$w13ip.txt")" = "$("$TMP/w13i/bf" < "$TMP/w13i/in/$w13ip.txt")" ] && [ "$(w13isz b)" -lt 40960 ]; } \
+  { [ "$("$TMP/w13i/b" < "$TMP/w13i/in/$w13ip.txt")" = "$("$TMP/w13i/bf" < "$TMP/w13i/in/$w13ip.txt")" ] && [ "$(w13isz b)" -lt 49152 ]; } \
     || w13ibad="$w13ibad $w13ip($(w13isz b))"
 done
 [ -z "$w13ibad" ] && ok "the ten bench/leetcode programs: the same answers pruned and whole, $((w13isum / 10)) bytes on average" || no "W13-I bench:$w13ibad"
@@ -6088,7 +6089,7 @@ w16i(){ printf '%s' "$1" > "$TMP/w16i.golfj"; tools/golfc ${3:-} -j "$TMP/w16i.g
 [ "$(w16i '⏎_⊐⏎_⊐①⊐②⊐' 'a\nb\n')" = "abab" ] \
   && [ "$(w16i '①_⏎_⊐⏎_⊐' 'a\nb\n')" = "ab" ] \
   && [ "$(w16i 'ℤ∑Ṅ①∑Ṅ②∑Ṅ' '1 2\n3 4\n')" = "1037" ] \
-  && [ "$(w16i '①①≡Ṅ②"≡Ṅ' '1 2\nxy\n')" = "-1-1" ] \
+  && [ "$(w16i '①①﹣1﹤Ṅ②"﹣1﹤Ṅ' '1 2\nxy\n')" = "-1-1" ] \
   && [ "$(w16i '①+⍕' '1 2\n3\n')" = "2 4 " ] \
   && [ "$(w16i '∑①*Ṅ' '10\n3\n')" = "130" ] \
   && ok "① ② look ahead (⏎ ℤ before or after still read every line) and are cached; implicit input in the same program" || no "W16-A ① ② look-ahead: $(w16i '⏎_⊐⏎_⊐①⊐②⊐' 'a\nb\n')"

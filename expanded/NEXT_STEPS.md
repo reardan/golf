@@ -10,6 +10,19 @@ the `v1c` binary pinned by `../SEEDS`) is never touched.
 
 ## Where we are
 
+**W16 — closing the gap to Nibbles and Vyxal — has landed** (REFERENCE
+"W16", [`bench/leetcode/`](bench/leetcode/README.md)). It came from the
+rivals benchmark: Nibbles was 220 bytes to Golf's 239, and queens alone was
+the loss. W16 added typed input lines `①②`, adverb chains, blocks that read
+`⊡` locals, the ceiling division `⌹` and mapping compares and `/ % ÷ ∣`, the
+pruned permutation search `⍥`, `Ḍ ⍭ ⍜`, the inclusive range `ʀ`, the raw
+line `ℓ`, `‹balanced›` and a text mark that implicit output prints as text.
+The twenty solutions are 161 bytes (first ten 58, Nibbles 92). Items 1
+(reads only), 3 and 5 below are done. Left open: queens is now a search,
+1.3 s at n = 12 against 0.02 s before; blocks still cannot write `⊡` locals;
+and the image cap is tighter, since the whole prelude no longer fits with the
+tool libraries, so every test that adds one compiles pruned.
+
 **W15 — implicit input and structure adverbs — has landed** (DESIGN.md "The
 record", REFERENCE "Input" and "Structure adverbs (W15)",
 [`bench/leetcode/`](bench/leetcode/README.md)). The twenty LeetCode
