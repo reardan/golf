@@ -219,6 +219,10 @@
 #                        negative header never reads as marked)
 :‹_16_tx›"16\shl16>8\rsub"\fetch1 40\shl|&\store_;
 :‹_16_is›16\shl16>8\rsub\fetch40>1\eq;
+#   ‹_16_cp›  l src -> l      mark l when src is marked
+#   ‹_16_cp2› l s t -> l      mark l when s and t both are
+:‹_16_cp›‹_16_is›[⋄‹_16_tx›];
+⊡‹_16_cp2›‹_16_is›⇒b‹_16_is›⇐b$[⋄‹_16_tx›];
 # U chars(str) -> list is defined here, ahead of I, rather than with O and J
 # below (W11-0): I's failure path builds its message with U, and a prelude a
 # pre-W10-A compiler can read (run2.sh's M2 check) calls nothing forward.
@@ -307,7 +311,7 @@
  ___5180816\fetch;
 :V‹_2d_chk›"5180808\store"\fetch"1\radd A&&\store"5180800\store&8\rmul\radd5180808\fetch\radd8\radd~5180816\store
  8\rmul&\radd8\radd&8\radd&&\eq[{"\fetch&5180816\fetch\radd~\store8\radd&&\eq}]
- ___5180800\fetch32767 48\shl|5180808\fetch‹_16_is›[⋄‹_16_tx›];
+ ___5180800\fetch32767 48\shl|5180808\fetch‹_16_cp›;
 :W 1‹_13g_filt›[^]X5177464\store‹_2d_chk›"5177440\store\fetch"1\radd A"5177472\store"5177488\store__
  5177440\fetch"\fetch8\rmul\radd8\radd5177448\store5177440\fetch8\radd"5177440\store
  5177448\fetch\eq[{5177440\fetch\fetch"5177456\store5177464\fetch\exec[5177456\fetch5177488\fetch8\radd"5177488\store\store]5177440\fetch8\radd"5177440\store5177448\fetch\eq}]
@@ -554,7 +558,7 @@
  5177440\fetch\fetch5177496\fetch\fetch\radd"1\radd A"5177472\store\store
  0 5177448\store5177440\fetch\fetch0\eq[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
  0 5177448\store5177496\fetch\fetch0\eq[{5177496\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177440\fetch\fetch5177448\fetch\radd8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177496\fetch\fetch\rlt1\radd}]
- 5177472\fetch32767 48\shl|5177440\fetch‹_16_is›5177496\fetch‹_16_is›$[⋄‹_16_tx›] Y;
+ 5177472\fetch32767 48\shl|5177440\fetch5177496\fetch‹_16_cp2› Y;
 # ↑: s2 n · s0 list · s6 count c = min(|n|, len) · s7 start (0, or len-c when
 # n < 0) · s4 result · s1 index.  |n| via the N idiom; \neg of -2^63 is itself,
 # which \rmin (unsigned) still clamps to len.
@@ -563,7 +567,7 @@
  0 5177496\store5177456\fetch0\slt1\radd[5177440\fetch\fetch5177488\fetch\rsub5177496\store]
  5177488\fetch"1\radd A"5177472\store\store
  0 5177448\store5177488\fetch0\eq[{5177440\fetch5177496\fetch5177448\fetch\radd8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177488\fetch\rlt1\radd}]
- 5177472\fetch32767 48\shl|5177440\fetch‹_16_is›[⋄‹_16_tx›] Y;
+ 5177472\fetch32767 48\shl|5177440\fetch‹_16_cp› Y;
 # ↓ is a take: keep m = len - min(|n|, len) cells, from the END when n >= 0
 # (take -m) and from the front when n < 0 (take m).  s1 len · s2 n; the list
 # stays on the data stack for ↑, which brings its own frame.
@@ -1570,7 +1574,7 @@
 # block of twice P's capacity, ⌫ P.
 :‹_12z4_vgrow›&‹_2d_chk›_5180952\store5180928\store5180928\fetch8\rsub\fetch24\shl24>2\rmul A5180944\store
  0{"8\rmul"5180928\fetch\radd\fetch&5180944\fetch\radd\store_1\radd"5180952\fetch\rlt1\radd}_
- 5180944\fetch5180928\fetch‹_16_is›[⋄‹_16_tx›]_5180928\fetch\free5180944\fetch5180952\fetch;
+ 5180944\fetch5180928\fetch‹_16_cp›_5180928\fetch\free5180944\fetch5180952\fetch;
 # ‹_12z4_dgrow›  d -> d'   d's ring is full: unroll it into slots 0..n-1 of a
 # block of twice the capacity (h = 0) and ⌫ the old block.
 :‹_12z4_dgrow›‹_2d_chk›"5180928\store"\fetch5180952\store8\radd\fetch5180960\store
@@ -3972,7 +3976,7 @@
 # on the stack.  Locals: p/q the buffer (raw / tagged), c[k] the next
 # candidate at depth k, u[v] 1 while v is free, r the results (capacity z,
 # count m), x ok's result.
-⊡\prune⇒f⇒n
+⊡‹_16_prune›⇒f⇒n
  ⇐n1≺[⋄1‹_13e_new›⇒r0‹_13e_new›‹_13e_tag›⇐r8﹢⊛⇐r‹_13e_tag›^]
  ⇐n1﹢A⇒p⇐p‹_13e_tag›⇒q⇐n A⇒c⇐n‹_13e_new›1‹_13e_fill›8﹢⇒u
  16⇒z⇐z‹_13e_new›⇒r0⇒m0⇒k0⇐c⊛12A⇒e
@@ -3993,6 +3997,7 @@
      ⇐m3≪⇐r﹢8﹢⊛⇐m1﹢⇒m]]
   ⋄⇐k1﹣⇒k⇐k0≺[1⇐k3≪⇐p﹢8﹢⊙3≪⇐u﹢⊛]]}
  ⇐m⇐r⊛⇐p⌫⇐c⌫⇐u8﹣⌫⇐e⌫⇐r‹_13e_tag›;
+:\prune‹_16_prune›;
 # Ḍ (0x9C, \distinct)  l -> f   0 when all elements differ, else -1.
 # First pass: a one-cell bitmask over the 64 values l[0]-32 … l[0]+31 (no
 # allocation; small lists of nearby ints, ⍥'s case, end here).  A value
@@ -4000,7 +4005,7 @@
 # list (some element is one), a ‹set› (keys compared with ≣) whose blocks are
 # freed after; otherwise ‹unique› (a hash set, O(n) expected) and compare
 # the counts.
-⊡\distinct"⇒l‹_2d_chk›"⊙⇒n8﹢⇒p⇐n3≪⇐p﹢⇒e
+⊡‹_16_dist›"⇒l‹_2d_chk›"⊙⇒n8﹢⇒p⇐n3≪⇐p﹢⇒e
  ⇐n1»[0^]
  0⇒b0⇒w⇐p⊙32﹣⇒o
  ⇐p{"⇐e≡⋄"⊙⇐o﹣⇒t⇐t64﹤[_⇐e1⇒w⋄1⇐t≪"⇐b$[⇐b|⇒b8﹢⋄__0 1﹣^]]}_
@@ -4009,19 +4014,22 @@
   {⇐p⇐e≡⇐w|⋄⇐d⇐p⊙‹has›[0 1﹣⇒w⋄⇐d⇐p⊙‹add›_]⇐p8﹢⇒p}
   ⇐d16≪16>⇒t⇐t8﹢⊙⌫⇐t32﹢⊙⌫⇐d⌫⇐w^]_
  ⇐l‹unique›"≢⇒k⌫⇐k⇐n≡~;
+:\distinct‹_16_dist›;
 # ⍭ (0x9D, \firstwhere)  l ′f -> x   the first element for which f leaves
 # non-zero; f is not called after it.  -1 when there is none.
-⊡\firstwhere⇒f‹_2d_chk›"8﹢⇒p"⊙3≪﹢8﹢⇒e
+⊡‹_16_fw›⇒f‹_2d_chk›"8﹢⇒p"⊙3≪﹢8﹢⇒e
  {⇐p⇐e≡⋄⇐p⊙⇐f⍎[⋄⇐p⊙^]⇐p8﹢⇒p}0 1﹣;
+:\firstwhere‹_16_fw›;
 # ⍜ (0x9E, \exself)  l ′f -> l'   l'[i] is f folded left to right over
 # every element but l[i].  The exclusive prefix folds are written into the
 # result first (l'[i] = l[0] f … f l[i-1], i >= 1); a right-to-left pass then
 # keeps the exclusive suffix fold s and sets l'[i] = l'[i] f s.  f must be
 # associative.  3n - 6 calls.  Fewer than 2 elements: `empty reduce`.
-⊡\exself⇒f‹_2d_chk›"⊙⇒n8﹢⇒p
+⊡‹_16_exs›⇒f‹_2d_chk›"⊙⇒n8﹢⇒p
  ⇐n2﹤[⋄“empty reduce“U‹throw›]
  ⇐n‹_13e_new›"⇒r8﹢⇒d⇐p⊙⇐d8﹢⊛
  2⇒i{⇐i⇐n≡⋄⇐i3≪⇐d﹢8﹣⊙⇐i3≪⇐p﹢8﹣⊙⇐f⍎⇐i3≪⇐d﹢⊛⇐i1﹢⇒i}
  ⇐n1﹣3≪⇐p﹢⊙⇒s
  ⇐n2﹣⇒i{⇐i1≺⋄⇐i3≪⇐d﹢⇒a⇐a⊙⇐s⇐f⍎⇐a⊛⇐i3≪⇐p﹢⊙⇐s⇐f⍎⇒s⇐i1﹣⇒i}
  ⇐s⇐d⊛⇐r‹_13e_tag›;
+:\exself‹_16_exs›;

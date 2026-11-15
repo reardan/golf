@@ -1498,10 +1498,20 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
 # compiles with the prelude, so the user program's first refused name is
 # number 1025 - P.
 w93p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
-w93n=""; for k in $(seq 1 $((1025 - w93p))); do w93n="$w93n:‹w$k›;"; done
-[ "$(printf '%s' "$w93n" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((1025 - w93p))› at line 1" ] \
-  && [ "$(printf '%s' "${w93n%:*}" | und)" = "0" ] \
-  && ok "the 1025th long name is refused (1024 fit the table; $w93p of them are the prelude's)" || no "too many long names"
+# W16: the whole prelude no longer leaves room in the 192 KB image for ~450
+# empty words, so these two tests compile with the prelude pruned (as golfc
+# does) and count the long names of what is kept, w93q (an empty program's).
+undp(){ python3 tools/codepage.py encode > "$TMP/up.gb" \
+  && python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/up.gb" > "$TMP/u.src" && cat "$TMP/up.gb" >> "$TMP/u.src"
+  "$TMP/golf2" < "$TMP/u.src" > "$TMP/u.out" 2>"$TMP/u.err"; echo "$?"; }
+# pn PROG: the number of long names in the prelude pruned for PROG.
+pn(){ printf '%s' "$1" | python3 tools/codepage.py encode > "$TMP/up0.gb"
+  python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/up0.gb" | python3 -c 'import sys,re; print(len(set(re.findall(rb"\xb4([^\xb5]*)\xb5", sys.stdin.buffer.read()))))'; }
+w93q=$(pn '')
+w93n=""; for k in $(seq 1 $((1025 - w93q))); do w93n="$w93n:‹w$k›;"; done
+[ "$(printf '%s' "$w93n" | undp)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹w$((1025 - w93q))› at line 1" ] \
+  && [ "$(printf '%s' "${w93n%:*}" | undp)" = "0" ] \
+  && ok "the 1025th long name is refused (1024 fit the table; $w93q of them are the pruned prelude's)" || no "too many long names"
 # The other half of the contract: a program without ‹ compiles to the bytes it
 # always did.  Against the compiler logic of the commit before M2 (rebuilt with
 # today's blob, so a template change elsewhere does not count) when this clone
@@ -1900,7 +1910,7 @@ python3 boot/golfref.py < "$TMP/w10a.src" > "$TMP/w10a.ref" 2>/dev/null
 # two of them called forward, so the table, the heads and the bank all reach
 # their ends.  P are the prelude's, so the program adds 1024 - P.  (About 66 KB
 # with the prelude: past the old 64 KB image, inside W11-1E's 192 KB cap.)
-w10n=$((1024 - w93p)); w10s=""
+w93q=$(pn '1→‹a›←‹a›Ṅ'); w10n=$((1024 - w93q)); w10s=""
 # (W15: the whole prelude left under 14 KB of the 192 KB image, so only one
 # name in eight — and the first and the last two, the ones run — is a variable
 # as well; the rest are empty words, 20 bytes each.)
@@ -1909,11 +1919,11 @@ for k in $(seq 1 $w10n); do
 done
 w10s="‹v$w10n›‹v1›$w10s‹v$((w10n-1))›←‹v1›Ṅ←‹v$((w10n-1))›Ṅ←‹v$w10n›Ṅ"
 w10s="${w10s/:‹v$w10n›/:‹z›;:‹v$w10n›}"
-[ "$(printf '%s' "$w10s" | und)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z› at line 1" ] \
+[ "$(printf '%s' "$w10s" | undp)" = "2" ] && [ "$(cat "$TMP/u.err")" = "GOLF: too many long names ‹z› at line 1" ] \
   && ok "1024 long names fill the table: one more (‹z›) is refused" || no "1024 cap: $(cat "$TMP/u.err")"
 w10s="${w10s/:‹z›;/}"
-[ "$(printf '%s' "$w10s" | und)" = "0" ] && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1$((w10n-1))$w10n" ] \
-  && ok "$w10n user long names (+ $w93p prelude) as words, one in eight a variable too, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
+[ "$(printf '%s' "$w10s" | undp)" = "0" ] && chmod +x "$TMP/u.out" && [ "$("$TMP/u.out")" = "1$((w10n-1))$w10n" ] \
+  && ok "$w10n user long names (+ $w93q pruned prelude) as words, one in eight a variable too, the 1024th's cell (0x4E27F8) included" || no "1024 long names run"
 
 # @@ W10-B-V1DIV @@
 echo "v1's / % (W10-B): unsigned as ever, but a zero divisor is a clean error, not SIGFPE"
