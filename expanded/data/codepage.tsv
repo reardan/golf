@@ -60,6 +60,7 @@
 94	ED	A	rmin	E28A93
 95	ED	A	rmax	E28A94
 96	ED	A	rlt	EFB9A4
+97	ED	A	cdiv	E28CB9
 A0	ED	A	slt	E289BA
 A1	ED	A	sgt	E289BB
 A2	ED	A	shl	E289AA
@@ -93,6 +94,8 @@ BA	ED	C	vdec	E287A3
 BB	ED	C	blk	E29FA6
 BC	ED	C	endblk	E29FA7
 BD	ED	C	dig	CA98
+BE	ED	C	inone	E291A0
+BF	ED	C	intwo	E291A1
 52	E-	L	range	E28DB3
 53	E-	L	sum	E28891
 4C	E-	L	len	E289A2
@@ -161,3 +164,9 @@ EF	ED	L	tfword	E1B9AD
 98	ED	L	hjoin	E28B88
 99	ED	L	cancel	E28D99
 9A	ED	L	both	E2A5AE
+9F	ED	L	irange	CA80
+42	E-	L	line	E28493
+9B	ED	L	prune	E28DA5
+9C	ED	L	distinct	E1B88C
+9D	ED	L	firstwhere	E28DAD
+9E	ED	L	exself	E28D9C

@@ -208,6 +208,56 @@ def numchk scalar
     scalar: $scalar
 
 # ===========================================================================
+# W16: the binary atoms ≡ ≺ ≻ ÷ ∣ ⌹ / % and the bit atoms ♯ ⊣ ⊢ ⊥ map
+# ===========================================================================
+# The int path pays one compare-and-branch per operand on its top byte, as
+# numchk does (no cell load): a value whose top byte is not 0x7F is no list.
+# Only then is the op's own hook cell (0x4F0100 + 8*byte, the M-VEC table)
+# loaded, and called when non-zero.  The hook (‹_w16_h…›, lib/prelude.golfj
+# section W16) makes the exact test (tagged AND in the list heap); for
+# anything else it returns at once and the scalar body runs as before.  For
+# a list it maps (with scalar broadcast, as + does), adds the scalar body's
+# length to its return address and so comes back PAST the body with the
+# result on TOS.  Without the prelude the cell is 0 and the atom is raw.
+# 29 bytes in front of a binary atom, 22 in front of a unary one.
+def bpoly cell scalar
+    80 7C 24 07 7F          # cmp byte [rsp+7], 0x7F   ; b (TOS)
+    74 >hook                # je .hook
+    80 7C 24 0F 7F          # cmp byte [rsp+15], 0x7F  ; a
+    75 >scalar              # jne .scalar
+    hook: 48 8B 04 25 $cell # mov rax, [cell]
+    48 85 C0                # test rax, rax
+    74 >scalar FF D0        # jz .scalar ; call rax
+    scalar: $scalar
+
+def upoly cell scalar
+    80 7C 24 07 7F          # cmp byte [rsp+7], 0x7F   ; TOS
+    75 >scalar              # jne .scalar
+    48 8B 04 25 $cell       # mov rax, [cell]
+    48 85 C0                # test rax, rax
+    74 >scalar FF D0        # jz .scalar ; call rax
+    scalar: $scalar
+
+# W16: ⌹ is ceil(a/b): the truncated quotient, plus 1 when the remainder is
+# non-zero and has b's sign.  After divchk's -1 path (neg rax) rdx is zeroed,
+# so the tail leaves that quotient alone.
+def negxor
+    negrax xoredx
+def ceilpush
+    48 85 D2                # test rdx, rdx
+    74 >p                   # jz .p                 ; exact
+    48 31 CA                # xor rdx, rcx
+    78 >p                   # js .p                 ; signs differ: trunc is ceil
+    48 FF C0                # inc rax
+    p: 50                   # .p: push rax
+
+# The unsigned / % of W10-B, named so bpoly can take them as one argument.
+def udiv
+    div0guard v1:2F+2
+def umod
+    div0guard v1:25+2
+
+# ===========================================================================
 # The fixed records
 # ===========================================================================
 # W8/M-TOOL: the entry-rsp stash.  At process entry rsp points at argc, and
@@ -250,11 +300,11 @@ rec 02 v1:02                            # cond
 rec 03 argvstash guardpage setuprstack  # STARTUP2
 rec 04 hdrpairs                         # M-MEM: the shrunken p_memsz
 rec 05 endhook flush v1:05              # AUTOEXIT2: end hook, flush, exit(0)
-# W13-A: S1's adverbs, € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ ⍂ ⍃ ⍖ ⍷ (and W15's ⍙ ⥮, the
-# last two bytes).  A call token immediately
+# W13-A: S1's adverbs, € ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣ ⍂ ⍃ ⍖ ⍷ (and W15's ⍙ ⥮, then
+# W16's ⍥ ⍭ ⍜, the last bytes).  A call token immediately
 # followed by one of these is compiled as `′token`.  golf2 and the seed scan
 # this record; boot/golfref.py imports it as mkblob2.ADVERBS.
-rec 06 4D 46 57 5A D1 D2 D3 D4 D8 D9 E7 E8 EA EC 99 9A
+rec 06 4D 46 57 5A D1 D2 D3 D4 D8 D9 E7 E8 EA EC 99 9A 9B 9D 9E
 # ... except these, which never quote: the v1 stack, memory and I/O ops
 # " _ \ & @ ! ? , ( ) . , then ∘ ⊸ (they build a function) and ⊙ ⊛.
 rec 07 22 5F 5C 26 40 21 3F 2C 28 29 2E C5 D0 A4 A5
@@ -271,8 +321,8 @@ override 2A poly(w:4F0250,v1:2A)
 # W10-B: v1's UNSIGNED / % get the zero check.  Unsigned div has no other #DE
 # case, so the tail is v1's own (xor edx,edx; div rcx; push) and every nonzero
 # divisor gives exactly v1's result.
-override 2F div0guard v1:2F+2
-override 25 div0guard v1:25+2
+override 2F bpoly(w:4F0278,udiv)      # W16: and they map
+override 25 bpoly(w:4F0228,umod)
 # W11-1C: `.` (exit), `)` (write one byte) and `(` (read one byte) flush
 # first.  `)` and `(` themselves stay raw: one write(2) or read(2) per byte.
 override 2E flush v1:2E
@@ -311,6 +361,7 @@ override 85 numchk(atom:85)
 tpl 86 59 58 48 39 C1 48 19 C0 50       # » gt, unsigned
 tpl 87                                  # ≡ eq
     59 58 48 29 C8 48 83 E8 01 48 19 C0 50
+override 87 bpoly(w:4F0538,atom:87)    # W16: maps
 # W9-1A: ⌈ ⌊ are SIGNED (cmp rax,rcx then cmovl / cmovg), like ÷ ∣ ≺ ≻;
 # unsigned max/min stay available as the raw ⊔ ⊓ below.  Both dispatch on
 # shape (M-VEC).
@@ -324,6 +375,8 @@ override 89 poly(w:4F0548,atom:89)
 # `neg`, so INT64_MIN ÷ -1 = INT64_MIN, and ∣ is 0).
 tpl 8A divchk(negrax,50)                # ÷ sdv
 tpl 8B divchk(xoredx,52)                # ∣ smd
+override 8A bpoly(w:4F0550,atom:8A)    # W16: both map
+override 8B bpoly(w:4F0558,atom:8B)
 
 # Quotations: exec is an indirect call.  Its partner `ref` (′) is a compiler
 # prefix, not an atom.
@@ -352,12 +405,19 @@ tpl 94 59 58 48 39 C8 48 0F 47 C1 50    # ⊓ rmin, unsigned
 tpl 95 59 58 48 39 C8 48 0F 42 C1 50    # ⊔ rmax, unsigned
 tpl 96 59 58 48 29 C8 48 19 C0 50       # ﹤ rlt, unsigned
 
+# W16: ⌹ cdiv, ceil(a/b) signed, checked like ÷; it maps like ÷.  It sits in
+# the raw-atom range's spare byte although it dispatches (REGISTRY §1.2).
+tpl 97 divchk(negxor,ceilpush)          # ⌹ cdiv
+override 97 bpoly(w:4F05B8,atom:97)
+
 # M4 atoms: signed compare, shifts, 64-bit cells.  v1's `<` `»` are UNSIGNED
 # and its `@` `!` are 32-bit; these are the signed/64-bit counterparts.
 tpl A0                                  # ≺ slt
     59 58 48 39 C8 0F 9C C0 0F B6 C0 48 F7 D8 50
 tpl A1                                  # ≻ sgt
     59 58 48 39 C8 0F 9F C0 0F B6 C0 48 F7 D8 50
+override A0 bpoly(w:4F0600,atom:A0)    # W16: ≺ ≻ map
+override A1 bpoly(w:4F0608,atom:A1)
 tpl A2 59 48 D3 24 24                   # ≪ shl
 tpl A3 59 48 D3 3C 24                   # ≫ sar
 tpl A4 58 48 8B 00 50                   # ⊙ fetch, 64-bit
@@ -379,13 +439,17 @@ tpl A7 58 5A 5E 5F 0F 05 50             # ⎈ sys
 tpl A8 54 55                            # ⊷ spr: push rsp; push rbp
 tpl A9 5D 5C                            # ⊶ spw: pop rbp; pop rsp
 
-# W13-B: bit atoms.  RAW like the other bitwise atoms.  popcnt / tzcnt / lzcnt
+# W13-B: bit atoms (W16: they map over lists, like ± ⊕).  popcnt / tzcnt / lzcnt
 # are F3 48 0F B8/BC/BD; tzcnt and lzcnt give 64 for 0.  The low bit is
 # x & -x, written without BMI1's blsi.
 tpl AA 58 F3 48 0F B8 C0 50             # ♯ pcnt
 tpl AB 58 F3 48 0F BC C0 50             # ⊣ ctz
 tpl AC 58 F3 48 0F BD C0 50             # ⊢ clz
 tpl AD 48 8B 04 24 48 F7 D8 48 21 04 24 # ⊥ lsb
+override AA upoly(w:4F0650,atom:AA)    # W16: they map, like ± ⊕
+override AB upoly(w:4F0658,atom:AB)
+override AC upoly(w:4F0660,atom:AC)
+override AD upoly(w:4F0668,atom:AD)
 
 # W14-A: the six-argument syscall.  ⎈ fills rdi rsi rdx only; wait4, mmap and
 # friends need all six.  a1 is the deepest operand, num the top: pop rax, r9,

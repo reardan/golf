@@ -135,6 +135,40 @@ recursion is the one solution here that still spells out its own loop.
 Every problem still beats Python, `topk` only just, and `twosum` beats the
 C++ `unordered_map`.
 
+W16 final, 2026-11-15, one `./bench.sh in` run on the same shared container:
+
+| Problem | Golf bytes (W15 → W16) | Golf s | Python s | C++ s |
+|---|---|---|---|---|
+| twosum | 4 → 4 | 0.053 | 0.104 | 0.056 |
+| parens | 10 → 3 | 0.066 | 0.202 | 0.023 |
+| stock | 4 → 4 | 0.078 | 0.255 | 0.037 |
+| longsub | 9 → 8 | 0.142 | 0.449 | 0.008 |
+| prodself | 7 → 2 | 0.117 | 1.515 | 0.090 |
+| topk | 6 → 6 | 0.116 | 0.130 | 0.037 |
+| islands | 7 → 7 | 0.070 | 0.608 | 0.020 |
+| trap | 9 → 7 | 0.113 | 0.314 | 0.059 |
+| slidemax | 3 → 3 | 0.199 | 1.633 | 0.105 |
+| queens | 56 → 14 | 1.308 | 0.221 | 0.013 |
+| **first ten** | **115 → 58** | | | |
+| search | 3 → 3 | 0.094 | 0.170 | 0.080 |
+| koko | 21 → 13 | 0.061 | 0.286 | 0.024 |
+| oranges | 12 → 12 | 0.085 | 1.040 | 0.025 |
+| course | 10 → 9 | 0.154 | 0.572 | 0.089 |
+| delay | 16 → 16 | 0.337 | 1.270 | 0.181 |
+| redundant | 16 → 11 | 0.183 | 0.547 | 0.069 |
+| coins | 11 → 11 | 0.040 | 0.211 | 0.007 |
+| lcs | 24 → 19 | 0.233 | 0.826 | 0.011 |
+| temps | 6 → 6 | 0.162 | 1.467 | 0.113 |
+| bits | 5 → 3 | 0.060 | 1.241 | 0.055 |
+| **all twenty** | **239 → 161** | **3.67** | **13.06** | **1.10** |
+
+Golf is now shorter than every rival on the first ten (58 against Nibbles' 92)
+and on all twenty (161 against 220). The price is `queens`: it is now the
+backtracking permutation search `⍥` with an all-distinct test, as the rivals
+write it, 14 bytes instead of 56 but 1.3 s instead of 0.02 s on n = 12, the
+one problem where Golf is slower than Python. It is still a pruned search
+(a prefix that fails is never extended), not O(n!) over all permutations.
+
 ### Byte ceilings
 
 The current size of each Golf solution, as `./bytes.sh` counts it. The gate
@@ -147,33 +181,34 @@ lower its number.
 | problem | bytes |
 |---|---|
 | twosum | 4 |
-| parens | 10 |
+| parens | 3 |
 | stock | 4 |
-| longsub | 9 |
-| prodself | 7 |
+| longsub | 8 |
+| prodself | 2 |
 | topk | 6 |
 | islands | 7 |
-| trap | 9 |
+| trap | 7 |
 | slidemax | 3 |
-| queens | 56 |
+| queens | 14 |
 | search | 3 |
-| koko | 21 |
+| koko | 13 |
 | oranges | 12 |
-| course | 10 |
+| course | 9 |
 | delay | 16 |
-| redundant | 16 |
+| redundant | 11 |
 | coins | 11 |
-| lcs | 24 |
+| lcs | 19 |
 | temps | 6 |
-| bits | 5 |
+| bits | 3 |
 
-Total 239: the first ten 115 (177 before W15's rewrite, 411 before
-W13-F's, 655 before W12-6's, 898 at the baseline above), the second ten
-124 (326 before W15).
+Total 161: the first ten 58 (115 before W16's rewrite, 177 before W15's,
+411 before W13-F's, 655 before W12-6's, 898 at the baseline above), the
+second ten 103 (124 before W16, 326 before W15).
 
 ### Notes
 
-W15 rewrote all twenty with implicit input (no program starts with `ℤ` any
+W16 (REFERENCE "W16") rewrote ten of them; the notes below give the W16
+form where it changed. W15 rewrote all twenty with implicit input (no program starts with `ℤ` any
 more: a word that finds the stack empty takes the input, and takes it again
 when it needs a second copy) and the structure adverbs (REFERENCE "Structure
 adverbs (W15)"). Each keeps its algorithm's time complexity. Stock, Trap and
@@ -185,22 +220,19 @@ others:
   again), and `⋈` is the hash join: the pair `j i` for which `target - x[i]`
   is an earlier `x[j]`. One pass, one table. The problem promises exactly one
   solution; with more, every `i` that has a partner prints its pair.
-- **parens** `⊖⊘⟦-⊕⟧⍙≢ṭ⊐`. `⊖⊘` maps `( [ {` to 19 45 61 and `) ] }` to
-  one more, 20 46 62 (found by a brute-force search). `⍙` is the stack
-  cancel: an element cancels the stack top `t` when `t x - ⊕` is `0`, which
-  is exactly a closer on its own opener; anything else is pushed and can
-  never be cancelled later. The string is valid when nothing is left:
-  `≢ṭ⊐`. The stack is a heap block now, so depth is not limited by the
-  process stack. (Brackets never start with a digit or `-`, so the line
-  arrives as implicit input.)
-- **longsub** `⏎_Ṕ⌈⍀ℑ\\-Ṁ`. `Ṕ` gives each letter's previous position,
+- **parens** `ʘ(ṭ`. `‹balanced›` (`ʘ(`) gives `0` when `()[]{}` balance,
+  `ṭ` turns the flag into the text `true`/`false`, and implicit output prints
+  a text list as text (W16's text mark), so no `⊐`. Before W16 it was the
+  stack-cancel adverb `⍙` over a code map, `⊖⊘⟦-⊕⟧⍙≢ṭ⊐` (10 bytes).
+- **longsub** `ℓṔ⌈⍀ℑ\\-Ṁ`. `Ṕ` gives each letter's previous position,
   `⌈⍀` the running maximum of those, the start of the window ending at `i`
-  less one, and `ℑ\\-` turns that into the window lengths. It keeps its
-  explicit `⏎_`: the string may begin with a digit, which implicit input
-  would read as numbers. Since W15 `Ṕ` uses a table instead of a dict when
-  the values span a small range.
-- **prodself** `⟦1*⍃⟧⥮*`: `1*⍃` is the exclusive prefix product, `⥮` runs
-  it from both ends, `*` multiplies the two. No division, so zeros are fine.
+  less one, and `ℑ\\-` turns that into the window lengths. `ℓ` reads the line
+  raw (W16): the string may begin with a digit, which implicit input would
+  read as numbers. Since W15 `Ṕ` uses a table instead of a dict when the
+  values span a small range.
+- **prodself** `*⍜`: `⍜` folds `*` over every element but `i`, as an
+  exclusive prefix scan times an exclusive suffix scan. No division, so zeros
+  are fine.
 - **topk** `⍘\\⍋\\ʘk`: sort the numbers, then `‹mostcommon›`, whose ties
   fall in first-appearance order, which after the sort is value order, as
   Python's `(-count, value)` key has them. The radix sort is one pass here,
@@ -210,46 +242,47 @@ others:
   The predicate is the trailing-zero-count atom `⊣`, which is `0` for `1`
   (49, odd) and not for `0` (48) or the newline (10). (It reads with `⎕`:
   the grid starts with a digit.)
-- **queens** keeps the free columns `c` (not the used ones) and the two
-  diagonals as bare locals, so the full mask is only the first call's
-  argument (`∑1\\≪⊖0"s`, `∑` of the one-number input being `n`) and the
-  count is just `c0≡±` at the leaves. `⊥` takes the lowest free bit, `⊗` and
-  `⊘` shift the diagonals.
+- **queens** `∑⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥≢`. `∑` of the one-number input is `n`; `⍥`
+  enumerates the permutations of `0 … n-1` column by column and drops every
+  prefix its predicate rejects, so only the boards that are safe so far are
+  extended. The predicate takes a prefix `p`: `p+i` all distinct (`"+⍸Ḍ`)
+  and `p-i` all distinct (`\\-⍸Ḍ`), both zero for true, `|` joins them. `≢`
+  counts the full boards. Before W16 it was a 56-byte bitmask recursion
+  (0.02 s against 1.3 s now).
 
 The second ten:
 
 - **search** `⍘ʘb` is `‹bisect›`; **temps** `ʘnℑ-0⌈` is `‹nextgreater›`
-  less the index, clamped at `0`; **bits** `∑⊕⍳♯€` maps the popcount atom
-  over `0 … n`.
-- **koko** `⍘&Ṁ1\\⟦→k&⊖←k/⊞⊕∑&≻⟧ʘh` binary-searches the speed with
-  `‹bsearch›` (`ʘh`) over `[1, max)`. The predicate computes the hours as
-  vector arithmetic on the piles under it, `(p-1)/k+1` summed, with `/⊞`
-  broadcasting the scalar `k`, and answers "the hours exceed `h`" (`&≻`).
+  less the index, clamped at `0`; **bits** maps the popcount atom
+  over `0 … n`, `ʀ` (W16) being the inclusive range: `∑ʀ♯`.
+- **koko** `1②Ṁ⟦②\\⌹∑①≻⟧ʘh` binary-searches the speed with `‹bsearch›`
+  (`ʘh`) over `[1, max)`, `②` being the piles (the input's second line) and
+  `①` the hours. The predicate is `ceil(p/k)` summed, `⌹` the W16 ceiling
+  division broadcasting the scalar `k`, compared with `≻` (which maps since
+  W16): "the hours exceed `h`".
 - **oranges** `⎕ʘW50 48ʘ@⊔⍁`: `‹gdist›` (`ʘ@`) is the multi-source grid BFS,
   from every `2` (code 50), with `0` (48) as the wall. `⊔⍁` reduces the
   distances with the raw, unsigned maximum: the answer is the largest
   distance, and a fresh orange that nothing reaches is `-1`, which as an
   unsigned number beats every distance, so the answer is then `-1`.
-- **course** `⍘\\ʘ/ʘo\\_ṭ⊐`: `‹dadj›` (`ʘ/`) builds the graph and
+- **course** `⍘\\ʘ/ʘo\\_ṭ` (the text mark prints `ṭ`'s result, W16): `‹dadj›` (`ʘ/`) builds the graph and
   `‹toposort›` fails exactly when there is a cycle.
 - **delay** `⍘⊕\\⍘→kʘ|←kʘw1↓⊔⍁`: `‹dwadj›` (`ʘ|`) and `‹dijkstra›` (`ʘw`)
   from `k`, the 1-based list less its vertex 0, then `⊔⍁` again: the
   largest distance, or `-1` if any vertex is unreached.
-- **redundant** `⍘⊕ʘ=\\2ʘ%⟦ʘu⊖⟧⌿0⊇`: a union-find (`ʘ=`), the edges as
-  pairs (`2ʘ%`), filtered through `‹uunion›`, which takes a pair since W15
-  and answers `1` for an edge whose ends were already joined; `⊖` makes
-  that the `0` that `⌿` keeps. The first one kept is the answer.
+- **redundant** `⍘⊕ʘ=\\2ʘ%ʘu⍭`: a union-find (`ʘ=`), the edges as
+  pairs (`2ʘ%`), and `⍭` (W16) stops at the first edge for which
+  `‹uunion›` answers non-zero: its ends were already joined.
 - **coins** `⍘⊕0⟦&+⟧ʘ>ʘ$`: Coin Change is a shortest path. The vertices are
   the amounts `0 … amount`, `&+` adds every coin to an amount, and `‹bfsf›`
   (`ʘ>`) is BFS over that function from `0`; `ʘ$` takes the last distance,
   `-1` when the amount cannot be made.
-- **lcs** `⏎_"→b0*⟦&0⌈⍃\\←b≡⊞-⌈⌈⍀⟧⇤Ṁ` folds one row per letter of the
-  second string (the fold's list is implicit input: `⏎_` took the first
-  line, so the look-ahead gives the second). With `P` the previous row
-  (non-decreasing), the new one is `⌈⍀ max(P, (0⌈⍃ P) + E)`, where `0⌈⍃`
-  shifts `P` right by one and `E` is 1 where the other string has the
-  letter (`≡⊞` broadcasts the letter; true is `-1`, hence `-`). O(mn), with
-  vector ops in place of a call per cell.
+- **lcs** `②①0*⟦&0⌈⍃\\①≡-⌈⌈⍀⟧⇤Ṁ` folds one row per letter of the
+  second string (`②`, the input's second line as a code list). With `P` the
+  previous row (non-decreasing), the new one is `⌈⍀ max(P, (0⌈⍃ P) + E)`,
+  where `0⌈⍃` shifts `P` right by one and `E` is 1 where the first string
+  (`①`) has the letter (`≡` broadcasts the letter since W16; true is `-1`,
+  hence `-`). O(mn), with vector ops in place of a call per cell.
 
 `golf/stock_stream.golfj` (W12-A8) is Stock as a stream, `‹sints›′p‹smap›0′⌈‹sfold›`
 with the running minimum threaded under the pipeline and dropped by a final `_`
@@ -274,18 +307,19 @@ They take the problem's LeetCode arguments rather than stdin (`rivals.py`'s
 
 | | first ten | all twenty |
 |---|---|---|
+| Golf (W16) | 58 | 161 |
 | Nibbles | 92 | 220 |
 | Vyxal | 99 | 297 |
-| Golf | 115 | 239 |
+| Golf (W15) | 115 | 239 |
 | 05AB1E | 136 | 364 |
 | Jelly | 144 | — |
 
-Per problem (Golf / Vyxal / 05AB1E / Nibbles): twosum 4/12/14/8, parens
+Per problem (Golf W15 / Vyxal / 05AB1E / Nibbles): twosum 4/12/14/8, parens
 10/2/8/13, stock 4/5/6/5, longsub 9/8/9/9, prodself 7/6/8/3, topk 6/11/10/8,
 islands 7/26/41/20, trap 9/12/16/8, slidemax 3/3/5/6, queens 56/14/19/12,
 search 3/2/2/3, koko 21/16/19/14, oranges 12/38/54/21, course 10/15/15/10,
 delay 16/54/57/31, redundant 16/15/15/9, coins 11/21/26/12, lcs 24/26/24/16,
-temps 6/8/11/7, bits 5/3/5/5.
+temps 6/8/11/7, bits 5/3/5/5. The W16 sizes are in the table above.
 
 These rival solutions are a first pass, not expert golf, and most are brute
 force (O(n²) up to O(n!)): on `gen.py 0.001` inputs Vyxal and 05AB1E time out

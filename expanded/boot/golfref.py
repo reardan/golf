@@ -104,6 +104,7 @@ def compile_bytes(src: bytes) -> bytes:
     J = 0               # M-FRAME: 1 inside a ⊡ definition, which owns a slab;
                         # W13-A: 2 inside a ⟦ block within one (golf2's J)
     flocals = []        # M-FRAME2: its locals' name numbers, in order of first use
+    wname = None        # W16-A: the ⊡ word's name (its link cell's index)
     fsites = []         # M-FRAME2: its frame-size immediates, patched at ';'
     longs = []          # M2: long names in order of first appearance; name
                         # number LONG_BASE + i, exactly as golf2 interns them
@@ -160,6 +161,26 @@ def compile_bytes(src: bytes) -> bytes:
 
     def emit_u32(v):
         emit(v.to_bytes(4, "little"))
+
+    def link_cell():
+        return mkblob2.LINK_TABLE + 8 * wname
+
+    def link_read(name):
+        """W16-A: a ⟦ block's read of its ⊡ word's local, through the word's
+        link cell; the first one claims the hidden slot."""
+        if mkblob2.LINK_HIDDEN not in flocals:
+            if len(flocals) >= mkblob2.FRAME_MAX_LOCALS:
+                die(b"too many locals " + shown(name))
+            flocals.append(mkblob2.LINK_HIDDEN)
+        emit([0x48, 0x8B, 0x04, 0x25]); emit_u32(link_cell())   # mov rax,[cell]
+        emit([0x48, 0x8B, 0x40, 8 * flocals.index(name), 0x50])  # [rax+d]; push
+
+    def link_call(target, at):
+        """W16-A: the 7-byte rbp adjust whose imm32 is at `at` becomes
+        `call target` and a 2-byte nop."""
+        out[at - 3] = 0xE8
+        patch32(at - 2, target)
+        out[at + 2:at + 4] = bytes([0x66, 0x90])
 
     def push_ref(name):
         """Emit `push <the address of the word or atom named `name`>`.
@@ -418,13 +439,33 @@ def compile_bytes(src: bytes) -> bytes:
                 for b in chain[:2] if len(chain) < 3 else []:
                     call_or_template(b)
                 chain = None
+            link = J == 1 and mkblob2.LINK_HIDDEN in flocals
             if J == 1:                               # M-FRAME: release the slab,
                 J = 0                                # now that its size is known
                 size = 8 * len(flocals)              # (M-FRAME2): patch every
-                for at in fsites:                    # earlier immediate with it
-                    out[at:at + 4] = size.to_bytes(4, "little")
-                emit(mkblob2.FRAME_RELEASE); emit_u32(size)
+                if not link:                         # earlier immediate with it
+                    for at in fsites:
+                        out[at:at + 4] = size.to_bytes(4, "little")
+                    emit(mkblob2.FRAME_RELEASE); emit_u32(size)
+                else:                                # W16-A: exit through stub B
+                    emit([0xE8]); lsite = len(out); emit_u32(0)
             emit(v1.EPILOGUE)
+            if link:                                 # W16-A: the link stubs
+                h = 8 * flocals.index(mkblob2.LINK_HIDDEN)
+                sa = len(out)                        # A: entry
+                emit(mkblob2.FRAME_RESERVE); emit_u32(size)
+                emit([0x48, 0x8B, 0x04, 0x25]); emit_u32(link_cell())
+                emit([0x48, 0x89, 0x45, h])
+                emit([0x48, 0x89, 0x2C, 0x25]); emit_u32(link_cell())
+                emit([0xC3])
+                sb = len(out)                        # B: exit
+                emit([0x48, 0x8B, 0x45, h])
+                emit([0x48, 0x89, 0x04, 0x25]); emit_u32(link_cell())
+                emit(mkblob2.FRAME_RELEASE); emit_u32(size)
+                emit([0xC3])
+                patch32(lsite, sb)
+                for k, at in enumerate(fsites):      # fsites[0]: the prologue's
+                    link_call(sa if k == 0 else sb, at)
             kind, patch = stack.pop()
             assert kind == 'def', "; without :"
             patch32(patch, len(out))
@@ -505,6 +546,7 @@ def compile_bytes(src: bytes) -> bytes:
 
         if c == FRAME_BYTE:                          # ⊡name … ; : with locals
             name = take_name()                       # the header is ':'s, plus
+            wname = name                             # (W16-A: its link cell)
             emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
             define(name)
             stack.append(('def', patch))
@@ -519,7 +561,10 @@ def compile_bytes(src: bytes) -> bytes:
             if name < 256 and not 0 <= name - ord('a') < 26:
                 die(b"local out of range " + shown(name))
             if J == 2:                               # W13-A: a ⟦ block inside a ⊡
-                die(b"block uses local " + shown(name))  # word has no frame
+                if c == LGET_BYTE and name in flocals:   # word has no frame;
+                    link_read(name)                  # W16-A: it reads through
+                    continue                         # the word's link cell
+                die(b"block uses local " + shown(name))
             if not J:                            # outside ⊡: M-FRAME's fixed
                 if name >= 256 or name - ord('a') >= 8:  # a..h slot; a long name
                     die(b"local out of range " + shown(name))  # (or i..z) has
@@ -606,6 +651,13 @@ def compile_bytes(src: bytes) -> bytes:
             emit(v1.PROLOGUE)
             chain = []                               # links from here to ';'
             continue
+        if c in mkblob2.IN_NAMES:                    # W16-A: ① ② — like a literal,
+            call_or_template(intern(mkblob2.IN_NAMES[c]))  # a call to ‹_in1›
+            flag = intern(mkblob2.IN_FLAG)           # / ‹_in2›, and ‹_inflag›'s
+            if flag in dict_:                        # `push 0` becomes `push 1`
+                at = dict_[flag] + len(v1.PROLOGUE) + 1
+                out[at:at + 4] = (1).to_bytes(4, "little")
+            continue
         if c == DIGRAPH_BYTE:                        # W13-B: ʘB as a token is
             c = digraph()                            # ‹_dgHH›, a link or a call
         elif c == LNAME_BYTE:                        # M2: ‹name› as a token — its
@@ -627,7 +679,8 @@ def compile_bytes(src: bytes) -> bytes:
 
         if J and c in flocals:                       # W13-A S4: a bare local
             if J == 2:                               # this ⊡ word has named is ⇐x
-                die(b"block uses local " + shown(c))
+                link_read(c)                         # (W16-A: in a block, through
+                continue                             # the word's link cell)
             if S1_AUDIT:
                 sys.stderr.buffer.write(b"S1 " + str(i).encode() + b": S4 "
                     + src[max(0, i - 30):i].replace(b"\n", b"\\n") + b"\n")
@@ -642,7 +695,29 @@ def compile_bytes(src: bytes) -> bytes:
                 sys.stderr.buffer.write(b"S1 " + str(i).encode() + b": "
                     + src[max(0, i - 30):i].replace(b"\n", b"\\n") + b" <|> "
                     + src[i:i + 10].replace(b"\n", b"\\n") + b"\n")
-            push_ref(c)
+            # W16-A: the adverb A is taken here; when another adverb B follows
+            # it directly, `c A` is compiled as the block ⟦c A⟧, B's operand.
+            blk = None
+            while True:
+                a = src[i]; i += 1
+                nxt = src[i] if i < n and not (segs and i >= segs[-1]["end"]) else 0
+                if nxt not in ADVERBS:
+                    break
+                emit([0xE9]); patch = len(out); emit(b"\0\0\0\0")
+                emit(v1.PROLOGUE)
+                if blk is None:
+                    push_ref(c)
+                else:
+                    emit([0x68]); emit_u32(blk)
+                call_or_template(a)
+                emit(v1.EPILOGUE)
+                patch32(patch, len(out))
+                blk = BASE + patch + 4
+            if blk is None:
+                push_ref(c)
+            else:
+                emit([0x68]); emit_u32(blk)
+            call_or_template(a)
             continue
         call_or_template(c)                          # v1 op, v2 atom, or a call
         continue

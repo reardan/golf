@@ -166,6 +166,12 @@
 # and ‹peekpos› (‹pos› after the one-byte peek).  J gains a third value: 2
 # inside a ⟦ block of a ⊡ word (the block cannot reach the word's frame).
 #
+# W16-A adds nine.  ‹adv› ‹dblk› ‹dsite› live only inside ‹derive› (an
+# adverb after an adverb); ‹wname› ‹linkslot› for the span of one ⊡
+# definition (its name, for its link cell, and its hidden link slot+1, 0 =
+# none); ‹lsite› ‹stubA› ‹stubB› ‹nx› only inside `;` (‹linkstubs›) and, for
+# ‹lsite›, inside ‹inref› (① ②), both idle between tokens.
+#
 # No two of these are ever live at the same time in different roles; the notes
 # above are the whole allocation.  Word names and variable names are separate
 # namespaces (dictionary vs bank), but none is reused across the two here.
@@ -178,7 +184,7 @@
 # ‹same› ‹fresh› ‹legal› ‹intern› ‹readname› ‹getname› ‹digraph› ‹hexit› ‹forward› ‹resolve›
 # ‹undefined› ‹symbols› e D ‹badinclude› ‹vendor› ‹import› ‹unnest› ‹inbyte›
 # g h X ‹badlocal› ‹slot› ‹badrecord› ‹recbyte› ‹recname› ‹recdef›
-# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹step› ‹inrec› ‹quoted› ‹plain› ‹badglyph› t H (W13-A: the four before t).  The M2 words have long names for the same reason their state
+# ‹recstore› ‹recfields› ‹defrecord› ‹badelse› ‹badstep› ‹named› ‹linkcell› ‹linkread› ‹linkcall› ‹linkstubs› ‹step› ‹inrec› ‹quoted› ‹dpush› ‹derive› ‹plain› ‹badglyph› t H (W13-A: the four before t; W16-A: ‹inref› after ‹digraph›, the four link words, ‹dpush› ‹derive›).  The M2 words have long names for the same reason their state
 # does — and so the compiler is its own first user of the feature: the seed
 # implements long names too, and builds this file.
 #
@@ -765,6 +771,63 @@ _
 15$         # ... then the low one
 ‹hexit›
 ‹intern›
+;
+
+# W16-A: ① / ② (0xBE / 0xBF).  Each compiles like a literal — never a chain
+# link, never quoted — as a call to the prelude's ‹_in1› / ‹_in2›, built and
+# interned as ‹digraph› builds its names.  It also sets the prelude's flag
+# word `:‹_inflag›0;` to push 1 instead: the imm32 of the `push 0` that
+# follows its prologue (blob record 1) in the body the dictionary points at.
+# The prelude's init runs ‹_inflag› and, when it is 1, takes the input's
+# first two lines before the program can read any of it.  A program without
+# the prelude (no ‹_inflag›) only gets the call.
+
+:‹inref›    # ‹inref› : ① (d = '1') or ② (d = '2')             [ d -> ]
+→‹ch›
+‹fresh›
+95          # _
+‹recbyte›
+105         # i
+‹recbyte›
+110         # n
+‹recbyte›
+←‹ch›
+‹recbyte›
+‹intern›
+e           # the call to ‹_in1› or ‹_in2›
+‹fresh›
+95          # _inflag
+‹recbyte›
+105
+‹recbyte›
+110
+‹recbyte›
+102
+‹recbyte›
+108
+‹recbyte›
+97
+‹recbyte›
+103
+‹recbyte›
+‹intern›
+Y
+@
+"
+[           # not defined: no prelude
+_
+^
+]
+1
+f
+1+
+?           # past the prologue ...
++
+1+          # ... and the push opcode: its imm32
+→‹lsite›
+1
+←‹lsite›
+!
 ;
 
 :‹hexit›    # ‹hexit› : append nibble d as an upper-case hex digit  [ d -> ]
@@ -1842,13 +1905,7 @@ _
 @
 ←b
 -
-[
-←J          # W13-A: named, but this is a ⟦ block inside the ⊡ word, which
-2-          #   cannot reach the word's frame (see ‹plain›)
-[
-“GOLF: block uses local “
-‹badlocal›
-]
+[           # named (W16-A: from a ⟦ block too — the caller decides)
 ←‹idx›
 1+
 ^
@@ -1858,6 +1915,174 @@ _
 →‹idx›
 0
 }
+;
+
+# W16-A: a ⟦ block may READ the locals of the ⊡ word it is written in.  The
+# block runs under other frames (it is called from wherever it was passed
+# to), so it finds the word's frame through the word's LINK CELL, at
+# LINKTAB + 8*name = 4407296 + 8*‹wname› (0x434000.., ../REGISTRY.md §3):
+#
+#   ⇐x or bare x in the block   mov rax, [cell]        48 8B 04 25 imm32
+#                               mov rax, [rax+disp]    48 8B 40 disp8
+#                               push rax               50
+#
+# Only a word that has such a block keeps the cell up to date, through a
+# hidden local (‹linkslot›, slot+1; 0 = none, so the word costs nothing) and
+# two stubs placed after its epilogue, inside the body the ⊡ header jumps over:
+#
+#   A (entry):  sub rbp, 8k · mov rax, [cell] · mov [rbp+h], rax ·
+#               mov [cell], rbp · ret
+#   B (exit):   mov rax, [rbp+h] · mov [cell], rax · add rbp, 8k · ret
+#
+# A single pass cannot know at the prologue that a block will read a local,
+# so the prologue's `sub rbp, imm32` and every `^`'s `add rbp, imm32` (7
+# bytes, on M-FRAME2's ‹frame› list) are rewritten at `;` into `call A` or
+# `call B` and a 2-byte nop (66 90); `;`'s own exit is a `call B`.  The calls
+# push their return address on the data stack and pop it again, nothing else.
+# Every activation saves the cell and puts it back on the way out, so a
+# recursive word's blocks see their own activation's frame.  Writes (⇒x ⇡x
+# ⇣x) from a block are still refused.
+
+:‹linkcell› # ‹linkcell› : the runtime address of this word's link cell [ -> addr ]
+←‹wname›
+8﹡
+4407296﹢
+;
+
+:‹linkread› # ‹linkread› : emit a block's read of local slot s-1    [ s -> ]
+←‹linkslot›
+[           # the word's first such read: claim the hidden slot
+←‹locals›
+16<
+[
+“GOLF: too many locals “
+‹badlocal›
+]
+2000        #   a name no name has (names stop at 1279)
+←‹locals›
+4﹡
+4259936﹢
+!
+←‹locals›
+1﹢
+"
+→‹locals›
+→‹linkslot›
+]
+1-
+8﹡
+→b
+72o         # 48 8B 04 25 imm32  mov rax, [cell]
+139o
+4o
+37o
+‹linkcell›
+w
+72o         # 48 8B 40 disp8     mov rax, [rax+disp]
+139o
+64o
+←b
+o
+80o         # 50                 push rax
+;
+
+:‹linkcall› # ‹linkcall› : turn the 7-byte rbp adjust at imm site s into `call t; nop` [ t s -> ]
+→‹lsite›    # (‹lsite›'s own job is done by now)
+←‹lsite›
+2﹢
+﹣           # rel32 = t - (s+2), from the end of the call
+←‹lsite›
+2﹣
+!
+232
+←‹lsite›
+3﹣
+,           # E8 at s-3
+102
+←‹lsite›
+2﹢
+,           # 66 90 at s+2
+144
+←‹lsite›
+3﹢
+,
+;
+
+:‹linkstubs› # ‹linkstubs› : emit stubs A and B, patch the calls to them [ -> ]
+←p
+→‹stubA›
+72o         # 48 81 ED imm32     sub rbp, 8k
+129o
+237o
+←‹locals›
+8﹡
+w
+72o         # 48 8B 04 25 imm32  mov rax, [cell]
+139o
+4o
+37o
+‹linkcell›
+w
+72o         # 48 89 45 disp8     mov [rbp+h], rax
+137o
+69o
+←‹linkslot›
+1-
+8﹡
+o
+72o         # 48 89 2C 25 imm32  mov [cell], rbp
+137o
+44o
+37o
+‹linkcell›
+w
+195o        # C3                 ret
+←p
+→‹stubB›
+72o         # 48 8B 45 disp8     mov rax, [rbp+h]
+139o
+69o
+←‹linkslot›
+1-
+8﹡
+o
+72o         # 48 89 04 25 imm32  mov [cell], rax
+137o
+4o
+37o
+‹linkcell›
+w
+72o         # 48 81 C5 imm32     add rbp, 8k
+129o
+197o
+←‹locals›
+8﹡
+w
+195o        # C3                 ret
+←‹stubB›    # `;`'s call B
+←‹lsite›
+4﹢
+﹣
+←‹lsite›
+!
+{           # every site on the ‹frame› list: the ⊡ prologue's (it holds 0,
+←‹frame›    #   the list's end) becomes `call A`, each `^`'s `call B`
+@
+→‹nx›
+←‹stubB›
+←‹nx›
+[           #   0: the prologue's
+_
+←‹stubA›
+]
+←‹frame›
+‹linkcall›
+←‹nx›
+→‹frame›
+←‹frame›
+1<
+}
+0→‹linkslot›
 ;
 
 :‹step›     # ‹step› : compile ⇡x (k = 0) or ⇣x (k = 8)            [ k -> ]
@@ -1898,6 +2123,12 @@ o
 5111808+
 w
 ^
+]
+←J          # W13-A: a ⟦ block may not write the word's local (W16-A: it
+2-          #   may read it, through the link)
+[
+“GOLF: block uses local “
+‹badlocal›
 ]
 1-          # a local: its slot's displacement
 8*
@@ -1998,10 +2229,78 @@ _
 1           # q is not an adverb
 ;
 
+# W16-A: an adverb after an adverb.  When S1 quotes a token x because the
+# adverb A follows it, ‹derive› takes A itself and peeks at the byte after
+# it.  If that is another adverb B, `x A` is compiled as the block ⟦x A⟧ —
+# jumped over, exactly the bytes ⟦ … ⟧ would give — and the block's address
+# is B's operand in turn, so `x A B C` is ⟦⟦x A⟧B⟧C.  Otherwise it is S1's
+# `′x A`, as before.  Whitespace ends it: `x A B` with a space before B is
+# still `′x A`, then B quoting whatever it follows.
+#
+# State, idle between tokens: ‹adv› the adverb being applied, ‹dblk› the
+# operand's block address (0 while it is still ′x), ‹dsite› a block's jmp.
+# ‹pos› stays on the token's line (an adverb is no newline, so every byte
+# read before the last is on it) and ‹peekpos› follows the reader.
+
+:‹dpush›    # ‹dpush› : push the derived verb's operand      [ -> ]
+←‹dblk›
+"
+[           # none yet: ′x
+_
+←b
+X
+^
+]
+L           # the block built so far
+w
+;
+
+:‹derive›   # ‹derive› : ′x A, or ⟦x A⟧ under a further adverb  [ -> ]
+0
+→‹dblk›
+{
+←q          # A, taken from the pushback
+→‹adv›
+←‹pos›      # the token's line
+‹read›      # peek at the byte after A
+→q
+←‹pos›
+→‹peekpos›  # where the reader really is
+→‹pos›
+←q
+6
+‹inrec›
+"
+[           # another adverb: ⟦operand A⟧ becomes its operand
+233o        #   0xE9 = jmp over the block
+←p
+→‹dsite›
+0
+w
+1E          #   the word prologue
+‹dpush›
+←‹adv›
+e
+94E         #   the epilogue
+←‹dsite›
+k
+←‹dsite›
+4+
+606208-
+→‹dblk›
+]
+}
+‹dpush›     # the last adverb takes it
+←‹adv›
+e
+←‹peekpos›
+→‹pos›
+;
+
 :‹plain›    # ‹plain› : a bare local, a quoted token, or e        [ name -> ]
 →b
-‹named›     # S4: slot+1 of a local this ⊡ word has named (‹named› refuses
-"           #   one from inside a ⟦ block), else 0
+‹named›     # S4: slot+1 of a local this ⊡ word has named (W16-A: from a
+"           #   ⟦ block too, read through the link cell below), else 0
 [           # not a local:
 _
 ←‹pos›      #   S1: peek at the next byte, on the token's own line
@@ -2013,17 +2312,20 @@ _
 →‹pos›
 →‹peekpos›  #   where the reader really is, restored below
 ‹quoted›
-[           #   an adverb follows: ′name
-←b
-X
-←‹peekpos›
-→‹pos›
+[           #   an adverb follows: ′name, or a derived verb (W16-A)
+‹derive›
 ^
 ]
 ←b
 e           #   anything else: the template or the call, as always
 ←‹peekpos›
 →‹pos›
+^
+]
+←J
+2-
+[           # W16-A: in a ⟦ block, read it through the word's link cell
+‹linkread›
 ^
 ]
 1-          # a local: exactly ⇐x's bytes
@@ -2156,6 +2458,8 @@ e
 1-
 [           #   a ⊡ definition: its frame size is known at last, 8*‹locals›.
 0→J         #   Stop claiming a frame, so the next ':' word is an ordinary word,
+←‹linkslot›
+[           #   (a word whose blocks read none of its locals, W16-A:)
 {           #   and walk the list of frame-size immediates — the ⊡ prologue's
 ←‹frame›    #   and every `^`'s — writing the size into each.  An unpatched
 @           #   immediate holds the next site down; the ⊡'s holds 0, the end.
@@ -2174,7 +2478,22 @@ e
 8﹡
 w
 ]
+←‹linkslot›
+1<
+[           #   W16-A: a block reads its locals, so the exit is `call stub B`,
+232o        #   patched by ‹linkstubs› below, after the epilogue
+←p
+→‹lsite›
+0
+w
+]
+]
 94E         #   the epilogue: blob record 94, the template of '^'
+←‹linkslot›
+1<
+[           # W16-A: the two link stubs, inside the jumped-over body
+‹linkstubs›
+]
 k           #   backpatch the ':' or '⊚' jmp to land after it
 ^
 ]
@@ -2371,6 +2690,9 @@ w           #   the jmp displacement, left on the stack for ';'
 0
 w
 0→‹locals›  #   no locals named yet
+0→‹linkslot› #  and no block has read one (W16-A)
+←b
+→‹wname›    #   the word's name: its link cell is LINKTAB + 8*name (W16-A)
 1→J         #   this definition has a frame; '^' and ';' release it
 ^
 ]
@@ -2396,6 +2718,18 @@ o           #   the displacement
 _
 ‹getname›
 →b
+←J
+2-
+[           #   W16-A: in a ⟦ block, a local the word has named is read
+‹named›     #   through its link cell; any other is refused by ‹slot›
+"
+[
+_
+‹slot›
+]
+‹linkread›
+^
+]
 ‹slot›
 72o         #   0x48 0x8B 0x45 disp  mov rax, [rbp+disp]
 139o
@@ -2571,6 +2905,24 @@ w           #   ... push imm32 <the block's body address>
 “ outside a block“
 10985442    #   0xA79FE2: the UTF-8 of ⟧
 ‹badglyph›
+]
+
+"
+190-
+[           # 0xBE ① : line 1 of the input, typed (W16-A) — ‹inref›
+_
+49
+‹inref›
+^
+]
+
+"
+191-
+[           # 0xBF ② : line 2 of the input
+_
+50
+‹inref›
+^
 ]
 
 "

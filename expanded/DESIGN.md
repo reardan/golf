@@ -142,12 +142,12 @@ against the thing it describes, so none of it can go stale quietly.
 
 | Measured | Now |
 |----------|-----|
-| operator atoms in `mkblob2.ATOMS` | **39** |
-| the template blob itself | **1397** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **5117** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **16908** bytes |
-| assertions in the run2 suite | **1001** |
-| assertions in the selfcheck suite | **69** |
+| operator atoms in `mkblob2.ATOMS` | **40** |
+| the template blob itself | **1838** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **6283** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **19380** bytes |
+| assertions in the run2 suite | **1033** |
+| assertions in the selfcheck suite | **70** |
 | assertions in the gtools differential suite | **57** |
 | the capstone, in op bytes | **46** |
 | the legacy capstone, in op bytes | **54** |
@@ -778,6 +778,7 @@ fixes are queued in [`NEXT_STEPS.md`](NEXT_STEPS.md).
   180 KB is left for a program's own code (after W14's scripting library the
   whole prelude is 169,944 bytes and `1Ṅ` 13,587, so `-P` leaves about 26 KB;
   after W15 they are 182,032 and 20,986, so `-P` leaves about 14 KB;
+  after W16-B's mapping compares about 186,000 and 24,500, about 10 KB;
   run2.sh compiles its biggest generated programs pruned for that reason); an empty word costs 20 bytes. `p_filesz`
   is now the file's true size (it was v1's fixed `0x10000`, and before W11-1E a
   program past 64 KB compiled cleanly and then crashed in its unmapped tail).
@@ -837,7 +838,14 @@ unbuilt, and three defects this list does not yet cover — see
   `jne`, measured at +0.1 to +0.2 ns per op in a loop
   (`bench/micro`, `loop` and `inc2`). Each use costs 22 more bytes of code.
   A bare program (`golfc -n`) and the compilers never fill the cell, so they
-  call nothing. **Not checked, by design:** the bitwise atoms `~ $ | = > ≪ ≫`
+  call nothing. W16 gave the same shape to `≡ ≺ ≻ ÷ ∣ ⌹ / %` (both operands'
+  top bytes, 29 bytes per use) and `♯ ⊣ ⊢ ⊥` (22), each with its own hook
+  cell in the M-VEC table, so they map over lists with `+`'s broadcast. The
+  prelude, which compared tagged words and list addresses with `≡ ≺ ≻`, now
+  spells every compare raw (`﹣1﹤`, `&&﹤==63≫`); the cost of the change is
+  about 4 KB of the whole prelude (`-P`) and 3.5 KB in every pruned program
+  (the twelve hooks and their atom thunks are startup code, always kept).
+  **Not checked, by design:** the bitwise atoms `~ $ | = > ≪ ≫`
   (the prelude builds and strips the tag with them), the raw `﹢ ﹣ ﹡ ⊓ ⊔ ﹤`,
   and the comparisons. On a list these still work on its tagged address.
   The binary `+ - * ⌈ ⌊` vectorize instead (M-VEC).
@@ -913,12 +921,23 @@ unbuilt, and three defects this list does not yet cover — see
   `addr | 0x7FFF<<48` (W11-1A; it was `addr | 2^48`, which sacrificed the
   everyday `[2^48, 2^49)`), so an integer whose top 16 bits are exactly `0x7FFF`
   — the 2^48 values from 9223090561878065152 up to and including `INT64_MAX` — is
-  shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊`. That is the
+  shape-tested as a list by `T`, `D` and the bare `+ - * ⌈ ⌊` (W16's `≡ ≺ ≻
+  ÷ ∣ ⌹ / % ♯ ⊣ ⊢ ⊥` add the heap-range test, as `± ⊕` do). That is the
   deliberate price of an exact tag in an untagged word (NEXT_STEPS.md history,
   M-TAG2); negatives (top bits `0xFFFF`) and everything below `0x7FFF<<48` are
   ints, so the largest int the list words treat as a number is
   9223090561878065151. Non-polymorphic atoms (`⊕`, `Ṅ`, `\radd`) still take
   `INT64_MAX` as a plain word.
+- **Text is a mark on the block, not a type (W16-D).** Implicit output prints
+  a list as text when the list carries the text mark, bit 40 of its `A`
+  header cell (the capacity; REGISTRY §3 "Every `A` block has a header
+  cell"). The words that make text set it (`⊃`, `‹tf›`, `⏎`, `ℓ`, `⎕`, text
+  implicit input), the ones that only reorder or slice keep it (`⌽ ↑ ↓`, `⧺`
+  of two text lists, `⍆`'s growth), and everything else makes a plain list.
+  The tag could not carry it: `T`, the M-VEC filter and every list word's
+  `16≪16>` mask read all 16 tag bits and all 48 address bits, while the
+  header is read only by `A`, `⌫` and the vector growth. Only implicit
+  output looks at the mark; `⍕` and `⊐` print as they always did.
 - **Nesting depth is bounded by the spill stack, now generously (W10-C).**
   Every scratch-using looping word frames its scratch with `X`/`Y` (`⍳ ∑ ∏ ⌽`
   use none since W12-P3); recursive `⍕`, `≣` and `⍤` take one frame per level,

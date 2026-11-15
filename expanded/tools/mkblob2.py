@@ -348,6 +348,28 @@ def _numchk(scalar):
     assert len(tpl) == 22 + len(scalar)
     return tpl
 
+# W16: ≡ ≺ ≻ ÷ ∣ ⌹ / % and ♯ ⊣ ⊢ ⊥ map over lists (`def bpoly` / `def
+# upoly`).  The int path tests the top byte only; the op's own hook cell
+# (hook_addr) is loaded only when that byte is 0x7F.  The hook returns either
+# to the scalar body (not a list) or past it (a list, mapped): the body's
+# length is what lib/prelude.golfj's ‹_w16_h…› add to the return address.
+BPOLY_ATOMS = (0x87, 0xA0, 0xA1, 0x8A, 0x8B, 0x97)   # ≡ ≺ ≻ ÷ ∣ ⌹ (+ / % above)
+UPOLY_ATOMS = (0xAA, 0xAB, 0xAC, 0xAD)               # ♯ ⊣ ⊢ ⊥
+def _bpoly(byte, scalar):
+    """Wrap a binary scalar template in the W16 top-byte check (29 bytes)."""
+    tpl = TPL.call("bpoly", [_u32(hook_addr(byte)), list(scalar)])
+    assert len(tpl) == 29 + len(scalar) <= 255, (byte, len(tpl))
+    return tpl
+def _upoly(byte, scalar):
+    """Wrap a unary scalar template in the W16 top-byte check (22 bytes)."""
+    tpl = TPL.call("upoly", [_u32(hook_addr(byte)), list(scalar)])
+    assert len(tpl) == 22 + len(scalar), (byte, len(tpl))
+    return tpl
+def w16_body_len(byte):
+    """The scalar body length the W16 hook for `byte` skips."""
+    t = OVERRIDES[byte]
+    return len(t) - (29 if byte not in UPOLY_ATOMS else 22)
+
 # The data must say what these names say: every override is checked against
 # the builder it is documented as, with the builder's arguments taken from the
 # constants above — so a hook address typed wrong in the data file fails here.
@@ -356,8 +378,14 @@ for _b in _POLY_V1:
     assert OVERRIDES[_b] == _poly(_b, v1.TEMPLATES[chr(_b)]), f"override {_b:02X}"
 for _b in _POLY_ATOMS:
     assert OVERRIDES[_b] == _poly(_b, _ATOM_TPL[_b]), f"override {_b:02X}"
-for _b in map(ord, "/%"):                                       # W10-B
-    assert OVERRIDES[_b] == _udivchk(v1.TEMPLATES[chr(_b)]), f"override {_b:02X}"
+for _b in map(ord, "/%"):                                       # W10-B, W16
+    assert OVERRIDES[_b] == _bpoly(_b, _udivchk(v1.TEMPLATES[chr(_b)])), f"override {_b:02X}"
+for _b in BPOLY_ATOMS:                                          # W16
+    assert OVERRIDES[_b] == _bpoly(_b, _ATOM_TPL[_b]), f"override {_b:02X}"
+for _b in UPOLY_ATOMS:                                          # W16
+    assert OVERRIDES[_b] == _upoly(_b, _ATOM_TPL[_b]), f"override {_b:02X}"
+# ⌹ is ÷'s divchk with a ceiling tail (data/templates.txt `def ceilpush`).
+assert _ATOM_TPL[0x97] == TPL.call("divchk", [TPL.call("negxor"), TPL.call("ceilpush")])
 for _b in map(ord, ".)("):                                      # W11-1C
     assert OVERRIDES[_b] == _FLUSH_CALL + list(v1.TEMPLATES[chr(_b)]), f"override {_b:02X}"
 for _b in NUMCHK_BYTES:                                         # W12-O1
@@ -433,6 +461,13 @@ assert AUTOEXIT2 == bytes(_END_CALL) + bytes(_FLUSH_CALL) + v1.AUTOEXIT
 FRAME_MAX_LOCALS = 16
 FRAME_RESERVE = bytes([0x48, 0x81, 0xED])   # sub rbp, imm32
 FRAME_RELEASE = bytes([0x48, 0x81, 0xC5])   # add rbp, imm32
+# W16-A: a ⟦ block READS its ⊡ word's locals through the word's link cell,
+# LINK_TABLE + 8*name (one 8-byte cell per name number, 0..1279, runtime BSS
+# in the free headroom; ../REGISTRY.md §3.6).  A word that has such a block
+# saves the cell in a hidden local and points it at its frame on entry (stub
+# A), and puts it back on every exit (stub B); see self/golf2.golfj.
+LINK_TABLE = 0x434000     # 4407296: to 0x4367FF
+LINK_HIDDEN = 2000        # the hidden local's entry in the slot table: no name
 
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
@@ -509,6 +544,16 @@ UNQUOTED = _RECORDS[7]                # data/templates.txt `rec 07`
 ADVERB_KEY = 6      # blob record keys: control bytes, never an op, so `f`
 UNQUOTED_KEY = 7    # finds these two only when asked by number
 DIGRAPH_BYTE = _C["dig"] # ʘB  W13-B (S6): compiles exactly as the long name ‹_dgHH› (HH = B in upper-case hex); no memory
+# W16-A: ① / ② compile as a call to the prelude's ‹_in1› / ‹_in2› (like a
+# literal: never quoted, never a chain link), and set the immediate of the
+# prelude's flag word ‹_inflag› (`:‹_inflag›0;`, the push imm32 right after
+# its prologue) to 1, so that the prelude's init takes the input's first two
+# lines before the program can read any of it.  Runtime cells: IN_CELLS.
+INONE_BYTE = _C["inone"]  # ①  line 1 of the input, typed
+INTWO_BYTE = _C["intwo"]  # ②  line 2
+IN_NAMES = {INONE_BYTE: b"_in1", INTWO_BYTE: b"_in2"}
+IN_FLAG = b"_inflag"
+IN_CELLS = 0x436800       # 4417536: ① · 4417544: ② · 4417552: taken (0/1)
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).
