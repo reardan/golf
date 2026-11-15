@@ -1628,17 +1628,17 @@ echo "M-MEM2 (W9-3C): ⌫ free — a size-classed free list in front of A's bump
 w93c=$(printf '%s' ':d\dbl;5R→l 0\brk→b 1000000→i{←l\refdM_←i1-"→i0\eq}0\brk←b-N E' | gc)
 [ "$w93c" -ge 64000000 ] 2>/dev/null \
   && ok "the same loop without ⌫ grows the break ($w93c bytes)" || no "no-free loop: break grew '$w93c', want >= 64000000"
-[ "$(printf '%s' '5R"→a\free 5R←a\eq N E 3A"→b\free 3A←b\eq N E' | gc)" = "$(printf -- '-1\n-1')" ] \
+[ "$(printf '%s' '5R"→a\free 5R←a\rsub1\rlt N E 3A"→b\free 3A←b\rsub1\rlt N E' | gc)" = "$(printf -- '-1\n-1')" ] \
   && ok "a freed block is reused by the next same-size request (tagged list and raw A block)" || no "free reuse"
 # Classes are powers of two (4 8 … 256 cells) so any request of the class fits:
 # 5R takes 6 cells, 7R 8 — both class 8.  Above 256 cells one list, head-only fit.
-[ "$(printf '%s' '5R→a←a\free 7R"←a\eq N E Q E 1000R→a←a\free 900R"←a\eq N E∑N E' | gc)" = "$(printf -- '-1\n0 1 2 3 4 5 6 \n-1\n404550')" ] \
+[ "$(printf '%s' '5R→a←a\free 7R"←a\rsub1\rlt N E Q E 1000R→a←a\free 900R"←a\rsub1\rlt N E∑N E' | gc)" = "$(printf -- '-1\n0 1 2 3 4 5 6 \n-1\n404550')" ] \
   && ok "reuse within a size class (5⍳→7⍳, 1000⍳→900⍳), contents fresh" || no "class reuse"
-[ "$(printf '%s' '5R→a←a\free 100R"←a\eq N E∑N E 5R←a\eq N E 1000R\free 2000R∑N E' | gc)" = "$(printf -- '0\n4950\n-1\n1999000')" ] \
+[ "$(printf '%s' '5R→a←a\free 100R"←a\rsub1\rlt N E∑N E 5R←a\rsub1\rlt N E 1000R\free 2000R∑N E' | gc)" = "$(printf -- '0\n4950\n-1\n1999000')" ] \
   && ok "a different-size request bumps instead; the freed block waits for its own class" || no "different sizes"
-[ "$(printf '%s' '5R→a 5R→b ←a\free←b\free 5R←b\eq N E 5R←a\eq N E 5R"←a\eq N E ←b\eq N E' | gc)" = "$(printf -- '-1\n-1\n0\n0')" ] \
+[ "$(printf '%s' '5R→a 5R→b ←a\free←b\free 5R←b\rsub1\rlt N E 5R←a\rsub1\rlt N E 5R"←a\rsub1\rlt N E ←b\rsub1\rlt N E' | gc)" = "$(printf -- '-1\n-1\n0\n0')" ] \
   && ok "the free list is LIFO; once it is empty A bumps a fresh block" || no "free list LIFO"
-[ "$(printf '%s' '5R"→a\free 5R\free 5R←a\eq N E' | gc)" = "-1" ] \
+[ "$(printf '%s' '5R"→a\free 5R\free 5R←a\rsub1\rlt N E' | gc)" = "-1" ] \
   && ok "a reused block can be freed again (A restores its header)" || no "free after reuse"
 [ "$(printf '%s' ':s3R;4R\refsM"0 I\free"1 I\free\free 3R"Q E 3R Q E' | gc)" = "$(printf '0 1 2 \n0 1 2 ')" ] \
   && ok "freeing inner lists and the outer list of a list of lists" || no "nested free"
