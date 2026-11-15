@@ -46,7 +46,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **89** are now spent, leaving **22** free. It is partitioned as follows
+space; **93** are now spent, leaving **18** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -316,7 +316,7 @@ With them `0xD8`–`0xEF` is full.
 
 W15's three structure words (REFERENCE "Structure adverbs (W15)"), the first
 bytes of `0x98`–`0x9F`. `⍙` and `⥮` are adverbs (S1: blob record 6), `⋈` is
-not. `0x9B`–`0x9E` are free (W16 assigns them); `0x9F` is W16-D's `ʀ`, below.
+not. W16 took `0x9B`–`0x9E` (§1.8). `0x9F` is W16-D's `ʀ`, below.
 
 | Byte | Mnemonic | Glyph | Meaning | Task | Status |
 |------|----------|-------|---------|------|--------|
@@ -354,6 +354,19 @@ W16-A prelude names: `‹_in1›` `‹_in2›` `‹_inflag›` `‹_in_ws›` `�
 `‹_in_snap›` `‹_in_init›` (section `# ===== W16 =====`; names starting `‹_in`
 were already reserved for the input words' helpers), and W15's `‹_15_peek›`
 split into `‹_15_load›` (move stdin into the buffer) and the parse.
+
+### 1.9 W16 assignments: `0x9B`–`0x9E`
+
+W16's search and except-self words (REFERENCE "Search and except-self
+adverbs (W16)"). `⍥ ⍭ ⍜` are adverbs (S1: blob record 6), `Ḍ` is not. Each is
+a `⊡` word defined on its byte, so they add no long names.
+
+| Byte | Mnemonic | Glyph | Meaning | Task | Status |
+|------|----------|-------|---------|------|--------|
+| `0x9B` | `\prune` | `⍥` | prelude: `n ′ok -> perms` the permutations of `0..n-1` (lexicographic) whose every prefix passes `ok` (zero is true); backtracking over one in-place prefix buffer | W16-C | shipped |
+| `0x9C` | `\distinct` | `Ḍ` | prelude: `l -> f` `0` when all elements differ (ints by value, lists by `≣`), else `-1`; O(n) | W16-C | shipped |
+| `0x9D` | `\firstwhere` | `⍭` | prelude: `l ′f -> x` the first element for which `f` leaves non-zero (stops there), else `-1` | W16-C | shipped |
+| `0x9E` | `\exself` | `⍜` | prelude: `l ′f -> l'` `f` folded over all elements but `l[i]`, from exclusive prefix and suffix folds (`f` associative); fewer than 2 elements: `empty reduce` | W16-C | shipped |
 
 ### 1.6 Digraph page
 
@@ -505,7 +518,7 @@ Prelude long names in use (all **shipped**):
 | `‹stat›` `‹lstat›` `‹exists›` `‹isfile›` `‹isdir›` `‹samefile›` `‹mkdir›` `‹makedirs›` `‹unlink›` `‹rmdir›` `‹rename›` `‹listdir›` `‹rmtree›` `‹mkdtemp›` `‹getcwd›` `‹chdir›` `‹pathjoin›` `‹dirname›` `‹basename›` (19), and 11 helpers `‹_14e_en›` `‹_14e_fail›` `‹_14e_try›` `‹_14e_sc›` `‹_14e_st›` `‹_14e_mode›` `‹_14e_ms›` `‹_14e_rs›` `‹_14e_strip›` `‹_14e_cl›` `‹_14e_tmp›` (names starting `‹_14e` are reserved for them): 30 names | W14-E | `# ===== W14-E =====` |
 | `‹rng›` `‹mtrng›` `‹rand›` `‹randbits›` `‹randbelow›` `‹randint›` `‹random53›` `‹choice›` `‹shuffle›` `‹sample›` (seeded generators; `‹mtrng›` is CPython-exact MT19937) `‹sha256›` `‹sha256hex›`, and the helpers `‹_14j_rec›` `‹_14j_mtgen›` `‹_14j_mt32›` `‹_14j_xo›` `‹_14j_mix›` `‹_14j_b›` `‹_14j_below›` `‹_14j_ins›` `‹_14j_tab›` `‹_14j_h0›` `‹_14j_k›` `‹_14j_blk›`; names starting `‹_14j` are W14-J's | W14-J (**shipped**) | `# ===== W14-J =====` |
 | `‹format›` `‹printf›` `‹fixed›` `‹ljust›` `‹center›` `‹replace›` `‹rfind›` `‹count›` `‹endswith›` `‹partition›` `‹rpartition›` `‹translate›` `‹le›` `‹les›` `‹tole›` `‹setle›` `‹hexbytes›` `‹unhexbytes›` `‹utf8›` `‹unutf8›` (20), and 20 helpers `‹_14g_new›` `‹_14g_at›` `‹_14g_ff›` `‹_14g_app›` `‹_14g_rep›` `‹_14g_sp›` `‹_14g_lr›` `‹_14g_cut›` `‹_14g_wd›` `‹_14g_rng›` `‹_14g_hd›` `‹_14g_hv›` `‹_14g_hx›` `‹_14g_dec›` `‹_14g_enc›` `‹_14g_abs›` `‹_14g_ch›` `‹_14g_dg›` `‹_14g_emit›` `‹_14g_cv›` (the prefix `‹_14g` is reserved for them): 40 names. `‹count›` as a word does not disturb a program's `‹count›` variable (words and variables are separate) | W14-G | `# ===== W14-G =====` |
-| `‹where›` `‹gdist›` `‹bfsf›` (REFERENCE "Structure adverbs (W15)"; `⋈ ⍙ ⥮` have bytes, §1.7), and 21 helpers `‹_15_both›` `‹_15_bz›` `‹_15_cancel›` `‹_15_cpy›` `‹_15_gbfs›` `‹_15_gins›` `‹_15_gpad›` `‹_15_grade›` `‹_15_gradix›` `‹_15_hfind›` `‹_15_init›` `‹_15_ins›` `‹_15_isnum›` `‹_15_join›` `‹_15_line›` `‹_15_mm›` `‹_15_peek›` `‹_15_radix›` `‹_15_segv›` `‹_15_sort›` `‹_15_zd›` (the implicit-input stack and its SIGSEGV handler, the radix sort behind `⍋` and `‹grade›`, the chunked `‹readline›`, `⊞`'s broadcast driver, and the bodies of the three byte words); names starting `‹_15` are W15's | W15 (**shipped**) | `# ===== W15 =====` (end of the prelude) |
+| `‹where›` `‹gdist›` `‹bfsf›` (REFERENCE "Structure adverbs (W15)"; `⋈ ⍙ ⥮` have bytes, §1.7), and 21 helpers `‹_15_both›` `‹_15_bz›` `‹_15_cancel›` `‹_15_cpy›` `‹_15_gbfs›` `‹_15_gins›` `‹_15_gpad›` `‹_15_grade›` `‹_15_gradix›` `‹_15_hfind›` `‹_15_init›` `‹_15_ins›` `‹_15_isnum›` `‹_15_join›` `‹_15_line›` `‹_15_mm›` `‹_15_peek›` `‹_15_radix›` `‹_15_segv›` `‹_15_sort›` `‹_15_zd›` (the implicit-input stack and its SIGSEGV handler, the radix sort behind `⍋` and `‹grade›`, the chunked `‹readline›`, `⊞`'s broadcast driver, and the bodies of the three byte words); names starting `‹_15` are W15's | W15 (**shipped**) | `# ===== W15 =====` |
 
 The table heading says shipped, and after W11 wave 4 every W11 row is: `‹throw›`
 and the W11-1B, 1C, 1D, 2B, 2D, 3A, 3C, 4B and 4C rows (4A, 4D and 4E added no

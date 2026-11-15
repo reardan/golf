@@ -3950,3 +3950,78 @@
 :‹_in2›4417552⊙[‹_in_snap›]4417544⊙;
 :‹_in_init›‹_inflag›1﹣[‹_in_snap›];
 ‹_in_init›
+
+#
+# ===== W16-C =====
+# Four byte words, each a ⊡ word defined on its byte (no long name, no
+# helper).  The adverbs ⍥ ⍭ ⍜ call their function with the caller's stack
+# under its arguments (the threading contract) and keep their own state in
+# locals only.
+#
+# ⍥ (0x9B, \prune)  n ′ok -> perms   the permutations of 0..n-1, in
+# lexicographic order, whose every non-empty prefix passes ok (ok leaves 0).
+# Backtracking: ok is called once per candidate prefix, and a prefix that
+# fails is never extended.  The prefix ok gets is ONE buffer list, rewritten
+# in place (its length set to the depth): ok must not keep it, change it or
+# free it.  n < 1 gives one empty permutation.  What ok allocates is
+# TEMPORARY: e saves H, the stack pointer, ‹heapstats›'s two cells and the
+# eight free-list heads before each call, and when ok returns with the stack
+# level (one result for its one argument) and every head unchanged, H and the
+# counts are rewound, so the blocks ok bumped (the lists `"+⍸` builds) are
+# reused by the next call.  So ok must not keep a list it built anywhere but
+# on the stack.  Locals: p/q the buffer (raw / tagged), c[k] the next
+# candidate at depth k, u[v] 1 while v is free, r the results (capacity z,
+# count m), x ok's result.
+⊡\prune⇒f⇒n
+ ⇐n1≺[⋄1‹_13e_new›⇒r0‹_13e_new›‹_13e_tag›⇐r8﹢⊛⇐r‹_13e_tag›^]
+ ⇐n1﹢A⇒p⇐p‹_13e_tag›⇒q⇐n A⇒c⇐n‹_13e_new›1‹_13e_fill›8﹢⇒u
+ 16⇒z⇐z‹_13e_new›⇒r0⇒m0⇒k0⇐c⊛12A⇒e
+ {⇐k0≺⋄
+  ⇐k3≪⇐c﹢⊙⇒v
+  {⇐v⇐n﹤[1⋄⇐v3≪⇐u﹢⊙]⋄⇐v1﹢⇒v}
+  ⇐v⇐n≡[
+   ⇐v⇐k3≪⇐p﹢8﹢⊛⇐k1﹢⇐p⊛⇐v1﹢⇐k3≪⇐c﹢⊛
+   H@⇐e⊛⊷_⇐e8﹢⊛5180096⊙⇐e16﹢⊛5180104⊙⇐e24﹢⊛5177536⊙⇐e32﹢⊛5177544⊙⇐e40﹢⊛
+   5177552⊙⇐e48﹢⊛5177560⊙⇐e56﹢⊛5177568⊙⇐e64﹢⊛5177576⊙⇐e72﹢⊛5177584⊙⇐e80﹢⊛5177592⊙⇐e88﹢⊛
+   ⇐q⇐f⍎⇒x
+   H@⇐e⊙≡[⊷_⇐e8﹢⊙≡5177536⊙⇐e32﹢⊙≡$5177544⊙⇐e40﹢⊙≡$5177552⊙⇐e48﹢⊙≡$
+    5177560⊙⇐e56﹢⊙≡$5177568⊙⇐e64﹢⊙≡$5177576⊙⇐e72﹢⊙≡$5177584⊙⇐e80﹢⊙≡$
+    5177592⊙⇐e88﹢⊙≡$[⋄⇐e⊙H!⇐e16﹢⊙5180096⊛⇐e24﹢⊙5180104⊛]]
+   ⇐x[⇐k1﹢⇐n≡[0⇐v3≪⇐u﹢⊛⇐k1﹢⇒k0⇐k3≪⇐c﹢⊛⋄
+     ⇐q‹_13e_copy›‹_13e_tag›
+     ⇐m⇐z≡[⋄⇐z1≪⇒z⇐z‹_13e_new›⇒t⇐r8﹢⇐t8﹢⇐m‹_15_cpy›⇐r⌫⇐t⇒r]
+     ⇐m3≪⇐r﹢8﹢⊛⇐m1﹢⇒m]]
+  ⋄⇐k1﹣⇒k⇐k0≺[1⇐k3≪⇐p﹢8﹢⊙3≪⇐u﹢⊛]]}
+ ⇐m⇐r⊛⇐p⌫⇐c⌫⇐u8﹣⌫⇐e⌫⇐r‹_13e_tag›;
+# Ḍ (0x9C, \distinct)  l -> f   0 when all elements differ, else -1.
+# First pass: a one-cell bitmask over the 64 values l[0]-32 … l[0]+31 (no
+# allocation; small lists of nearby ints, ⍥'s case, end here).  A value
+# outside that window ends the pass, and then: when the maximum reads as a
+# list (some element is one), a ‹set› (keys compared with ≣) whose blocks are
+# freed after; otherwise ‹unique› (a hash set, O(n) expected) and compare
+# the counts.
+⊡\distinct"⇒l‹_2d_chk›"⊙⇒n8﹢⇒p⇐n3≪⇐p﹢⇒e
+ ⇐n1»[0^]
+ 0⇒b0⇒w⇐p⊙32﹣⇒o
+ ⇐p{"⇐e≡⋄"⊙⇐o﹣⇒t⇐t64﹤[_⇐e1⇒w⋄1⇐t≪"⇐b$[⇐b|⇒b8﹢⋄__0 1﹣^]]}_
+ ⇐w[0^]
+ ⇐p⇐e‹_15_mm›48≫32767≡[⋄_‹set›⇒d0⇒w
+  {⇐p⇐e≡⇐w|⋄⇐d⇐p⊙‹has›[0 1﹣⇒w⋄⇐d⇐p⊙‹add›_]⇐p8﹢⇒p}
+  ⇐d16≪16>⇒t⇐t8﹢⊙⌫⇐t32﹢⊙⌫⇐d⌫⇐w^]_
+ ⇐l‹unique›"≢⇒k⌫⇐k⇐n≡~;
+# ⍭ (0x9D, \firstwhere)  l ′f -> x   the first element for which f leaves
+# non-zero; f is not called after it.  -1 when there is none.
+⊡\firstwhere⇒f‹_2d_chk›"8﹢⇒p"⊙3≪﹢8﹢⇒e
+ {⇐p⇐e≡⋄⇐p⊙⇐f⍎[⋄⇐p⊙^]⇐p8﹢⇒p}0 1﹣;
+# ⍜ (0x9E, \exself)  l ′f -> l'   l'[i] is f folded left to right over
+# every element but l[i].  The exclusive prefix folds are written into the
+# result first (l'[i] = l[0] f … f l[i-1], i >= 1); a right-to-left pass then
+# keeps the exclusive suffix fold s and sets l'[i] = l'[i] f s.  f must be
+# associative.  3n - 6 calls.  Fewer than 2 elements: `empty reduce`.
+⊡\exself⇒f‹_2d_chk›"⊙⇒n8﹢⇒p
+ ⇐n2﹤[⋄“empty reduce“U‹throw›]
+ ⇐n‹_13e_new›"⇒r8﹢⇒d⇐p⊙⇐d8﹢⊛
+ 2⇒i{⇐i⇐n≡⋄⇐i3≪⇐d﹢8﹣⊙⇐i3≪⇐p﹢8﹣⊙⇐f⍎⇐i3≪⇐d﹢⊛⇐i1﹢⇒i}
+ ⇐n1﹣3≪⇐p﹢⊙⇒s
+ ⇐n2﹣⇒i{⇐i1≺⋄⇐i3≪⇐d﹢⇒a⇐a⊙⇐s⇐f⍎⇐a⊛⇐i3≪⇐p﹢⊙⇐s⇐f⍎⇒s⇐i1﹣⇒i}
+ ⇐s⇐d⊛⇐r‹_13e_tag›;

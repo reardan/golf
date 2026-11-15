@@ -407,6 +407,10 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0x9A` | `⥮` | `\both` | — | both ways: l ′f -> a b; a = f l, b = f of l reversed, reversed back |
 | `0x9F` | `ʀ` | `\irange` | — | inclusive range: n -> [0..n] (⍳ of n+1) |
 | `0x42` | `ℓ` | `\line` | `B` | next line of stdin without its \n, text-marked (⏎ with the flag dropped; end of input: empty list) |
+| `0x9B` | `⍥` | `\prune` | — | pruned permutations: n ′ok -> perms; the permutations of 0..n-1 (lexicographic) whose every prefix passes ok (ok leaves 0); a failing prefix is never extended |
+| `0x9C` | `Ḍ` | `\distinct` | — | all distinct: l -> f; 0 when no two elements are equal (lists by ≣), else -1 |
+| `0x9D` | `⍭` | `\firstwhere` | — | first where: l ′f -> x; the first element for which f leaves non-zero (f is not called after it), else -1 |
+| `0x9E` | `⍜` | `\exself` | — | except self: l ′f -> l'; l'[i] = f folded over every element but l[i] (f associative; O(n)); fewer than 2 elements: empty reduce |
 
 ### Digraph page
 
@@ -662,7 +666,7 @@ W13-A adds three spellings that make programs shorter and compile to the same
 code as the longer forms.
 
 **Adverbs quote the token in front of them (S1).** These words take a
-function: `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣`, W13's `⍂ ⍃ ⍖ ⍷`, and W15's `⍙ ⥮`. When one of them comes
+function: `€ ⇤ ⌿ ⊞ ⍀ ⍁ ⍸ ⍒ ⊟ ⍣`, W13's `⍂ ⍃ ⍖ ⍷`, W15's `⍙ ⥮`, and W16's `⍥ ⍭ ⍜`. When one of them comes
 **immediately** after a call token, with no whitespace in between, the
 compiler pushes that token's address instead of calling it, exactly as `′`
 would. So `f€` means `′f€`. A call token is an atom (`² ⊕ ⌊ ≡ …`), a v1
@@ -1743,6 +1747,68 @@ How the mark is kept: bit 40 of the list block's header cell (the cell in
 front of the length, which holds the block's capacity; DESIGN.md "Text
 mark"). The length and the elements are untouched, so every list word reads
 a text list exactly as before.
+
+### Search and except-self adverbs (W16)
+
+Four one-byte prelude words, `0x9B`–`0x9E`, for the shapes three LeetCode
+solutions were still writing loops for. `⍥ ⍭ ⍜` are adverbs (S1: `≢⍭` is
+`′≢⍭`); `Ḍ` is a plain word. All are `⊡` words, re-entrant, and their
+function runs with the caller's stack under its arguments (the threading
+contract).
+
+| word | stack effect | meaning |
+|---|---|---|
+| `⍥` (`0x9B`, `\prune`) | `n ′ok -> perms` | **pruned permutations.** The permutations of `0 … n-1`, each a list, in lexicographic order, whose every non-empty prefix passes `ok` (`ok` takes the prefix, a list, and leaves `0` for pass: zero is true, as for `⌿`). Backtracking: `ok` is called once per candidate prefix and a prefix that fails is never extended. `n < 1` gives one empty permutation, with no call |
+| `Ḍ` (`0x9C`, `\distinct`) | `l -> f` | **all distinct.** `0` when no two elements of `l` are equal, else `-1`. Ints compare by value, lists by `≣`. O(n): a one-cell bitmask when the values lie within 32 of the first, else a hash set |
+| `⍭` (`0x9D`, `\firstwhere`) | `l ′f -> x` | **first where.** The first element for which `f` leaves a **non-zero** value; `f` is not called on the elements after it. `-1` when there is none (or `l` is empty). Compare `⍷`, which gives the index of the first element whose predicate is `0` |
+| `⍜` (`0x9E`, `\exself`) | `l ′f -> l'` | **except self.** `l'[i]` is `f` folded left to right (`f` gets `acc x`, as for `⍁`) over every element of `l` but `l[i]`. Computed in O(n) from the exclusive prefix folds and the exclusive suffix folds, combined with `f`: `3n - 6` calls, so **`f` must be associative** (it need not be commutative: the order is kept). Fewer than two elements: `GOLF: empty reduce`, through `‹throw›` |
+
+```
+4⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥⍕                     ->  [1 3 0 2] [2 0 3 1] 
+3⟦_0⟧⍥≢Ṅ                            ->  6
+3⟦0⊇2∣⟧⍥⍕                           ->  [0 1 2] [0 2 1] [2 0 1] [2 1 0] 
+0⟦_0⟧⍥≢Ṅ                            ->  1
+0 3⟦_⊕0⟧⍥≢ṄṄ                        ->  615
+5⍳ḌṄ“abca“⊃ḌṄ                       ->  0-1
+3⍳1000*"⧺ḌṄ                         ->  -1
+3⍳′⍳€"⧺ḌṄ                           ->  -1
+6⍳⟦3≻⟧⍭Ṅ                            ->  4
+6⍳⟦9≻⟧⍭Ṅ                            ->  -1
+0 6⍳⟦\\⊕\\2≡⟧⍭ṄṄ                    ->  23
+5⍳⊕*⍜⍕                              ->  120 60 40 30 24 
+4⍳+⍜⍕                               ->  6 5 4 3 
+4⍳⌈⍜⍕                               ->  3 3 3 2 
+“abc“⊃⟦1⍳+⟧€⧺⍜⍕                     ->  [98 99] [97 99] [97 98] 
+1⍳*⍜⍕                               ->  GOLF: empty reduce
+```
+
+- Line 1 is 4-Queens: `ok` gets the prefix `p` of column numbers, one per
+  row; `"+⍸Ḍ` says the `p[i]+i` are all distinct and `\\-⍸Ḍ` the same for
+  the `p[i]-i` (the two diagonals); `|` passes only when both do. N-Queens
+  II is `∑⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥≢` (14 bytes; `∑` turns the one-number input into
+  `n`). At the bench size `n = 12` it makes 2,915,740 calls of `ok` and
+  answers 14200 in about 1.4 s (the bitmask solution takes 0.02 s): the time
+  is the two `⍸` lists and the two `Ḍ` of each call.
+- Line 5 counts the calls through the stack: 3 + 6 + 6 = 15.
+- Line 11 shows `⍭` stopping: `f` ran on 0, 1 and 2 only.
+- Line 15 shows the order is kept with a non-commutative `f` (`⧺`).
+- Redundant Connection is `⍘⊕ʘ=\\2ʘ%ʘu⍭` (11 bytes): `ʘu` answers `1`, and
+  `⍭` stops, at the first edge whose ends were already joined.
+- Product of Array Except Self is `*⍜` (2 bytes, implicit input): zeros
+  need no special case, and a million values take about 0.14 s.
+- **`⍥`'s prefix is one buffer.** `ok` always gets the same list, rewritten
+  in place, its length set to the depth: `ok` must not keep it, change it or
+  free it (`0+` makes a copy to keep).
+- **What `ok` allocates is temporary.** Before each call `⍥` saves the heap
+  pointer, the eight free-list heads, the two `‹heapstats›` counts and the
+  stack pointer. When `ok` returns with the stack level (its one argument
+  replaced by its one result) and every head unchanged, the blocks it took
+  from the top of the heap are given back at once, so `"+⍸`'s lists cost no
+  memory (`n = 12` would otherwise leave about 800 MB behind). So `ok` must
+  not keep a list it built in a variable, a dict or a vector. One it leaves
+  on the stack under its result is kept: the stack level then differs, and
+  that call gives nothing back. Nor does a call in which `ok` reuses a block
+  from a free list or frees one.
 
 ### Windows and fixpoints
 

@@ -143,9 +143,9 @@ against the thing it describes, so none of it can go stale quietly.
 | Measured | Now |
 |----------|-----|
 | operator atoms in `mkblob2.ATOMS` | **39** |
-| the template blob itself | **1397** bytes |
-| the generated bootstrap seed (`self/seed.golf`) | **5842** bytes |
-| the generated v2 compiler (`self/golf2.golf`) | **18939** bytes |
+| the template blob itself | **1400** bytes |
+| the generated bootstrap seed (`self/seed.golf`) | **5845** bytes |
+| the generated v2 compiler (`self/golf2.golf`) | **18942** bytes |
 | assertions in the run2 suite | **1009** |
 | assertions in the selfcheck suite | **70** |
 | assertions in the gtools differential suite | **57** |
