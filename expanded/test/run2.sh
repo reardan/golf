@@ -5907,6 +5907,110 @@ done < <(sed -n '/^### Structure adverbs (W15)$/,/^### /p' REFERENCE.md | sed -n
   && [ "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gref)" = "$(printf '%s' '4⍳⊕⟦1*⍃⟧⥮*⍕“abbaca“⊃-⍙⊐“abcabc“⊃"⋈⍕9⍳⌽⍋⍕' | gc)" ] \
   && ok "⋈ ⍙ ⥮ are 0x98–0x9A; ⍙ ⥮ quote the token before them; the pruned build and the oracle (boot/golfref.py) agree" || no "W15 bytes / pruned / oracle"
 
+# === W16-C ===
+echo "W16-C: ⍥ pruned permutations, Ḍ distinct, ⍭ first where, ⍜ except self (0x9B-0x9E)"
+# Byte rows and adverb quoting (⍥ ⍭ ⍜ are in blob record 6, Ḍ is not).
+[ "$(printf '%s' '\prune\distinct\firstwhere\exself' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "9b9c9d9e" ] \
+  && [ "$(printf '%s' '⍥Ḍ⍭⍜' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "9b9c9d9e" ] \
+  && grep -q '^rec 06 .* 9B 9D 9E$' data/templates.txt \
+  && ! sed -n '/^# ===== W16-C =====$/,$p' lib/prelude.golfj | grep -q '\\\\' \
+  && ok "⍥ Ḍ ⍭ ⍜ are 0x9B–0x9E; ⍥ ⍭ ⍜ quote the token before them; no swap byte in their prelude code" || no "W16-C bytes"
+# N-Queens II in 14 bytes against Python for n = 0..9.
+w16cq='∑⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥≢'; w16cbad=""
+[ "$(printf '%s' "$w16cq" | python3 tools/codepage.py encode | wc -c)" = 14 ] || w16cbad="$w16cbad [not 14 bytes]"
+for w16cn in 0 1 2 3 4 5 6 7 8 9; do
+  [ "$(echo $w16cn | gin "$w16cq")" = "$(echo $w16cn | python3 bench/leetcode/py/queens.py)" ] || w16cbad="$w16cbad [queens $w16cn]"
+done
+[ -z "$w16cbad" ] && ok "⍥ N-Queens II, ∑⟦\"+⍸Ḍ\\\\-⍸Ḍ|⟧⍥≢ (14 bytes), equals py/queens.py for n = 0..9" || no "W16-C queens:$w16cbad"
+# ⍥: lexicographic order and the call order (one call per candidate prefix,
+# a failed prefix never extended), threading, n < 1, an ok that keeps a list
+# on the stack (kept: that call gives nothing back), nested ⍥, and ok's
+# temporary lists given back (‹heapstats› level after the results are freed).
+[ "$(printf '%s' '3⟦"⍕“|“🗲_0⟧⍥≢Ṅ' | gc)" = "0 |0 1 |0 1 2 |0 2 |0 2 1 |1 |1 0 |1 0 2 |1 2 |1 2 0 |2 |2 0 |2 0 1 |2 1 |2 1 0 |6" ] \
+  && [ "$(printf '%s' '3⟦0⊇1-⟧⍥⍕' | gc)" = "[1 0 2] [1 2 0] " ] \
+  && [ "$(printf '%s' '0 4⟦_⊕1⟧⍥≢ṄṄ 0⟦_1⟧⍥⍕ 0 1-⟦_1⟧⍥≢Ṅ 2⟦_1⟧⍥≢Ṅ' | gc)" = "04[] 10" ] \
+  && [ "$(printf '%s' '3⟦"≢⍳\\Ḍ⟧⍥≢Ṅ‹stack›' | gc)" = "6<15> [0] [0 1] [0 1 2] [0 1] [0 1 2] [0] [0 1] [0 1 2] [0 1] [0 1 2] [0] [0 1] [0 1 2] [0 1] [0 1 2]" ] \
+  && [ "$(printf '%s' '4⟦≢⟦_0⟧⍥≢24≻⟧⍥≢Ṅ4⟦≢⟦_0⟧⍥≢23≻⟧⍥≢Ṅ' | gc)" = "240" ] \
+  && [ "$(printf '%s' '‹heapstats›_→a 4⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥"0⊇⌫"1⊇⌫⌫‹heapstats›_←a-Ṅ' | gc)" = "0" ] \
+  && ok "⍥: lexicographic, one ok call per candidate prefix, threading, n < 1, kept stack values, nesting, temporary lists given back" || no "W16-C ⍥"
+# Ḍ against Python on random lists: every size class (n < 2, the bitmask
+# window, values far apart, a huge range, ints near 2^62), with and without a
+# repeat; then lists of lists (by ≣) and a list of one list.
+python3 - "$TMP" <<'PY'
+import random, sys
+T = sys.argv[1]; R = random.Random(16); inp = []; want = []
+for n in [0, 1, 2, 3, 12, 63, 64, 65, 200, 5000]:
+    for lo, hi in [(0, 5), (-40, 40), (-1000, 1000), (-2**62, 2**62)]:
+        for rep in (0, 1):
+            a = [R.randint(lo, hi) for _ in range(n)]
+            if hi - lo + 1 >= 4 * n: a = list(dict.fromkeys(a))
+            if rep and len(a) >= 2: a[R.randrange(len(a))] = a[R.randrange(len(a))]
+            inp.append(" ".join(map(str, [len(a)] + a)))
+            want.append("0" if len(set(a)) == len(a) else "-1")
+open(f"{T}/w16cd.in", "w").write("\n".join(inp) + "\n")
+open(f"{T}/w16cd.want", "w").write("".join(want))
+PY
+[ "$(gin 'ℤ→a 0→i{←a←i⊇→n ←a←i⊕↓←n↑ḌṄ ←i←n+⊕"→i ←a≢≡}' < "$TMP/w16cd.in")" = "$(cat "$TMP/w16cd.want")" ] \
+  && [ "$(printf '%s' '3⍳′⍳€ḌṄ 3⍳′⍳€"⧺ḌṄ 3⍳′⍳€3⍳′⍳€⌽⧺ḌṄ 1⍳1⍳′⍳€⧺ḌṄ 0⍳Ḍ Ṅ' | gc)" = "0-1-100" ] \
+  && ok "Ḍ equals Python's len(set(a)) == len(a) on $(grep -c '' "$TMP/w16cd.in") lists (sizes 0..5000, ranges 6..2^63); lists compare by ≣" || no "W16-C Ḍ"
+# ⍭: the first hit, none, empty, f not called after the hit (threading
+# counts), a list element; ⍜ against Python for * and + (zeros, n = 2) and
+# its threading count (3n - 6 calls), order kept with ⧺, and the error.
+python3 - "$TMP" <<'PY'
+import random, sys
+T = sys.argv[1]; R = random.Random(160); inp = []; want = []
+for n in [2, 3, 4, 7, 50, 1000]:
+    for zeros in (0, 1, 2, 5):
+        a = [R.choice([-3, -2, -1, 1, 2, 3]) for _ in range(n)]
+        for _ in range(min(zeros, n)): a[R.randrange(n)] = 0
+        inp.append(" ".join(map(str, [n] + a)))
+        def ex(f, u):
+            out = []
+            for i in range(n):
+                acc = u
+                for j in range(n):
+                    if j != i: acc = (f(acc, a[j]) + 2**63) % 2**64 - 2**63   # 64-bit, as Golf
+                out.append(acc)
+            return out
+        want.append(" ".join(map(str, ex(lambda x, y: x * y, 1) + ex(lambda x, y: x + y, 0))) + " ")
+open(f"{T}/w16cx.in", "w").write("\n".join(inp) + "\n")
+open(f"{T}/w16cx.want", "w").write("\n".join(want) + "\n")
+PY
+[ "$(gin 'ℤ→a 0→i{←a←i⊇→n ←a←i⊕↓←n↑"*⍜⍕+⍜⍕␤ ←i←n+⊕"→i ←a≢≡}' < "$TMP/w16cx.in")" = "$(cat "$TMP/w16cx.want")" ] \
+  && [ "$(printf '%s' '0 5⍳⟦+\\⊕\\⟧⍜⍕Ṅ 2⍳⊕*⍜⍕“abc“⊃⟦1⍳+⟧€⧺⍜⍕' | gc)" = "10 9 8 7 6 92 1 [98 99] [97 99] [97 98] " ] \
+  && [ "$(printf '%s' '⟦1⍳*⍜⟧‹catch›⊐␤⟦0⍳+⍜⟧‹catch›⊐' | gc)" = "$(printf 'empty reduce\nempty reduce')" ] \
+  && [ "$(printf '%s' '6⍳⟦3≻⟧⍭Ṅ 6⍳⟦9≻⟧⍭Ṅ 0⍳⊕⍭Ṅ 0 6⍳⟦\\⊕\\2≡⟧⍭ṄṄ 3⍳′⍳€≢⍭⍕ 4⍳⟦_7⟧⍭Ṅ' | gc)" = "4-1-1230 0" ] \
+  && ok "⍜ equals Python on $(grep -c '' "$TMP/w16cx.in") lists for * and + (zeros, n = 2..1000), 3n-6 calls, order kept, empty reduce; ⍭ edges and early stop" || no "W16-C ⍜ ⍭"
+# The LeetCode targets: Redundant Connection ⍘⊕ʘ=\2ʘ%ʘu⍭ (11 bytes) and
+# Product of Array Except Self *⍜ (2 bytes) give py/'s answers on the gate's
+# bench inputs (W12-O4's gen.py 0.001 files, edge cases included).
+[ -f "$TMP/lc/redundant.txt" ] || python3 bench/leetcode/gen.py 0.001 "$TMP/lc"
+w16cbad=""
+while read -r w16cn w16cg w16cb; do
+  [ "$(printf '%s' "$w16cg" | python3 tools/codepage.py encode | wc -c)" = "$w16cb" ] || w16cbad="$w16cbad [$w16cn not $w16cb bytes]"
+  for w16ci in "$TMP/lc/$w16cn".txt "$TMP/lc/$w16cn"[0-9].txt; do
+    [ -f "$w16ci" ] || continue
+    [ "$(gin "$w16cg" < "$w16ci" | tr -s ' \n' '  ' | sed 's/ *$//')" = "$(python3 bench/leetcode/py/$w16cn.py < "$w16ci" | tr -s ' \n' '  ' | sed 's/ *$//')" ] \
+      || w16cbad="$w16cbad [$w16cn $(basename "$w16ci")]"
+  done
+done <<'W16C'
+redundant ⍘⊕ʘ=\\2ʘ%ʘu⍭ 11
+prodself *⍜ 2
+W16C
+[ -z "$w16cbad" ] && ok "redundant ⍘⊕ʘ=\\\\2ʘ%ʘu⍭ (11 bytes) and prodself *⍜ (2 bytes) give Python's answers on the bench inputs" || no "W16-C LeetCode targets:$w16cbad"
+# REFERENCE.md's W16 examples print what they say; the pruned build and the
+# oracle (boot/golfref.py) agree.
+w16cbad=""
+while IFS= read -r w16cl; do
+  w16cp=${w16cl%%  ->*}; w16cp=${w16cp%"${w16cp##*[! ]}"}; w16cw=${w16cl##*->  }
+  [ "$(printf '%s' "$w16cp" | gc 2>&1)" = "$w16cw" ] || w16cbad="$w16cbad [$w16cp]"
+done < <(sed -n '/^### Search and except-self adverbs (W16)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+w16co='4⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥⍕5⍳⊕*⍜⍕3⍳′⍳€≢⍭⍕“abca“⊃ḌṄ3⍳′⍳€"⧺ḌṄ'
+[ -z "$w16cbad" ] && [ "$(sed -n '/^### Search and except-self adverbs (W16)$/,/^### /p' REFERENCE.md | grep -c -- '  ->  ')" -ge 12 ] \
+  && [ "$(printf '%s' "$w16co" | gcp)" = "[1 3 0 2] [2 0 3 1] 120 60 40 30 24 0 -1-1" ] \
+  && [ "$(printf '%s' "$w16co" | gref)" = "$(printf '%s' "$w16co" | gc)" ] \
+  && ok "REFERENCE.md's W16 examples print what they say; pruned build and oracle agree" || no "W16-C examples / pruned / oracle:$w16cbad"
+
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

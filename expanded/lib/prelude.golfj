@@ -3884,9 +3884,15 @@
 # Backtracking: ok is called once per candidate prefix, and a prefix that
 # fails is never extended.  The prefix ok gets is ONE buffer list, rewritten
 # in place (its length set to the depth): ok must not keep it, change it or
-# free it.  n < 1 gives one empty permutation.  Locals: p/q the buffer (raw /
-# tagged), c[k] the next candidate at depth k, u[v] 1 while v is free,
-# r the results (capacity z, count m).
+# free it.  n < 1 gives one empty permutation.  What ok allocates is
+# TEMPORARY: e saves H, the stack pointer, ‹heapstats›'s two cells and the
+# eight free-list heads before each call, and when ok returns with the stack
+# level (one result for its one argument) and every head unchanged, H and the
+# counts are rewound, so the blocks ok bumped (the lists `"+⍸` builds) are
+# reused by the next call.  So ok must not keep a list it built anywhere but
+# on the stack.  Locals: p/q the buffer (raw / tagged), c[k] the next
+# candidate at depth k, u[v] 1 while v is free, r the results (capacity z,
+# count m), x ok's result.
 ⊡\prune⇒f⇒n
  ⇐n1≺[⋄1‹_13e_new›⇒r0‹_13e_new›‹_13e_tag›⇐r8﹢⊛⇐r‹_13e_tag›^]
  ⇐n1﹢A⇒p⇐p‹_13e_tag›⇒q⇐n A⇒c⇐n‹_13e_new›1‹_13e_fill›8﹢⇒u
