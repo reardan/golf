@@ -3623,11 +3623,12 @@
 # explicit input words still see everything, and a program that underflows
 # by accident loses no input.  The block is sized from lseek + fstat when
 # stdin is a file (one read, no copy), else it starts at 8 KB and doubles.
+# (W16-A split the move out as ‹_15_load›  -> s, the buffer block, for ① ②.)
 ⊡‹_15_isnum›‹_12p1_avail›[⋄0^]
  5177424⊙"⊙&﹢16﹢⇒p"8﹢⊙﹢16﹢⇒e
  {⇐p⇐e≡[⇐p?"32≡23±$﹢9﹣4»⋄1]⋄⇐p1﹢⇒p}
  ⇐p⇐e≡[⋄0^]⇐p?48﹣10﹤⇐p?45≡|1﹢;
-⊡‹_15_peek›‹flush›0⇒n0⇒e
+⊡‹_15_load›‹flush›0⇒n0⇒e
  0 0 1 8⎈⇒o
  ⇐o0≺[18A⇒t0⇐t0 5⎈[⇐t48﹢⊙⇐o﹣⇒e]⇐t⌫⇐e0≺1﹢[0⇒e]]
  5177424⊙⇒q0⇒u⇐q[⋄⇐q8﹢⊙⇐q⊙﹣⇒u]
@@ -3635,8 +3636,8 @@
  ⇐q[⋄⇐q16﹢⇐q⊙﹢⇐s16﹢⇐u7﹢3≫‹_15_cpy›⇐q⌫]⇐u⇒n
  {⇐c⇐n﹣4096﹤1﹢[⇐c1≪⇒c⇐c7﹢3≫3﹢A⇒t⇐s16﹢⇐t16﹢⇐n7﹢3≫‹_15_cpy›⇐s⌫⇐t⇒s]
   0⇐s16﹢⇐n﹢⇐c⇐n﹣0⎈⇒r⇐r1≺[⇐n⇐r﹢⇒n0⋄1]}
- 0⇐s⊛⇐n⇐s8﹢⊛⇐s5177424⊛
- ‹_15_isnum›[‹ints›⋄‹readline›_]0⇐s⊛;
+ 0⇐s⊛⇐n⇐s8﹢⊛⇐s5177424⊛⇐s;
+⊡‹_15_peek›‹_15_load›⇒s‹_15_isnum›[‹ints›⋄‹readline›_]0⇐s⊛;
 ⊡‹_15_segv›⊷_216﹢⊙⇒a
  ⇐a4399432⊙﹣4096﹤1﹢[
   4399432⊙4096 3 10⎈_
@@ -3872,3 +3873,43 @@
  {⇐p⇐e≡⋄⇐p⊙3≪⇐t﹢⇒c⇐c⊙⇐q⊛⇐i⇐c⊛⇐i1﹢⇒i⇐q8﹢⇒q⇐p8﹢⇒p}
  ⇐t⇐m3≪﹢8﹣⌫⇐o‹_13e_tag›;
 :\prevocc‹_15_prev›;
+# ===== W16 =====
+# --- W16-A: input references ① ② (REFERENCE "Input references (W16)") ---
+# Each compiles to a call to ‹_in1› / ‹_in2›, which push line 1 / line 2 of
+# the input, TYPED: one integer when the line is exactly one integer token
+# (optional '-', then digits), the list of them when it is two or more such
+# tokens, else (any other token, or an empty or missing line) the line as a
+# code list without its newline.  Both values are made once, cached in the
+# cells 4417536 (①) and 4417544 (②), and never freed; 4417552 is 1 once they
+# are (REGISTRY §3.6).  A look-ahead: ‹_15_load› moves all of stdin into the
+# stdin buffer and puts its read position back, so no input word loses a
+# byte.  The compiler sets ‹_inflag›'s `push 0` to `push 1` when the program
+# uses ① or ②, and the init line below then takes the two lines before the
+# program runs, so they are the input's first lines whatever it reads first.
+#   ‹_in_ws›     a -> f       0 when the byte at a is blank (W15's test)
+#   ‹_in_typed›  p e -> v     the line in the bytes p .. e-1, typed
+#   ‹_in_snap›   ->           load stdin, type its first two lines
+:‹_inflag›0;
+:‹_in_ws›?"32≡23±$﹢9﹣4»;
+⊡‹_in_typed›⇒e⇒p0⇒k0⇒g⇐p⇒q
+ {⇐q⇐e≡⋄
+  ⇐q‹_in_ws›[⇐q1﹢⇒q⋄
+   ⇐k1﹢⇒k⇐q?45≡[⋄⇐q1﹢⇒q]⇐q⇒r
+   {⇐q⇐e≡[⇐q?48﹣10﹤1﹢⋄1]⋄⇐q1﹢⇒q}⇐q⇒s
+   {⇐q⇐e≡[⇐q‹_in_ws›0≡⋄1]⋄⇐q1﹢⇒q}
+   ⇐q⇐s≡⇐s⇐r≡~$[1⇒g]]}
+ ⇐g⇐k0≡|[⋄⇐p⇐e⇐p﹣‹_1b_tolist›^]
+ ⇐k‹_13e_new›⇒o⇐o8﹢⇒d⇐p⇒q
+ {⇐q⇐e≡⋄
+  ⇐q‹_in_ws›[⇐q1﹢⇒q⋄
+   ⇐q?45≡⇒m⇐m[⋄⇐q1﹢⇒q]0⇒v
+   {⇐q⇐e≡[⇐q?48﹣10﹤1﹢⋄1]⋄⇐v10﹡⇐q?48﹣﹢⇒v⇐q1﹢⇒q}
+   ⇐m[⇐v⋄⇐v±]⇐d⊛⇐d8﹢⇒d]}
+ ⇐k1≡[⇐o‹_13e_tag›⋄⇐o8﹢⊙⇐o⌫];
+⊡‹_in_snap›1 4417552⊛‹_15_load›⇒s⇐s16﹢⇒p⇐p⇐s8﹢⊙﹢⇒e
+ ⇐p⇒q{⇐q⇐e≡[⇐q?10≡⋄1]⋄⇐q1﹢⇒q}⇐p⇐q‹_in_typed›4417536⊛
+ ⇐q⇐e≡[⇐q1﹢⋄⇐q]⇒p
+ ⇐p⇒q{⇐q⇐e≡[⇐q?10≡⋄1]⋄⇐q1﹢⇒q}⇐p⇐q‹_in_typed›4417544⊛;
+:‹_in1›4417552⊙[‹_in_snap›]4417536⊙;
+:‹_in2›4417552⊙[‹_in_snap›]4417544⊙;
+‹_inflag›[⋄‹_in_snap›]

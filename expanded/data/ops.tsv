@@ -125,6 +125,12 @@ C	BC	endblk	⟧	closes an inline block and pushes its address
 # W13-B (S6): the digraph prefix.  ʘ + any byte B is the long name ‹_dgHH›.
 C	BD	dig	ʘ	prefix: ʘB (any byte B) is the long name ‹_dgHH›, HH = B in upper-case hex (see Digraph page)
 
+# W16-A: input references.  ① and ② push line 1 / line 2 of stdin, typed
+# (one integer, a list of integers, or the line as a code list), looked
+# ahead and cached: each compiles to a call to the prelude's ‹_in1› / ‹_in2›.
+C	BE	inone	①	line 1 of the input, typed: one int, a list of ints, or the line as a code list (look-ahead, cached)
+C	BF	intwo	②	line 2 of the input, typed like ①
+
 # --- LIBRARY WORDS (lib/prelude.golfj).  Byte/mnemonic/glyph allocations
 # come from ../REGISTRY.md; `codepage.py check` enforces them.
 L	52	range	⍳	range(n) -> [0..n-1]

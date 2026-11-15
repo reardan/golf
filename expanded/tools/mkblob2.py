@@ -433,6 +433,13 @@ assert AUTOEXIT2 == bytes(_END_CALL) + bytes(_FLUSH_CALL) + v1.AUTOEXIT
 FRAME_MAX_LOCALS = 16
 FRAME_RESERVE = bytes([0x48, 0x81, 0xED])   # sub rbp, imm32
 FRAME_RELEASE = bytes([0x48, 0x81, 0xC5])   # add rbp, imm32
+# W16-A: a ⟦ block READS its ⊡ word's locals through the word's link cell,
+# LINK_TABLE + 8*name (one 8-byte cell per name number, 0..1279, runtime BSS
+# in the free headroom; ../REGISTRY.md §3.6).  A word that has such a block
+# saves the cell in a hidden local and points it at its frame on entry (stub
+# A), and puts it back on every exit (stub B); see self/golf2.golfj.
+LINK_TABLE = 0x434000     # 4407296: to 0x4367FF
+LINK_HIDDEN = 2000        # the hidden local's entry in the slot table: no name
 
 # --- Compiler-op byte allocations (../REGISTRY.md §1) ------------------------
 # These are not atoms: there is no template for them and build_blob2() never
@@ -509,6 +516,16 @@ UNQUOTED = _RECORDS[7]                # data/templates.txt `rec 07`
 ADVERB_KEY = 6      # blob record keys: control bytes, never an op, so `f`
 UNQUOTED_KEY = 7    # finds these two only when asked by number
 DIGRAPH_BYTE = _C["dig"] # ʘB  W13-B (S6): compiles exactly as the long name ‹_dgHH› (HH = B in upper-case hex); no memory
+# W16-A: ① / ② compile as a call to the prelude's ‹_in1› / ‹_in2› (like a
+# literal: never quoted, never a chain link), and set the immediate of the
+# prelude's flag word ‹_inflag› (`:‹_inflag›0;`, the push imm32 right after
+# its prologue) to 1, so that the prelude's init takes the input's first two
+# lines before the program can read any of it.  Runtime cells: IN_CELLS.
+INONE_BYTE = _C["inone"]  # ①  line 1 of the input, typed
+INTWO_BYTE = _C["intwo"]  # ②  line 2
+IN_NAMES = {INONE_BYTE: b"_in1", INTWO_BYTE: b"_in2"}
+IN_FLAG = b"_inflag"
+IN_CELLS = 0x436800       # 4417536: ① · 4417544: ② · 4417552: taken (0/1)
 # M2's compiler-only memory (../REGISTRY.md §3).  A long name is interned to a
 # NAME NUMBER 256 + index, so the dictionary and the variable bank take it with
 # their one-byte formulas unchanged (NAME_DICT + 4*name, 0x4E0000 + 8*name).
