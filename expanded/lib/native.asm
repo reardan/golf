@@ -727,3 +727,74 @@
         jne .done
         add rdx, 1
         jmp .l
+
+;; @word ‹_nA›  c -> addr 0 | c 1   A's fast path (classes 0..6, no collection due, no brk)
+; Pops the class head when it is non-empty, else bumps when the block fits
+; below the break; anything else (a collection due, c > 256 or negative, the
+; break to grow) hands c back with 1 for A's Golf body.  Same bookkeeping as A:
+; header +cap, payload cell 0 cleared on a pop, ‹heapstats› cells counted.
+        pop r11
+        pop rax
+        mov ebx, 0x4F0000
+        mov ecx, 0x432180
+        mov rcx, [rcx]
+        test rcx, rcx
+        jz .ok
+        mov rdx, [rbx+0xAC8]
+        cmp rdx, rcx
+        jae .slow
+.ok:    mov ecx, 256
+        cmp rax, rcx
+        ja .slow
+        xor edx, edx
+        mov ecx, 4
+        cmp rax, rcx
+        jbe .k0
+        mov rdx, rax
+        sub rdx, 1
+        bsr rdx, rdx
+        sub rdx, 1
+.k0:    lea rsi, [rbx+rdx*8+0xC0]
+        mov rdi, [rsi]
+        xor ecx, ecx
+        cmp rdi, rcx
+        je .bump
+        lea r8, [rdi]
+        sub r8, 8
+        xor r9d, r9d
+        sub r9, [r8]
+        mov [r8], r9
+        mov rcx, [rdi+8]
+        mov [rsi], rcx
+        mov qword [rdi], 0
+        lea rcx, [r9*8+8]
+        add [rbx+0xAC8], rcx
+        add qword [rbx+0xAC0], 1
+        push rdi
+        push 0
+        push r11
+        ret
+.bump:  mov ecx, edx
+        mov r9d, 4
+        shl r9, cl
+        lea r10, [r9*8+8]
+        mov ecx, [rbx+0x34]
+        mov r8d, [rbx]
+        lea rdi, [r8+r10]
+        mov edx, [rbx+0x38]
+        cmp rdi, rdx
+        jae .slow
+        mov [rbx], edi
+        add rcx, r8
+        mov [rcx], r9
+        add [rbx+0xAC8], r10
+        add qword [rbx+0xAC0], 1
+        add rcx, 8
+        push rcx
+        push 0
+        push r11
+        ret
+.slow:  push rax
+        push 1
+        push r11
+        ret

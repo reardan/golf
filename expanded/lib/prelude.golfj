@@ -174,6 +174,9 @@
  1.]
  4456448\radd 5177440\fetch&\store5177448\fetch&8\radd\store5177456\fetch&16\radd\store5177464\fetch&24\radd\store5177472\fetch&32\radd\store5177480\fetch&40\radd\store5177488\fetch&48\radd\store5177496\fetch&56\radd\store_5177392@64\radd5177392!;
 :Y5177392@64\rsub"5177392!4456448\radd"\fetch5177440\store"8\radd\fetch5177448\store"16\radd\fetch5177456\store"24\radd\fetch5177464\store"32\radd\fetch5177472\store"40\radd\fetch5177480\store"48\radd\fetch5177488\store"56\radd\fetch5177496\store_;
+# W18: A first tries ‹_nA›, the same pop-or-bump for classes 0..6 in native
+# code; the Golf body below runs only for a collection due, a big block, or
+# a brk.
 # A: alloc(cells) -> addr.  W9-3C/M-MEM2: a size-classed free list in front of
 # the bump allocator of W6/M-MEM (see the "W6 allocator" block near the bottom).
 # Every block now carries a HEADER cell in front of the address A returns:
@@ -204,7 +207,7 @@
 # by a caller that fills the length last.  Both paths count the block into
 # ‹heapstats›'s cells: 5180096 live blocks += 1, 5180104 live bytes += the
 # whole block, header included, (cap+1)*8 (the bump path has it in s5 already).
-:A4399488\fetch1\rsub5180104\fetch\rlt1\radd[‹gc›]"257\rsub65280\rlt1\radd[‹_17_big›^]0&4\gt\rsub&8\gt\rsub&16\gt\rsub&32\gt\rsub&64\gt\rsub&128\gt\rsub&256\gt\rsub
+:A‹_nA›[^]4399488\fetch1\rsub5180104\fetch\rlt1\radd[‹gc›]"257\rsub65280\rlt1\radd[‹_17_big›^]0&4\gt\rsub&8\gt\rsub&16\gt\rsub&32\gt\rsub&64\gt\rsub&128\gt\rsub&256\gt\rsub
  8\rmul5177536\radd"5177480\store\fetch
  "1﹤[&&8\rsub\fetch\neg\gt["8\rsub"\fetch\neg"1\radd8\rmul5180104\fetch\radd5180104\store&\store_"8\radd\fetch5177480\fetch\store0&\store5177480\store_5180096\fetch1\radd5180096\store5177480\fetch^]]_
  1 5177480\fetch5177536\rsub3>2\radd\shl\rmax
@@ -263,6 +266,12 @@ O H²%⋄!C ṔḌ⍎;
 1⍤H)∸H⌊≣ṔH²ĊuH²∔ṔH²ĊuH²⍃ṔH⟲∔J⌊H²⇉Ṕ‹⍎;
 :‹_npre›`54 A[Y_^1⍁Ṕ1∔PAS⩍1∔H²⍃PAS⩍←←←←←←←←H9⌫sĊH∣⍆H;⍅u⍣H²⨰ṔṔ⍎;
 :‹_ndiff›`48 A[Y_^1⍁ṔRAS⩍←←←←←←←←←←←←←←H9⌫sĊH∣⍆H;⍅uĠH²⨰ṔṔ⍎;
+:‹_nA›`231 A[X⟦  O ⇡±!C H∣	H⊘⍤tH∣﹡≣
+  H9⌫²⟧   ⇡   H9≣≡⌁   1⍁⇡   H9≣vH⌊⨰H²⍖Hʘ⍁H²⍖H⍎‹⍸∔   H∣>1⍤H9∊t;L⍎I²⍃E1⍤M+M⌊H∣OH⌊H⑂    J⍎↓   H∣≣
+  H²²∔
+  Wj AS⩍⌊⍀A⇡   I⍸ḲN⍎↓   ∣K4D∣K⍎<∣S8H9⍅s!⌊;L∸L⌊	L﹡≣
+  H²²∔
+  H²∸Qj AS⩍PjAS⩍⍎;
 # === END NATIVE ===
 :‹_lt›﹤;:‹_gt›»;:‹_n›±;:‹_i›⊕;:‹_e›⊖;:‹_d›/;:‹_m›%;:‹_x›⌈;:‹_o›⌊;:‹_q›÷;:‹_r›∣;
 # ‹_2d_chk›  v -> addr   W11-2D: the list-entry mask WITH the use-after-free
