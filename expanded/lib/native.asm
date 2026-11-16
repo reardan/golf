@@ -55,7 +55,7 @@
 
 ;; @word ‹_nelt›  end p d dr mode -> end p' x y 0 | end end 1
 ; The elementwise kernel behind ‹_12p3_go› (every ‹_12p3_ll… li… il…› loop).
-; mode = op*4 + shape: op 0 + 1 - 2 * 3 ⌊ 4 ⌈ (signed); shape 0 ll (y is the
+; mode = op*4 + shape: op 0 + 1 - 2 * 3 ⌊ 4 ⌈ (signed) 5 ≡; shape 0 ll (y is the
 ; cell at p+d), 1 li (y is the scalar d), 2 il (x is the scalar d, y the
 ; cell).  It runs the op over the cells from p while both operands are ints,
 ; writing to p+dr, and stops at end (flag 1) or at the first pair holding a
@@ -85,10 +85,10 @@
         push 1
         push r11
         ret
-        times 8 nop
+        times 5 nop
 .l:     cmp rsi, rdx
         jae .done
-        mov rax, [rsi]
+.b:     mov rax, [rsi]
         mov rcx, r9
         test r13, r13
         jnz .s1
@@ -114,7 +114,20 @@
         jz .mul
         sub rdi, 1
         jz .min
-        cmp rax, rcx
+        sub rdi, 1
+        jz .max
+        jmp .eq
+.add:   add rax, rcx
+.st:    mov [rsi+r10], rax
+        add rsi, 8
+        cmp rsi, rdx
+        jb .b
+        jmp .done
+.eq:    xor rax, rcx             ; op 5: ≡, -1 or 0 (borrow only from 0)
+        sub rax, 1
+        sbb rax, rax
+        jmp .st
+.max:   cmp rax, rcx
         cmovl rax, rcx
         jmp .st
 .min:   cmp rax, rcx
@@ -124,10 +137,6 @@
         jmp .st
 .sub:   sub rax, rcx
         jmp .st
-.add:   add rax, rcx
-.st:    mov [rsi+r10], rax
-        add rsi, 8
-        jmp .l
 
 ;; @word ‹_nhash›  h p e -> h' p'   FNV-1a over the int cells from p (‹hash›)
 ; Eight byte rounds per cell, low byte first, exactly as ‹_2b_h8›.  Stops at e
@@ -697,5 +706,24 @@
         mov rax, [rsi+rdx*8]
         cmp rax, [rdi+rdx*8]
         jne .ne
+        add rdx, 1
+        jmp .l
+
+;; @word ‹_ndiff›  a b n -> i   the first i < n where the cells a[i] and b[i] differ, else n (≣)
+        pop r11
+        pop rcx
+        pop rdi
+        pop rsi
+        xor edx, edx
+        jmp .l
+.done:  push rdx
+        push r11
+        ret
+        times 14 nop
+.l:     cmp rdx, rcx
+        jae .done
+        mov rax, [rsi+rdx*8]
+        cmp rax, [rdi+rdx*8]
+        jne .done
         add rdx, 1
         jmp .l
