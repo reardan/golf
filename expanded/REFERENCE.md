@@ -310,6 +310,7 @@ Single-byte machine-code ops (`tools/mkblob2.py` `ATOMS`): the compiler copies e
 | `0xAC` | `⊢` | `\clz` | x -> leading zero bits (64 for 0) (a list: elementwise, any depth) |
 | `0xAD` | `⊥` | `\lsb` | x -> x & -x, the lowest set bit (0 for 0) (a list: elementwise, any depth) |
 | `0xAE` | `⌁` | `\scall` | a1 a2 a3 a4 a5 a6 num -> result: raw six-argument syscall |
+| `0xAF` | `⟲` | `\rot` | a b c -> b c a: rotate the third item to the top |
 
 ### Compiler ops
 

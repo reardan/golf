@@ -306,8 +306,8 @@ rec 05 endhook flush v1:05              # AUTOEXIT2: end hook, flush, exit(0)
 # this record; boot/golfref.py imports it as mkblob2.ADVERBS.
 rec 06 4D 46 57 5A D1 D2 D3 D4 D8 D9 E7 E8 EA EC 99 9A 9B 9D 9E
 # ... except these, which never quote: the v1 stack, memory and I/O ops
-# " _ \ & @ ! ? , ( ) . , then ∘ ⊸ (they build a function) and ⊙ ⊛.
-rec 07 22 5F 5C 26 40 21 3F 2C 28 29 2E C5 D0 A4 A5
+# " _ \ & @ ! ? , ( ) . , then ∘ ⊸ (they build a function) and ⊙ ⊛, and ⟲ (W17).
+rec 07 22 5F 5C 26 40 21 3F 2C 28 29 2E C5 D0 A4 A5 AF
 v1ops
 atoms
 
@@ -455,3 +455,7 @@ override AD upoly(w:4F0668,atom:AD)
 # friends need all six.  a1 is the deepest operand, num the top: pop rax, r9,
 # r8, r10, rdx, rsi, rdi; syscall; push rax.
 tpl AE 58 41 59 41 58 41 5A 5A 5E 5F 0F 05 50   # ⌁ scall
+
+# W17: rotate.  a b c -> b c a: pop rax (c), rdx (b), rcx (a); push rdx, rax,
+# rcx.  A stack op, so it never quotes before an adverb (rec 07).
+tpl AF 58 5A 59 52 50 51                # ⟲ rot
