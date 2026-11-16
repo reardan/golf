@@ -1376,8 +1376,9 @@ Temporaries are freed. Before W17 nothing was given back unless the program
 called `⌫`, so a loop that built a list per step grew without bound
 (Spiral Matrix's peel-and-rotate solution peaked at 646 MB). Now the
 allocator runs a **conservative mark-and-sweep collector** when the live
-bytes (what `‹heapstats›` counts) have grown by 16 MB, or by as much again
-as was live after the last collection, whichever is more. It finds every
+bytes (what `‹heapstats›` counts) have grown by 64 MB, or by twice what
+was live after the last collection, whichever is more (so programs under
+64 MB never collect, and the total scanning stays about twice the final live heap). It finds every
 block that is still reachable and gives the rest back exactly as `⌫` would,
 so the next allocation of that size reuses them.
 

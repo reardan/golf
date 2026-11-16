@@ -1638,11 +1638,12 @@ echo "M-MEM2 (W9-3C): ⌫ free — a size-classed free list in front of A's bump
 # so ~71 MB, not exactly 72).
 [ "$(printf '%s' ':d\dbl;5R→l 0\brk→b 1000000→i{←l\refdM\free←i1-"→i0\eq}0\brk←b-N E ←l Q E' | gc)" = "$(printf '0\n0 1 2 3 4 ')" ] \
   && ok "1,000,000 × (map, ⌫): the program break does not move" || no "free loop keeps brk flat"
-w93c=$(printf '%s' ':d\dbl;5R→l 0\brk→b 1000000→i{←l\refdM_←i1-"→i0\eq}0\brk←b-N E' | gc)
-# W17: the collector now takes back what the loop drops (it ran up ~71 MB of
-# break before), so the break grows by about one collection threshold (16 MB).
-[ "$w93c" -lt 33554432 ] 2>/dev/null \
-  && ok "the same loop without ⌫ keeps the break bounded: the collector frees it ($w93c bytes)" || no "no-free loop: break grew '$w93c', want < 32 MB (W17 collector)"
+w93c=$(printf '%s' ':d\dbl;5R→l 0\brk→b 3000000→i{←l\refdM_←i1-"→i0\eq}0\brk←b-N E' | gc)
+# W17: the collector now takes back what the loop drops (3,000,000 blocks of
+# 72 bytes ran up ~216 MB of break before), so the break grows by about one
+# collection threshold (64 MB).
+[ "$w93c" -lt 100663296 ] 2>/dev/null \
+  && ok "the same loop without ⌫ keeps the break bounded: the collector frees it ($w93c bytes)" || no "no-free loop: break grew '$w93c', want < 96 MB (W17 collector)"
 [ "$(printf '%s' '5R"→a\free 5R←a\rsub1\rlt N E 3A"→b\free 3A←b\rsub1\rlt N E' | gc)" = "$(printf -- '-1\n-1')" ] \
   && ok "a freed block is reused by the next same-size request (tagged list and raw A block)" || no "free reuse"
 # Classes are powers of two (4 8 … 256 cells) so any request of the class fits:

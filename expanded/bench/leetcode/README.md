@@ -588,3 +588,67 @@ Most costly first, counted over the eighty notes:
    `‹isqrt›`, `‹nextsmaller›`/`‹prevsmaller›`, `‹slice›`; and no select atom,
    no "between", no repeat-n-times adverb, `Ṁ Ṃ` throw on empty, `⊇` takes no
    negative index, and `⟦…⟧⍀⥮` starts no derived verb after a `⟧`.
+
+## W17: the four gaps, and why 21 are slower than Python (2026-11-16)
+
+W17 added a gather (`⊇` with a list of indices), two-accumulator folds and
+scans (`ʘ&` ‹fold2›, `ʘ^` ‹scan2›) with a rotate atom `⟲`, an O(k)
+`‹slice›`, a conservative mark-and-sweep collector, and the three crash fixes
+listed under the gaps above.
+
+**Why 21 were slower.** Each one was re-measured and profiled. Five are
+brute force (a, a worse algorithm picked for bytes), nine are implementation
+costs in the prelude (b), and seven are noise (c: Golf ties or wins on a
+re-measure). Times are the best of 3 wall seconds on the full input, on the
+same container, for `main` before W17, this branch, and Python; peak is RSS
+in MB.
+
+| problem | class | main s | W17 s | Python s | peak MB | culprit |
+|---|---|---|---|---|---|---|
+| `spiral` | a | 0.972 | 0.935 | 0.075 | 631 → 125 | peel-and-rotate is O(mn(m+n)); an O(mn) walk costs +71 B |
+| `charrep` | a | 0.668 | 0.614 | 0.109 | 393 → 265 | O(26n) vectorised; a two-pointer loop (0.03 s) costs +71 B |
+| `wordbreak` | a | 0.700 | 0.764 | 0.208 | 192 → 71 | tries all 40 words at every position; now gathers its windows |
+| `minwindow` | a | 0.666 | 0.720 | 0.239 | 342 → 184 | O(n·distinct) vectorised; the emulated gather is now ⊇ |
+| `revpairs` | a | 1.429 | 0.384 | 0.849 | 177 → 61 | O(n log² n) bisect per element; the collector's block reuse cut page faults |
+| `lastword` | b | 0.509 | 0.667 | 0.130 | 202 → 202 | ‹words› builds 1.2M lists to keep one |
+| `roman` | b | 0.354 | 0.564 | 0.188 | 145 → 107 | 2 temporaries per character; a gathered table costs +4 B |
+| `ladder` | b | 1.758 | 2.412 | 0.612 | 196 → 204 | dict with list keys; ‹hash› is ~1 µs per key |
+| `anagram` | b | 0.292 | 0.306 | 0.151 | 84 → 83 | ② reads a 2M-letter line slowly |
+| `largest` | b | 0.531 | 0.577 | 0.296 | 156 → 88 | ⧺ and ↑ on tiny lists per number |
+| `balloons` | b | 0.390 | 0.362 | 0.303 | 259 → 150 | ↓ copies and elementwise ops at ~9 ns per cell |
+| `longpal` | b | 0.240 | 0.337 | 0.196 | 81 → 81 | ⍋ radix-sorts 5M letters that a counting sort would do |
+| `majority` | b | 0.250 | 0.297 | 0.232 | 56 → 55 | dict of 500k keys; `⍋"≢⊘⊇` would be faster |
+| `dupe` | b | 0.268 | 0.312 | 0.300 | 49 → 49 | hash set in X/Y scratch cells |
+| `dedup` | c | 0.212 | 0.337 | 0.314 | 73 → 73 | noise: Golf ties or wins on a re-measure |
+| `plusone` | c | 0.148 | 0.142 | 0.189 | 71 → 71 | noise: Golf ties or wins on a re-measure |
+| `water` | c | 0.327 | 0.334 | 0.384 | 75 → 76 | noise: Golf ties or wins on a re-measure |
+| `rpn` | c | 0.279 | 0.440 | 0.319 | 86 → 86 | noise: Golf ties or wins on a re-measure |
+| `provinces` | c | 0.189 | 0.235 | 0.269 | 107 → 108 | noise: Golf ties or wins on a re-measure |
+| `firstuniq` | c | 0.187 | 0.173 | 0.183 | 78 → 78 | noise: Golf ties or wins on a re-measure |
+| `median` | c | 0.152 | 0.170 | 0.155 | 45 → 45 | noise: Golf ties or wins on a re-measure |
+| **21** | | **10.52** | **11.08** | **5.70** | **3498 → 2262** | |
+
+**What W17 changed.** Memory fell by a third over these 21 (3498 → 2262 MB;
+`spiral` 631 → 125 MB, `wordbreak` 192 → 71, `balloons` 259 → 150). `revpairs`
+became 3.7× faster than before, because blocks are reused instead of
+faulting in fresh pages. Only `minwindow` and `wordbreak` could take a
+shorter gather rewrite under their byte ceilings.
+
+**The trade-off.** A collection costs about 5 ns for every live cell it
+scans. The first collection waits until 64 MB have been allocated, and each
+later one until twice the live heap has been, so a program that stays under
+64 MB never collects. A program that passes 64 MB with most of its data
+still live pays for one or two scans for nothing: `rpn`, `roman`, `longpal`,
+`dedup` and `ladder` lose 0.05–0.65 s. Over the 21 the total went from
+10.52 s to 11.08 s. With a 256 MB first step instead, the total is
+10.74 s and the memory 3,120 MB: the speed comes back and the memory win
+goes, along with the `revpairs` gain. The step is the limit cell 4399488,
+so a program can raise it.
+
+**What would close the remaining gap** (none of it costs bytes): a native
+memcpy behind `↑ ↓ ⧺` (copies run at 6–12 ns per cell), pointer loops for
+elementwise `+ - * ⌈ ⌊` (about 9 ns per cell now), a cheaper list `‹hash›`
+(`ladder`), a counting-sort path in `⍋` (`longpal`), and a one-pass
+`‹words›` (`lastword`, `rpn`). The brute-force five need longer solutions,
+which the byte ceilings rule out. The measured loops (`charrep` 0.03 s,
+`spiral` 0.04 s) show that the algorithms themselves are fast in Golf.

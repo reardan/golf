@@ -919,7 +919,8 @@ W17 takes the next two 64-byte blocks of the `0x432000` headroom,
 | 4399544 | blocks freed by collections so far |
 | 4399552 + 8j, j = 0…7 | the large size classes' free-list heads: blocks of exactly 512<<j cells (512 … 65536) |
 | 4399616 | bumped by every pop and push on those lists and by every collection; `⍥` compares it as it compares the eight small heads |
-| 4399640 · 4399648 · 4399656 | `‹_17_scan›`'s end, heap base and bump offset during a collection |
+| 4399640 · 4399648 · 4399656 | `‹_17_scan›`'s end, and the heap base and bump offset shifted left 16, during a collection |
+| 4399664 | the block-start bitmap (one bit per heap cell, a third mmap) that lets `‹_17_find›` skip the binary search for a pointer to a block's first cell |
 
 ---
 

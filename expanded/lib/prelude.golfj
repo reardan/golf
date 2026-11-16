@@ -4154,7 +4154,7 @@
 # --- W17 garbage collection: temporaries are freed ---
 # A conservative mark-and-sweep collector over A's brk heap.  ‹gc› runs on its
 # own when A finds the bump offset H at or past the limit cell 4399488 (set
-# to H + max(16 MB, the live bytes) after each collection, so the work is
+# to live + max(64 MB, 2 x live) after each collection, so the work is
 # proportional to what the program allocates), and a program may call it.
 #   1. walk the heap from its base, block by block (a header holds the
 #      capacity, negated while the block is free), and write each block's
@@ -4186,22 +4186,27 @@
 # 4399496 collections · 4399504 1 while collecting · 4399512 the index ·
 # 4399520 its count · 4399528 the mark stack · 4399536 its top · 4399544
 # blocks freed by collections · 4399640 4399648 4399656 ‹_17_scan›'s end,
-# heap base and bump offset (it calls ‹_17_mark›, never itself).
-⊡‹_17_find›⇒a0⇒l4399520⊙⇒h
+# heap base and bump offset, both shifted left 16 (it calls ‹_17_mark›,
+# never itself) · 4399664 the block-start bitmap: one bit per heap cell, set
+# for each payload's first cell, so ‹_17_find› answers a pointer to a block's
+# start without the binary search.
+⊡‹_17_find›⇒a⇐a5177396@﹣3>⇒q4399664⊙⇐q6>3≪﹢⊙⇐q63$>1$[⋄⇐a8﹣⊙63≫[⇐a⋄0]^]0⇒l4399520⊙⇒h
  {⇐h⇐l﹣2﹤⋄⇐l⇐h﹢1>⇒m4399512⊙⇐m3≪﹢⊙8﹣⇐a»[⇐m⇒l⋄⇐m⇒h]}
  4399512⊙⇐l3≪﹢⊙⇒s⇐s8﹣⊙⇒c
  ⇐c63≫[⇐a⇐s8﹣﹣⇐c24≪24>1﹢3≪<[0⋄⇐s]⋄0];
 ⊡‹_17_mark›"⇒v16≪16>"⇒a‹_17_find›⇒s⇐s[⋄⇐s8﹣⊙⇒c
  ⇐v48>32767﹣⇐a⇐s﹣|[⇐c41>1$[⇐c1 41≪|⇐s8﹣⊛⇐s‹_17_push›⋄]⋄⇐c42>1$[⇐c3 41≪|⇐s8﹣⊛⇐s1|‹_17_push›⋄]]];
 :‹_17_push›4399536⊙⊛4399536⊙8﹢4399536⊛;
-:‹_17_scan›4399640⊛5177396@4399648⊛5177344@4399656⊛"4399640⊙<1﹢[
- {"⊙16≪16>4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"4399640⊙<1﹢}]_;
+:‹_17_s4›"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢_;
+:‹_17_scan›4399640⊛5177396@16≪4399648⊛5177344@16≪4399656⊛"32﹢4399640⊙»[
+ {"⊙16≪4399648⊙﹣&8﹢⊙16≪4399648⊙﹣⊓&16﹢⊙16≪4399648⊙﹣⊓&24﹢⊙16≪4399648⊙﹣⊓4399656⊙<1﹢["‹_17_s4›]32﹢"32﹢4399640⊙»}]
+ "4399640⊙<1﹢[{"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"4399640⊙<1﹢}]_;
 ⊡‹gc›4399504⊙[⋄^]1 4399504⊛⊷⇒r⇒d
  5177344@2≫16﹢12≫1﹢12≪⇒z
- 0⇐z3 16418 0 1﹣0 9⌁⇒x0⇐z3 16418 0 1﹣0 9⌁⇒y
- ⇐x63≫⇐y63≫|[⋄0 4399504⊛^]
+ 0⇐z3 16418 0 1﹣0 9⌁⇒x0⇐z3 16418 0 1﹣0 9⌁⇒y0⇐z4>12≫1﹢12≪3 16418 0 1﹣0 9⌁⇒w
+ ⇐x63≫⇐y63≫|⇐w63≫|[⋄0 4399504⊛^]⇐w4399664⊛
  5177396@⇒p⇐p5177344@﹢⇒e0⇒k
- {⇐p⇐e<1﹢⋄⇐p8﹢⇐x⇐k3≪﹢⊛⇐k1﹢⇒k⇐p⊙"63≫[24≪24>⋄‹_n›]1﹢3≪⇐p﹢⇒p}
+ {⇐p⇐e<1﹢⋄⇐p8﹢⇐x⇐k3≪﹢⊛⇐p8﹢5177396@﹣3>⇒q⇐w⇐q6>3≪﹢⇒t⇐t⊙1⇐q63$≪|⇐t⊛⇐k1﹢⇒k⇐p⊙"63≫[24≪24>⋄‹_n›]1﹢3≪⇐p﹢⇒p}
  ⇐x4399512⊛⇐k4399520⊛⇐y4399528⊛⇐y4399536⊛
  ⇐d4399432⊙"[_5177408⊙⋄4399424⊙[⋄4096﹢]]‹_17_scan›
  ⇐r6291456‹_17_scan›
@@ -4213,7 +4218,7 @@
   ⇐f[⇐s⊙1﹢⇐c⊓⇒c⋄]⇐s"⇐c3≪﹢‹_17_scan›}
  0⇒j{⇐j⇐k﹣1﹤⋄⇐x⇐j3≪﹢⊙⇒s⇐s8﹣⊙⇒c
   ⇐c63≫[⇐c41>1$[⇐s⌫4399544⊙1﹢4399544⊛⋄⇐c3 41≪~$⇐s8﹣⊛]⋄]⇐j1﹢⇒j}
- ⇐x⇐z0 11⎈_⇐y⇐z0 11⎈_
- 5180104⊙"16777216‹_x›﹢4399488⊛4399496⊙1﹢4399496⊛4399616⊙1﹢4399616⊛0 4399504⊛;
-:‹_17_init›5180104⊙16777216﹢4399488⊛;
+ ⇐x⇐z0 11⎈_⇐y⇐z0 11⎈_⇐w⇐z4>12≫1﹢12≪0 11⎈_
+ 5180104⊙"1≪67108864‹_x›﹢4399488⊛4399496⊙1﹢4399496⊛4399616⊙1﹢4399616⊛0 4399504⊛;
+:‹_17_init›5180104⊙67108864﹢4399488⊛;
 ‹_17_init›
