@@ -1,6 +1,8 @@
 # LeetCode benchmark — Golf vs Python, C++ and Jelly
 
-Twenty LeetCode problems, each solved in Golf, Python (idiomatic `py/` and
+A hundred LeetCode problems: the twenty below, plus eighty more (20 easy,
+40 medium, 20 hard) added on 2026-11-15, listed in "The eighty more (P100)".
+The first twenty problems, each solved in Golf, Python (idiomatic `py/` and
 golfed `pyg/`) and C++. The first ten (3 easy, 4 medium, 3 hard) also have
 Jelly. Every program reads stdin (Jelly takes arguments, the usual Jelly way)
 and prints the answer. The first ten are the baseline
@@ -200,8 +202,89 @@ lower its number.
 | lcs | 19 |
 | temps | 6 |
 | bits | 3 |
+| palnum | 4 |
+| roman | 32 |
+| lcp | 14 |
+| dedup | 3 |
+| lastword | 4 |
+| plusone | 19 |
+| sqrtx | 8 |
+| stairs | 11 |
+| validpal | 18 |
+| single | 2 |
+| majority | 3 |
+| dupe | 3 |
+| anagram | 6 |
+| missing | 5 |
+| zeroes | 5 |
+| firstuniq | 5 |
+| longpal | 9 |
+| maxones | 7 |
+| binsearch | 4 |
+| sqsorted | 2 |
+| longpalsub | 70 |
+| water | 13 |
+| threesum | 41 |
+| rotsearch | 4 |
+| firstlast | 15 |
+| combsum | 16 |
+| jumpii | 21 |
+| rotate | 12 |
+| maxsub | 8 |
+| spiral | 18 |
+| jump | 9 |
+| merge | 21 |
+| paths | 15 |
+| minpath | 23 |
+| edit | 32 |
+| decode | 33 |
+| bsts | 14 |
+| consec | 13 |
+| gas | 17 |
+| wordbreak | 46 |
+| rpn | 41 |
+| maxprod | 12 |
+| largest | 29 |
+| rob | 11 |
+| minsubarr | 21 |
+| kth | 7 |
+| square | 28 |
+| squares | 20 |
+| lis | 18 |
+| cooldown | 28 |
+| partition | 14 |
+| charrep | 29 |
+| nonoverlap | 23 |
+| arrows | 23 |
+| targetsum | 24 |
+| change | 23 |
+| provinces | 17 |
+| subarrk | 22 |
+| palsubs | 44 |
+| maxarea | 49 |
+| median | 26 |
+| regex | 70 |
+| mergek | 1 |
+| validparens | 22 |
+| firstmiss | 11 |
+| wildcard | 35 |
+| minwindow | 56 |
+| histogram | 17 |
+| maxrect | 32 |
+| distinct | 25 |
+| stockiii | 14 |
+| ladder | 80 |
+| candy | 19 |
+| stockiv | 16 |
+| calc | 62 |
+| balloons | 58 |
+| smaller | 40 |
+| envelopes | 28 |
+| splitarr | 36 |
+| revpairs | 46 |
 
-Total 161: the first ten 58 (115 before W16's rewrite, 177 before W15's,
+Total 1943: the first twenty 161, the eighty after them 1,782 (P100).
+The first twenty: the first ten 58 (115 before W16's rewrite, 177 before W15's,
 411 before W13-F's, 655 before W12-6's, 898 at the baseline above), the
 second ten 103 (124 before W16, 326 before W15).
 
@@ -344,3 +427,165 @@ into `lib/`, start `Memoize.Application` at the top of `main`, then
 compiles, so `rivals.py` passes `small/<problem>.txt`'s arguments to
 `nibbles -c` and `-hs`. 05AB1E evaluates an input line that starts with `[` as
 a list, so it cannot take a bracket string that starts with `[`.
+
+## The eighty more (P100, 2026-11-15)
+
+Eighty more problems, so that the language is measured on more than the
+twenty it was tuned on: 20 easy, 40 medium and 20 hard. Each has a Python
+reference (`py/`), a generator (`gen/<name>.py`, which `gen.py` runs after the
+twenty, each with its own `random.Random(<name>)` seed, writing the full input
+and the edge cases `<name>2.txt` …), the Golf solution (`golf/`), and a note
+(`notes/<name>.md`: input format, how the solution works, and the Golf gaps it
+hit). They have no C++, golfed Python or rival-language solutions. Every Golf
+solution gives Python's answer on the gate's tiny inputs and edge cases and on
+the full input, and (checked once when written, not in the gate) on 150 to 300
+random small inputs each.
+
+```sh
+./check.sh NAME full        # compile golf/NAME, compare with py/NAME on its small and full inputs, time both
+python3 gen1.py NAME 1 in   # just NAME's inputs
+./bench.sh in NAME …        # the bench for some problems; bytes.sh covers all hundred
+```
+
+One `./check.sh NAME full` run each (single runs on a shared container, so
+±20%): bytes, then wall seconds on the full input.
+
+| Problem | Level | Golf bytes | Golf s | Python s | |
+|---|---|---|---|---|---|
+| 9 Palindrome Number (`palnum`) | Easy | 4 | 0.004 | 0.014 | [notes](notes/palnum.md) |
+| 13 Roman to Integer (`roman`) | Easy | 32 | 0.329 | 0.129 | [notes](notes/roman.md) |
+| 14 Longest Common Prefix (`lcp`) | Easy | 14 | 0.650 | 1.134 | [notes](notes/lcp.md) |
+| 26 Remove Duplicates from Sorted Array (`dedup`) | Easy | 3 | 0.273 | 0.238 | [notes](notes/dedup.md) |
+| 58 Length of Last Word (`lastword`) | Easy | 4 | 0.452 | 0.121 | [notes](notes/lastword.md) |
+| 66 Plus One (`plusone`) | Easy | 19 | 0.244 | 0.199 | [notes](notes/plusone.md) |
+| 69 Sqrt(x) (`sqrtx`) | Easy | 8 | 0.004 | 0.020 | [notes](notes/sqrtx.md) |
+| 70 Climbing Stairs (`stairs`) | Easy | 11 | 0.005 | 0.016 | [notes](notes/stairs.md) |
+| 125 Valid Palindrome (`validpal`) | Easy | 18 | 0.276 | 0.453 | [notes](notes/validpal.md) |
+| 136 Single Number (`single`) | Easy | 2 | 0.096 | 0.263 | [notes](notes/single.md) |
+| 169 Majority Element (`majority`) | Easy | 3 | 0.273 | 0.227 | [notes](notes/majority.md) |
+| 217 Contains Duplicate (`dupe`) | Easy | 3 | 0.317 | 0.259 | [notes](notes/dupe.md) |
+| 242 Valid Anagram (`anagram`) | Easy | 6 | 0.350 | 0.136 | [notes](notes/anagram.md) |
+| 268 Missing Number (`missing`) | Easy | 5 | 0.096 | 0.168 | [notes](notes/missing.md) |
+| 283 Move Zeroes (`zeroes`) | Easy | 5 | 0.178 | 1.139 | [notes](notes/zeroes.md) |
+| 387 First Unique Character in a String (`firstuniq`) | Easy | 5 | 0.205 | 0.202 | [notes](notes/firstuniq.md) |
+| 409 Longest Palindrome (`longpal`) | Easy | 9 | 0.238 | 0.142 | [notes](notes/longpal.md) |
+| 485 Max Consecutive Ones (`maxones`) | Easy | 7 | 0.126 | 0.380 | [notes](notes/maxones.md) |
+| 704 Binary Search (`binsearch`) | Easy | 4 | 0.107 | 0.233 | [notes](notes/binsearch.md) |
+| 977 Squares of a Sorted Array (`sqsorted`) | Easy | 2 | 0.406 | 1.502 | [notes](notes/sqsorted.md) |
+| 5 Longest Palindromic Substring (`longpalsub`) | Medium | 70 | 0.281 | 0.702 | [notes](notes/longpalsub.md) |
+| 11 Container With Most Water (`water`) | Medium | 13 | 0.380 | 0.359 | [notes](notes/water.md) |
+| 15 3Sum (`threesum`) | Medium | 41 | 0.607 | 0.620 | [notes](notes/threesum.md) |
+| 33 Search in Rotated Sorted Array (`rotsearch`) | Medium | 4 | 0.122 | 0.176 | [notes](notes/rotsearch.md) |
+| 34 Find First and Last Position of Element in Sorted Array (`firstlast`) | Medium | 15 | 0.093 | 0.150 | [notes](notes/firstlast.md) |
+| 39 Combination Sum (`combsum`) | Medium | 16 | 0.140 | 0.146 | [notes](notes/combsum.md) |
+| 45 Jump Game II (`jumpii`) | Medium | 21 | 0.079 | 0.211 | [notes](notes/jumpii.md) |
+| 48 Rotate Image (`rotate`) | Medium | 12 | 0.258 | 0.606 | [notes](notes/rotate.md) |
+| 53 Maximum Subarray (`maxsub`) | Medium | 8 | 0.102 | 0.294 | [notes](notes/maxsub.md) |
+| 54 Spiral Matrix (`spiral`) | Medium | 18 | 1.151 | 0.131 | [notes](notes/spiral.md) |
+| 55 Jump Game (`jump`) | Medium | 9 | 0.147 | 0.236 | [notes](notes/jump.md) |
+| 56 Merge Intervals (`merge`) | Medium | 21 | 0.139 | 0.323 | [notes](notes/merge.md) |
+| 62 Unique Paths (`paths`) | Medium | 15 | 0.039 | 0.096 | [notes](notes/paths.md) |
+| 64 Minimum Path Sum (`minpath`) | Medium | 23 | 0.150 | 0.279 | [notes](notes/minpath.md) |
+| 72 Edit Distance (`edit`) | Medium | 32 | 0.449 | 0.711 | [notes](notes/edit.md) |
+| 91 Decode Ways (`decode`) | Medium | 33 | 0.066 | 0.403 | [notes](notes/decode.md) |
+| 96 Unique Binary Search Trees (`bsts`) | Medium | 14 | 0.003 | 0.013 | [notes](notes/bsts.md) |
+| 128 Longest Consecutive Sequence (`consec`) | Medium | 13 | 0.222 | 0.244 | [notes](notes/consec.md) |
+| 134 Gas Station (`gas`) | Medium | 17 | 0.193 | 0.445 | [notes](notes/gas.md) |
+| 139 Word Break (`wordbreak`) | Medium | 46 | 0.712 | 0.182 | [notes](notes/wordbreak.md) |
+| 150 Evaluate Reverse Polish Notation (`rpn`) | Medium | 41 | 0.295 | 0.247 | [notes](notes/rpn.md) |
+| 152 Maximum Product Subarray (`maxprod`) | Medium | 12 | 0.090 | 0.381 | [notes](notes/maxprod.md) |
+| 179 Largest Number (`largest`) | Medium | 29 | 0.492 | 0.316 | [notes](notes/largest.md) |
+| 198 House Robber (`rob`) | Medium | 11 | 0.060 | 0.202 | [notes](notes/rob.md) |
+| 209 Minimum Size Subarray Sum (`minsubarr`) | Medium | 21 | 0.340 | 0.447 | [notes](notes/minsubarr.md) |
+| 215 Kth Largest Element in an Array (`kth`) | Medium | 7 | 0.130 | 0.404 | [notes](notes/kth.md) |
+| 221 Maximal Square (`square`) | Medium | 28 | 0.165 | 0.173 | [notes](notes/square.md) |
+| 279 Perfect Squares (`squares`) | Medium | 20 | 0.067 | 0.254 | [notes](notes/squares.md) |
+| 300 Longest Increasing Subsequence (`lis`) | Medium | 18 | 0.345 | 0.447 | [notes](notes/lis.md) |
+| 309 Best Time to Buy and Sell Stock with Cooldown (`cooldown`) | Medium | 28 | 0.110 | 0.356 | [notes](notes/cooldown.md) |
+| 416 Partition Equal Subset Sum (`partition`) | Medium | 14 | 0.063 | 0.099 | [notes](notes/partition.md) |
+| 424 Longest Repeating Character Replacement (`charrep`) | Medium | 29 | 0.709 | 0.097 | [notes](notes/charrep.md) |
+| 435 Non-overlapping Intervals (`nonoverlap`) | Medium | 23 | 0.178 | 0.274 | [notes](notes/nonoverlap.md) |
+| 452 Minimum Number of Arrows to Burst Balloons (`arrows`) | Medium | 23 | 0.144 | 0.451 | [notes](notes/arrows.md) |
+| 494 Target Sum (`targetsum`) | Medium | 24 | 0.103 | 0.234 | [notes](notes/targetsum.md) |
+| 518 Coin Change II (`change`) | Medium | 23 | 0.047 | 0.114 | [notes](notes/change.md) |
+| 547 Number of Provinces (`provinces`) | Medium | 17 | 0.220 | 0.183 | [notes](notes/provinces.md) |
+| 560 Subarray Sum Equals K (`subarrk`) | Medium | 22 | 0.239 | 0.328 | [notes](notes/subarrk.md) |
+| 647 Palindromic Substrings (`palsubs`) | Medium | 44 | 0.403 | 0.784 | [notes](notes/palsubs.md) |
+| 695 Max Area of Island (`maxarea`) | Medium | 49 | 0.230 | 0.609 | [notes](notes/maxarea.md) |
+| 4 Median of Two Sorted Arrays (`median`) | Hard | 26 | 0.231 | 0.126 | [notes](notes/median.md) |
+| 10 Regular Expression Matching (`regex`) | Hard | 70 | 0.755 | 1.702 | [notes](notes/regex.md) |
+| 23 Merge k Sorted Lists (`mergek`) | Hard | 1 | 0.106 | 0.289 | [notes](notes/mergek.md) |
+| 32 Longest Valid Parentheses (`validparens`) | Hard | 22 | 0.135 | 0.264 | [notes](notes/validparens.md) |
+| 41 First Missing Positive (`firstmiss`) | Hard | 11 | 0.770 | 1.091 | [notes](notes/firstmiss.md) |
+| 44 Wildcard Matching (`wildcard`) | Hard | 35 | 0.138 | 0.145 | [notes](notes/wildcard.md) |
+| 76 Minimum Window Substring (`minwindow`) | Hard | 56 | 0.627 | 0.208 | [notes](notes/minwindow.md) |
+| 84 Largest Rectangle in Histogram (`histogram`) | Hard | 17 | 0.117 | 0.253 | [notes](notes/histogram.md) |
+| 85 Maximal Rectangle (`maxrect`) | Hard | 32 | 0.244 | 0.564 | [notes](notes/maxrect.md) |
+| 115 Distinct Subsequences (`distinct`) | Hard | 25 | 0.686 | 0.712 | [notes](notes/distinct.md) |
+| 123 Best Time to Buy and Sell Stock III (`stockiii`) | Hard | 14 | 0.158 | 0.401 | [notes](notes/stockiii.md) |
+| 127 Word Ladder (`ladder`) | Hard | 80 | 1.723 | 0.652 | [notes](notes/ladder.md) |
+| 135 Candy (`candy`) | Hard | 19 | 0.090 | 0.218 | [notes](notes/candy.md) |
+| 188 Best Time to Buy and Sell Stock IV (`stockiv`) | Hard | 16 | 0.037 | 0.157 | [notes](notes/stockiv.md) |
+| 224 Basic Calculator (`calc`) | Hard | 62 | 0.132 | 0.605 | [notes](notes/calc.md) |
+| 312 Burst Balloons (`balloons`) | Hard | 58 | 0.428 | 0.255 | [notes](notes/balloons.md) |
+| 315 Count of Smaller Numbers After Self (`smaller`) | Hard | 40 | 0.190 | 0.252 | [notes](notes/smaller.md) |
+| 354 Russian Doll Envelopes (`envelopes`) | Hard | 28 | 0.367 | 0.597 | [notes](notes/envelopes.md) |
+| 410 Split Array Largest Sum (`splitarr`) | Hard | 36 | 0.263 | 0.577 | [notes](notes/splitarr.md) |
+| 493 Reverse Pairs (`revpairs`) | Hard | 46 | 1.142 | 0.600 | [notes](notes/revpairs.md) |
+| **eighty** | | **1782** | **22.73** | **29.37** | |
+
+Golf is shorter than idiomatic Python on every one (1,782 bytes against
+Python's 21,458; never more than a third of it), but it is slower than Python on 21
+of the 80, in total 22.7 s against Python's 29.4 s. The slow ones are where a
+solution builds a list per element or per step that is never freed (`spiral`
+1.2 s against 0.13 and 646 MB, `charrep`, `balloons`), where a word costs more
+than it looks (`‹slice›`, `‹words›` in `lastword`), or where the algorithm had
+to be spelled out (`ladder`, `revpairs`, `wordbreak`, `minwindow`).
+
+Where the agents that wrote them chose a simpler algorithm than LeetCode's,
+the note says so: `rotsearch` and `binsearch` scan linearly (reading the
+input is O(n) anyway), `median` and `mergek` sort everything (the radix sort
+is linear), and `water` uses the sorted order rather than two pointers.
+
+### Golf gaps the eighty found
+
+Most costly first, counted over the eighty notes:
+
+1. **Two bugs.** A list word given an int segfaults instead of raising an
+   error (`5≢`; `①⍕` on the input `5`). A program using `⎕` together with
+   `①`/`②` segfaults for inputs of about 95k–102k bytes (`⎕①≢` on 100,000
+   `a`s, exit 139; 90k and 110k work). And an int that wraps into the list
+   band `[0x7FFF<<48, 2^63)` crashes the polymorphic `+ - *`
+   (`9223090561878065152 1+Ṅ`), so `distinct` reduces mod 2^31 every step.
+2. **No gather and no list literal.** `⊇` takes one index only; gathers cost
+   a block per element (`roman`, `wordbreak`, `minwindow`, `palsubs`,
+   `longpalsub`), and a small lookup table cost 23 of `roman`'s 32 bytes.
+3. **One accumulator, no rotate.** Folds and scans carry one value, nothing
+   reaches three deep, and blocks cannot write locals, so multi-state DPs
+   (`decode`, `cooldown`, `rob`, `stairs`) and counters (`arrows`,
+   `threesum`, `splitarr`, `calc`) go through globals or `⊡` words.
+4. **Temporaries are never freed** (`spiral`, `charrep`, `balloons`: hundreds
+   of MB), and **`‹slice›` is O(length − i)** rather than O(n) (it is `↓`
+   then `↑`; `1000000⍳→l 0 20000⍳⟦←l\\1‹slice›∑+⟧€_` takes 4.1 s against
+   0.13 s with `⊇`).
+5. **No shift-right-with-fill or prepend**: `1⍳\\⧺`, `0⍆`, `1⍳⧺⌽0⍆` recur in
+   `square`, `candy`, `distinct`, `wildcard`, `edit`, `histogram`,
+   `maxrect`, `targetsum`, `plusone`.
+6. **No short flatten-one-level.** `⧺⍁` is quadratic (12.7 s on a 1000 ×
+   1000 grid) and `‹flatten›` is 9 bytes (`change`, `combsum`, `rotate`,
+   `largest`).
+7. **Missing structures**: no Fenwick tree or merge-count (`smaller` 40,
+   `revpairs` 46 and slower than Python), no vectorised bisect (`minsubarr`,
+   `lis`, `envelopes`), no island sizes (`maxarea` spells a union-find), no
+   spiral, no word-graph neighbours (`ladder` 80), no comparator sort
+   (`largest` builds an 18-digit key).
+8. **Input and output shapes.** `①` types a one-number line as an int and a
+   digit-only line as a number; implicit input arrives only on an empty stack;
+   int grids need a size header or `"ℓʘW≢ʘ%`; there is no float output
+   (Python's `2.5`/`2.0` cost 18 of `median`'s 26 bytes); implicit output
+   prints one value only (`firstlast` spends `Ṅ32)`); `‹words›` drops empty
+   lines; `⧺` keeps the text mark only when both sides have it.
+9. **Long names without a byte**: `‹isalnum›`, `‹comps›`, `‹diff›`,
+   `‹isqrt›`, `‹nextsmaller›`/`‹prevsmaller›`, `‹slice›`; and no select atom,
+   no "between", no repeat-n-times adverb, `Ṁ Ṃ` throw on empty, `⊇` takes no
+   negative index, and `⟦…⟧⍀⥮` starts no derived verb after a `⟧`.

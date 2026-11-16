@@ -10,6 +10,15 @@ the `v1c` binary pinned by `../SEEDS`) is never touched.
 
 ## Where we are
 
+**The LeetCode set is now a hundred problems** (P100, 2026-11-15,
+[`bench/leetcode/`](bench/leetcode/README.md) "The eighty more"): eighty
+new ones, 20 easy, 40 medium and 20 hard, 1,782 bytes of Golf against
+21,458 of Python, but slower than Python on 21 of them. Its "Golf gaps the
+eighty found" list is the input to the next round: three crash bugs (list
+words on an int, `⎕` with `①` at ~100 KB, wrapped ints in the list band),
+then gather, a second accumulator / rotate, freeing temporaries and an O(n)
+`‹slice›`, shift-with-fill, a one-level flatten.
+
 **W16 — closing the gap to Nibbles and Vyxal — has landed** (REFERENCE
 "W16", [`bench/leetcode/`](bench/leetcode/README.md)). It came from the
 rivals benchmark: Nibbles was 220 bytes to Golf's 239, and queens alone was

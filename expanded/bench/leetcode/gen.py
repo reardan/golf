@@ -82,3 +82,12 @@ w('stock2', '7 6 4 3 1\n'); w('longsub2', 'bbbbb\n'); w('longsub3', 'pwwkew\n')
 w('prodself2', '-1 1 0 -3 3\n'); w('topk2', '2\n1 1 1 2 2 3\n'); w('topk3', '2\n5 3 5 3 1\n')
 w('islands2', '11000\n11000\n00100\n00011\n'); w('islands3', '0\n')
 w('trap2', '4 2 0 3 2 5\n'); w('slidemax2', '1\n5 -2 3\n'); w('queens2', '4\n'); w('queens3', '1\n')
+# --- P100 (2026-11-15): eighty more problems, one generator per file in gen/.
+# Each gen/<name>.py defines gen(R, S, w): R is random.Random(<name>), its own
+# seed, so adding a problem never moves another's input; w(suffix, text)
+# writes <name><suffix>.txt ('' is the large input, '2', '3' … edge cases).
+import glob, importlib.util
+for f in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gen', '*.py'))):
+    nm = os.path.basename(f)[:-3]
+    sp = importlib.util.spec_from_file_location('gen_' + nm, f); m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+    m.gen(random.Random(nm), S, lambda suf, s, nm=nm: w(nm + suf, s))

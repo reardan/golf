@@ -1,0 +1,4 @@
+15 3Sum, Medium (prints the number of unique triplets). Input: the numbers (3000 values in ±10^4, many repeats).
+Golf `⍋"→s⟦"Ṕ⊕999999*+⟧⥮→t⟦⊕\\&←s\\↓+\\←t\\↓±⋈≢⟧⍸∑⊘`, 41 bytes: sort into `s`; `⥮` of "add 999999·(prev-occurrence+1)" gives X (every non-first copy pushed out of range) and `t` (every non-last copy pushed out). For each i, the hash join `⋈` of `X[i] + s[i+1:]` against `-t[i+1:]` lists the pairs j<k with `s[j]+s[k] = -x` and k the last copy of its value, so each distinct (y, z) once, and a pushed-out x finds none, so each distinct x once. `≢` is 2 per pair, hence `∑⊘`. O(n²) expected, as the two-pointer solution.
+Full: `full  golf 0.543s  py 0.655s  OK`
+Gaps: no first/last-occurrence flags or "count distinct pairs" (the 999999 sentinel, 7 bytes, must beat 3·10^5 for LeetCode's range); a block cannot reach a value three deep on the stack (no rot), so `s` and `t` are globals (`→s ←s ←t`, 6 bytes).

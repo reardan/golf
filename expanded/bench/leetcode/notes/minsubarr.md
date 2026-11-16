@@ -1,0 +1,4 @@
+209 Minimum Size Subarray Sum, Medium. Input: `target`, then the (positive) numbers.
+Golf `+⍀"0⊇&+⟦&\\ʘb⟧€&≢%ℑ-⊓⍁`, 21 bytes. `+⍀` over the whole input is X = target + prefix sums (with the empty prefix), so X[i] + target is where a window starting at i must reach: `"0⊇&+` makes Y = X + target, and `⟦&\\ʘb⟧€` binary-searches each Y[i] in X (`‹bisect›`), giving the first end K[i]. The length is K[i] - i; a window that never reaches has K = n+1, which `&≢%` turns into 0, so its "length" is -i. The valid starts form a prefix, so the unsigned minimum `⊓⍁` skips the negative ones, and is 0 exactly when even i = 0 has no window. O(n log n).
+Full: `full  golf 0.377s  py 0.406s  OK` (1M numbers up to 10^4).
+Gaps: no vectorised bisect (a sorted list searched for each element of another list), so a block maps `ʘb` with the list threaded under it (7 bytes); no two-pointer / sliding-window-with-condition word, which would make this O(n) and short.

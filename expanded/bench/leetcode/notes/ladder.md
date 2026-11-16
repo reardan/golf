@@ -1,0 +1,5 @@
+127 Word Ladder, Hard. Input: beginWord, endWord, then the word list, each on its own line (the list space-separated).
+Golf (80 bytes): `⊡m⎕ʘW⍘\\⍘"≢⇒l⇒e\\⍆⇒v⟦lʘd\\v\\⊇0+\\0⍈⟧⇒kv≢"l*⍳kʘj⇒p"⊖⟦l*l⍳+⟦k⍎p\\Ġ⟧€⧺⍁l/⟧ʘ>⊕v⟦e≣⟧€*Ṃ±;m`. The vertices are the words plus beginWord (last); item `x = i·L + j` has the pattern "word i with letter j set to 0" (`k`); `ʘj` groups the items by pattern, and `ʘ>` (BFS over an implicit graph) takes as neighbours of `v` every item sharing one of `v`'s L patterns, divided by L. The answer is `dist + 1` at the vertices equal to endWord (0 when absent or unreached).
+Timing: `full  golf 1.575s  py 1.091s  OK` (100k random 6-letter words over 10 letters).
+Gaps: no BFS over words / "neighbours by wildcard" word, so the grouping is spelled out; locals in a wrapping `⊡` word are used only because bare locals are 1 byte where globals are 2.
+Bug: `⎕` followed by `①` or `②` segfaults for some input sizes. Repro: `⎕①≢` on `python3 -c "print('a'*100000)"` (rc 139; 90000 and 110000 work, the band is roughly 95k–102k bytes); `ℓℓℓ①≢` on the same input works. Worked around by taking beginWord/endWord from `⎕ʘW` instead of `①`/`②`.

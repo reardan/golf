@@ -1,0 +1,4 @@
+424 Longest Repeating Character Replacement, Medium. Input: `k` on line 1, the string (uppercase) on line 2.
+Golf `②①ʀ±⧺"⧺②ĊḲ⟦&-ʘ?"①⊕↓\\-Ṁ⟧€Ṁ⊖②≢⌊`, 29 bytes: for each distinct letter `c` (`②ĊḲ`), the positions `q` of the other letters (`ʘ?`) in `s ⧺ Z ⧺ s ⧺ Z`, `Z` being `k+1` non-letters; the longest window with at most `k` of them is `q[j+k+1] - q[j] - 1`, so `Ṁ` of `q↓(k+1) - q`. `Z` acts as the boundary sentinels (it cannot be crossed with `k` changes), the doubling keeps the list long enough, and the overall max, less 1, is capped at `n`. O(26n).
+`full  golf 0.626s  py 0.088s  OK` (250k letters, skewed frequencies, k = 250).
+Gaps: no way to drop the temporaries: each letter makes four lists of about 2n cells that are never freed, so the full input peaks at 400 MB and is 7× slower than Python. No vectorised bisect, so the O(n) two-pointer form has no short spelling.

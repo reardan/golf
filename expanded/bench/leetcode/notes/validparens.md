@@ -1,0 +1,4 @@
+32 Longest Valid Parentheses, Hard. Input: one line of `(` and `)` (may be empty). Output: the length.
+Golf `⎕♯ℑ4*+⟦-⊕3$⟧⍙4⌹"0⌈⍃-Ṁ⊖`, 22 bytes: `⎕` reads the line with its `\n`, `♯` (popcount) maps `( ) \n` to 2 3 2, and `+4i` packs each index in, so `⍙` (stack cancel) with `t x -⊕3$` (zero only for 2 then 3 mod 4) leaves the unmatched positions, the `\n` being a `(` that never matches (the right sentinel). `4⌹` gives the 1-based positions, `"0⌈⍃-` their gaps (seed 0 is the left sentinel), and the longest run is the largest gap less one. O(n).
+`full  golf 0.127s  py 0.265s  OK` (2M characters).
+Gaps: `⍙`'s predicate sees values, not indices, so the index is packed into the value and unpacked (`♯ℑ4*+`, `4⌹`); the solution relies on the input's trailing newline as its sentinel; the prefix-sum formulation needs `‹prevsmaller›`, which has no digraph.

@@ -1,0 +1,4 @@
+224 Basic Calculator, Hard. Input: one line, digits `+ - ( )` and spaces, unary minus at the start or after `(` (3 MB, nesting to depth 40). Output: the value.
+Golf `1"→s⎕⟦44-"3≻[0→n"²⊖[±&*→s⋄4+"[_←s⋄⊖[_]]]0⋄4-←n9*+"←n+→n←s*]⟧€∑`, 62 bytes: one pass, mapping each character to what it adds to the total, then `∑`. The stack of signs is the data stack itself (`€`'s threading contract): `(` pushes the current sign `s`, `)` drops one, and `+`/`-` set `s` to `±` the top. With `d = c - 44`, a digit (`d > 3`) extends the number `n` and contributes `s·(9n + digit)`; any other character resets `n`. O(n).
+Full: `  full  golf 0.133s  py 0.576s  OK`
+Gaps: no multi-way branch on a character (a `case`/table dispatch), so the five cases are nested `[ ⋄ ]` tests on arithmetic of the code; the sign and the number are globals because a `€` block cannot keep state except on the stack under it.

@@ -1,0 +1,4 @@
+695 Max Area of Island, Medium. Input: a 0/1 digit grid, one row per line, no spaces (1000 × 1000, 55% land). Output: the largest island's area, 0 if none.
+Golf `⊡e⇒d←c"d↓⌊ʘ?\\⟦"d+ʘu_⟧⇤;⎕"ʘW0⊇≢⊕\\2%"→c≢ʘ=1e\\e←c*Ṃ±`, 49 bytes: union-find over the raw input, newlines included. `c` is the input mod 2 (1 for land, 0 for water and `\n`); `e` unions every `k` with `k+d` when both are land (`c` against `c d↓` with `⌊`, then `ʘ?`), once for `d = 1` and once for the row stride (width + 1). A root holds `-size`, so the smallest of the union-find cells times the land mask, negated, is the answer. O(cells · α).
+Full: `  full  golf 0.202s  py 0.538s  OK`
+Gaps: `‹gcomps›` counts islands but there is no word for their sizes (or a component-label grid); the union-find is spelled out. The row width costs `ʘW0⊇≢⊕` (no width/index-of-newline byte; `‹indexof›` is 9 bytes).

@@ -1,0 +1,4 @@
+56 Merge Intervals, Medium. Input: the intervals as a flat list `s0 e0 s1 e1 …`; output the merged ones the same way, sorted.
+Golf `⊗ℑ2%+⍋0\\⟦1$⊗&+⊖\\&$⟧⌿⊘`, 21 bytes: each start becomes `2s` and each end `2e+1` (`⊗ℑ2%+`, the index parity), so one `⍋` sorts all events with a start before an end at the same point. `⌿` keeps an event when the depth before it equals its parity (a start at depth 0, an end that closes depth 1); the depth is threaded under the list as `-D`, and the 9-byte predicate (found by brute force) leaves `-D'` below and `(-D)&(-D')`, zero exactly then. `⊘` gives the values back.
+Full: `full  golf 0.140s  py 0.309s  OK` (200k intervals).
+Gaps: no compress (keep where a precomputed mask is set), so the depth scan lives in `⌿`'s predicate; no cheap flatten (`‹flatten›` is 9 bytes), which kills the separate-sort-and-cancel form `2ʘ%ʘz⍋€⊗2⍳+ʘz‹flatten›<⍙⊘` (25 bytes); `0\\` to seed the threaded state.

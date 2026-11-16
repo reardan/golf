@@ -1,0 +1,4 @@
+91 Decode Ways, Medium. Input: the digit string (one line).
+Golf `1 0⎕47%⟦"→p10*+38<$&+←p1»$\\←p⟧⍂__`, 33 bytes: right-to-left DP `g[i] = A·g[i+1] + AB·g[i+2]`. `⎕` reads the line with its newline and `47%` maps `0`–`9` to 1–10 and the newline to 10 (a harmless digit). `⍂` (right scan) hands each char `p` its right neighbour `q` (its output is `p` again), and `g[i+1] g[i+2]` ride under the list, seeded `1 0`. With `w = 10p+q`, `38<` masks a valid pair, `1»` a non-zero digit (raw masks and `$`), and the step leaves `g[i] g[i+1]`; `__` drops the list and `g[1]`.
+Full: `full  golf 0.052s  py 0.358s  OK` (1M chars, answer 2^58).
+Gaps: no scan with two-value state, so both DP values are threaded under the list and the char needs a global (`"→p … ←p`, 7 bytes); no `between` test (two raw masks); a line that starts with a digit must be read with `⎕`/`ℓ`, and `⎕` brings the newline along.

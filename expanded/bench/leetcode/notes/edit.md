@@ -1,0 +1,4 @@
+72 Edit Distance, Medium. Input: word1 and word2, one per line (either may be empty). Full: two 2000-letter `abcd` strings, the second a mutated copy. Output: the distance.
+Golf `①②≢ʀ⟦②\\≡⊕&+&1↓⊕⌊0⍆\\0⊇⊕⟦\\⊕⌊⟧⍃⟧⇤ʘ$`, 32 bytes: a fold over the letters of word1 (`①`), one DP row per letter, starting from `0 … m`. With `R` the previous row and `ne` 1 where word2 (`②`) differs from the letter, `min(R 1↓ + 1, R + ne)` is the new row's entries 1 … m before the left-neighbour term, and the exclusive scan `⟦\\⊕⌊⟧⍃` seeded with `R[0]+1` adds that term (`min(left + 1, x)`). `ʘ$` is the last cell. O(mn).
+Full: `  full  golf 0.355s  py 0.824s  OK`
+Gaps: no shift-right / prepend of a scalar, so the row is extended with `0⍆` (a dummy last element `⍃` never reads) and the seed spelled `\\0⊇⊕`. The `⍃` step is a block call per cell (no fast path for `min(acc+1, x)`).

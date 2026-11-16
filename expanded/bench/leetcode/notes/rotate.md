@@ -1,0 +1,4 @@
+48 Rotate Image, Medium. Input: the n×n grid, one row per line. Output: the rotated grid, flattened row by row.
+Golf `"ℓʘW≢ʘ%ʘr\\⍕⇤`, 12 bytes: `"` takes the input numbers (twice) before `ℓʘW≢` reads line 1 again as text to count n, `ʘ%` chunks the numbers into rows, `ʘr` (‹rot90›) turns them, and `\\⍕⇤` folds `⍕` over the rows (print each row, keep the accumulator), seeded with the spare input copy, which implicit output does not print.
+`full  golf 0.319s  py 0.561s  OK` (1000×1000).
+Gaps: (1) no grid reader: an int grid needs `"ℓʘW≢ʘ%` (7 bytes) to become rows; `①≢ʘ%` (4) fails on a 1×1 grid because `①` of a one-number line is an int and `≢` of an int segfaults instead of raising (repro: `5≢` → SIGSEGV, exit 139; `①⍕` on stdin `5` → SIGSEGV). (2) No cheap one-level flatten: `⧺⍁` is O(n³) (12.7 s here), `‹flatten›` 9 bytes, `⍕€` breaks the map contract (crashes past 512 rows), hence the `⍕⇤` fold.
