@@ -499,6 +499,7 @@ Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the 
 | `ʘy` | `BD 79` | `‹_dg79›` | `‹memo›` |  |
 | `ʘz` | `BD 7A` | `‹_dg7A›` | `‹transpose›` |  |
 | `ʘ\|` | `BD 7C` | `‹_dg7C›` | `‹dwadj›` |  |
+| `ʘ⟲` | `BD AF` | `‹_dgAF›` | `‹spiral›` |  |
 <!-- END GENERATED -->
 
 A few notes on what the tables leave out:
@@ -1711,6 +1712,39 @@ digraphs, not adverbs), so the function is a block or a `′` reference.
 - Line 2 is Fibonacci: `_` drops `x`, `\\&+` turns `a b` into `b a+b`.
 - Line 4 is House Robber on `1 … 5`: `⟲` brings `a` up to `b x a`, `+`
   makes `b x+a`, and `&⌈` leaves `b max(b, x+a)`.
+
+### `‹spiral›` and the native kernels (W18)
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹spiral›` `ʘ⟲` | `g -> l` | the cells of the grid `g` (a list of rows) in clockwise spiral order from the top-left, O(rows·cols). An empty grid gives an empty list |
+
+```
+3 3*⍳3ʘ%ʘ⟲⍕                            ->  0 1 2 5 8 7 6 3 4 
+```
+
+W18 moved the prelude's hottest loops into native code. Nothing about what
+a word computes changed; only its speed did. The routines live in
+`lib/native.asm`, one `;; @word ‹name›` section each, and
+`tools/mknative.py` assembles them (nasm) into the generated `NATIVE` block of
+`lib/prelude.golfj` as raw blobs (`` `N … ``, then `⍎`). The script rejects
+any byte a blob cannot hold (`0xF0`–`0xFF`, `#`, `0x8E`, `0x0D`), and
+`mknative.py --check` fails when the block is stale. A routine takes its
+operands on the data stack and uses only the registers compiled Golf leaves
+free. The words that now run natively:
+
+| word | kernel |
+|---|---|
+| `⧺` `↑` `‹slice›` and the other list copies | `‹_ncp›` (16 bytes a step) |
+| `+ - * ⌈ ⌊ ≡` on lists, any shape | `‹_nelt›`, one loop for all six ops; a nested element goes back to Golf for the recursion |
+| `± ⊕ ⊖ ²` on a list | `‹_nmap1›` |
+| `≣` | `‹_ndiff›` skips the raw-equal prefix |
+| list `‹hash›` | `‹_nhash›` (FNV-1a) |
+| `‹words›`, `‹readline›`, `②`, `‹ints›` | `‹_nword›` `‹_nnl›` `‹_nwid›` `‹_nints›` |
+| `⊇` gather, `‹where›`, `⌈/` `⌊/`, `‹startswith›` | `‹_ngat›` `‹_nwhere›` `‹_nmax›` `‹_nmin›` `‹_npre›` |
+| `⍋` radix pass and min/max | `‹_npass›` `‹_nmm›` |
+| `A` (classes up to 256 cells) | `‹_nA›` pops the free list or bumps; a collection, a big block or a `brk` falls through to the Golf body |
+| the collector's walk, scan and sweep | `‹_nwalk›` `‹_nscan›` `‹_nsweep›` |
 
 ### Atoms as the function: fast paths (W13-G)
 

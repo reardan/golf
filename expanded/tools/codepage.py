@@ -19,6 +19,7 @@ Usage:
   codepage.py reference --update FILE       # splice them between FILE's markers
   codepage.py check                         # assert the namespace invariants
 """
+import re
 import os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -134,6 +135,9 @@ def encode(text: str) -> bytes:
             k = len(run)                           # longest known-mnemonic prefix,
             while k > 0 and run[:k] not in MNEM2BYTE:  # so \sqr48 -> \sqr + 48 and
                 k -= 1                             # \sqrp -> \sqr + word p
+            if k == 0 and re.match(r"\\x[0-9A-F]{2}", text[i:i + 4]):
+                out.append(int(text[i + 2:i + 4], 16)); i += 4  # decode's \xNN fallback
+                continue
             if k == 0:
                 raise SystemExit(f"codepage: unknown mnemonic \\{run}")
             out.append(MNEM2BYTE[run[:k]]); i = i + 1 + k

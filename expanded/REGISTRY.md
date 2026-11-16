@@ -922,6 +922,20 @@ W17 takes the next two 64-byte blocks of the `0x432000` headroom,
 | 4399640 · 4399648 · 4399656 | `‹_17_scan›`'s end, and the heap base and bump offset shifted left 16, during a collection |
 | 4399664 | the block-start bitmap (one bit per heap cell, a third mmap) that lets `‹_17_find›` skip the binary search for a pointer to a block's first cell |
 
+### 3.8 W18 names
+
+W18 takes no new cells: every native routine works in registers and in the
+cells its Golf caller already used. It adds long names only:
+
+- `‹_n…›` (the prefix is reserved): the native routines generated from
+  `lib/native.asm` by `tools/mknative.py` into the prelude's `NATIVE` block:
+  `‹_ncp›` `‹_nscan›` `‹_nelt›` `‹_nhash›` `‹_nword›` `‹_nnl›` `‹_nwid›`
+  `‹_nints›` `‹_nwalk›` `‹_nsweep›` `‹_nmm›` `‹_npass›` `‹_ngat›` `‹_nwhere›`
+  `‹_nmax›` `‹_nmin›` `‹_nmap1›` `‹_npre›` `‹_ndiff›` `‹_nA›`.
+- `‹_12p3_go›` `‹_12p3_eq›` `‹_12p3_lleq›` `‹_12p3_lieq›` `‹_12p3_ileq›` (the
+  one elementwise loop and the native `≡` on lists), `‹_hl›` (list hash).
+- `‹spiral›` and its digraph `‹_dgAF›` (`ʘ⟲`, `BD AF`).
+
 ---
 
 ## W9 — the gap-fix waves

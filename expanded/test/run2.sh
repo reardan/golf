@@ -1500,7 +1500,7 @@ cmp -s "$TMP/m2ten" "$TMP/m2ten.ref" \
 # The prelude's own long names (W9-4C on) share the 1024 (256 until W10-A): und
 # compiles with the prelude, so the user program's first refused name is
 # number 1025 - P.
-w93p=$(grep -v '^ *#' lib/prelude.golfj | grep -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
+w93p=$(grep -a -v '^ *#' lib/prelude.golfj | grep -a -oE '‹[0-9A-Za-z_-]+›' | sort -u | wc -l | tr -d ' ')
 # W16: the whole prelude no longer leaves room in the 192 KB image for ~450
 # empty words, so these two tests compile with the prelude pruned (as golfc
 # does) and count the long names of what is kept, w93q (an empty program's).
@@ -1547,7 +1547,15 @@ fi
 # are cut to the bare mask `16\shl16>` and to `I`, what they replaced.
 python3 - lib/prelude.golfj > "$TMP/pre-m1.gb" <<'PY'
 import sys; sys.path.insert(0, "tools"); import mkblob2, codepage
-b = codepage.encode(open(sys.argv[1], encoding="utf-8").read())
+import re
+src = open(sys.argv[1], encoding="utf-8").read()
+b = codepage.encode(src)
+# W18: a one-byte word that calls a native routine ‹_nX› (A, ⧺ ↑ …) gets the
+# routine's blob inline instead, `N bytes then ⍎, which is what the call runs.
+nat = {}
+for m in re.finditer(rb":" + bytes([mkblob2.LNAME_BYTE]) + rb"(_n\w+)" + bytes([mkblob2.RNAME_BYTE]) + rb"`(\d+) ", b):
+    e = m.end() + int(m.group(2)) + len(codepage.encode("⍎"))
+    nat[m.group(1)] = b[m.start(1) + len(m.group(1)) + 1:e]
 out, i, skip = bytearray(), 0, False
 while i < len(b):
     c = b[i]
@@ -1557,8 +1565,13 @@ while i < len(b):
         if b[i+1:j-1] == b"_1c_put": out += b")"   # W11-1C: the raw byte write
         if b[i+1:j-1] == b"_2d_chk": out += codepage.encode("16\\shl16>")   # W11-2D: the bare mask
         if b[i+1:j-1] == b"_2d_ix": out += b"I"   # W11-2D: the loops' index is I
+        if b[i+1:j-1] in nat: out += nat[b[i+1:j-1]]   # W18: the native blob inline
         i = j; continue
     if c == 0x27: n = 2
+    elif c == 0x60:   # a raw blob: `N, one space, N bytes (W18's NATIVE block)
+        j = i + 1
+        while 48 <= b[j] <= 57: j += 1
+        n = j + 1 + int(b[i+1:j]) - i
     elif c == mkblob2.STR_BYTE: n = b.index(mkblob2.STR_BYTE, i + 1) + 1 - i
     else: n = 1
     if not skip: out += b[i:i+n]
@@ -1981,7 +1994,7 @@ w10cerr=$( { printf '%s' "$W10CW"; w10cn 100000 3; printf '⍤N E'; } | cat "$TM
   && ok "⍤ of a 100,000-deep nesting: 'GOLF: spill stack exhausted', exit 1" \
   || no "spill exhaustion: $w10cerr, '$(head -c 80 "$TMP/w10c.out")'"
 grep -q "^| \`0x440000\`–\`0x47FFFF\` | 4456448–4718591 | .*4096 frames" REGISTRY.md \
-  && [ "$(grep -o '4456448\\radd' lib/prelude.golfj | wc -l)" = 2 ] && grep -q '"262144\\rlt\[' lib/prelude.golfj \
+  && [ "$(grep -a -o '4456448\\radd' lib/prelude.golfj | wc -l)" = 2 ] && grep -a -q '"262144\\rlt\[' lib/prelude.golfj \
   && ok "REGISTRY §3 and prelude X/Y agree on the spill region and its 4096-frame bound" || no "spill region docs/prelude"
 
 # W11 — round 3 (Python/Rust gaps): one marker per task.  A task adds its tests
@@ -2038,7 +2051,7 @@ w111b(){ printf '%s' "$1" | python3 tools/codepage.py encode | cat "$TMP/pre.gb"
   && ok "fd words name the fd: close, fread, fwrite on fd 99 (EBADF)" || no "fd error messages"
 [ "$(w111b '1‹_1b_ename›⊐ 13‹_1b_ename›⊐ 17‹_1b_ename›⊐ 21‹_1b_ename›⊐ 20‹_1b_ename›⊐ 99‹_1b_ename›⊐')" = "rc=0 EPERMEACCESEEXISTEISDIRENOTDIRerrno 99|" ] \
   && ok "errno names: EPERM EACCES EEXIST EISDIR ENOTDIR, and the 'errno N' fallback" || no "errno names"
-[ "$(w111b '5179712⊙Ṅ')" = "rc=0 0|" ] && grep -q '"5179712\\store‹_1b_ename›' lib/prelude.golfj \
+[ "$(w111b '5179712⊙Ṅ')" = "rc=0 0|" ] && grep -a -q '"5179712\\store‹_1b_ename›' lib/prelude.golfj \
   && ok "the errno goes in the 1B cell 5179712 before the throw (0 until a failure)" || no "errno cell"
 [ "$(w111b '“w.txt“⊃‹open›"4‹fread›⊐␤"4‹fread›⊐␤"4‹fread›⊐␤"4‹fread›≢Ṅ"0‹fread›≢Ṅ‹close›')" = "rc=0 hell
 o, f
@@ -3228,7 +3241,7 @@ mkdir -p "$TMP/o1"; cp "$TMP/o1.bare" "$TMP/o1/b.golfj"
 w12o1t=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2 as m
 print(all(m.OVERRIDES[b][:7] == [0x80,0x7C,0x24,0x07,0x7F,0x75,15] and m.OVERRIDES[b][22:] == m._ATOM_TPL[b] for b in m.NUMCHK_BYTES),
       m.NAN_HOOK == 5180864, all(b not in m.OVERRIDES for b in (0x7E,0x24,0x7C,0x3D,0x3E,0xA2,0xA3,0x91,0x92,0x93)))')
-[ "$w12o1t" = "True True True" ] && grep -q '^:‹_12o1_init›\\ref‹_12o1_nan›5180864\\store;$' lib/prelude.golfj \
+[ "$w12o1t" = "True True True" ] && grep -a -q '^:‹_12o1_init›\\ref‹_12o1_nan›5180864\\store;$' lib/prelude.golfj \
   && ok "templates: cmp byte [rsp+7],0x7F; jne over the 15-byte hook call; then the atom byte for byte; hook cell 5180864 (slot O1); ~ \$ | = > ≪ ≫ and the raw atoms stay unchecked" \
   || no "W12-O1 template shape: $w12o1t"
 w12o1bad=""; w12o1n=0
@@ -3563,7 +3576,7 @@ w12p3m='3⍳2⍳′⍳€⧺"10+⍕␤"10\\-⍕␤""+⍕␤"∑⍕␤""*⍕␤"3
 # two, D and Z/K/G), so + now goes 3000 deep, and past the 4096 frames it
 # still stops with the W10-C message, catchable as W11-3A made it.
 [ "$(printf '%s' '12345 5177440⊛ 9⍳∑_ 9⍳1+∏_ 9⍳⌽_ 9⍳"+_ 5177440⊙Ṅ' | gc)" = "12345" ] \
-  && [ "$(sed -n '/^:[RSPV]/,/;$/p' lib/prelude.golfj | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5180800 5180808 5180816 " ] \
+  && [ "$(sed -n '/^:[RSPV]/,/;$/p' lib/prelude.golfj | grep -a -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5180800 5180808 5180816 " ] \
   && ok "⍳ ∑ ∏ ⌽ leave s0..s7 alone and name only P3's cells 5180800 5180808 5180816" || no "W12-P3 cells"
 [ "$( { printf '%s' "$W10CW"; w10cn 3000 3; printf '"+⍤N E'; } | gc)" = "3001" ] \
   && ok "+ of a list nested 3000 deep with itself (one spill frame per level)" || no "W12-P3 + 3000 deep"
@@ -3618,7 +3631,7 @@ done
   && [ "$(w110 '7Ṅ0⍳′+⍁')" = "rc=1 1 GOLF: empty reduce" ] && [ "$(w110 '5⍳"⌫′+⍀')" = "rc=1 0 GOLF: use after free" ] \
   && [ "$(w110 '5⍳"⌫′+⍁')" = "rc=1 0 GOLF: use after free" ] \
   && ok "a throw mid-⍀ / mid-⍁ (also under €) is caught and the word works again; empty reduce, use after free" || no "W12-A2 errors: $(w110 '7Ṅ0⍳′+⍁')"
-[ "$(sed -n '/^# === W12-A2 scan and reduce ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 " ] \
+[ "$(sed -n '/^# === W12-A2 scan and reduce ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -a -v '^#' | grep -a -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 " ] \
   && ok "⍀ ⍁ keep their state in s0..s4 under one spill frame (A2's slot 5180992… stays free)" || no "W12-A2 cells"
 
 # === W12-A3 ===
@@ -3638,7 +3651,7 @@ w12a3n=':h′+⍸;:m⍳′²€∑+;:q⍳′+⍸∑+;3⍳′⍳€′h€⍕␤4
 [ "$(w113 ':t"2≡1+[“two“⊃‹throw›]+;:k5⍳′t⍸;′k‹catch›⊐␤4⍳′+⍸⍕␤:j3⍳′k€;′j‹catch›⊐␤5177392@Ṅ')" = "$(printf 'two\n0 2 4 6 \ntwo\n0 rc=0')" ] \
   && [ "$(w110 '5⍳"⌫′+⍸')" = "rc=1 0 GOLF: use after free" ] \
   && ok "a throw mid-⍸ (also under €) is caught and ⍸ works again; use after free" || no "W12-A3 errors"
-[ "$(sed -n '/^# === W12-A3 each-indexed ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 5177488 " ] \
+[ "$(sed -n '/^# === W12-A3 each-indexed ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -a -v '^#' | grep -a -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177440 5177448 5177456 5177464 5177472 5177488 " ] \
   && ok "⍸ keeps its state in s0..s4 and s6 under one spill frame (A3's slot 5181056… stays free)" || no "W12-A3 cells"
 # === W12-A4 ===
 echo "W12-A4: ⍒ sort by key and ‹grade› (the sorting permutation)"
@@ -4122,8 +4135,8 @@ w12a8t0=$(date +%s%N); w12a8s=$("$TMP/a8sum" < "$TMP/a8stock.in"); w12a8t1=$(dat
 [ "$(python3 tools/codepage.py decode < <(printf '%s' '\next' | python3 tools/codepage.py encode))" = "⍞" ] \
   && [ "$(printf '%s' '\next' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "da" ] \
   && ok "\\next encodes to 0xDA and decodes as ⍞" || no "⍞ code page"
-[ "$(sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177392 5177424 5181312 5181320 5181336 5181344 5181352 5181360 5181368 " ] \
-  && ! sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -v '^#' | grep -q '\\\\' \
+[ "$(sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -a -v '^#' | grep -a -oE '51[0-9]{5}' | sort -u | tr '\n' ' ')" = "5177392 5177424 5181312 5181320 5181336 5181344 5181352 5181360 5181368 " ] \
+  && ! sed -n '/^# === W12-A8 streams ===/,$p' lib/prelude.golfj | sed '1!{/^# === /,$d}' | grep -a -v '^#' | grep -a -q '\\\\' \
   && ok "the streams use only A8's cells (5181312…5181368), the spill pointer and the input buffer cell — no s0..s7, no swap byte" || no "W12-A8 cells"
 # === W12-O6 ===
 echo "W12-O6: booleans for output — ‹tf› (0 -> “true“, else “false“, as a code list)"
@@ -4181,7 +4194,7 @@ while read -r w12z1m w12z1h w12z1g w12z1n; do
     && [ "$(printf '%s' "$w12z1g" | python3 tools/codepage.py encode | python3 tools/codepage.py decode)" = "$w12z1g" ] \
     && [ "$(printf '%s' "$w12z1g" | python3 tools/codepage.py encode | python3 tools/codepage.py decode -m)" = "\\$w12z1m" ] \
     || w12z1bad="$w12z1bad [code page \\$w12z1m]"
-  grep -qxF ":\\$w12z1m‹$w12z1n›;" lib/prelude.golfj || w12z1bad="$w12z1bad [prelude \\$w12z1m]"
+  grep -a -qxF ":\\$w12z1m‹$w12z1n›;" lib/prelude.golfj || w12z1bad="$w12z1bad [prelude \\$w12z1m]"
   grep -qF "| \`0x$(printf '%s' "$w12z1h" | tr a-f A-F)\` | \`\\$w12z1m\` | \`$w12z1g\` | prelude: one-byte alias of \`‹$w12z1n›\`" REGISTRY.md \
     && sed -n '/^### 1.4 W12 assignments/,/^## 2\./p' REGISTRY.md | grep -F "\`\\$w12z1m\`" | grep -q '| shipped |$' \
     || w12z1bad="$w12z1bad [REGISTRY \\$w12z1m]"
@@ -4869,7 +4882,7 @@ while IFS= read -r w14jl; do
   w14jxx=${w14jl%%  ->*}; w14jxx=${w14jxx%"${w14jxx##*[! ]}"}; w14jw=${w14jl##*->  }; w14jn=$((w14jn+1))
   [ "$(printf '%s' "$w14jxx" | gc 2>&1 | sed 's/ *$//')" = "$w14jw" ] || w14jbad="$w14jbad [$w14jxx]"
 done < <(sed -n '/^### Random numbers and SHA-256 (W14-J)$/,/^### /p' REFERENCE.md | grep -- '  ->  ')
-[ -z "$w14jbad" ] && [ "$w14jn" -ge 8 ] && grep -q '^# ===== W14-J =====$' lib/prelude.golfj \
+[ -z "$w14jbad" ] && [ "$w14jn" -ge 8 ] && grep -a -q '^# ===== W14-J =====$' lib/prelude.golfj \
   && ok "REFERENCE.md's Random numbers and SHA-256 examples ($w14jn) print what they say" || no "W14-J examples ($w14jn):$w14jbad"
 # === W14-G ===
 # printf-style ‹format›, ‹fixed›, the str-method text words, little-endian
@@ -5106,7 +5119,7 @@ while read -r w13cm w13ch w13cg; do
     && [ "$(printf '%s' "$w13cg" | python3 tools/codepage.py encode | python3 tools/codepage.py decode)" = "$w13cg" ] \
     && [ "$(printf '%s' "$w13cg" | python3 tools/codepage.py encode | python3 tools/codepage.py decode -m)" = "\\$w13cm" ] \
     || w13cbad="$w13cbad [code page \\$w13cm]"
-  grep -q "^:\\\\$w13cm" lib/prelude.golfj || w13cbad="$w13cbad [prelude \\$w13cm]"
+  grep -a -q "^:\\\\$w13cm" lib/prelude.golfj || w13cbad="$w13cbad [prelude \\$w13cm]"
   sed -n '/^### 1.5 W13 assignments/,/^### 1.6/p' REGISTRY.md | grep -F "| \`0x$(printf '%s' "$w13ch" | tr a-f A-F)\` | \`\\$w13cm\` | \`$w13cg\` |" | grep -q '| W13-C | shipped |$' \
     || w13cbad="$w13cbad [REGISTRY \\$w13cm]"
 done <<'W13C'
@@ -5123,8 +5136,8 @@ indices ed ℑ
 lookup ee Ǧ
 tfword ef ṭ
 W13C
-grep -qxF ':\lookup‹getor›;' lib/prelude.golfj && grep -qxF ':\tfword‹tf›;' lib/prelude.golfj || w13cbad="$w13cbad [aliases]"
-[ -z "$w13cbad" ] && grep -q '^# ===== W13-C =====$' lib/prelude.golfj \
+grep -a -qxF ':\lookup‹getor›;' lib/prelude.golfj && grep -a -qxF ':\tfword‹tf›;' lib/prelude.golfj || w13cbad="$w13cbad [aliases]"
+[ -z "$w13cbad" ] && grep -a -q '^# ===== W13-C =====$' lib/prelude.golfj \
   && ok "\\lmax … \\tfword: 0xE4-0xEF round-trip through the code page, are defined in the prelude's W13-C section (Ǧ ṭ as one-call aliases), REGISTRY §1.5 shipped" \
   || no "W13-C code page / prelude / REGISTRY:$w13cbad"
 # S5 depends on mkblob2._numchk's layout: the hook's return address is the
@@ -5134,7 +5147,7 @@ w13ct=$(python3 -c 'import sys; sys.path.insert(0,"tools"); import mkblob2 as m
 want = {0x80: (0xF7, 5), 0x81: (0x04, 4), 0x82: (0x0C, 4), 0x83: (0x0F, 6), 0x84: (0x24, 4), 0x85: (0x2C, 4)}
 print(all(m.OVERRIDES[b][20:22] == [0xFF, 0xD0] and (m.OVERRIDES[b][22 + 2], len(m.OVERRIDES[b]) - 22) == want[b] for b in m.NUMCHK_BYTES),
       len({v[0] for v in want.values()}) == 6)')
-[ "$w13ct" = "True True" ] && grep -qF '5180888\fetch"247﹣[_‹_13c_neg›^]"4﹣[_‹_13c_inc›^]"12﹣[_‹_13c_dec›^]"15﹣[_‹_13c_sqr›^]36﹣[‹_13c_dbl›^]‹_13c_hlv›' lib/prelude.golfj \
+[ "$w13ct" = "True True" ] && grep -a -qF '5180888\fetch"247﹣[_‹_13c_neg›^]"4﹣[_‹_13c_inc›^]"12﹣[_‹_13c_dec›^]"15﹣[_‹_13c_sqr›^]36﹣[‹_13c_dbl›^]‹_13c_hlv›' lib/prelude.golfj \
   && ok "S5's hook matches the templates: call rax is the last thing before each scalar body, whose third byte (distinct for the six) and length are the ones the hook dispatches on" \
   || no "W13-C S5 template layout: $w13ct"
 # Elementwise, to any depth, mixed ints and lists, the original untouched;
@@ -5219,7 +5232,7 @@ w13cw=$(printf '0 1001 2003 1000\n2003 1003 2 1000\n565\n0 1 2 3 4 -1\n4\n0 4 8 
 w13cbad=""; w13cn=0
 while read -r w13cl w13cn2; do
   w13ch=$(printf '%X' "'$w13cl")
-  grep -qxF ":‹_dg$w13ch›‹$w13cn2›;" lib/prelude.golfj || w13cbad="$w13cbad [prelude $w13cl]"
+  grep -a -qxF ":‹_dg$w13ch›‹$w13cn2›;" lib/prelude.golfj || w13cbad="$w13cbad [prelude $w13cl]"
   sed -n '/^### 1.6 Digraph page/,/^## 2\./p' REGISTRY.md | grep -qF "| \`ʘ$w13cl\` | \`‹_dg$w13ch›\` | \`‹$w13cn2›\` | W13-C | shipped |" || w13cbad="$w13cbad [REGISTRY $w13cl]"
   sed -n '/^### Digraph page$/,/^### /p' REFERENCE.md | grep -qF "| \`ʘ$w13cl\` | \`BD $w13ch\` | \`‹_dg$w13ch›\` | \`‹$w13cn2›\` |" || w13cbad="$w13cbad [REFERENCE $w13cl]"
   w13cn=$((w13cn+1))
@@ -5278,7 +5291,7 @@ done < <(sed -n '/^### LeetCode library: search, counting, lists, math, text$/,/
 # Each digraph name is a one-call alias of its word, and the partition is a-m, 0-4.
 w13dbad=""
 while read -r w13dh w13dw; do
-  grep -qxF ":‹_dg$w13dh›‹$w13dw›;" lib/prelude.golfj || w13dbad="$w13dbad [_dg$w13dh]"
+  grep -a -qxF ":‹_dg$w13dh›‹$w13dw›;" lib/prelude.golfj || w13dbad="$w13dbad [_dg$w13dh]"
   sed -n '/^### 1.6 Digraph page/,/^## 2\./p' REGISTRY.md | grep -F "\`‹_dg$w13dh›\` | \`‹$w13dw›\`" | grep -q '| W13-D | shipped |$' || w13dbad="$w13dbad [REGISTRY _dg$w13dh]"
 done <<'W13D'
 61 any
@@ -5300,7 +5313,7 @@ done <<'W13D'
 33 union
 34 ispal
 W13D
-[ -z "$w13dbad" ] && [ "$(grep -c '^:‹_dg[0-9A-F][0-9A-F]›' <(sed -n '/^# ===== W13-D =====/,/^# =====/p' lib/prelude.golfj))" = 18 ] \
+[ -z "$w13dbad" ] && [ "$(grep -a -c '^:‹_dg[0-9A-F][0-9A-F]›' <(sed -n '/^# ===== W13-D =====/,/^# =====/p' lib/prelude.golfj))" = 18 ] \
   && [ "$(printf '%s' '12 18‹_dg67›Ṅ“a1“⊃′‹_dg32›‹_dg63›Ṅ0 7- 2‹_dg64›ṄṄ5⍳2-‹_dg31›⍕' | gc)" = "611-42 1 0 1 2 " ] \
   && ok "the 18 digraph names ‹_dg61›…‹_dg6D› ‹_dg30›…‹_dg34› are one-call aliases (REGISTRY's Digraph page agrees) and run as their words" \
   || no "W13-D digraph names:$w13dbad"
@@ -5547,13 +5560,13 @@ w13eo='5Ṿ0⍆1⍆1⍆2⍆3⍆4⍆‹adj›"0‹bfs›⍕‹comps›⍕:p49-;�
   && ok "golfref runs the W13-E words identically" || no "W13-E oracle"
 w13ebad=""
 for w13ed in 6E:nextgreater 6F:toposort 70:perms 71:bfs 72:rot90 73:subsets 74:table1 75:uunion 76:ufind 77:dijkstra 78:cartesian 79:memo 7A:transpose 35:nbrs4 36:adj 37:gcomps 38:nbrs8 39:combs; do
-  grep -qF ":‹_dg${w13ed%%:*}›‹${w13ed#*:}›;" lib/prelude.golfj || w13ebad="$w13ebad ${w13ed}"
+  grep -a -qF ":‹_dg${w13ed%%:*}›‹${w13ed#*:}›;" lib/prelude.golfj || w13ebad="$w13ebad ${w13ed}"
   grep -qF "‹_dg${w13ed%%:*}›" REGISTRY.md || w13ebad="$w13ebad registry:${w13ed}"
 done
-[ -z "$w13ebad" ] && [ "$(grep -c '^:‹_dg[3-7][0-9A-F]›' lib/prelude.golfj)" -ge 18 ] \
+[ -z "$w13ebad" ] && [ "$(grep -a -c '^:‹_dg[3-7][0-9A-F]›' lib/prelude.golfj)" -ge 18 ] \
   && ok "the 18 W13-E digraphs (ʘn…ʘz, ʘ5…ʘ9) are defined as ‹_dgHH› aliases and listed in REGISTRY.md" || no "W13-E digraphs:$w13ebad"
 # The prelude section stays free of the raw swap byte (gtools' decode round trip).
-[ "$(sed -n '/^# ===== W13-E =====$/,/^# ===== W13-[A-DF-Z]/p' lib/prelude.golfj | grep -v '^ *#' | grep -c '\\\\')" = 0 ] \
+[ "$(sed -n '/^# ===== W13-E =====$/,/^# ===== W13-[A-DF-Z]/p' lib/prelude.golfj | grep -a -v '^ *#' | grep -a -c '\\\\')" = 0 ] \
   && ok "the W13-E prelude section has no swap byte" || no "W13-E section uses the swap byte"
 
 # === W13-G ===
@@ -5711,8 +5724,8 @@ assert m.EXEC_FLOOR == m.RSTACK_TOP and m.EXEC_KIND == 16
 PY
 # Nothing in the prelude asks for PROT_EXEC any more (mprotect is syscall 10;
 # the only mprotect left is STARTUP2's guard page, PROT_NONE).
-! grep -v '^ *#' lib/prelude.golfj | grep -qF '10\sys' \
-  && grep -q '===== W13-H =====' lib/prelude.golfj \
+! grep -a -v '^ *#' lib/prelude.golfj | grep -a -qF '10\sys' \
+  && grep -a -q '===== W13-H =====' lib/prelude.golfj \
   && grep -q 'W13-H' REFERENCE.md && grep -q 'W13-H' DESIGN.md && grep -q 'W13-H' REGISTRY.md \
   && ok "no mprotect in the prelude; REFERENCE, DESIGN and REGISTRY describe W13-H" || no "W13-H docs / mprotect"
 # golfgdb names the frames of a call through a record: the return address of
@@ -6038,7 +6051,7 @@ w16z(){ printf '%s' "$1" | gc > "$TMP/w16z.out" 2> "$TMP/w16z.err"; echo "$?"; }
 [ "$(printf '%s' '1 63≪⊖"≡Ṅ 1 63≪⊖ 3/Ṅ 1 63≪⊖♯Ṅ 127 56≪"⊕≺Ṅ 127 56≪ 7÷Ṅ 32767 48≪4096﹢3%Ṅ' | gc)" = "-1307445734561825860263-113073306346881211242" ] \
   && [ "$(python3 -c 'import sys,re; sys.path.insert(0,"tools"); import mkblob2 as m
 s=open("lib/prelude.golfj",encoding="utf-8").read()
-h=dict((int(b,16),int(n)) for b,n in re.findall(r"^:‹_w16_h([0-9A-F]{2})›′.‹_w16_[bu]›\[(\d+)‹_w16_sk›\];$",s,re.M))
+h=dict((int(b,16),int(n)) for b,n in re.findall(r"^:‹_w16_h([0-9A-F]{2})›(?:′.‹_w16_[bu]›|&‹_w16_il›&‹_w16_il›\$)\[(?:‹_12p3_eq›)?(\d+)‹_w16_sk›\];$",s,re.M))
 c=dict((int(b,16),int(a)) for b,a in re.findall(r"′‹_w16_h([0-9A-F]{2})›(\d+)⊛",s))
 ok=sorted(h)==sorted(m.BPOLY_ATOMS+m.UPOLY_ATOMS+(0x2F,0x25)) and all(h[b]==m.w16_body_len(b) and c[b]==m.hook_addr(b) for b in h)
 print(ok, len(h))')" = "True 12" ] \
@@ -6054,7 +6067,8 @@ w16f '5⍳"⌫3≡⍕' && w16f '5⍳"⌫♯⍕' && w16f '2 5⍳"⌫⌹⍕' \
 # The prelude spells every ≡ ≺ ≻ raw, so none of its words changes meaning on
 # a list: its encoded code holds none of the three bytes (but the hooks'
 # own ′≡ ′≺ ′≻ thunks).
-[ "$(grep -v '^ *#' lib/prelude.golfj | python3 tools/codepage.py encode | python3 -c 'import sys,re; d=sys.stdin.buffer.read(); print(len(re.findall(rb"(?<!\x8c)[\x87\xa0\xa1]", d)))')" = 0 ] \
+# (W18: less the NATIVE block, whose blobs are machine code, not atoms.)
+[ "$(sed '/^# === NATIVE/,/^# === END NATIVE/d' lib/prelude.golfj | grep -a -v '^ *#' | python3 tools/codepage.py encode | python3 -c 'import sys,re; d=sys.stdin.buffer.read(); print(len(re.findall(rb"(?<!\x8c)[\x87\xa0\xa1]", d)))')" = 0 ] \
   && [ "$(printf '%s' '3⍳′⍳€"1⊇‹indexof›Ṅ 3⍳′⍳€ 1⍳‹indexof›Ṅ' | gc)" = "1-1" ] \
   && ok "the prelude's code has no ≡ ≺ ≻ byte (raw spellings); ‹indexof› still finds an inner list only as that very cell" || no "W16 prelude raw"
 # LeetCode: the three solutions W16 shortens (≡ maps in lcs, ♯ in bits, ⌹ in
@@ -6196,7 +6210,7 @@ echo "W16-C: ⍥ pruned permutations, Ḍ distinct, ⍭ first where, ⍜ except 
 [ "$(printf '%s' '\prune\distinct\firstwhere\exself' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "9b9c9d9e" ] \
   && [ "$(printf '%s' '⍥Ḍ⍭⍜' | python3 tools/codepage.py encode | od -An -tx1 | tr -d ' \n')" = "9b9c9d9e" ] \
   && grep -q '^rec 06 .* 9B 9D 9E$' data/templates.txt \
-  && ! sed -n '/^# ===== W16-C =====$/,$p' lib/prelude.golfj | grep -q '\\\\' \
+  && ! sed -n '/^# ===== W16-C =====$/,$p' lib/prelude.golfj | grep -a -q '\\\\' \
   && ok "⍥ Ḍ ⍭ ⍜ are 0x9B–0x9E; ⍥ ⍭ ⍜ quote the token before them; no swap byte in their prelude code" || no "W16-C bytes"
 # N-Queens II in 14 bytes against Python for n = 0..9.
 w16cq='∑⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥≢'; w16cbad=""
@@ -6347,6 +6361,32 @@ while IFS= read -r w17l; do
   w17n=$((w17n+1))
 done < <(sed -n '/^### \(Two accumulators and `⟲`\|The collector\) (W17)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
 [ -z "$w17bad" ] && [ "$w17n" -ge 6 ] && ok "REFERENCE.md's W17 examples print what they say ($w17n)" || no "W17 examples:$w17bad"
+# @@ W18 @@
+echo "W18: native kernels behind the hot prelude loops, ‹spiral› ʘ⟲"
+# ‹spiral›: square, wide, one column, one row per element, empty.
+[ "$(printf '%s' '3 3*⍳3ʘ%ʘ⟲⍕ 6⍳3ʘ%ʘ⟲⍕ 3⍳1ʘ%ʘ⟲⍕ 0⍳1ʘ%ʘ⟲≢Ṅ' | gc)" = "0 1 2 5 8 7 6 3 4 0 1 2 5 4 3 0 1 2 0" ] \
+  && ok "‹spiral› ʘ⟲ walks a grid clockwise from the top-left (square, wide, one column, empty)" || no "W18 spiral"
+# ‹_nelt› (one native loop for + - * ⌈ ⌊ ≡ on lists, any shape, nested
+# elements back to Golf), ‹_ndiff› (≣'s raw-equal prefix), ‹_nA› (A's pop or
+# bump for small blocks).
+[ "$(printf '%s' '5⍳5⍳1+≡⍕5⍳3≡⍕1000⍳1000⍳²≡∑Ṅ' | gc)" = "0 0 0 0 0 0 0 0 -1 0 -2" ] \
+  && [ "$(printf '%s' '3⍳′⍳€3⍳′⍳€≡⍕3⍳′⍳€1+⍕5⍳2⌈⍕5⍳2⌊⍕' | gc)" = "[] [-1] [-1 -1] [] [1] [1 2] 2 2 2 3 4 0 1 2 2 2 " ] \
+  && [ "$(printf '%s' '1000⍳1000⍳1+1-≣Ṅ1000⍳1000⍳²≣Ṅ300⍳⟦⍳≢⟧€∑Ṅ' | gc)" = "-1044850" ] \
+  && ok "native ≡ ⌈ ⌊ + on lists (ll, li, nested), ≣ on long lists, 300 allocations of every small size" || no "W18 kernels"
+# The NATIVE block in the prelude is what tools/mknative.py makes of lib/native.asm.
+if command -v nasm >/dev/null; then
+  python3 tools/mknative.py --check >/dev/null && ok "the prelude's NATIVE block matches lib/native.asm" || no "W18 NATIVE block is stale: run tools/mknative.py"
+else
+  ok "the NATIVE block check needs nasm (not installed): skipped"
+fi
+# REFERENCE.md's W18 example prints what it says.
+w18bad=""; w18n=0
+while IFS= read -r w18l; do
+  w18p=${w18l%%  ->*}; w18p=${w18p%"${w18p##*[! ]}"}; w18w=${w18l##*->  }
+  [ "$(printf '%s' "$w18p" | gcp 2>&1 | sed 's/ *$//')" = "$(printf '%s' "$w18w" | sed 's/ *$//')" ] || w18bad="$w18bad [$w18p]"
+  w18n=$((w18n+1))
+done < <(sed -n '/^### `‹spiral›` and the native kernels (W18)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w18bad" ] && [ "$w18n" -ge 1 ] && ok "REFERENCE.md's W18 example prints what it says ($w18n)" || no "W18 examples:$w18bad"
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"
