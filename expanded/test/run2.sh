@@ -6347,6 +6347,32 @@ while IFS= read -r w17l; do
   w17n=$((w17n+1))
 done < <(sed -n '/^### \(Two accumulators and `⟲`\|The collector\) (W17)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
 [ -z "$w17bad" ] && [ "$w17n" -ge 6 ] && ok "REFERENCE.md's W17 examples print what they say ($w17n)" || no "W17 examples:$w17bad"
+# @@ W18 @@
+echo "W18: native kernels behind the hot prelude loops, ‹spiral› ʘ⟲"
+# ‹spiral›: square, wide, one column, one row per element, empty.
+[ "$(printf '%s' '3 3*⍳3ʘ%ʘ⟲⍕ 6⍳3ʘ%ʘ⟲⍕ 3⍳1ʘ%ʘ⟲⍕ 0⍳1ʘ%ʘ⟲≢Ṅ' | gc)" = "0 1 2 5 8 7 6 3 4 0 1 2 5 4 3 0 1 2 0" ] \
+  && ok "‹spiral› ʘ⟲ walks a grid clockwise from the top-left (square, wide, one column, empty)" || no "W18 spiral"
+# ‹_nelt› (one native loop for + - * ⌈ ⌊ ≡ on lists, any shape, nested
+# elements back to Golf), ‹_ndiff› (≣'s raw-equal prefix), ‹_nA› (A's pop or
+# bump for small blocks).
+[ "$(printf '%s' '5⍳5⍳1+≡⍕5⍳3≡⍕1000⍳1000⍳²≡∑Ṅ' | gc)" = "0 0 0 0 0 0 0 0 -1 0 -2" ] \
+  && [ "$(printf '%s' '3⍳′⍳€3⍳′⍳€≡⍕3⍳′⍳€1+⍕5⍳2⌈⍕5⍳2⌊⍕' | gc)" = "[] [-1] [-1 -1] [] [1] [1 2] 2 2 2 3 4 0 1 2 2 2 " ] \
+  && [ "$(printf '%s' '1000⍳1000⍳1+1-≣Ṅ1000⍳1000⍳²≣Ṅ300⍳⟦⍳≢⟧€∑Ṅ' | gc)" = "-1044850" ] \
+  && ok "native ≡ ⌈ ⌊ + on lists (ll, li, nested), ≣ on long lists, 300 allocations of every small size" || no "W18 kernels"
+# The NATIVE block in the prelude is what tools/mknative.py makes of lib/native.asm.
+if command -v nasm >/dev/null; then
+  python3 tools/mknative.py --check >/dev/null && ok "the prelude's NATIVE block matches lib/native.asm" || no "W18 NATIVE block is stale: run tools/mknative.py"
+else
+  ok "the NATIVE block check needs nasm (not installed): skipped"
+fi
+# REFERENCE.md's W18 example prints what it says.
+w18bad=""; w18n=0
+while IFS= read -r w18l; do
+  w18p=${w18l%%  ->*}; w18p=${w18p%"${w18p##*[! ]}"}; w18w=${w18l##*->  }
+  [ "$(printf '%s' "$w18p" | gcp 2>&1 | sed 's/ *$//')" = "$(printf '%s' "$w18w" | sed 's/ *$//')" ] || w18bad="$w18bad [$w18p]"
+  w18n=$((w18n+1))
+done < <(sed -n '/^### `‹spiral›` and the native kernels (W18)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w18bad" ] && [ "$w18n" -ge 1 ] && ok "REFERENCE.md's W18 example prints what it says ($w18n)" || no "W18 examples:$w18bad"
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

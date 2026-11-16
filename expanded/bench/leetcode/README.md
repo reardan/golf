@@ -231,7 +231,7 @@ lower its number.
 | jumpii | 21 |
 | rotate | 12 |
 | maxsub | 8 |
-| spiral | 18 |
+| spiral | 9 |
 | jump | 9 |
 | merge | 21 |
 | paths | 15 |
@@ -283,7 +283,7 @@ lower its number.
 | splitarr | 36 |
 | revpairs | 46 |
 
-Total 1936: the first twenty 161, the eighty after them 1,775 (P100 1,782, less 7 from W17's gather in `minwindow` and `wordbreak`).
+Total 1927: the first twenty 161, the eighty after them 1,766 (P100 1,782, less 7 from W17's gather in `minwindow` and `wordbreak`, less 9 from W18's `ʘ⟲` in `spiral`).
 The first twenty: the first ten 58 (115 before W16's rewrite, 177 before W15's,
 411 before W13-F's, 655 before W12-6's, 898 at the baseline above), the
 second ten 103 (124 before W16, 326 before W15).
@@ -481,7 +481,7 @@ One `./check.sh NAME full` run each (single runs on a shared container, so
 | 45 Jump Game II (`jumpii`) | Medium | 21 | 0.079 | 0.211 | [notes](notes/jumpii.md) |
 | 48 Rotate Image (`rotate`) | Medium | 12 | 0.258 | 0.606 | [notes](notes/rotate.md) |
 | 53 Maximum Subarray (`maxsub`) | Medium | 8 | 0.102 | 0.294 | [notes](notes/maxsub.md) |
-| 54 Spiral Matrix (`spiral`) | Medium | 18 | 1.151 | 0.131 | [notes](notes/spiral.md) |
+| 54 Spiral Matrix (`spiral`) | Medium | 9 (18 before W18) | 1.151 | 0.131 | [notes](notes/spiral.md) |
 | 55 Jump Game (`jump`) | Medium | 9 | 0.147 | 0.236 | [notes](notes/jump.md) |
 | 56 Merge Intervals (`merge`) | Medium | 21 | 0.139 | 0.323 | [notes](notes/merge.md) |
 | 62 Unique Paths (`paths`) | Medium | 15 | 0.039 | 0.096 | [notes](notes/paths.md) |
@@ -652,3 +652,54 @@ elementwise `+ - * ⌈ ⌊` (about 9 ns per cell now), a cheaper list `‹hash�
 `‹words›` (`lastword`, `rpn`). The brute-force five need longer solutions,
 which the byte ceilings rule out. The measured loops (`charrep` 0.03 s,
 `spiral` 0.04 s) show that the algorithms themselves are fast in Golf.
+
+## W18: the slow ones made fast without more bytes (2026-11-16)
+
+The brute-force five could not take a faster algorithm under their byte
+ceilings, and the nine prelude-bound ones spent their time in a handful of
+Golf loops. W18 moved those loops into native code (`lib/native.asm`,
+assembled into the prelude by `tools/mknative.py`; see REFERENCE "`‹spiral›`
+and the native kernels"), and added one built-in, `‹spiral›` `ʘ⟲`, an O(mn)
+walk, so `spiral` is `"ℓʘW≢ʘ%ʘ⟲` (9 bytes, was 18). No other solution
+changed by a byte.
+
+Best of 3 wall seconds on the full inputs, same container:
+
+| problem | main before W17 | W17 | W18 | Python |
+|---|---|---|---|---|
+| `spiral` | 0.972 | 0.935 | 0.029 | 0.075 |
+| `revpairs` | 1.429 | 0.384 | 0.128 | 0.849 |
+| `balloons` | 0.390 | 0.362 | 0.182 | 0.303 |
+| `median` | 0.152 | 0.170 | 0.054 | 0.155 |
+| `anagram` | 0.292 | 0.306 | 0.124 | 0.151 |
+| `longpal` | 0.240 | 0.337 | 0.154 | 0.196 |
+| `firstuniq` | 0.187 | 0.173 | 0.118 | 0.183 |
+| `provinces` | 0.189 | 0.235 | 0.125 | 0.269 |
+| `plusone` | 0.148 | 0.142 | 0.103 | 0.189 |
+| `dedup` | 0.212 | 0.337 | 0.224 | 0.314 |
+| `dupe` | 0.268 | 0.312 | 0.287 | 0.300 |
+| `majority` | 0.250 | 0.297 | 0.209 | 0.232 |
+| `water` | 0.327 | 0.334 | 0.276 | 0.384 |
+| `rpn` | 0.279 | 0.440 | 0.266 | 0.319 |
+| `minwindow` | 0.666 | 0.720 | 0.279 | 0.239 |
+| `charrep` | 0.668 | 0.614 | 0.256 | 0.109 |
+| `largest` | 0.531 | 0.577 | 0.413 | 0.296 |
+| `lastword` | 0.509 | 0.667 | 0.241 | 0.130 |
+| `roman` | 0.354 | 0.564 | 0.304 | 0.188 |
+| `wordbreak` | 0.700 | 0.764 | 0.499 | 0.208 |
+| `ladder` | 1.758 | 2.412 | 1.396 | 0.612 |
+| **21** | **10.52** | **11.08** | **5.67** | **5.70** |
+
+Fourteen now beat Python and the total ties it. The seven still slower are
+two brute-force solutions (`charrep`, `wordbreak`) and five that build a
+small list per input item (`ladder`'s list-keyed dict, `lastword`'s words,
+`roman`'s per-character temporaries, `largest`'s tiny concatenations,
+`minwindow`'s per-step window). What is left there is allocation and the
+call overhead of the X/Y spill frames, not a loop the native kernels can
+take over; a sliding-window built-in would fix `charrep` and `minwindow`
+but would change their solutions.
+
+The collector's heap walk, mark scan and sweep are native too, which is most
+of why `rpn`, `roman`, `dedup` and `ladder` got back what W17's first
+collection cost them.
+
