@@ -568,7 +568,7 @@ O H²%⋄!C ṔḌ⍎;
 # past the shorter one; the loop condition is (i < len) & s2.  W18: with equal
 # lengths ‹_ndiff› first skips the raw-equal prefix natively (s1 starts at the
 # first differing cell), and the guard is (len-s1 < 1) | ~s2.
-:\match &T2\rmul&T\radd"3\rsub[_﹣1﹤^][X‹_2d_chk›5177496\store‹_2d_chk›5177440\store0 1\rsub5177456\store0 5177448\store5177440\fetch\fetch5177496\fetch\fetch﹣1﹤[0 5177456\store]5177456\fetch[⋄5177440\fetch8\radd5177496\fetch8\radd5177440\fetch\fetch‹_ndiff›5177448\store]5177440\fetch\fetch5177448\fetch﹣1﹤5177456\fetch~|[{5177440\fetch5177448\fetch‹_2d_ix›5177496\fetch5177448\fetch‹_2d_ix›\match 5177456\fetch$5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177456\fetch$1\radd}]5177456\fetch Y^]__0;
+:\match &T2\rmul&T\radd"3\rsub[_﹣1﹤^][X‹_2d_chk›5177496\store‹_2d_chk›5177440\store0 1\rsub5177456\store0 5177448\store5177440\fetch\fetch5177496\fetch\fetch﹣1﹤[0 5177456\store]5177456\fetch1\radd[5177440\fetch8\radd5177496\fetch8\radd5177440\fetch\fetch‹_ndiff›5177448\store]5177440\fetch\fetch5177448\fetch﹣1﹤5177456\fetch~|[{5177440\fetch5177448\fetch‹_2d_ix›5177496\fetch5177448\fetch‹_2d_ix›\match 5177456\fetch$5177456\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt5177456\fetch$1\radd}]5177456\fetch Y^]__0;
 # ⍤ depth  v -> n: an int is 0; a list is 1 + the largest depth among its
 # elements, so a flat (or empty) list is 1 and a list of lists 2.  s0 list ·
 # s1 index · s2 the running max (depths are >= 0, so the unsigned \rmax is exact).
