@@ -6331,10 +6331,10 @@ w17t=$(( ($(date +%s%N) - w17t0) / 1000000 ))
 # the stack, a variable, a dict, a closure or a nested list holds; a list
 # that lives in the implicit page (the stack popped past its base) survives.
 w17m=$(printf '%s' '100000⍳0⟦_1000⍳∑+⟧⇤Ṅ' | python3 tools/codepage.py encode > "$TMP/w17m.gb" && python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w17m.gb" > "$TMP/w17m.src" && cat "$TMP/w17m.gb" >> "$TMP/w17m.src" && "$TMP/golf2" < "$TMP/w17m.src" > "$TMP/w17m" && chmod +x "$TMP/w17m" \
-  && python3 -c 'import subprocess,resource,sys; o=subprocess.run([sys.argv[1]],capture_output=True,stdin=subprocess.DEVNULL).stdout.decode(); print(o, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss//1024)' "$TMP/w17m")
+  && python3 -c 'import subprocess,resource,sys; o=subprocess.run([sys.argv[1]],capture_output=True,stdin=subprocess.DEVNULL).stdout.decode(); print(o.split()[0] if o.split() else "-", resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss//1024)' "$TMP/w17m")
 w17mo=${w17m% *}; w17mr=${w17m##* }
 w17g='‹heapstats›_→n 100⍳⟦1000⍳≢⟧€_ ‹gc›‹heapstats›_←n-3<Ṅ32)5⍳→v ‹dict›"7 8⍳‹put›_→d 3⍳′+⊸→f 3⍳′⍳€ 300⍳⌫ ‹gc› ⍕ ←v⍕ ←d7‹get›⍕ 4←f⍎⍕ 5177344⊙→h 400⍳_ 5177344⊙←h-Ṅ'
-[ "$w17mo" = "49950000000 " ] && [ "$w17mr" -lt 100 ] \
+[ "$w17mo" = "49950000000" ] && [ "$w17mr" -lt 100 ] \
   && [ "$(printf '%s' "$w17g" | gc)" = "-1 [] [0] [0 1] 0 1 2 3 4 0 1 2 3 4 5 6 7 4 5 6 0" ] \
   && [ "$(printf '3000 4\n' | gin '⍘⍳\\∑⍳⟦_‹gc›+⍀⟧⇤∑Ṅ')" = "$(printf '3000 4\n' | gin '⍘⍳\\∑⍳⟦_+⍀⟧⇤∑Ṅ')" ] \
   && ok "the collector: 800 MB of dropped lists in ${w17mr} MB; ‹gc› keeps stack, variable, dict, closure and nested data, frees the rest; a freed 300-cell block is reused for 400" || no "W17 collector: [$w17m] [$(printf '%s' "$w17g" | gc 2>&1)]"

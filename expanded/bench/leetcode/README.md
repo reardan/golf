@@ -551,23 +551,22 @@ is linear), and `water` uses the sorted order rather than two pointers.
 
 Most costly first, counted over the eighty notes:
 
-1. **Two bugs.** A list word given an int segfaults instead of raising an
-   error (`5≢`; `①⍕` on the input `5`). A program using `⎕` together with
-   `①`/`②` segfaults for inputs of about 95k–102k bytes (`⎕①≢` on 100,000
-   `a`s, exit 139; 90k and 110k work). And an int that wraps into the list
-   band `[0x7FFF<<48, 2^63)` crashes the polymorphic `+ - *`
-   (`9223090561878065152 1+Ṅ`), so `distinct` reduces mod 2^31 every step.
-2. **No gather and no list literal.** `⊇` takes one index only; gathers cost
-   a block per element (`roman`, `wordbreak`, `minwindow`, `palsubs`,
-   `longpalsub`), and a small lookup table cost 23 of `roman`'s 32 bytes.
-3. **One accumulator, no rotate.** Folds and scans carry one value, nothing
-   reaches three deep, and blocks cannot write locals, so multi-state DPs
-   (`decode`, `cooldown`, `rob`, `stairs`) and counters (`arrows`,
-   `threesum`, `splitarr`, `calc`) go through globals or `⊡` words.
-4. **Temporaries are never freed** (`spiral`, `charrep`, `balloons`: hundreds
-   of MB), and **`‹slice›` is O(length − i)** rather than O(n) (it is `↓`
-   then `↑`; `1000000⍳→l 0 20000⍳⟦←l\\1‹slice›∑+⟧€_` takes 4.1 s against
-   0.13 s with `⊇`).
+1. **Two bugs.** *Fixed in W17:* `5≢` and `①⍕` on an int now throw
+   `not a list`, `⎕①≢` works at any size, and an int in the old list band is
+   just an int (the list test checks the address too). Before: a list word
+   given an int segfaulted, `⎕` with `①`/`②` segfaulted for inputs of about
+   95k–102k bytes, and `9223090561878065152 1+Ṅ` crashed.
+2. **No gather and no list literal.** *Gather fixed in W17:* `⊇` with a list
+   of indices gathers (`minwindow` and `wordbreak` now use it). There is still
+   no list literal; a small lookup table cost 23 of `roman`'s 32 bytes.
+3. **One accumulator, no rotate.** *Fixed in W17:* `ʘ&` (‹fold2›) and `ʘ^`
+   (‹scan2›) carry two accumulators, and `⟲` rotates the top three. Before,
+   multi-state DPs (`decode`, `cooldown`, `rob`, `stairs`) and counters
+   (`arrows`, `threesum`, `splitarr`, `calc`) went through globals or `⊡` words.
+4. **Temporaries are never freed, and `‹slice›` is O(length − i).** *Fixed in
+   W17:* a conservative mark-sweep collector runs from `A` (spiral 646 MB →
+   about 50 MB), and `‹slice›` copies only its k cells
+   (`1000000⍳→l 0 20000⍳⟦←l\\1‹slice›∑+⟧€_` 4.1 s → 0.02 s).
 5. **No shift-right-with-fill or prepend**: `1⍳\\⧺`, `0⍆`, `1⍳⧺⌽0⍆` recur in
    `square`, `candy`, `distinct`, `wildcard`, `edit`, `histogram`,
    `maxrect`, `targetsum`, `plusone`.
