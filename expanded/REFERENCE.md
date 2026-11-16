@@ -348,7 +348,7 @@ Words defined by the prelude (`lib/prelude.golfj`). A letter word is called by i
 | `0x52` | `⍳` | `\range` | `R` | range(n) -> [0..n-1] |
 | `0x53` | `∑` | `\sum` | `S` | sum(list) |
 | `0x4C` | `≢` | `\len` | `L` | len(list) |
-| `0x49` | `⊇` | `\index` | `I` | index(list, i) |
+| `0x49` | `⊇` | `\index` | `I` | index(list, i); a list of indices gathers: l js -> [l[j] for j in js] (W17) |
 | `0x41` | `⍶` | `\alloc` | `A` | alloc(cells) -> addr |
 | `0x4E` | `Ṅ` | `\num` | `N` | print signed decimal |
 | `0x45` | `␤` | `\nl` | `E` | print newline |
@@ -428,6 +428,7 @@ Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the 
 |---|---|---|---|---|
 | `ʘ$` | `BD 24` | `‹_dg24›` | `‹last›` |  |
 | `ʘ%` | `BD 25` | `‹_dg25›` | `‹chunk›` |  |
+| `ʘ&` | `BD 26` | `‹_dg26›` | `‹fold2›` |  |
 | `ʘ(` | `BD 28` | `‹_dg28›` | `‹balanced›` |  |
 | `ʘ/` | `BD 2F` | `‹_dg2F›` | `‹dadj›` |  |
 | `ʘ0` | `BD 30` | `‹_dg30›` | `‹argmin›` |  |
@@ -470,6 +471,7 @@ Two-byte words: `ʘ` (`\dig`, `0xBD`) then any byte B compiles as a call to the 
 | `ʘX` | `BD 58` | `‹_dg58›` | `‹sfree›` |  |
 | `ʘY` | `BD 59` | `‹_dg59›` | `‹has›` |  |
 | `ʘZ` | `BD 5A` | `‹_dg5A›` | `‹hash›` |  |
+| `ʘ^` | `BD 5E` | `‹_dg5E›` | `‹scan2›` |  |
 | `ʘa` | `BD 61` | `‹_dg61›` | `‹any›` |  |
 | `ʘb` | `BD 62` | `‹_dg62›` | `‹bisect›` |  |
 | `ʘc` | `BD 63` | `‹_dg63›` | `‹countif›` |  |
@@ -1096,7 +1098,7 @@ one that returns a list returns a NEW tagged list and never writes its input.
 
 | word | stack effect | meaning |
 |---|---|---|
-| `‹slice›` | `list i n -> list` | the `n` elements starting at index `i`. A negative `i` counts from the end (`-1` is the last element) and is then clamped to `0`. An `i` at or past the end gives an empty list. `n` is clamped to what is left, and a negative `n` counts as `0` |
+| `‹slice›` | `list i n -> list` | the `n` elements starting at index `i`. A negative `i` counts from the end (`-1` is the last element) and is then clamped to `0`. An `i` at or past the end gives an empty list. `n` is clamped to what is left, and a negative `n` counts as `0`. It copies only those `n` cells (O(n); before W17 it was `↓` then `↑`, O(length − i)), and a text list stays text |
 | `‹indexof›` | `list x -> i` | index of the first element equal to `x`, or `-1` when there is none. Equality is raw cell equality (`﹣1﹤`, what `≡` was before W16), so an inner list is found only as that very list |
 | `‹unique›` | `list -> list` | the first occurrence of each distinct element, in the original order. It uses a hash set, so it runs in O(n) expected time |
 | `‹flatten›` | `list -> list` | every int in a nested list, depth-first, as one flat list. It works at any depth, because it loops one level at a time instead of recursing |
@@ -1368,6 +1370,56 @@ then reused reads (or frees) the new owner's list without an error. A value
 pointing into the middle of a block is not checked either. Names that start
 with `‹_2d` are helpers.
 
+### The collector (W17)
+
+Temporaries are freed. Before W17 nothing was given back unless the program
+called `⌫`, so a loop that built a list per step grew without bound
+(Spiral Matrix's peel-and-rotate solution peaked at 646 MB). Now the
+allocator runs a **conservative mark-and-sweep collector** when the live
+bytes (what `‹heapstats›` counts) have grown by 16 MB, or by as much again
+as was live after the last collection, whichever is more. It finds every
+block that is still reachable and gives the rest back exactly as `⌫` would,
+so the next allocation of that size reuses them.
+
+| word | stack effect | meaning |
+|---|---|---|
+| `‹gc›` | `->` | collect now. Nothing else changes: a program never has to call it |
+
+- **Roots.** The data stack (including the implicit page, when a program
+  has popped past its base), the return stack with every `⊡` frame's
+  locals, the variable bank, the spill stack in use, and the runtime cells
+  (`0x430000`–`0x43FFFF`, `0x4F0000`–`0x4F0FFF`). From there it follows
+  every cell of every block it reaches.
+- **Conservative.** Any cell whose value, with the tag stripped, points
+  anywhere into a live block (its header, its first cell or the middle of
+  it) keeps that block, so a loop's element pointer keeps its list. An
+  integer that happens to look like such an address keeps a block alive a
+  little longer; it never frees one early. Reached through a list value
+  (the tag, pointing at the first cell) only cells `0 … len` are followed,
+  so the stale cells past the length of a reused block keep nothing alive.
+- **What it cannot see.** A reference kept only in an encoded form (an
+  offset from the heap base, a negated or halved address) or in memory
+  outside the roots above (a `⌁ mmap` of your own). Such a block can be
+  freed under you, and the next use says `GOLF: use after free` or reads
+  the block's next owner. Programs that only use values, variables, locals,
+  lists, dicts and closures are unaffected.
+- **Explicit `⌫` still works** and is still the fastest way to give a big
+  block back at a known point. `‹heapstats›` stays exact: it counts what is
+  live now, after any collection.
+- **Size classes.** Requests of 257 to 65,536 cells are rounded up to a
+  power of two (at least 512) with a free list per size, so a freed or
+  collected big block is reused by any later request of its class. (Before,
+  all of them shared one list that was popped only when its head was big
+  enough.) Larger requests keep the old exact-size list.
+
+```
+‹heapstats›_→n 100⍳⟦1000⍳≢⟧€_ ‹gc›‹heapstats›_←n-3<Ṅ           ->  -1
+100000⍳0⟦_1000⍳∑+⟧⇤Ṅ                                         ->  49950000000
+```
+
+The second line allocates 800 MB of lists and runs in about 20 MB. Spiral
+Matrix now peaks at 50 MB instead of 646.
+
 ### Vectors and deques
 
 W12-Z4 adds a store into a list, a growable **vector**, and a **deque**. None
@@ -1630,6 +1682,34 @@ The last one prints on stderr and exits 1; under `‹catch›` it gives back
 caller left under `acc x` (or under `x i`), so the count `4` is the number of
 calls: `⍀` and `⍁` do not call `f` on the seed. `g` runs a scan inside the
 scan's function, and `h` runs `⍸` inside `€`'s.
+
+### Two accumulators and `⟲` (W17)
+
+`⇤` and `⍀` carry one value. Dynamic programs with two values of state
+(House Robber, Climbing Stairs, Decode Ways, Kadane, counters next to a
+running value) had to thread the second one under the list or keep it in a
+global, and nothing reached three deep.
+
+| glyph / word | stack effect | meaning |
+|---|---|---|
+| `⟲` (`0xAF`, `\rot`) | `a b c -> b c a` | rotate: the third item comes to the top. An atom (one inline template); a stack op, so it never quotes before an adverb |
+| `‹fold2›` `ʘ&` | `l a b ′f -> a b` | fold with two accumulators: for each `x` of `l`, `a b x f` leaves the new `a b` |
+| `‹scan2›` `ʘ^` | `l a b ′f -> l'` | the same, collecting `b` after each element: `≢l' = ≢l` |
+
+`f` sees the caller's stack under `a b x` (the threading contract), and
+`⟲` reaches the `a`. Neither word quotes the token before it (they are
+digraphs, not adverbs), so the function is a block or a `′` reference.
+
+```
+1 2 3⟲‹stack›                         ->  <3> 2 3 1
+10⍳0 1⟦_\\&+⟧ʘ&Ṅ_                       ->  89
+5⍳0 1⟦_\\&+⟧ʘ^⍕                         ->  1 2 3 5 8 
+5⍳1+0 0⟦⟲+&⌈⟧‹fold2›Ṅ_                 ->  9
+```
+
+- Line 2 is Fibonacci: `_` drops `x`, `\\&+` turns `a b` into `b a+b`.
+- Line 4 is House Robber on `1 … 5`: `⟲` brings `a` up to `b x a`, `+`
+  makes `b x+a`, and `&⌈` leaves `b max(b, x+a)`.
 
 ### Atoms as the function: fast paths (W13-G)
 

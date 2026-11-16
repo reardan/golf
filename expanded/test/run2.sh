@@ -1337,8 +1337,8 @@ echo "M-TAG2: a list value is addr | 0x7FFF<<48; T and the M-VEC filter test the
 [ "$(printf '%s' '0 1 63\shl- T N E' | gc)" = "1" ] && ok "T: -2^63 is an int" || no "tag2 min int"
 [ "$(printf '%s' '0 1000000000000000-T N E 0 1000000000000000- 7+N E' | gc)" = "$(printf '1\n-999999999999993')" ] \
   && ok "a large negative is an int, and bare + is scalar on it" || no "tag2 big negative"
-[ "$(printf '%s' '1 48\shl T N E 32767 48\shl1\rsub T N E 1 63\shl1\rsub T N E' | gc)" = "$(printf '1\n1\n0')" ] \
-  && ok "T: 2^48 and 0x7FFF<<48 - 1 are ints; 2^63-1 is in the sacrificed band" || no "tag2 edges"
+[ "$(printf '%s' '1 48\shl T N E 32767 48\shl1\rsub T N E 1 63\shl1\rsub T N E 5⍳T N E' | gc)" = "$(printf '1\n1\n1\n0')" ] \
+  && ok "T: 2^48 and 0x7FFF<<48 - 1 are ints; since W17 2^63-1 (tagged, but no heap there) is an int too" || no "tag2 edges"
 [ "$(printf '%s' '5⍳→x←x T N E ←x Q E ←x 10+Q E' | gc)" = "$(printf '0\n0 1 2 3 4 \n10 11 12 13 14 ')" ] \
   && ok "a list round-trips through →x/←x and still vectorizes" || no "tag2 var round trip"
 # Lists of lists: R's result stored as an element stays a tagged list, so it
@@ -1639,8 +1639,10 @@ echo "M-MEM2 (W9-3C): ⌫ free — a size-classed free list in front of A's bump
 [ "$(printf '%s' ':d\dbl;5R→l 0\brk→b 1000000→i{←l\refdM\free←i1-"→i0\eq}0\brk←b-N E ←l Q E' | gc)" = "$(printf '0\n0 1 2 3 4 ')" ] \
   && ok "1,000,000 × (map, ⌫): the program break does not move" || no "free loop keeps brk flat"
 w93c=$(printf '%s' ':d\dbl;5R→l 0\brk→b 1000000→i{←l\refdM_←i1-"→i0\eq}0\brk←b-N E' | gc)
-[ "$w93c" -ge 64000000 ] 2>/dev/null \
-  && ok "the same loop without ⌫ grows the break ($w93c bytes)" || no "no-free loop: break grew '$w93c', want >= 64000000"
+# W17: the collector now takes back what the loop drops (it ran up ~71 MB of
+# break before), so the break grows by about one collection threshold (16 MB).
+[ "$w93c" -lt 33554432 ] 2>/dev/null \
+  && ok "the same loop without ⌫ keeps the break bounded: the collector frees it ($w93c bytes)" || no "no-free loop: break grew '$w93c', want < 32 MB (W17 collector)"
 [ "$(printf '%s' '5R"→a\free 5R←a\rsub1\rlt N E 3A"→b\free 3A←b\rsub1\rlt N E' | gc)" = "$(printf -- '-1\n-1')" ] \
   && ok "a freed block is reused by the next same-size request (tagged list and raw A block)" || no "free reuse"
 # Classes are powers of two (4 8 … 256 cells) so any request of the class fits:
@@ -3815,7 +3817,7 @@ w12a5r=':v3′⌈⊟∑;:w"≢1≻[^]2′+⊟;:c⧺\\⊕\\′w⍣;4⍳5+′⍳�
   && [ "$(printf '%s' "$w12a5r" | gref)" = "$(printf '%s' "$w12a5r" | gc)" ] \
   && ok "re-entrant: ⊟ in € after ⊟, ⍣ of ⊟ inside ⊟'s f, with a counter threaded under it (golf2 and the oracle)" || no "W12-A5 nesting: $(printf '%s' "$w12a5r" | gc)"
 [ "$(printf '%s' '‹heapstats›→b→n 1000⍳"10′⌈⊟⌫"10′⌊⊟⌫"10′+⊟⌫"1′+⊟⌫"2000′+⊟⌫‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤"10′⌈⊟‹heapstats›←b-Ṅ“ “🗲←n-Ṅ' | gc)" \
-    = "$(printf '8016 1\n16032 2')" ] \
+    = "$(printf '8200 1\n16400 2')" ] \
   && ok "‹heapstats›: ⊟ keeps only its result (the deque's block is given back), on both paths and when empty" || no "W12-A5 heapstats"
 # The leetcode rewrite: sliding-window maximum is one ⊟, checked against the
 # Python solution on a small random input.
@@ -3829,11 +3831,13 @@ echo "W12-A6: ⍣ fixpoint (apply f until the result ≣ the previous one)"
 [ "$(printf '%s' ':d2/;100′d⍣Ṅ␤:i;5⍳"′i⍣﹣1﹤Ṅ␤:h"≢1≻[^]1↓;5⍳′h⍣⍕␤:u"≢1≻[^]1↓"⌽⌽\\⌫;9⍳′u⍣⍕␤:s_“ab“⊃;0′s⍣⊐␤:z_0;7′z⍣Ṅ' | gc)" \
     = "$(printf '0\n-1\n4 \n8 \nab\n0')" ] \
   && ok "ints, f returning its own input (same block back), shrinking lists, a fresh copy per step, a constant f (two calls)" || no "W12-A6 basics: $(printf '%s' ':d2/;100′d⍣Ṅ' | gc)"
+# (W17: a 1000-cell list's block is now 1024 cells, a power-of-two class,
+# hence 8200 bytes and not 8016.)
 # Freeing.  1000⍳′h⍣ makes 999 intermediates and keeps only x and the
 # result; an f that returns a list HOLDING its argument keeps the argument
 # (the result's element is still readable); x itself is never freed.
 w12a6f=':h"≢1≻[^]1↓;:w"48>32767≡[⍳^]"0⊇48>32767≡1+[^]‹vec›\\⍆;‹heapstats›→b→n 1000⍳′h⍣⍕‹heapstats›←b-Ṅ“ “🗲←n-Ṅ␤3′w⍣⍕␤5⍳"′w⍣_⍕␤‹heapstats›→b→n 3′w⍣_‹heapstats›_←n-Ṅ'
-[ "$(printf '%s' "$w12a6f" | gc | sed 's/ *$//')" = "$(printf '999 8056 2\n[0 1 2]\n0 1 2 3 4\n2')" ] \
+[ "$(printf '%s' "$w12a6f" | gc | sed 's/ *$//')" = "$(printf '999 8240 2\n[0 1 2]\n0 1 2 3 4\n2')" ] \
   && [ "$(printf '%s' "$w12a6f" | gref)" = "$(printf '%s' "$w12a6f" | gc)" ] \
   && ok "‹heapstats›: 999 intermediates freed (x and the result stay), an argument nested in the result is kept, x is never freed (golf2 and the oracle)" \
   || no "W12-A6 freeing: $(printf '%s' "$w12a6f" | gc)"
@@ -5732,7 +5736,7 @@ w13isz(){ stat -c%s "$TMP/w13i/$1"; }
 w13ic one '1Ṅ' >/dev/null; w13ic onep '1Ṅ' -P >/dev/null
 (cd "$TMP/w13i" && GOLFC_FULL=1 "$EXP/tools/golfc" -j one.golfj onee)
 printf '%s' '1Ṅ' | python3 tools/codepage.py encode | cat "$TMP/pre.gb" - | "$TMP/golf2" > "$TMP/w13i/onef"
-[ "$("$TMP/w13i/one")" = 1 ] && [ "$(w13isz one)" -lt 28672 ] && cmp -s "$TMP/w13i/onep" "$TMP/w13i/onef" && cmp -s "$TMP/w13i/onee" "$TMP/w13i/onef" \
+[ "$("$TMP/w13i/one")" = 1 ] && [ "$(w13isz one)" -lt 34816 ] && cmp -s "$TMP/w13i/onep" "$TMP/w13i/onef" && cmp -s "$TMP/w13i/onee" "$TMP/w13i/onef" \
   && ok "1Ṅ is a $(w13isz one)-byte binary ($(w13isz onef) with the whole prelude); golfc -P and GOLFC_FULL=1 are the old binary byte for byte" \
   || no "W13-I trivial: $(w13isz one) / $(w13isz onef)"
 # The split is exact: with every name reached, the pruned prelude IS the
@@ -6288,6 +6292,60 @@ w16co='4⟦"+⍸Ḍ\\-⍸Ḍ|⟧⍥⍕5⍳⊕*⍜⍕3⍳′⍳€≢⍭⍕“abc
   && [ "$(printf '%s' "$w16co" | gcp)" = "[1 3 0 2] [2 0 3 1] 120 60 40 30 24 0 -1-1" ] \
   && [ "$(printf '%s' "$w16co" | gref)" = "$(printf '%s' "$w16co" | gc)" ] \
   && ok "REFERENCE.md's W16 examples print what they say; pruned build and oracle agree" || no "W16-C examples / pruned / oracle:$w16cbad"
+# @@ W17 @@
+echo "W17: gather, two accumulators and ⟲, O(k) ‹slice›, the collector, three crash fixes"
+# The three P100 crash bugs.  A list word given an int is `GOLF: not a list`
+# (it read the int as an address and segfaulted); an int that wraps into the
+# tag band [0x7FFF<<48, 2^63) adds as an int (T is exact: the address must
+# lie in the image, the BSS or the heap); ⎕ after ① on ~100 KB of input
+# (the drain grew its block by one doubling only and copied past the brk).
+w17a=$(printf '%s' '5≢Ṅ' | gc 2>&1; echo " $?")
+w17b=$(printf '%s' '5 0⊇Ṅ' | gc 2>&1; echo " $?")
+w17c=$(printf '%s' '⟦5⍕⟧‹catch›⊐' | gc 2>&1)
+python3 -c "print('a'*100000)" > "$TMP/w17a.in"
+w17d=$(gin '⎕≢Ṅ32)①≢Ṅ' < "$TMP/w17a.in" 2>&1; echo " $?")
+[ "$w17a" = "$(printf 'GOLF: not a list\n 1')" ] && [ "$w17b" = "$(printf 'GOLF: not a list\n 1')" ] && [ "$w17c" = "not a list" ] \
+  && [ "$(printf '%s' '9223090561878065152 1+Ṅ 9223090561878065152 2*Ṅ' | gc)" = "9223090561878065153-562949953421312" ] \
+  && [ "$(printf '%s' '5⍳3+⍕“ab“⊃⊐3⍳′⍳€⍕' | gc)" = "3 4 5 6 7 ab[] [0] [0 1] " ] \
+  && [ "$w17d" = "100001 100000 0" ] \
+  && ok "5≢ and 5 0⊇ are 'not a list' (catchable), a wrapped int adds as an int, ⎕ with ① reads 100 KB" || no "W17 crash fixes: [$w17a] [$w17b] [$w17c] [$w17d]"
+# Gather: ⊇ with a list of indices, to any depth, checked like one index.
+[ "$(printf '%s' '10⍳2*3⍳3*⊇⍕ 10⍳0⍳⊇≢Ṅ 5⍳3⍳′⍳€⊇⍕“hello“⊃3⍳⌽⊇' | gc)" = "0 6 12 0[] [0] [0 1] leh" ] \
+  && [ "$(printf '%s' '⟦5⍳3⍳7+⊇⟧‹catch›⊐' | gc)" = "index out of range" ] \
+  && ok "⊇ gathers: a list of indices gives a list, nested lists gather again, text stays text, out of range is caught" || no "W17 gather"
+# ⟲ rotate, ‹fold2› ʘ& and ‹scan2› ʘ^ (two accumulators a b; f: a b x -> a b).
+[ "$(printf '%s' '1 2 3⟲‹stack›' | gc)" = "<3> 2 3 1" ] \
+  && [ "$(printf '%s' '10⍳0 1⟦_\\&+⟧ʘ&ṄṄ 5⍳0 1⟦_\\&+⟧‹scan2›⍕ 5⍳1+0 0⟦⟲+&⌈⟧‹fold2›Ṅ_ 0⍳5 6⟦+⟧ʘ&ṄṄ 0⍳1 2⟦+⟧ʘ^≢Ṅ' | gc)" = "89551 2 3 5 8 9650" ] \
+  && [ "$(printf '%s' '0 5⍳0 0⟦_⟲⊕⟲⟲⟧ʘ&__Ṅ' | gc)" = "5" ] \
+  && ok "⟲ is a b c -> b c a; fold2/scan2 carry two values (Fibonacci, House Robber), f threads the caller's stack" || no "W17 fold2 scan2 rot"
+# ‹slice› copies only its n cells: 20,000 one-cell slices of a 1M list took
+# minutes when it was ↓ then ↑.
+w17t0=$(date +%s%N)
+w17s=$(printf '%s' '1000000⍳→l 20000⍳0⟦←l\\1‹slice›∑+⟧⇤Ṅ' | gcp)
+w17t=$(( ($(date +%s%N) - w17t0) / 1000000 ))
+[ "$w17s" = "199990000" ] && [ "$w17t" -lt 5000 ] \
+  && [ "$(printf '%s' '10⍳2 3‹slice›⍕10⍳0 1- 5‹slice›⍕10⍳20 3‹slice›≢Ṅ10⍳3 0 1-‹slice›≢Ṅ“hello“⊃1 3‹slice›⊐' | gc)" = "2 3 4 9 00ell" ] \
+  && ok "‹slice› is O(n): 20,000 slices of a 1M list in ${w17t} ms; clamping and the text mark as before" || no "W17 slice ($w17s, ${w17t} ms)"
+# The collector.  A loop that drops 100,000 lists of 1,000 cells (800 MB
+# allocated) stays small; ‹gc› frees what nothing references and keeps what
+# the stack, a variable, a dict, a closure or a nested list holds; a list
+# that lives in the implicit page (the stack popped past its base) survives.
+w17m=$(printf '%s' '100000⍳0⟦_1000⍳∑+⟧⇤Ṅ' | python3 tools/codepage.py encode > "$TMP/w17m.gb" && python3 tools/golfprune.py "$TMP/pre.gb" "$TMP/w17m.gb" > "$TMP/w17m.src" && cat "$TMP/w17m.gb" >> "$TMP/w17m.src" && "$TMP/golf2" < "$TMP/w17m.src" > "$TMP/w17m" && chmod +x "$TMP/w17m" \
+  && python3 -c 'import subprocess,resource,sys; o=subprocess.run([sys.argv[1]],capture_output=True,stdin=subprocess.DEVNULL).stdout.decode(); print(o, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss//1024)' "$TMP/w17m")
+w17mo=${w17m% *}; w17mr=${w17m##* }
+w17g='‹heapstats›_→n 100⍳⟦1000⍳≢⟧€_ ‹gc›‹heapstats›_←n-3<Ṅ32)5⍳→v ‹dict›"7 8⍳‹put›_→d 3⍳′+⊸→f 3⍳′⍳€ 300⍳⌫ ‹gc› ⍕ ←v⍕ ←d7‹get›⍕ 4←f⍎⍕ 5177344⊙→h 400⍳_ 5177344⊙←h-Ṅ'
+[ "$w17mo" = "49950000000 " ] && [ "$w17mr" -lt 100 ] \
+  && [ "$(printf '%s' "$w17g" | gc)" = "-1 [] [0] [0 1] 0 1 2 3 4 0 1 2 3 4 5 6 7 4 5 6 0" ] \
+  && [ "$(printf '3000 4\n' | gin '⍘⍳\\∑⍳⟦_‹gc›+⍀⟧⇤∑Ṅ')" = "$(printf '3000 4\n' | gin '⍘⍳\\∑⍳⟦_+⍀⟧⇤∑Ṅ')" ] \
+  && ok "the collector: 800 MB of dropped lists in ${w17mr} MB; ‹gc› keeps stack, variable, dict, closure and nested data, frees the rest; a freed 300-cell block is reused for 400" || no "W17 collector: [$w17m] [$(printf '%s' "$w17g" | gc 2>&1)]"
+# REFERENCE.md's W17 examples print what they say.
+w17bad=""; w17n=0
+while IFS= read -r w17l; do
+  w17p=${w17l%%  ->*}; w17p=${w17p%"${w17p##*[! ]}"}; w17w=${w17l##*->  }
+  [ "$(printf '%s' "$w17p" | gcp 2>&1 | sed 's/ *$//')" = "$(printf '%s' "$w17w" | sed 's/ *$//')" ] || w17bad="$w17bad [$w17p]"
+  w17n=$((w17n+1))
+done < <(sed -n '/^### \(Two accumulators and `⟲`\|The collector\) (W17)$/,/^### /p' REFERENCE.md | sed -n '/^```$/,/^```$/p' | grep -- '  ->  ')
+[ -z "$w17bad" ] && [ "$w17n" -ge 6 ] && ok "REFERENCE.md's W17 examples print what they say ($w17n)" || no "W17 examples:$w17bad"
 echo "Resource registry (REGISTRY.md): op bytes, mnemonics and glyphs stay disjoint"
 python3 tools/codepage.py check \
   && ok "codepage invariants (bytes/mnemonics/glyphs)" || no "codepage invariants (bytes/mnemonics/glyphs)"

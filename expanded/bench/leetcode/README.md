@@ -241,7 +241,7 @@ lower its number.
 | bsts | 14 |
 | consec | 13 |
 | gas | 17 |
-| wordbreak | 46 |
+| wordbreak | 43 |
 | rpn | 41 |
 | maxprod | 12 |
 | largest | 29 |
@@ -268,7 +268,7 @@ lower its number.
 | validparens | 22 |
 | firstmiss | 11 |
 | wildcard | 35 |
-| minwindow | 56 |
+| minwindow | 52 |
 | histogram | 17 |
 | maxrect | 32 |
 | distinct | 25 |
@@ -283,7 +283,7 @@ lower its number.
 | splitarr | 36 |
 | revpairs | 46 |
 
-Total 1943: the first twenty 161, the eighty after them 1,782 (P100).
+Total 1936: the first twenty 161, the eighty after them 1,775 (P100 1,782, less 7 from W17's gather in `minwindow` and `wordbreak`).
 The first twenty: the first ten 58 (115 before W16's rewrite, 177 before W15's,
 411 before W13-F's, 655 before W12-6's, 898 at the baseline above), the
 second ten 103 (124 before W16, 326 before W15).

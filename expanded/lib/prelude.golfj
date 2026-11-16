@@ -581,8 +581,8 @@
 # ⧺: s7 l2 · s0 l1 · s4 result · s1 index.  l2's i-th cell lands at ≢l1 + i.
 :\cat X‹_2d_chk›5177496\store‹_2d_chk›5177440\store
  5177440\fetch\fetch5177496\fetch\fetch\radd"1\radd A"5177472\store\store
- 0 5177448\store5177440\fetch\fetch1﹤[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177440\fetch\fetch\rlt1\radd}]
- 0 5177448\store5177496\fetch\fetch1﹤[{5177496\fetch5177448\fetch8\rmul\radd8\radd\fetch5177472\fetch5177440\fetch\fetch5177448\fetch\radd8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177496\fetch\fetch\rlt1\radd}]
+ 5177440\fetch8\radd5177472\fetch8\radd&\rsub5177448\store"5177440\fetch\fetch8\rmul\radd5177488\store5177440\fetch\fetch1﹤[{"\fetch&5177448\fetch\radd\store8\radd"5177488\fetch﹣1﹤}]_
+ 5177496\fetch8\radd5177472\fetch8\radd5177440\fetch\fetch8\rmul\radd&\rsub5177448\store"5177496\fetch\fetch8\rmul\radd5177488\store5177496\fetch\fetch1﹤[{"\fetch&5177448\fetch\radd\store8\radd"5177488\fetch﹣1﹤}]_
  5177472\fetch32767 48\shl|5177440\fetch5177496\fetch‹_16_cp2› Y;
 # ↑: s2 n · s0 list · s6 count c = min(|n|, len) · s7 start (0, or len-c when
 # n < 0) · s4 result · s1 index.  |n| via the N idiom; \neg of -2^63 is itself,
@@ -591,7 +591,7 @@
  5177456\fetch"63≫1\radd[\neg]5177440\fetch\fetch\rmin5177488\store
  0 5177496\store5177456\fetch63≫1\radd[5177440\fetch\fetch5177488\fetch\rsub5177496\store]
  5177488\fetch"1\radd A"5177472\store\store
- 0 5177448\store5177488\fetch1﹤[{5177440\fetch5177496\fetch5177448\fetch\radd8\rmul\radd8\radd\fetch5177472\fetch5177448\fetch8\rmul\radd8\radd\store5177448\fetch1\radd5177448\store5177448\fetch5177488\fetch\rlt1\radd}]
+ 5177440\fetch5177496\fetch8\rmul\radd8\radd5177472\fetch8\radd&\rsub5177448\store"5177488\fetch8\rmul\radd5177496\store5177488\fetch1﹤[{"\fetch&5177448\fetch\radd\store8\radd"5177496\fetch﹣1﹤}]_
  5177472\fetch32767 48\shl|5177440\fetch‹_16_cp› Y;
 # ↓ is a take: keep m = len - min(|n|, len) cells, from the END when n >= 0
 # (take -m) and from the front when n < 0 (take m).  s1 len · s2 n; the list
@@ -4185,7 +4185,8 @@
 # halved address) or outside the regions above.  Cells 4399488 limit ·
 # 4399496 collections · 4399504 1 while collecting · 4399512 the index ·
 # 4399520 its count · 4399528 the mark stack · 4399536 its top · 4399544
-# blocks freed by collections.
+# blocks freed by collections · 4399640 4399648 4399656 ‹_17_scan›'s end,
+# heap base and bump offset (it calls ‹_17_mark›, never itself).
 ⊡‹_17_find›⇒a0⇒l4399520⊙⇒h
  {⇐h⇐l﹣2﹤⋄⇐l⇐h﹢1>⇒m4399512⊙⇐m3≪﹢⊙8﹣⇐a»[⇐m⇒l⋄⇐m⇒h]}
  4399512⊙⇐l3≪﹢⊙⇒s⇐s8﹣⊙⇒c
@@ -4193,8 +4194,8 @@
 ⊡‹_17_mark›"⇒v16≪16>"⇒a‹_17_find›⇒s⇐s[⋄⇐s8﹣⊙⇒c
  ⇐v48>32767﹣⇐a⇐s﹣|[⇐c41>1$[⇐c1 41≪|⇐s8﹣⊛⇐s‹_17_push›⋄]⋄⇐c42>1$[⇐c3 41≪|⇐s8﹣⊛⇐s1|‹_17_push›⋄]]];
 :‹_17_push›4399536⊙⊛4399536⊙8﹢4399536⊛;
-⊡‹_17_scan›⇒e⇒p5177396@⇒b5177344@⇒n
- {⇐p⇐e<1﹢⋄⇐p⊙16≪16>⇐b﹣⇐n<[⋄⇐p⊙‹_17_mark›]⇐p8﹢⇒p};
+:‹_17_scan›4399640⊛5177396@4399648⊛5177344@4399656⊛"4399640⊙<1﹢[
+ {"⊙16≪16>4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"4399640⊙<1﹢}]_;
 ⊡‹gc›4399504⊙[⋄^]1 4399504⊛⊷⇒r⇒d
  5177344@2≫16﹢12≫1﹢12≪⇒z
  0⇐z3 16418 0 1﹣0 9⌁⇒x0⇐z3 16418 0 1﹣0 9⌁⇒y

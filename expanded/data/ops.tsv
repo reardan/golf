@@ -142,7 +142,7 @@ C	BF	intwo	②	line 2 of the input, typed like ①
 L	52	range	⍳	range(n) -> [0..n-1]
 L	53	sum	∑	sum(list)
 L	4C	len	≢	len(list)
-L	49	index	⊇	index(list, i)
+L	49	index	⊇	index(list, i); a list of indices gathers: l js -> [l[j] for j in js] (W17)
 L	41	alloc	⍶	alloc(cells) -> addr
 L	4E	num	Ṅ	print signed decimal
 L	45	nl	␤	print newline

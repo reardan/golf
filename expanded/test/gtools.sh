@@ -642,7 +642,7 @@ assert t != s, 'the edit changed nothing'; open(p,'w',encoding='utf-8').write(t)
   tlbad dupmn      ops.tsv check "s.replace('L\tE0\tdput','L\tE0\tdget')"
   tlbad dupglyph   ops.tsv check "s.replace('\tṖ\t','\tĠ\t')"
   tlbad twoerrs    ops.tsv check "s.replace('L\tE0\tdput\tṖ','L\tDF\tdge\tĠ')"
-  tlbad notpl      ops.tsv blob  "s.replace('A\tAE\tscall','A\tAF\tscall')"
+  tlbad notpl      ops.tsv blob  "s.replace('A\tAE\tscall','A\tF0\tscall')"
   tlbad statement  templates.txt blob "s.replace('def flush\n','deff flush\n')"
   tlbad indent     templates.txt blob "s.replace('# expanded/data/templates.txt','  41 # expanded/data/templates.txt')"
   tlbad deftwice   templates.txt blob "s.replace('def endhook\n','def flush\n')"

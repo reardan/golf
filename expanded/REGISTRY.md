@@ -46,7 +46,7 @@ Bytes `0x00`–`0x7F` are ASCII: v1's templates, the prelude word letters, digit
 and whitespace live there and the printable space is essentially full (M1 took
 the last five: `~ $ | = >`). Bytes `0x80`–`0x90` are shipped (atoms + the four
 compiler prefixes). `0x91`–`0xFF` — 111 bytes — was the entire remaining op
-space; **94** are now spent, leaving **17** free. It is partitioned as follows
+space; **95** are now spent, leaving **16** free. It is partitioned as follows
 so waves never contend:
 
 | Range         | Owner / purpose                                            |
@@ -287,6 +287,7 @@ shipped one (`\pcnt`, not `\popc`: `\pop` is `⍅`), checked by
 | `0xAC` | `\clz` | `⊢` | atom: `x -> n` leading zero bits (`lzcnt`), 64 for 0, raw | W13-B | shipped |
 | `0xAD` | `\lsb` | `⊥` | atom: `x -> x & -x`, the lowest set bit (0 for 0), raw | W13-B | shipped |
 | `0xAE` | `\scall` | `⌁` | atom: `a1 a2 a3 a4 a5 a6 num -> result`, the six-argument raw syscall (`⎈` sets only rdi rsi rdx). Spends one byte of the `0xA8`–`0xAF` headroom, as W11-3A did | W14-A | shipped |
+| `0xAF` | `\rot` | `⟲` | atom: `a b c -> b c a`, rotate (template `pop rax; pop rdx; pop rcx; push rdx; push rax; push rcx`); never quoted before an adverb (blob record 7). The last byte of the `0xA8`–`0xAF` headroom: folds with two accumulators (`‹fold2›` `‹scan2›`) hand their function three values, and nothing reached three deep | W17 | shipped |
 | `0xBD` | `\dig` | `ʘ` | compiler op, prefix: `ʘB` (B any byte) compiles exactly as the long name `‹_dgHH›`, HH = B in upper-case hex — a call, `′`, a chain link, a prefix's operand (`→ ← ⇒ ⇐ ⇡ ⇣ : ⊡ ⊚ ⊜`), a forward reference; undefined is `GOLF: undefined word ‹_dgHH›`. Cases in `self/golf2.golfj` (‹digraph›), the seed (spelled out in `G` and `t`) and `boot/golfref.py` | W13-B | shipped |
 
 W13-C's twelve one-byte prelude words (section `# ===== W13-C =====` of
@@ -901,6 +902,24 @@ site · `m+228` `;`'s `call B` site · `m+232` stub A · `m+236` stub B · `m+24
 the frame-list walk's next site · `m+244` the `⊡` word's name. `m+248` is the
 first free cell now. `self/golf2.golfj` keeps the same state in its variable
 bank (`‹linkslot› ‹dblk› ‹adv› ‹dsite› ‹lsite› ‹stubA› ‹stubB› ‹nx› ‹wname›`).
+
+
+### 3.7 W17 runtime cells
+
+W17 takes the next two 64-byte blocks of the `0x432000` headroom,
+4399488–4399615, and two cells of a third.
+
+| Cell | Use |
+|---|---|
+| 4399488 | the collector's limit: `A` runs `‹gc›` when ‹heapstats›'s live bytes (5180104) reach it. 0 (BSS) until `‹_17_init›`, the prelude's last line, so nothing collects during start-up |
+| 4399496 | collections so far |
+| 4399504 | 1 while collecting, and while the SIGSEGV handler fills the implicit page (no collection then) |
+| 4399512 · 4399520 | the block index (an anonymous mmap, sorted payload addresses) and its count, during a collection |
+| 4399528 · 4399536 | the mark stack (a second mmap) and its top, during a collection |
+| 4399544 | blocks freed by collections so far |
+| 4399552 + 8j, j = 0…7 | the large size classes' free-list heads: blocks of exactly 512<<j cells (512 … 65536) |
+| 4399616 | bumped by every pop and push on those lists and by every collection; `⍥` compares it as it compares the eight small heads |
+| 4399640 · 4399648 · 4399656 | `‹_17_scan›`'s end, heap base and bump offset during a collection |
 
 ---
 

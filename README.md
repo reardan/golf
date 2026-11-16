@@ -55,7 +55,7 @@ space, shown as glyphs; `tools/codepage.py` converts glyph/mnemonic source ⇄ r
 bytes and the compiler dispatches any byte in its template table. What it can do
 now, all while the compiler keeps self-hosting to a byte-identical fixpoint:
 
-- **40 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
+- **41 operator atoms** — arithmetic, bitwise/shift, comparison, min/max, signed
   div/mod and ceiling division, shifts, 64-bit fetch/store, `brk`, negate/inc/dec/square/double/halve, popcount/trailing-/leading-zero count/low bit, and a six-argument syscall.
 - a **list type** on a `brk`-grown heap (`[len, e0, …]`, 64-bit cells) with a
   GOLF standard library (`lib/prelude.golfj`): range, len, index, sum, product,
