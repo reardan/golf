@@ -249,6 +249,19 @@ tṀH²⇉←Ṕṭ⍎;
    Aʘ   A①    A②-   ṔL⌊CL⌊KL⌊S8H⌊{(AS⩍←←←←H9⍆sṀM⊘⍁tL⌊⊸H²⍃tSĊ∣   ⎘A9⇉t
 ⌊∸²Ċ	D9ĊsH²⇉H9⍆rṂṔ‹Ṕ⇒Ṕ⑂E1∔A⇣   A⇡   A9⑂ru	E1⍤H²⇉Ṕ⇡+   9∸uH²⇉←H9⍆s⌫⎘²⍃0D9ṖsM⟲⩌I∔H²⇉ṔṾṔ⇒A⇣   ⎘A9⇉t
 ⌊∸²Ċ	D9ĊsH²⇉ṔH9⍆s⍎⎘A9⇉t⌊∸²Ċ	D9ĊrH²⇉ṔṾL⌊∔M⊘⍤u1∔L)∔H⌊H²⑂E1⍁Ṕ♯⍎;
+:‹_nwalk›`109 A[A\\AZAYZ^1⍤Aʘ   I∸Ṃ(I²ℑṔQAS⩍←←←←←←←←←←←←←←H9⍆sĊH⍎FI⌊⍤H²∸L)ṖH∸⍃I⊣H∣H⊘∔yE1∔I)∔L⌊∔ṔL!⍃H²∔H∸ṖH⇉Ṕ∸⍎;
+:‹_nsweep›`203 A[AYZYAʘ   I∸Ṃ(I²ℑA①   I∸⍘)A②   I∸⍂)⟦   ṔQAS⩍←←←←←←←←←←←←←←H9⍀sĊI∣4⍤H²ǦH∣H⊘∔xI⊘⑂tM⍎I!∔L1∔H⌊H²∸Ṕ⍒L!⍃H9⩍r⇣Lʘ⊸I²⍖I∸ḂI⊕⨰∔ O M∣L⌊FL⍎FM⌊H⑂Fṭ①⊥ḊE1∔I)∔L⌊H²∔H∸ṖH)%≣
+O H²,%∔
+O H²%⋄!C ṔḌ⍎;
+:‹_nmm›`61 A[Z^L∣M⌊∸ṔAPAQAS⩍←←←←←←←←←←←←←←H9⍆s⍘H∣L9∔LL∔L9≣LO≣H²⇉ṔṀ⍎;
+:‹_npass›`194 A[YAXAYAZ_Z^M⍎!I²⍷L⍎4⍆1∔M⍎*O⍎<⌫I⌊E I⌊EI²∘←←←←M9ṭwṔL⍎.ṔM⍎*Ṕ)←←←←←←←←←←←←M9Ǧv⍖I∣E L)∔H⍸⍃L!ṖI²⨰I²∘ṔṾM9ṭvI∣E I⌊} H∸ṖH⑂I²∘Ṕ⍘L⍎.ṔAS⩍←←←←←←←←←←←←←←M9Ǧv⍖I∣] H⌊⊟L)∔H⍸⍃L!ṖI∣<⨰H⌊H²⑂I⌊<⨰I²∘Ṕ⍆⍎;
+:‹_ngat›`58 A[Y_ZAYAX^ṔQAS⩍←←←←←←←←←←←←←←H9⍀sĊI∣⍤L9∔sṖH∣⇉H⌊∊H²∸ṔṀ⍎;
+:‹_nwhere›`63 A[_AXZ^ṔWAS⩍←←←←←←←←←←←←←←H9⍆sĊH∣H⊘∔tH⍎L)∔H∸⍃H⌊H²⑂H²⇉Ṕ⎕⍎;
+:‹_nmax›`50 A[AXZ^ṔAPAS⩍←←←←←←←←←←←←←←H9⍆s⍃H∣L9∔LO∔H²⇉←←ṔĊ⍎;
+:‹_nmin›`50 A[AXZ^ṔAPAS⩍←←←←←←←←←←←←←←H9⍆s⍃H∣L9∔LL∔H²⇉←←ṔĊ⍎;
+:‹_nmap1›`114 A[A\\AZZ^A⋄ ±  I²⍃ṔVAS⩍←←←←←←←←←←←←←←H9⍆sĊH∣H⌊⑂H∸ṭ0L9⑂t⍞L⌊ḲM⊘Ṁu
+1⍤H)∸H⌊≣ṔH²ĊuH²∔ṔH²ĊuH²⍃ṔH⟲∔J⌊H²⇉Ṕ‹⍎;
+:‹_npre›`54 A[Y_^1⍁Ṕ1∔PAS⩍1∔H²⍃PAS⩍←←←←←←←←H9⌫sĊH∣⍆H;⍅u⍣H²⨰ṔṔ⍎;
 # === END NATIVE ===
 :‹_lt›﹤;:‹_gt›»;:‹_n›±;:‹_i›⊕;:‹_e›⊖;:‹_d›/;:‹_m›%;:‹_x›⌈;:‹_o›⌊;:‹_q›÷;:‹_r›∣;
 # ‹_2d_chk›  v -> addr   W11-2D: the list-entry mask WITH the use-after-free
@@ -289,7 +302,7 @@ tṀH²⇉←Ṕṭ⍎;
 # path, so the one-index hot path costs nothing more: a tagged js is huge
 # unsigned and always fails `len >u i`.  The result keeps l's text mark.
 ⊡‹_17_gather›⇒j⇒l⇐j‹_2d_chk›⇒j⇐j⊙⇒n⇐n1﹢A⇒r⇐n⇐r⊛0⇒k
- {⇐k⇐n﹣1﹤⋄⇐l⇐j⇐k3≪﹢8﹢⊙I⇐r⇐k3≪﹢8﹢⊛⇐k1﹢⇒k}⇐r32767 48≪|⇐l‹_16_cp›;
+ {⇐k⇐n﹣1﹤⋄⇐l‹_2d_chk›"8﹢&⊙⇐j8﹢⇐n⇐r8﹢⇐k‹_ngat›⇒k_⇐k⇐n﹣1﹤[⇐l⇐j⇐k3≪﹢8﹢⊙I⇐r⇐k3≪﹢8﹢⊛⇐k1﹢⇒k]}⇐r32767 48≪|⇐l‹_16_cp›;
 :I&16\shl16>"4194304\rsub5177396@5177400@\radd4194304\rsub\rlt[“not a list“U‹throw›]\fetch"63≫~$&\gt[
  "48>32767﹣[‹_17_gather›^]
  &‹_2d_chk›_“index out of range“U‹throw›]
@@ -989,7 +1002,7 @@ tṀH²⇉←Ṕṭ⍎;
 :‹startswith›X16\shl16>5177496\store16\shl16>5177440\store
  5177496\fetch\fetch5177456\store0 5177448\store
  5177440\fetch\fetch5177456\fetch\rlt~5177472\store
- 5177456\fetch1﹤5177472\fetch~|[{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177496\fetch5177448\fetch8\rmul\radd8\radd\fetch﹣1﹤5177472\fetch$5177472\store5177448\fetch1\radd"5177448\store5177456\fetch\rlt5177472\fetch$1\radd}]
+ 5177472\fetch[⋄5177440\fetch8\radd5177496\fetch8\radd5177456\fetch‹_npre›5177472\store]
  5177472\fetch1\radd Y;
 # ‹joinwith›: T(sep) (1 = an int) stays on the data stack; an int sep becomes
 # the one-element list `sep 1R\vadd` (given back by ⌫ at the end).  The total
@@ -2167,10 +2180,10 @@ tṀH²⇉←Ṕṭ⍎;
  ‹_2d_chk›"\fetch"1\radd A"5180880\store\store5180880\fetch&\rsub5180880\store"\fetch8\rmul&\radd8\radd5180872\store
  5180880\fetch\radd32767 48\shl|"16\shl16>5180880\fetch\rsub8\radd;
 :‹_13c_end›_‹_12a8_get›5180880\store‹_12a8_get›5180872\store;
-:‹_13c_neg›‹_13c_set›"5180872\fetch﹣[⋄{"\fetch‹_n›&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
-:‹_13c_inc›‹_13c_set›"5180872\fetch﹣[⋄{"\fetch‹_i›&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
-:‹_13c_dec›‹_13c_set›"5180872\fetch﹣[⋄{"\fetch‹_e›&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
-:‹_13c_sqr›‹_13c_set›"5180872\fetch﹣[⋄{"\fetch\sqr&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
+:‹_13c_neg›‹_13c_set›5180872\fetch5180880\fetch0‹_nmap1›"5180872\fetch﹣[⋄{"\fetch‹_n›&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
+:‹_13c_inc›‹_13c_set›5180872\fetch5180880\fetch1‹_nmap1›"5180872\fetch﹣[⋄{"\fetch‹_i›&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
+:‹_13c_dec›‹_13c_set›5180872\fetch5180880\fetch2‹_nmap1›"5180872\fetch﹣[⋄{"\fetch‹_e›&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
+:‹_13c_sqr›‹_13c_set›5180872\fetch5180880\fetch3‹_nmap1›"5180872\fetch﹣[⋄{"\fetch\sqr&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
 :‹_13c_dbl›‹_13c_set›"5180872\fetch﹣[⋄{"\fetch\dbl&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
 :‹_13c_hlv›‹_13c_set›"5180872\fetch﹣[⋄{"\fetch\hlv&5180880\fetch\radd\store8\radd"5180872\fetch﹣1﹤}]‹_13c_end›;
 #
@@ -2182,9 +2195,9 @@ tṀH²⇉←Ṕṭ⍎;
 # included, which the polymorphic ⌈ ⌊ would take for lists).  Empty:
 # `empty reduce` through ‹throw›, as ⍁.
 :\lmax‹_2d_chk›"\fetch"[_“empty reduce“U‹throw›]8\rmul&\radd8\radd5180888\store8\radd"\fetch5180896\store8\radd
- "5180888\fetch﹣1﹤[{"\fetch"5180896\fetch&&»==63≫1\radd[5180896\store0]_8\radd"5180888\fetch﹣1﹤}]_5180896\fetch;
+ 5180888\fetch5180896\fetch‹_nmax›;
 :\lmin‹_2d_chk›"\fetch"[_“empty reduce“U‹throw›]8\rmul&\radd8\radd5180888\store8\radd"\fetch5180896\store8\radd
- "5180888\fetch﹣1﹤[{"\fetch"5180896\fetch&&﹤==63≫1\radd[5180896\store0]_8\radd"5180888\fetch﹣1﹤}]_5180896\fetch;
+ 5180888\fetch5180896\fetch‹_nmin›;
 # ⍘ (0xE6)  l -> tail head   `1↓` and `0⊇`; empty: `empty list` (‹throw›).
 :\uncons"‹_2d_chk›\fetch[“empty list“U‹throw›]"0I5180888\store1\drop5180888\fetch;
 # ⍂ (0xE7)  l ′f -> l'   the right scan, by definition ⌽ then ′f⍀ then ⌽: so
@@ -3738,7 +3751,7 @@ tṀH²⇉←Ṕṭ⍎;
  {⇐i⇐e<~⋄⇐i⊙⇒x⇐i⇒j{⇐j⇐b﹣[1⋄⇐j8﹣⊙⇐x&&»==63≫1﹢]⋄⇐j8﹣⊙⇐j⊛⇐j8﹣⇒j}⇐x⇐j⊛⇐i8﹢⇒i};
 ⊡‹_15_gins›⇒k"8﹢⇒b⊙3≪⇐b﹢⇒e⇐b8﹢⇒i
  {⇐i⇐e<~⋄⇐i⊙⇒x⇐x3≪⇐k﹢⊙⇒y⇐i⇒j{⇐j⇐b﹣[1⋄⇐j8﹣⊙3≪⇐k﹢⊙⇐y&&»==63≫1﹢]⋄⇐j8﹣⊙⇐j⊛⇐j8﹣⇒j}⇐x⇐j⊛⇐i8﹢⇒i};
-⊡‹_15_mm›⇒e"⊙"⇒m⇒x{"⇐e﹣1﹤⋄"⊙⇒v⇐v⇐m&&﹤==63≫1﹢[⇐v⇒m]⇐v⇐x&&»==63≫1﹢[⇐v⇒x]8﹢}_⇐m⇐x;
+:‹_15_mm›‹_nmm›;
 ⊡‹_15_radix›⇒n8﹢⇒f
  ⇐f⇐n3≪⇐f﹢‹_15_mm›&﹣⇒r⇒m
  ⇐r[⇐f8﹣‹_13e_copy›^]
@@ -3747,10 +3760,7 @@ tṀH²⇉←Ṕṭ⍎;
  0⇒h0⇒t0⇒i
  {⇐r⇐h>1﹤⇐h64﹣1﹤|⋄
   ⇐i1$[⇐d⇒o⋄⇐t[⇐n1﹢A⇒t⇐n⇐t⊛]⇐t⇒o]⇐o8﹢⇒g
-  ⇐c⇐k3≪&﹢⇒z{"⇐z﹣1﹤⋄0&⊛8﹢}_
-  ⇐f⇐n3≪&﹢⇒z{"⇐z﹣1﹤⋄"⊙⇐m﹣⇐h>⇐k1﹣$3≪⇐c﹢⇒u⇐u⊙1﹢⇐u⊛8﹢}_
-  ⇐g⇒u⇐c{"⇐c⇐k3≪﹢﹣1﹤⋄"⊙3≪⇒z⇐u&⊛⇐u⇐z﹢⇒u8﹢}_
-  ⇐f⇐n3≪&﹢⇒z{"⇐z﹣1﹤⋄"⊙"⇐m﹣⇐h>⇐k1﹣$3≪⇐c﹢⇒u⇐u⊙⊛⇐u⊙8﹢⇐u⊛8﹢}_
+  ⇐f⇐n⇐g⇐c⇐k⇐m⇐h‹_npass›
   ⇐g⇒f⇐h⇐w﹢⇒h⇐i1﹢⇒i}
  ⇐c⌫⇐o⇐d﹣[⇐t[⋄⇐t⌫]⋄⇐d⌫]⇐o;
 ⊡‹_15_gradix›⇒n⇒k⇒t
@@ -3844,7 +3854,7 @@ tṀH²⇉←Ṕṭ⍎;
 ⊡‹_15_zd›⇒o⇒f⇒b⇒a⇐a T⇐b T|[⇐a⇐b⇐f⇐o^]⇐a⇐b⇐f‹_15_bz›0;
 # ‹where›  l -> idx   the indices of the non-zero elements, ascending.
 ⊡‹where›‹_2d_chk›"⊙⇒n8﹢⇒p⇐n‹_13e_new›"⇒r8﹢"⇒b⇒d⇐n3≪⇐p﹢⇒e⇐p⇒s
- {⇐p⇐e﹣1﹤⋄⇐p⊙[⋄⇐p⇐s﹣3≫⇐d⊛⇐d8﹢⇒d]⇐p8﹢⇒p}
+ ⇐p⇐e⇐s⇐d‹_nwhere›⇒d
  ⇐d⇐b﹣3≫⇐r⊛⇐r‹_13e_tag›;
 # ‹gdist›  g src wall -> dist   multi-source BFS over a grid (a list of
 # rows): the 4-neighbour step count from the nearest cell equal to `src`,
@@ -4219,7 +4229,7 @@ tṀH²⇉←Ṕṭ⍎;
  ⇐z‹_17_map›⇒x⇐z‹_17_map›⇒y⇐z4>12≫1﹢12≪⇒b⇐b‹_17_map›⇒w
  ⇐x63≫⇐y63≫|⇐w63≫|[⋄0 4399504⊛^]⇐w4399664⊛
  5177396@⇒p⇐p5177344@﹢⇒e0⇒k
- {⇐p⇐e<1﹢⋄⇐p8﹢⇐x⇐k3≪﹢⊛⇐p8﹢‹_17_bp›⇒q⇒t⇐t⊙⇐q|⇐t⊛⇐k1﹢⇒k⇐p⊙"63≫[24≪24>⋄‹_n›]1﹢3≪⇐p﹢⇒p}
+ ⇐p⇐e⇐x⇐w5177396@‹_nwalk›⇒k
  ⇐x4399512⊛⇐k4399520⊛⇐y4399528⊛⇐y4399536⊛
  ⇐d4399432⊙"[_5177408⊙⋄4399424⊙[⋄4096﹢]]‹_17_scan›
  ⇐r6291456‹_17_scan›
@@ -4229,9 +4239,24 @@ tṀH²⇉←Ṕṭ⍎;
  5177344 5181440‹_17_scan›
  {4399536⊙4399528⊙﹣1﹤⋄4399536⊙8﹣"4399536⊛⊙⇒s⇐s1$⇒f⇐s1~$⇒s⇐s8﹣⊙24≪24>⇒c
   ⇐f[⇐s⊙1﹢⇐c⊓⇒c⋄]⇐s"⇐c3≪﹢‹_17_scan›}
- 0⇒j{⇐j⇐k﹣1﹤⋄⇐x⇐j3≪﹢⊙⇒s⇐s8﹣⊙⇒c
-  ⇐c63≫[⇐c41>1$[⇐s⌫4399544⊙1﹢4399544⊛⋄⇐c3 41≪~$⇐s8﹣⊛]⋄]⇐j1﹢⇒j}
+ 0⇒j{⇐j⇐k﹣1﹤⋄⇐j⇐k⇐x‹_nsweep›⇒j⇐j⇐k﹣1﹤[⇐x⇐j3≪﹢⊙⌫4399544⊙1﹢4399544⊛⇐j1﹢⇒j]}
  ⇐x⇐z‹_17_unmap›⇐y⇐z‹_17_unmap›⇐w⇐b‹_17_unmap›
  5180104⊙"1≪67108864‹_x›﹢4399488⊛4399496⊙1﹢4399496⊛4399616⊙1﹢4399616⊛0 4399504⊛;
 :‹_17_init›5180104⊙67108864﹢4399488⊛;
 ‹_17_init›
+
+# --- W18 built-ins ---
+# ‹spiral›  g -> l   ʘ⟲   the cells of the grid g (a list of rows, every row
+# at least as long as the first) in clockwise spiral order from the top-left,
+# O(cells): the top row left to right, the right column down, the bottom row
+# right to left, the left column up, then the same one ring in.
+⊡‹spiral›⇒g0⍳⇒o⇐g≢⇒m⇐m[⇐o^]⇐g0⊇≢⇒n0⇒t⇐m1﹣⇒b0⇒l⇐n1﹣⇒r
+ {⇐t⇐b≻⇐l⇐r≻|⋄
+  ⇐l⇒j{⇐j⇐r≻⋄⇐o⇐g⇐t⊇⇐j⊇⍆⇒o⇐j1﹢⇒j}
+  ⇐t1﹢⇒i{⇐i⇐b≻⋄⇐o⇐g⇐i⊇⇐r⊇⍆⇒o⇐i1﹢⇒i}
+  ⇐t⇐b≺⇐l⇐r≺$[⋄
+   ⇐r1﹣⇒j{⇐l⇐j≻⋄⇐o⇐g⇐b⊇⇐j⊇⍆⇒o⇐j1﹣⇒j}
+   ⇐b1﹣⇒i{⇐t⇐i≺1﹢⋄⇐o⇐g⇐i⊇⇐l⊇⍆⇒o⇐i1﹣⇒i}]
+  ⇐t1﹢⇒t⇐b1﹣⇒b⇐l1﹢⇒l⇐r1﹣⇒r}
+ ⇐o;
+:‹_dgAF›‹spiral›;
