@@ -100,6 +100,9 @@ A	AD	lsb	⊥	x -> x & -x, the lowest set bit (0 for 0) (a list: elementwise, any
 
 # W14-A: the six-argument syscall
 A	AE	scall	⌁	a1 a2 a3 a4 a5 a6 num -> result: raw six-argument syscall
+# W17: rotate, the last byte of the 0xA8-0xAF headroom (folds with two
+# accumulators hand their function three values)
+A	AF	rot	⟲	a b c -> b c a: rotate the third item to the top
 
 # --- COMPILER OPS.  Not atoms: no template, the compiler handles each
 # byte itself (a case in self/golf2.golfj, self/seed.golfv1 and
@@ -139,7 +142,7 @@ C	BF	intwo	②	line 2 of the input, typed like ①
 L	52	range	⍳	range(n) -> [0..n-1]
 L	53	sum	∑	sum(list)
 L	4C	len	≢	len(list)
-L	49	index	⊇	index(list, i)
+L	49	index	⊇	index(list, i); a list of indices gathers: l js -> [l[j] for j in js] (W17)
 L	41	alloc	⍶	alloc(cells) -> addr
 L	4E	num	Ṅ	print signed decimal
 L	45	nl	␤	print newline

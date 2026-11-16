@@ -241,7 +241,7 @@ lower its number.
 | bsts | 14 |
 | consec | 13 |
 | gas | 17 |
-| wordbreak | 46 |
+| wordbreak | 43 |
 | rpn | 41 |
 | maxprod | 12 |
 | largest | 29 |
@@ -268,7 +268,7 @@ lower its number.
 | validparens | 22 |
 | firstmiss | 11 |
 | wildcard | 35 |
-| minwindow | 56 |
+| minwindow | 52 |
 | histogram | 17 |
 | maxrect | 32 |
 | distinct | 25 |
@@ -283,7 +283,7 @@ lower its number.
 | splitarr | 36 |
 | revpairs | 46 |
 
-Total 1943: the first twenty 161, the eighty after them 1,782 (P100).
+Total 1936: the first twenty 161, the eighty after them 1,775 (P100 1,782, less 7 from W17's gather in `minwindow` and `wordbreak`).
 The first twenty: the first ten 58 (115 before W16's rewrite, 177 before W15's,
 411 before W13-F's, 655 before W12-6's, 898 at the baseline above), the
 second ten 103 (124 before W16, 326 before W15).
@@ -551,23 +551,22 @@ is linear), and `water` uses the sorted order rather than two pointers.
 
 Most costly first, counted over the eighty notes:
 
-1. **Two bugs.** A list word given an int segfaults instead of raising an
-   error (`5≢`; `①⍕` on the input `5`). A program using `⎕` together with
-   `①`/`②` segfaults for inputs of about 95k–102k bytes (`⎕①≢` on 100,000
-   `a`s, exit 139; 90k and 110k work). And an int that wraps into the list
-   band `[0x7FFF<<48, 2^63)` crashes the polymorphic `+ - *`
-   (`9223090561878065152 1+Ṅ`), so `distinct` reduces mod 2^31 every step.
-2. **No gather and no list literal.** `⊇` takes one index only; gathers cost
-   a block per element (`roman`, `wordbreak`, `minwindow`, `palsubs`,
-   `longpalsub`), and a small lookup table cost 23 of `roman`'s 32 bytes.
-3. **One accumulator, no rotate.** Folds and scans carry one value, nothing
-   reaches three deep, and blocks cannot write locals, so multi-state DPs
-   (`decode`, `cooldown`, `rob`, `stairs`) and counters (`arrows`,
-   `threesum`, `splitarr`, `calc`) go through globals or `⊡` words.
-4. **Temporaries are never freed** (`spiral`, `charrep`, `balloons`: hundreds
-   of MB), and **`‹slice›` is O(length − i)** rather than O(n) (it is `↓`
-   then `↑`; `1000000⍳→l 0 20000⍳⟦←l\\1‹slice›∑+⟧€_` takes 4.1 s against
-   0.13 s with `⊇`).
+1. **Two bugs.** *Fixed in W17:* `5≢` and `①⍕` on an int now throw
+   `not a list`, `⎕①≢` works at any size, and an int in the old list band is
+   just an int (the list test checks the address too). Before: a list word
+   given an int segfaulted, `⎕` with `①`/`②` segfaulted for inputs of about
+   95k–102k bytes, and `9223090561878065152 1+Ṅ` crashed.
+2. **No gather and no list literal.** *Gather fixed in W17:* `⊇` with a list
+   of indices gathers (`minwindow` and `wordbreak` now use it). There is still
+   no list literal; a small lookup table cost 23 of `roman`'s 32 bytes.
+3. **One accumulator, no rotate.** *Fixed in W17:* `ʘ&` (‹fold2›) and `ʘ^`
+   (‹scan2›) carry two accumulators, and `⟲` rotates the top three. Before,
+   multi-state DPs (`decode`, `cooldown`, `rob`, `stairs`) and counters
+   (`arrows`, `threesum`, `splitarr`, `calc`) went through globals or `⊡` words.
+4. **Temporaries are never freed, and `‹slice›` is O(length − i).** *Fixed in
+   W17:* a conservative mark-sweep collector runs from `A` (spiral 646 MB →
+   about 50 MB), and `‹slice›` copies only its k cells
+   (`1000000⍳→l 0 20000⍳⟦←l\\1‹slice›∑+⟧€_` 4.1 s → 0.02 s).
 5. **No shift-right-with-fill or prepend**: `1⍳\\⧺`, `0⍆`, `1⍳⧺⌽0⍆` recur in
    `square`, `candy`, `distinct`, `wildcard`, `edit`, `histogram`,
    `maxrect`, `targetsum`, `plusone`.
@@ -589,3 +588,67 @@ Most costly first, counted over the eighty notes:
    `‹isqrt›`, `‹nextsmaller›`/`‹prevsmaller›`, `‹slice›`; and no select atom,
    no "between", no repeat-n-times adverb, `Ṁ Ṃ` throw on empty, `⊇` takes no
    negative index, and `⟦…⟧⍀⥮` starts no derived verb after a `⟧`.
+
+## W17: the four gaps, and why 21 are slower than Python (2026-11-16)
+
+W17 added a gather (`⊇` with a list of indices), two-accumulator folds and
+scans (`ʘ&` ‹fold2›, `ʘ^` ‹scan2›) with a rotate atom `⟲`, an O(k)
+`‹slice›`, a conservative mark-and-sweep collector, and the three crash fixes
+listed under the gaps above.
+
+**Why 21 were slower.** Each one was re-measured and profiled. Five are
+brute force (a, a worse algorithm picked for bytes), nine are implementation
+costs in the prelude (b), and seven are noise (c: Golf ties or wins on a
+re-measure). Times are the best of 3 wall seconds on the full input, on the
+same container, for `main` before W17, this branch, and Python; peak is RSS
+in MB.
+
+| problem | class | main s | W17 s | Python s | peak MB | culprit |
+|---|---|---|---|---|---|---|
+| `spiral` | a | 0.972 | 0.935 | 0.075 | 631 → 125 | peel-and-rotate is O(mn(m+n)); an O(mn) walk costs +71 B |
+| `charrep` | a | 0.668 | 0.614 | 0.109 | 393 → 265 | O(26n) vectorised; a two-pointer loop (0.03 s) costs +71 B |
+| `wordbreak` | a | 0.700 | 0.764 | 0.208 | 192 → 71 | tries all 40 words at every position; now gathers its windows |
+| `minwindow` | a | 0.666 | 0.720 | 0.239 | 342 → 184 | O(n·distinct) vectorised; the emulated gather is now ⊇ |
+| `revpairs` | a | 1.429 | 0.384 | 0.849 | 177 → 61 | O(n log² n) bisect per element; the collector's block reuse cut page faults |
+| `lastword` | b | 0.509 | 0.667 | 0.130 | 202 → 202 | ‹words› builds 1.2M lists to keep one |
+| `roman` | b | 0.354 | 0.564 | 0.188 | 145 → 107 | 2 temporaries per character; a gathered table costs +4 B |
+| `ladder` | b | 1.758 | 2.412 | 0.612 | 196 → 204 | dict with list keys; ‹hash› is ~1 µs per key |
+| `anagram` | b | 0.292 | 0.306 | 0.151 | 84 → 83 | ② reads a 2M-letter line slowly |
+| `largest` | b | 0.531 | 0.577 | 0.296 | 156 → 88 | ⧺ and ↑ on tiny lists per number |
+| `balloons` | b | 0.390 | 0.362 | 0.303 | 259 → 150 | ↓ copies and elementwise ops at ~9 ns per cell |
+| `longpal` | b | 0.240 | 0.337 | 0.196 | 81 → 81 | ⍋ radix-sorts 5M letters that a counting sort would do |
+| `majority` | b | 0.250 | 0.297 | 0.232 | 56 → 55 | dict of 500k keys; `⍋"≢⊘⊇` would be faster |
+| `dupe` | b | 0.268 | 0.312 | 0.300 | 49 → 49 | hash set in X/Y scratch cells |
+| `dedup` | c | 0.212 | 0.337 | 0.314 | 73 → 73 | noise: Golf ties or wins on a re-measure |
+| `plusone` | c | 0.148 | 0.142 | 0.189 | 71 → 71 | noise: Golf ties or wins on a re-measure |
+| `water` | c | 0.327 | 0.334 | 0.384 | 75 → 76 | noise: Golf ties or wins on a re-measure |
+| `rpn` | c | 0.279 | 0.440 | 0.319 | 86 → 86 | noise: Golf ties or wins on a re-measure |
+| `provinces` | c | 0.189 | 0.235 | 0.269 | 107 → 108 | noise: Golf ties or wins on a re-measure |
+| `firstuniq` | c | 0.187 | 0.173 | 0.183 | 78 → 78 | noise: Golf ties or wins on a re-measure |
+| `median` | c | 0.152 | 0.170 | 0.155 | 45 → 45 | noise: Golf ties or wins on a re-measure |
+| **21** | | **10.52** | **11.08** | **5.70** | **3498 → 2262** | |
+
+**What W17 changed.** Memory fell by a third over these 21 (3498 → 2262 MB;
+`spiral` 631 → 125 MB, `wordbreak` 192 → 71, `balloons` 259 → 150). `revpairs`
+became 3.7× faster than before, because blocks are reused instead of
+faulting in fresh pages. Only `minwindow` and `wordbreak` could take a
+shorter gather rewrite under their byte ceilings.
+
+**The trade-off.** A collection costs about 5 ns for every live cell it
+scans. The first collection waits until 64 MB have been allocated, and each
+later one until twice the live heap has been, so a program that stays under
+64 MB never collects. A program that passes 64 MB with most of its data
+still live pays for one or two scans for nothing: `rpn`, `roman`, `longpal`,
+`dedup` and `ladder` lose 0.05–0.65 s. Over the 21 the total went from
+10.52 s to 11.08 s. With a 256 MB first step instead, the total is
+10.74 s and the memory 3,120 MB: the speed comes back and the memory win
+goes, along with the `revpairs` gain. The step is the limit cell 4399488,
+so a program can raise it.
+
+**What would close the remaining gap** (none of it costs bytes): a native
+memcpy behind `↑ ↓ ⧺` (copies run at 6–12 ns per cell), pointer loops for
+elementwise `+ - * ⌈ ⌊` (about 9 ns per cell now), a cheaper list `‹hash›`
+(`ladder`), a counting-sort path in `⍋` (`longpal`), and a one-pass
+`‹words›` (`lastword`, `rpn`). The brute-force five need longer solutions,
+which the byte ceilings rule out. The measured loops (`charrep` 0.03 s,
+`spiral` 0.04 s) show that the algorithms themselves are fast in Golf.
