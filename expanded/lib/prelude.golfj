@@ -234,7 +234,7 @@
 # W17: one out-of-line copy of each polymorphic atom the long-named words use
 # (each inline copy is 26 to 130 bytes of template; a call is 5), so the
 # whole prelude fits the 192 KB image.  Same atoms, same semantics.
-:‹_n›±;:‹_i›⊕;:‹_e›⊖;:‹_d›/;:‹_m›%;:‹_x›⌈;:‹_o›⌊;:‹_q›÷;:‹_r›∣;
+:‹_lt›﹤;:‹_gt›»;:‹_n›±;:‹_i›⊕;:‹_e›⊖;:‹_d›/;:‹_m›%;:‹_x›⌈;:‹_o›⌊;:‹_q›÷;:‹_r›∣;
 # ‹_2d_chk›  v -> addr   W11-2D: the list-entry mask WITH the use-after-free
 # check — `16\shl16>` (strip the tag, or Q's 0x7FFE marker) and then, if the
 # length cell holds ⌫'s poison -559038737, `GOLF: use after free` via
@@ -941,11 +941,11 @@
 #   v1 = (c-48) | (~((c-48) <u 10) & 99)     v2 = ((c|32)-87) likewise for 10..15
 #   v = v1 \rmin v2, a digit iff v <u 16 (99|x is >= 96, so a miss never fits)
 :‹parsehex›X16\shl16>"5177440\store\fetch5177456\store0 5177448\store0 5177496\store0 5177472\store
- {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32﹣1﹤23‹_n›$\radd9\rsub5\rlt~]"[5177448\fetch1\radd5177448\store]}
- 5177448\fetch5177456\fetch\rlt1\radd[5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch45﹣1﹤"5177496\store
-  5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch43﹣1﹤|‹_n›5177448\fetch\radd5177448\store]
- {5177448\fetch5177456\fetch\rlt~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177488\store
-   5177488\fetch48\rsub"10\rlt~99$|5177488\fetch32|87\rsub"10\rsub6\rlt~99$|\rmin"5177464\store16\rlt~]"[
+ {5177448\fetch5177456\fetch‹_lt›~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch"32﹣1‹_lt›23‹_n›$\radd9\rsub5‹_lt›~]"[5177448\fetch1\radd5177448\store]}
+ 5177448\fetch5177456\fetch‹_lt›1\radd[5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch45﹣1‹_lt›"5177496\store
+  5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch43﹣1‹_lt›|‹_n›5177448\fetch\radd5177448\store]
+ {5177448\fetch5177456\fetch‹_lt›~"[_5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch5177488\store
+   5177488\fetch48\rsub"10‹_lt›~99$|5177488\fetch32|87\rsub"10\rsub6‹_lt›~99$|\rmin"5177464\store16‹_lt›~]"[
   5177472\fetch4\shl5177464\fetch\radd5177472\store5177448\fetch1\radd5177448\store]}
  5177472\fetch5177496\fetch1\radd[‹_n›]Y;
 # ‹split›: pass 1 counts the seps (s6), R(count+1) is the result (s4 masked,
@@ -984,13 +984,13 @@
  5177496\fetch T
  5177496\fetch"T1\rsub[1R\vadd]16\shl16>5177496\store
  5177440\fetch\fetch5177456\store0 5177488\store0 5177448\store
- 5177456\fetch[⋄{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch16\shl16>\fetch5177488\fetch\radd5177488\store5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}
+ 5177456\fetch[⋄{5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch16\shl16>\fetch5177488\fetch\radd5177488\store5177448\fetch1\radd"5177448\store5177456\fetch‹_lt›1\radd}
   5177456\fetch1\rsub5177496\fetch\fetch\rmul5177488\fetch\radd5177488\store]
  5177488\fetch R"16\shl16>5177472\store
  0 5177488\store0 5177448\store
  5177456\fetch[⋄{5177448\fetch[⋄5177472\fetch5177488\fetch5177496\fetch‹_1d_put›5177488\store]
   5177472\fetch5177488\fetch5177440\fetch5177448\fetch8\rmul\radd8\radd\fetch‹_1d_put›5177488\store
-  5177448\fetch1\radd"5177448\store5177456\fetch\rlt1\radd}]
+  5177448\fetch1\radd"5177448\store5177456\fetch‹_lt›1\radd}]
  &1\rsub[5177496\fetch\free]5177472\store_5177472\fetch Y;
 # ‹pad›: p = max(w - len, 0) spaces into R(len + p), then the list after them.
 # s0 list · s2 w · s3 p · s1 i · s4 result (masked).
@@ -2026,16 +2026,16 @@
 :‹_12a8_ist›0 5181344\store1 5181352\store
  {‹_12p1_avail›1\rsub[1^]
   5177424\fetch"8\radd\fetch\radd16\radd"5181336\store0&,_
-  5177424\fetch"\fetch\radd16\radd{"?"32﹣1﹤23‹_n›$\radd9\rsub"4\gt[_‹_i›0]}
+  5177424\fetch"\fetch\radd16\radd{"?"32﹣1‹_lt›23‹_n›$\radd9\rsub"4‹_gt›[_‹_i›0]}
   5177424\fetch\rsub16\rsub5177424\fetch\store
-  5177424\fetch\fetch5177424\fetch8\radd\fetch\rlt}
+  5177424\fetch\fetch5177424\fetch8\radd\fetch‹_lt›}
  5177424\fetch"\fetch\radd16\radd
- "?45\gt["?5181360\store5181360\fetch45﹣1﹤"‹_i›5181352\store5181360\fetch43﹣1﹤|‹_n›\radd]
- {"?48\rsub"9\gt[5181344\fetch10\rmul\radd5181344\store‹_i›0]}
- {"5181336\fetch﹣\else‹_12a8_rf›{"?48\rsub"9\gt[5181344\fetch10\rmul\radd5181344\store‹_i›0]}}
+ "?45‹_gt›["?5181360\store5181360\fetch45﹣1‹_lt›"‹_i›5181352\store5181360\fetch43﹣1‹_lt›|‹_n›\radd]
+ {"?48\rsub"9‹_gt›[5181344\fetch10\rmul\radd5181344\store‹_i›0]}
+ {"5181336\fetch﹣\else‹_12a8_rf›{"?48\rsub"9‹_gt›[5181344\fetch10\rmul\radd5181344\store‹_i›0]}}
  32 5181336\fetch,
- {"?"32﹣1﹤23‹_n›$\radd9\rsub5\rlt"[_‹_i›0]}
- {"5181336\fetch﹣\else‹_12a8_rf›{"?"32﹣1﹤23‹_n›$\radd9\rsub5\rlt"[_‹_i›0]}}
+ {"?"32﹣1‹_lt›23‹_n›$\radd9\rsub5‹_lt›"[_‹_i›0]}
+ {"5181336\fetch﹣\else‹_12a8_rf›{"?"32﹣1‹_lt›23‹_n›$\radd9\rsub5‹_lt›"[_‹_i›0]}}
  5177424\fetch\rsub16\rsub5177424\fetch\store
  5181344\fetch5181352\fetch[‹_n›]0;
 :‹sints›\ref\free\ref‹_12a8_ist›2‹_12a8_mk›;
@@ -2540,11 +2540,11 @@
 # just 1 when there is a cycle (the order is freed): ⍞'s convention, so
 # `‹toposort›[⍕]` prints an order or nothing.
 ⊡‹toposort›‹_2d_chk›"⊙⇒n8﹢⇒a⇐n‹_13e_new›0‹_13e_fill›"⇒g8﹢⇒c⇐a⇒r⇐n3≪⇐a﹢⇒z
- {⇐r⇐z﹣1﹤⋄⇐r⊙16≪16>"8﹢⇒p⊙3≪⇐p﹢⇒e{⇐p⇐e﹣1﹤⋄⇐p⊙3≪⇐c﹢⇒w⇐w⊙1﹢⇐w⊛⇐p8﹢⇒p}⇐r8﹢⇒r}
+ {⇐r⇐z﹣1‹_lt›⋄⇐r⊙16≪16>"8﹢⇒p⊙3≪⇐p﹢⇒e{⇐p⇐e﹣1‹_lt›⋄⇐p⊙3≪⇐c﹢⇒w⇐w⊙1﹢⇐w⊛⇐p8﹢⇒p}⇐r8﹢⇒r}
  ⇐n‹_13e_new›"⇒o8﹢"⇒h⇒t0⇒i
- {⇐i⇐n﹣1﹤⋄⇐i3≪⇐c﹢⊙[⇐i⇐t⊛⇐t8﹢⇒t]⇐i1﹢⇒i}
- {⇐h⇐t﹣1﹤⋄⇐h⊙⇐h8﹢⇒h3≪⇐a﹢⊙16≪16>"8﹢⇒p⊙3≪⇐p﹢⇒e
-  {⇐p⇐e﹣1﹤⋄⇐p⊙"⇒v3≪⇐c﹢⇒y⇐y⊙1﹣"⇒w⇐y⊛⇐w[⇐v⇐t⊛⇐t8﹢⇒t]⇐p8﹢⇒p}}
+ {⇐i⇐n﹣1‹_lt›⋄⇐i3≪⇐c﹢⊙[⇐i⇐t⊛⇐t8﹢⇒t]⇐i1﹢⇒i}
+ {⇐h⇐t﹣1‹_lt›⋄⇐h⊙⇐h8﹢⇒h3≪⇐a﹢⊙16≪16>"8﹢⇒p⊙3≪⇐p﹢⇒e
+  {⇐p⇐e﹣1‹_lt›⋄⇐p⊙"⇒v3≪⇐c﹢⇒y⇐y⊙1﹣"⇒w⇐y⊛⇐w[⇐v⇐t⊛⇐t8﹢⇒t]⇐p8﹢⇒p}}
  ⇐g⌫⇐t⇐o﹣8﹣3≫⇐n﹣[⇐o‹_13e_tag›0⋄⇐o⌫1];
 # ‹dijkstra›  wadj s -> dist   shortest distances from s over a weighted
 # adjacency list (rows v w v w …, from ‹wadj› / ‹dwadj›), weights >= 0; -1
@@ -2585,11 +2585,11 @@
 ⊡‹gcomps›⇒f‹_2d_chk›⇒g⇐g⊙⇒r⇐r[0^]⇐g8﹢⊙‹_2d_chk›⊙⇒c
  ⇐c2﹢"⇒w3≪⇒y⇐r2﹢⇐w﹡‹_13e_new›1‹_13e_fill›8﹢⇒m
  ⇐g8﹢⇒q⇐r3≪⇐q﹢⇒z⇐m⇐y﹢8﹢⇒t
- {⇐q⇐z﹣1﹤⋄⇐q⊙‹_2d_chk›"⊙⇐c⊓3≪&﹢8﹢⇒e8﹢⇒s⇐t⇒h
-  {⇐s⇐e﹣1﹤⋄⇐s⊙⇐f⍎[0⇐h⊛]⇐s8﹢⇒s⇐h8﹢⇒h}⇐q8﹢⇒q⇐t⇐y﹢⇒t}
+ {⇐q⇐z﹣1‹_lt›⋄⇐q⊙‹_2d_chk›"⊙⇐c⊓3≪&﹢8﹢⇒e8﹢⇒s⇐t⇒h
+  {⇐s⇐e﹣1‹_lt›⋄⇐s⊙⇐f⍎[0⇐h⊛]⇐s8﹢⇒s⇐h8﹢⇒h}⇐q8﹢⇒q⇐t⇐y﹢⇒t}
  ⇐r⇐c﹡1﹢A⇒b0⇒k⇐m⇐y﹢8﹢⇒s⇐r⇐y﹡⇐s﹢⇒e
- {⇐s⇐e﹣1﹤⋄⇐s⊙[⇐k1﹢⇒k1⇐s⊛⇐s⇐b⊛⇐b8﹢⇒t
-   {⇐t⇐b﹣1﹤⋄⇐t8﹣"⇒t⊙⇒u
+ {⇐s⇐e﹣1‹_lt›⋄⇐s⊙[⇐k1﹢⇒k1⇐s⊛⇐s⇐b⊛⇐b8﹢⇒t
+   {⇐t⇐b﹣1‹_lt›⋄⇐t8﹣"⇒t⊙⇒u
     ⇐u8﹣"⊙[1&⊛⇐t⊛⇐t8﹢⇒t⋄_]⇐u8﹢"⊙[1&⊛⇐t⊛⇐t8﹢⇒t⋄_]
     ⇐u⇐y﹣"⊙[1&⊛⇐t⊛⇐t8﹢⇒t⋄_]⇐u⇐y﹢"⊙[1&⊛⇐t⊛⇐t8﹢⇒t⋄_]}]
   ⇐s8﹢⇒s}
@@ -3054,20 +3054,20 @@
 :‹_14b_close›0 0 3⎈_;
 :‹_14b_envp›5177408⊙"⊙3≪﹢16﹢;
 ⊡‹_14b_path›‹_14b_envp›⇒e
- {e⊙1﹤⋄e⊙⇒s s@1213481296﹣[s4﹢?61﹣[s5﹢⇒s0⇒n{s n﹢?1﹤⋄⇡n}s n‹_1b_tolist›^]]e8﹢⇒e}
+ {e⊙1‹_lt›⋄e⊙⇒s s@1213481296﹣[s4﹢?61﹣[s5﹢⇒s0⇒n{s n﹢?1‹_lt›⋄⇡n}s n‹_1b_tolist›^]]e8﹢⇒e}
  “/bin:/usr/bin“U;
 ⊡‹_14b_cand›⇒d"⇒a d≢[“.“U⇒d]d“/“U"⇒u⧺"⇒t a⧺⇒w w‹_1b_tobytes›w⌫t⌫u⌫;
-⊡‹_14b_frees›"⇒l≢⇒n0⇒i{i n﹣1﹤⋄l i⊇⌫⇡i}l⌫;
+⊡‹_14b_frees›"⇒l≢⇒n0⇒i{i n﹣1‹_lt›⋄l i⊇⌫⇡i}l⌫;
 ⊡‹_14b_cands›⇒a a47∊a≢﹡[1⍳0 a‹_1b_tobytes›⍈^]
  ‹_14b_path›"⇒p58‹split›⇒q a q′‹_14b_cand›€⇒r_q‹_14b_frees›p⌫r;
-⊡‹_14b_argvc›"⇒v≢"⇒n‹_i›A⇒b0⇒i{i n﹣1﹤⋄v i⊇‹_1b_tobytes›b i3≪﹢⊛⇡i}0 b n3≪﹢⊛b;
-⊡‹_14b_argvf›"⇒b⇒p{p⊙1﹤⋄p⊙⌫p8﹢⇒p}b⌫;
-⊡‹_14b_try›⇒e⇒c⇒k0⇒x0⇒y k≢⇒n0⇒j{j n﹣1﹤⋄k j⊇c e 59⎈"⇒y13﹢[1⇒x]⇡j}x[y⋄0 13﹣];
+⊡‹_14b_argvc›"⇒v≢"⇒n‹_i›A⇒b0⇒i{i n﹣1‹_lt›⋄v i⊇‹_1b_tobytes›b i3≪﹢⊛⇡i}0 b n3≪﹢⊛b;
+⊡‹_14b_argvf›"⇒b⇒p{p⊙1‹_lt›⋄p⊙⌫p8﹢⇒p}b⌫;
+⊡‹_14b_try›⇒e⇒c⇒k0⇒x0⇒y k≢⇒n0⇒j{j n﹣1‹_lt›⋄k j⊇c e 59⎈"⇒y13﹢[1⇒x]⇡j}x[y⋄0 13﹣];
 ⊡‹_14b_die›⇒r⇒w1A⇒b0 r﹣b⊛w b 8 1⎈_127 0 0 60⎈;
 ⊡‹_14b_child›⇒w⇒z⇒e⇒c⇒k
  w 1030 3 72⎈"63≫[⇒w⋄_]
- z[⋄3A⇒t0⇒j{j3﹣1﹤⋄z j⊇"0 1﹣﹣[⋄1030 3 72⎈"63≫[⋄⇒m w m‹_14b_die›]]t j3≪﹢⊛⇡j}
-  0⇒j{j3﹣1﹤⋄t j3≪﹢⊙"0 1﹣﹣[⋄j 0 33⎈"63≫[⋄⇒m w m‹_14b_die›]]_⇡j}]
+ z[⋄3A⇒t0⇒j{j3﹣1‹_lt›⋄z j⊇"0 1﹣﹣[⋄1030 3 72⎈"63≫[⋄⇒m w m‹_14b_die›]]t j3≪﹢⊛⇡j}
+  0⇒j{j3﹣1‹_lt›⋄t j3≪﹢⊙"0 1﹣﹣[⋄j 0 33⎈"63≫[⋄⇒m w m‹_14b_die›]]_⇡j}]
  w k c e‹_14b_try›‹_14b_die›;
 ⊡‹pipe›1A⇒b b 524288 0 293⎈"63≫[_⋄“cannot make a pipe“0⍳‹_14b_fail›]b@b4﹢@b⌫;
 ⊡‹spawn›⇒z⇒v v≢[“cannot run an empty argv“U‹throw›]
@@ -3092,17 +3092,17 @@
  “signal “U"⇒g n‹fmt›"⇒f⧺f⌫g⌫;
 ⊡‹_14b_now›2A⇒b1 b0 228⎈_b⊙1000﹡b8﹢⊙1000000‹_d›﹢b⌫;
 ⊡‹_14b_reap›⇒d⇒p d1﹢[p‹wait›^]0⇒k
- {k[p1‹_14b_w4›⇒r_⇒s r⋄1]⋄d‹_14b_now›﹣"0&&»==63≫[_p9‹kill›p‹wait›_1⇒k⋄⇒m0 0 m10⊓7⎈_]}
+ {k[p1‹_14b_w4›⇒r_⇒s r⋄1]⋄d‹_14b_now›﹣"0&&‹_gt›==63≫[_p9‹kill›p‹wait›_1⇒k⋄⇒m0 0 m10⊓7⎈_]}
  k[s‹_14b_st›⋄0 256﹣];
 ⊡‹_14b_nb›⇒f f 3 0 72⎈2048|⇒g f 4 g 72⎈_;
 ⊡‹_14b_ign›4A⇒n4A⇒o1 n⊛0 n8﹢⊛0 n16﹢⊛0 n24﹢⊛13 n o 8 0 0 13⌁_n⌫o;
 ⊡‹_14b_rst›⇒o13 o0 8 0 0 13⌁_o⌫;
 ⊡‹_14b_rec›3A⇒r8192A r⊛65536 r8﹢⊛0 r16﹢⊛r;
-⊡‹_14b_rd›⇒r⇒f r8﹢⊙r16﹢⊙﹣65536&&﹤==63≫1﹢[r8﹢⊙2﹡⇒c c3≫A⇒n r⊙⇒o0⇒k r16﹢⊙7﹢3≫⇒e
-  {k e﹣1﹤⋄o k3≪﹢⊙n k3≪﹢⊛⇡k}o⌫n r⊛c r8﹢⊛]
- f r⊙r16﹢⊙﹢65536 0⎈"0&&»==63≫[⋄"r16﹢⊙﹢r16﹢⊛];
+⊡‹_14b_rd›⇒r⇒f r8﹢⊙r16﹢⊙﹣65536&&‹_lt›==63≫1﹢[r8﹢⊙2﹡⇒c c3≫A⇒n r⊙⇒o0⇒k r16﹢⊙7﹢3≫⇒e
+  {k e﹣1‹_lt›⋄o k3≪﹢⊙n k3≪﹢⊛⇡k}o⌫n r⊛c r8﹢⊛]
+ f r⊙r16﹢⊙﹢65536 0⎈"0&&‹_gt›==63≫[⋄"r16﹢⊙﹢r16﹢⊛];
 ⊡‹_14b_out›⇒r r⊙r16﹢⊙‹_1b_tolist›r⊙⌫r⌫;
-⊡‹_14b_drain›⇒r⇒f f‹_14b_nb›0⇒k{k64﹣1﹤⋄f r‹_14b_rd›0&&»==63≫[64⇒k⋄⇡k]};
+⊡‹_14b_drain›⇒r⇒f f‹_14b_nb›0⇒k{k64﹣1‹_lt›⋄f r‹_14b_rd›0&&‹_gt›==63≫[64⇒k⋄⇡k]};
 ⊡‹_14b_pf›⇒q⇒o⇒a⇒f a f!4 f4﹢!o f8﹢!1 f12﹢!q f16﹢!1 f20﹢!;
 ⊡‹_14b_cap0›⇒i⇒v
  i[“/dev/null“U"⇒g‹open›⇒z g⌫0 1﹣⇒a0⇒b0⇒n⋄‹pipe›⇒a⇒z a‹_14b_nb›i‹_1b_tobytes›⇒b i≢⇒n]
@@ -3114,12 +3114,12 @@
  m63≫[‹_14b_now›m﹢⇒d⋄0 1﹣⇒d]
  ‹_14b_rec›⇒x‹_14b_rec›⇒y3A⇒f0⇒s0⇒t‹_14b_ign›⇒g
  {t a63≫o63≫$q63≫$|⋄
-  d1﹢[0 1﹣⋄d‹_14b_now›﹣"0&&»==63≫[_0]]⇒r
+  d1﹢[0 1﹣⋄d‹_14b_now›﹣"0&&‹_gt›==63≫[_0]]⇒r
   r[p9‹kill›1⇒t]
-  t[f a o q‹_14b_pf›f 3 r 7⎈0&&»==63≫[⋄
+  t[f a o q‹_14b_pf›f 3 r 7⎈0&&‹_gt›==63≫[⋄
    f6﹢?[⋄a b s﹢n s﹣65536⊓1⎈⇒r r63≫[r s﹢⇒s s n﹣[a‹_14b_close›0 1﹣⇒a⋄]⋄r11﹢[⋄a‹_14b_close›0 1﹣⇒a]]]
-   f14﹢?[⋄o x‹_14b_rd›0&&»==63≫[o‹_14b_close›0 1﹣⇒o]]
-   f22﹢?[⋄q y‹_14b_rd›0&&»==63≫[q‹_14b_close›0 1﹣⇒q]]]]}
+   f14﹢?[⋄o x‹_14b_rd›0&&‹_gt›==63≫[o‹_14b_close›0 1﹣⇒o]]
+   f22﹢?[⋄q y‹_14b_rd›0&&‹_gt›==63≫[q‹_14b_close›0 1﹣⇒q]]]]}
  g‹_14b_rst›
  t[p d‹_14b_reap›⋄p‹wait›_0 256﹣]⇒r
  t[⋄o63≫[o x‹_14b_drain›]q63≫[q y‹_14b_drain›]]
@@ -3170,10 +3170,10 @@
 # above them, with the address of the upper zero; clock_gettime writes tv_sec
 # there and tv_nsec in the cell below it, so `_` (the result) leaves nsec sec.
 :‹_14d_envp›5177408⊙"⊙3≪﹢16﹢;
-⊡‹_14d_cstr›"⇒p⇒e{⇐e?1﹤⋄⇐e1﹢⇒e}⇐p⇐e⇐p﹣‹_1b_tolist›;
+⊡‹_14d_cstr›"⇒p⇒e{⇐e?1‹_lt›⋄⇐e1﹢⇒e}⇐p⇐e⇐p﹣‹_1b_tolist›;
 ⊡‹_14d_match›⇒n⇒s⇒p0⇒i
- {⇐p⇐i﹢?⇒c⇐i⇐n﹤⇐c⇐s⇐i3≪﹢⊙﹣1﹤$⇐c1﹤~$1﹢⋄⇐i1﹢⇒i}
- ⇐i⇐n﹣[⇐p⇐n﹢?61﹣1﹤1﹢⋄1];
+ {⇐p⇐i﹢?⇒c⇐i⇐n‹_lt›⇐c⇐s⇐i3≪﹢⊙﹣1‹_lt›$⇐c1‹_lt›~$1﹢⋄⇐i1﹢⇒i}
+ ⇐i⇐n﹣[⇐p⇐n﹢?61﹣1‹_lt›1﹢⋄1];
 ⊡‹_14d_fail›⇒v‹_n›"5179712⊛‹_1b_ename›⇒e“cannot “⊃⇐v⊃⧺“ (“⊃⧺⇐e⧺“)“⊃⧺‹throw›;
 ⊡‹getenv›‹_2d_chk›"⊙"⇒n0﹣[_0⍳1^]8﹢⇒s‹_14d_envp›⇒q
  {⇐q⊙1﹤⋄⇐q⊙⇐s⇐n‹_14d_match›[⇐q⊙⇐n﹢1﹢‹_14d_cstr›0^]⇐q8﹢⇒q}0⍳1;
@@ -3268,17 +3268,17 @@
 :‹chdir›0 80“cannot chdir “‹_14e_sc›_;
 ⊡‹rename›⇒q"⇒p‹_1b_tobytes›⇒c⇐q‹_1b_tobytes›⇒d⇐c⇐d0 82⎈⇒r⇐c⌫⇐d⌫⇐r63≫1﹢[“cannot rename “⇐p⇐r‹_14e_fail›];
 ⊡‹getcwd›512A⇒b⇐b4096 0 79⎈⇒r⇐r63≫1﹢[⇐b⌫“cannot getcwd“0⍳⇐r‹_14e_fail›]⇐b⇐r1﹣‹_1b_tolist›⇐b⌫;
-⊡‹_14e_ms›⇒t⇒n⇒p⇐n2&&﹤==63≫1﹢[^]⇐n1>⇒h⇐p⇐h⇐t‹_14e_ms›⇐h3≪⇐p﹢⇒q⇐n⇐h﹣⇒k⇐q⇐k⇐t‹_14e_ms›⇐k3≪⇐q﹢⇒e
- ⇐p⇒i⇐q⇒j⇐t⇒o{⇐i⇐q﹣1﹤⇐j⇐e﹣1﹤|⋄⇐j⊙⇐i⊙‹lexcmp›63≫1﹢[⇐j⊙⇐o⊛⇐j8﹢⇒j⋄⇐i⊙⇐o⊛⇐i8﹢⇒i]⇐o8﹢⇒o}
- {⇐i⇐q﹣1﹤⋄⇐i⊙⇐o⊛⇐i8﹢⇒i⇐o8﹢⇒o}⇐t⇒i⇐p⇒j{⇐i⇐o﹣1﹤⋄⇐i⊙⇐j⊛⇐i8﹢⇒i⇐j8﹢⇒j};
+⊡‹_14e_ms›⇒t⇒n⇒p⇐n2&&‹_lt›==63≫1﹢[^]⇐n1>⇒h⇐p⇐h⇐t‹_14e_ms›⇐h3≪⇐p﹢⇒q⇐n⇐h﹣⇒k⇐q⇐k⇐t‹_14e_ms›⇐k3≪⇐q﹢⇒e
+ ⇐p⇒i⇐q⇒j⇐t⇒o{⇐i⇐q﹣1‹_lt›⇐j⇐e﹣1‹_lt›|⋄⇐j⊙⇐i⊙‹lexcmp›63≫1﹢[⇐j⊙⇐o⊛⇐j8﹢⇒j⋄⇐i⊙⇐o⊛⇐i8﹢⇒i]⇐o8﹢⇒o}
+ {⇐i⇐q﹣1‹_lt›⋄⇐i⊙⇐o⊛⇐i8﹢⇒i⇐o8﹢⇒o}⇐t⇒i⇐p⇒j{⇐i⇐o﹣1‹_lt›⋄⇐i⊙⇐j⊛⇐i8﹢⇒i⇐j8﹢⇒j};
 ⊡‹listdir›"⇒p589824 2“cannot listdir “‹_14e_sc›⇒f4096A⇒b‹vec›⇒v
  {⇐f⇐b32768 217⎈"⇒r1﹤⋄⇐r63≫1﹢[⇐f0 0 3⎈_⇐b⌫“cannot listdir “⇐p⇐r‹_14e_fail›]
   0⇒o{⇐o⇐r﹣1﹤⋄⇐b⇐o﹢⇒e⇐e19﹢⇒z0⇒n{⇐z⇐n﹢?1﹤⋄⇡n}
    ⇐n1﹣1﹤⇐z?46﹣1﹤$⇐n2﹣1﹤⇐z?46﹣1﹤$⇐z1﹢?46﹣1﹤$|[⇐v⇐z⇐n‹_1b_tolist›⍆⇒v]
    ⇐e16﹢@65535$⇐o﹢⇒o}}
  ⇐f0 0 3⎈_⇐b⌫⇐v‹_2d_chk›"⊙⇒n8﹢⇒q⇐n1⊔A⇒t⇐q⇐n⇐t‹_14e_ms›⇐t⌫⇐v;
-⊡‹_14e_rs›⇒l⇐l≢⇒i{⇐i[1⋄⇐l⇐i1﹣⊇47﹣1﹤]⋄⇣i}⇐i;
-⊡‹_14e_strip›⇒l⇐l≢⇒j{⇐j1&&»==63≫[1⋄⇐l⇐j1﹣⊇47﹣1﹤1﹢]⋄⇣j}⇐l0⇐j‹slice›;
+⊡‹_14e_rs›⇒l⇐l≢⇒i{⇐i[1⋄⇐l⇐i1﹣⊇47﹣1‹_lt›]⋄⇣i}⇐i;
+⊡‹_14e_strip›⇒l⇐l≢⇒j{⇐j1&&‹_gt›==63≫[1⋄⇐l⇐j1﹣⊇47﹣1‹_lt›1﹢]⋄⇣j}⇐l0⇐j‹slice›;
 ⊡‹basename›"‹_14e_rs›⇒i"≢⇐i﹣⇒n⇐i⇐n‹slice›;
 ⊡‹dirname›⇒l⇐l‹_14e_rs›"⇒i⇒j{⇐j[1⋄⇐l⇐j1﹣⊇47﹣1﹤1﹢]⋄⇣j}⇐l0⇐j[⇐i⋄⇐j]‹slice›;
 ⊡‹pathjoin›⇒b⇒a⇐b≢[⋄⇐b0⊇47﹣[⇐b0↓^]]⇐a≢[⇐a⇐b⧺^]⇐a⇐a≢1﹣⊇47﹣[⇐a⇐b⧺^]
@@ -3289,9 +3289,9 @@
  ⇐r63≫1﹢[⇐r2‹_n›﹣1﹤⇐r20‹_n›﹣1﹤|[“cannot rmtree “⇐p⇐r‹_14e_fail›]⇐p⌫^]
  ⇐m61440$16384﹣[⇐p‹listdir›"⇒l‹_13d_rng›⇒e⇒i{⇐i⇐e﹣1﹤⋄⇐i⊙⇒n⇐p⇐n‹pathjoin›"⇒c‹rmtree›⇐c⌫⇐n⌫⇐i8﹢⇒i}
   ⇐l⌫⇐p0 84“cannot rmdir “‹_14e_sc›_⋄⇐p0 87“cannot unlink “‹_14e_sc›_]⇐p⌫;
-⊡‹_14e_cl›"⇒p0⇒n{⇐p⇐n﹢?1﹤⋄⇡n}⇐n‹_1b_tolist›;
+⊡‹_14e_cl›"⇒p0⇒n{⇐p⇐n﹢?1‹_lt›⋄⇡n}⇐n‹_1b_tolist›;
 ⊡‹_14e_tmp›5177408⊙"⊙3≪﹢16﹢⇒e
- {⇐e⊙"⇒z1﹤⋄“TMPDIR=“4﹢⇒t0⇒k{⇐k7﹣[1⋄⇐z⇐k﹢?⇐t⇐k﹢?﹣]⋄⇡k}
+ {⇐e⊙"⇒z1‹_lt›⋄“TMPDIR=“4﹢⇒t0⇒k{⇐k7﹣[1⋄⇐z⇐k﹢?⇐t⇐k﹢?﹣]⋄⇡k}
   ⇐k7﹣[⇐z7﹢?[⋄⇐z7﹢‹_14e_cl›^]]⇐e8﹢⇒e}“/tmp“U;
 ⊡‹mkdtemp›⇒x‹_14e_tmp›⇒d2A⇒g0⇒k
  {⇐g6 0 318⎈_6⍳⇒s0⇒i{⇐i6﹣1﹤⋄⇐s⇐i⇐g⇐i﹢?37‹_m›“abcdefghijklmnopqrstuvwxyz0123456789_“4﹢﹢?⍈_⇡i}
@@ -3353,7 +3353,7 @@
 ⊡‹_14j_rec›"48>32767﹣[⋄“not a random generator“U‹throw›]‹_2d_chk›⇒p⇐p8﹢⊙⇒k
  ⇐k1>⇐p⊙⇐k621﹡5﹢﹣|[⋄“not a random generator“U‹throw›]⇐p;
 ⊡‹_14j_mtgen›24﹢⇒q39176 16≪45279|⇒g0⇒k
- {⇐k624﹣1﹤⋄⇐q⇐k3≪﹢⊙1 31≪$⇐k1﹢"624﹣[_0]3≪⇐q﹢⊙2147483647$|⇒y
+ {⇐k624﹣1‹_lt›⋄⇐q⇐k3≪﹢⊙1 31≪$⇐k1﹢"624﹣[_0]3≪⇐q﹢⊙2147483647$|⇒y
   ⇐k397﹢"624<[624﹣]3≪⇐q﹢⊙⇐y1>=⇐y1$⇐g﹡=⇐q⇐k3≪﹢⊛⇐k1﹢⇒k};
 ⊡‹_14j_mt32›⇒p⇐p16﹢⊙"624﹣[_⇐p‹_14j_mtgen›0]"1﹢⇐p16﹢⊛3≪⇐p24﹢﹢⊙
  "11>="7≪40236 16≪22144|$="15≪61382 16≪$="18>=;
@@ -3365,12 +3365,12 @@
  {⇐i48﹣1﹤⋄⇐x40503 48≪ 31161 32≪| 32586 16≪| 31765|﹢"⇒x‹_14j_mix›⇐p⇐i﹢⊛⇐i8﹢⇒i}⇐p32767 48≪|;
 ⊡‹mtrng›"63≫1﹢[~1﹢]⇒s627A⇒p626⇐p⊛1⇐p8﹢⊛624⇐p16﹢⊛⇐p24﹢⇒q
  ⇐s32≪32>⇒a⇐s32>⇒b⇐b[1⋄2]⇒l
- 19650218⇐q⊛1⇒i{⇐i624﹣1﹤⋄⇐q⇐i3≪﹢⇒t⇐t8﹣⊙"30>=1812433253﹡⇐i﹢32≪32>⇐t⊛⇐i1﹢⇒i}
+ 19650218⇐q⊛1⇒i{⇐i624﹣1‹_lt›⋄⇐q⇐i3≪﹢⇒t⇐t8﹣⊙"30>=1812433253﹡⇐i﹢32≪32>⇐t⊛⇐i1﹢⇒i}
  1⇒i0⇒j624⇒k
- {⇐k1﹤⋄⇐q⇐i3≪﹢⇒t⇐t⊙⇐t8﹣⊙"30>=1664525﹡=⇐j[⇐a⋄⇐b]﹢⇐j﹢32≪32>⇐t⊛
+ {⇐k1‹_lt›⋄⇐q⇐i3≪﹢⇒t⇐t⊙⇐t8﹣⊙"30>=1664525﹡=⇐j[⇐a⋄⇐b]﹢⇐j﹢32≪32>⇐t⊛
   ⇐i1﹢⇒i⇐j1﹢⇒j⇐i624﹣[⇐q4984﹢⊙⇐q⊛1⇒i]⇐j⇐l﹣[0⇒j]⇐k1﹣⇒k}
  623⇒k
- {⇐k1﹤⋄⇐q⇐i3≪﹢⇒t⇐t⊙⇐t8﹣⊙"30>=1566083941﹡=⇐i﹣32≪32>⇐t⊛
+ {⇐k1‹_lt›⋄⇐q⇐i3≪﹢⇒t⇐t⊙⇐t8﹣⊙"30>=1566083941﹡=⇐i﹣32≪32>⇐t⊛
   ⇐i1﹢⇒i⇐i624﹣[⇐q4984﹢⊙⇐q⊛1⇒i]⇐k1﹣⇒k}
  1 31≪⇐q⊛⇐p32767 48≪|;
 ⊡‹_14j_b›⇒k⇒p⇐k[0^]⇐p8﹢⊙[⇐p‹_14j_xo›64⇐k﹣>^]
@@ -3389,17 +3389,17 @@
  ⇐o32767 48≪|;
 ⊡‹_14j_ins›⇒v⇒m⇒q⇐v⇐m$⇒h{⇐h3≪⇐q﹢⇒a⇐a⊙"[_⇐v⇐a⊛0^]⇐v﹣[1^]⇐h1﹢⇐m$⇒h0};
 ⊡‹sample›⇒k‹_2d_chk›⇒l‹_14j_rec›⇒p⇐l⊙⇒n⇐k⇐n1﹢<[“sample: k out of range“U‹throw›]
- ⇐k1﹢A⇒o⇐k⇐o⊛21⇒z⇐k5&&»==63≫1﹢[1⇒y{⇐y⇐k3﹡<1﹢⋄⇐y2≪⇒y}⇐z⇐y﹢⇒z]0⇒i
- ⇐n⇐z&&»==63≫[
-  ⇐n1﹢A⇒q8⇒j{⇐j⇐n1﹢3≪﹣1﹤⋄⇐l⇐j﹢⊙⇐q⇐j﹢⊛⇐j8﹢⇒j}
-  {⇐i⇐k﹣1﹤⋄⇐p⇐n⇐i﹣‹_14j_below›3≪⇐q8﹢﹢⇒a⇐a⊙⇐i3≪⇐o8﹢﹢⊛
+ ⇐k1﹢A⇒o⇐k⇐o⊛21⇒z⇐k5&&‹_gt›==63≫1﹢[1⇒y{⇐y⇐k3﹡<1﹢⋄⇐y2≪⇒y}⇐z⇐y﹢⇒z]0⇒i
+ ⇐n⇐z&&‹_gt›==63≫[
+  ⇐n1﹢A⇒q8⇒j{⇐j⇐n1﹢3≪﹣1‹_lt›⋄⇐l⇐j﹢⊙⇐q⇐j﹢⊛⇐j8﹢⇒j}
+  {⇐i⇐k﹣1‹_lt›⋄⇐p⇐n⇐i﹣‹_14j_below›3≪⇐q8﹢﹢⇒a⇐a⊙⇐i3≪⇐o8﹢﹢⊛
    ⇐n⇐i﹣1﹣3≪⇐q8﹢﹢⊙⇐a⊛⇐i1﹢⇒i}
  ⋄
-  8⇒t{⇐t⇐k1≪<1﹢⋄⇐t1≪⇒t}⇐t A⇒q0⇒j{⇐j⇐t﹣1﹤⋄0⇐j3≪⇐q﹢⊛⇐j1﹢⇒j}⇐t1﹣⇒m
-  {⇐i⇐k﹣1﹤⋄{⇐p⇐n‹_14j_below›⇒j⇐q⇐m⇐j1﹢‹_14j_ins›1=}
+  8⇒t{⇐t⇐k1≪<1﹢⋄⇐t1≪⇒t}⇐t A⇒q0⇒j{⇐j⇐t﹣1‹_lt›⋄0⇐j3≪⇐q﹢⊛⇐j1﹢⇒j}⇐t1﹣⇒m
+  {⇐i⇐k﹣1‹_lt›⋄{⇐p⇐n‹_14j_below›⇒j⇐q⇐m⇐j1﹢‹_14j_ins›1=}
    ⇐j3≪⇐l8﹢﹢⊙⇐i3≪⇐o8﹢﹢⊛⇐i1﹢⇒i}
  ]⇐q⌫⇐o32767 48≪|;
-⊡‹_14j_tab›⇒n⇒p{⇐n1﹤⋄⇐n1﹣⇒n⇐n3≪⇐p﹢⊛};
+⊡‹_14j_tab›⇒n⇒p{⇐n1‹_lt›⋄⇐n1﹣⇒n⇐n3≪⇐p﹢⊛};
 :‹_14j_h0›1779033703 47975 16≪ 44677| 1013904242 42319 16≪ 62778| 1359893119 39685 16≪ 26764| 528734635 1541459225;
 :‹_14j_k›1116352408 1899447441 46528 16≪ 64463| 59829 16≪ 56229| 961987163 1508970993 37439 16≪ 33444| 43804 16≪ 24277|
  55303 16≪ 43672| 310598401 607225278 1426881987 1925078388 32990 16≪ 45566| 39900 16≪ 1703| 49563 16≪ 61812|
@@ -3411,26 +3411,26 @@
  958139571 1322822218 1537002063 1747873779 1955562222 2024104815 33992 16≪ 30740| 36039 16≪ 520|
  37054 16≪ 65530| 42064 16≪ 27883| 48889 16≪ 41975| 50801 16≪ 30962|;
 ⊡‹_14j_blk›⇒u⇒k⇒w⇒z⇐w⇒x⇐w128﹢⇒y
- {⇐x⇐y﹣1﹤⋄⇐u⊙255$24≪⇐u8﹢⊙255$16≪|⇐u16﹢⊙255$8≪|⇐u24﹢⊙255$|⇐x⊛⇐u32﹢⇒u⇐x8﹢⇒x}⇐w512﹢⇒y
- {⇐x⇐y﹣1﹤⋄⇐x16﹣⊙"⇒s10>⇐s"32≪|"⇒s17>=⇐s19>=⇐x56﹣⊙﹢⇐x120﹣⊙"⇒s3>⇐s"32≪|"⇒s7>=⇐s18>=﹢⇐x128﹣⊙﹢32≪32>⇐x⊛⇐x8﹢⇒x}
+ {⇐x⇐y﹣1‹_lt›⋄⇐u⊙255$24≪⇐u8﹢⊙255$16≪|⇐u16﹢⊙255$8≪|⇐u24﹢⊙255$|⇐x⊛⇐u32﹢⇒u⇐x8﹢⇒x}⇐w512﹢⇒y
+ {⇐x⇐y﹣1‹_lt›⋄⇐x16﹣⊙"⇒s10>⇐s"32≪|"⇒s17>=⇐s19>=⇐x56﹣⊙﹢⇐x120﹣⊙"⇒s3>⇐s"32≪|"⇒s7>=⇐s18>=﹢⇐x128﹣⊙﹢32≪32>⇐x⊛⇐x8﹢⇒x}
  ⇐z⊙⇒a⇐z8﹢⊙⇒b⇐z16﹢⊙⇒c⇐z24﹢⊙⇒d⇐z32﹢⊙⇒e⇐z40﹢⊙⇒f⇐z48﹢⊙⇒g⇐z56﹢⊙⇒h⇐k⇒u⇐w⇒x
- {⇐x⇐y﹣1﹤⋄⇐e"32≪|"⇒s6>⇐s11>=⇐s25>=⇐h﹢⇐f⇐g=⇐e$⇐g=﹢⇐u⊙﹢⇐x⊙﹢⇒v
+ {⇐x⇐y﹣1‹_lt›⋄⇐e"32≪|"⇒s6>⇐s11>=⇐s25>=⇐h﹢⇐f⇐g=⇐e$⇐g=﹢⇐u⊙﹢⇐x⊙﹢⇒v
   ⇐a"32≪|"⇒s2>⇐s13>=⇐s22>=⇐a⇐b$⇐c⇐a⇐b|$|﹢
   ⇐g⇒h⇐f⇒g⇐e⇒f⇐d⇐v﹢32≪32>⇒e⇐c⇒d⇐b⇒c⇐a⇒b⇐v﹢32≪32>⇒a⇐u8﹢⇒u⇐x8﹢⇒x}
  ⇐z⊙⇐a﹢32≪32>⇐z⊛⇐z8﹢⊙⇐b﹢32≪32>⇐z8﹢⊛⇐z16﹢⊙⇐c﹢32≪32>⇐z16﹢⊛⇐z24﹢⊙⇐d﹢32≪32>⇐z24﹢⊛
  ⇐z32﹢⊙⇐e﹢32≪32>⇐z32﹢⊛⇐z40﹢⊙⇐f﹢32≪32>⇐z40﹢⊛⇐z48﹢⊙⇐g﹢32≪32>⇐z48﹢⊛⇐z56﹢⊙⇐h﹢32≪32>⇐z56﹢⊛;
 ⊡‹sha256›"48>32767﹣[⋄“sha256: not a list“U‹throw›]‹_2d_chk›"⊙⇒n8﹢⇒s
  8A⇒h‹_14j_h0›⇐h8‹_14j_tab›64A⇒k‹_14j_k›⇐k64‹_14j_tab›64A⇒w128A⇒t
- ⇐s⇒q⇐n6>9≪⇐s﹢⇒e{⇐q⇐e﹣1﹤⋄⇐h⇐w⇐k⇐q‹_14j_blk›⇐q512﹢⇒q}
- ⇐n63$⇒r0⇒i{⇐i⇐r﹣1﹤⋄⇐q⇐i3≪﹢⊙⇐t⇐i3≪﹢⊛⇐i1﹢⇒i}128⇐t⇐r3≪﹢⊛
- ⇐r56<[128⋄64]⇒b⇐r1﹢⇒i{⇐i⇐b﹣1﹤⋄0⇐t⇐i3≪﹢⊛⇐i1﹢⇒i}
- ⇐n3≪⇒v⇐b⇒i{⇐i⇐b8﹣﹣1﹤⋄⇐i1﹣⇒i⇐v255$⇐t⇐i3≪﹢⊛⇐v8>⇒v}
+ ⇐s⇒q⇐n6>9≪⇐s﹢⇒e{⇐q⇐e﹣1‹_lt›⋄⇐h⇐w⇐k⇐q‹_14j_blk›⇐q512﹢⇒q}
+ ⇐n63$⇒r0⇒i{⇐i⇐r﹣1‹_lt›⋄⇐q⇐i3≪﹢⊙⇐t⇐i3≪﹢⊛⇐i1﹢⇒i}128⇐t⇐r3≪﹢⊛
+ ⇐r56<[128⋄64]⇒b⇐r1﹢⇒i{⇐i⇐b﹣1‹_lt›⋄0⇐t⇐i3≪﹢⊛⇐i1﹢⇒i}
+ ⇐n3≪⇒v⇐b⇒i{⇐i⇐b8﹣﹣1‹_lt›⋄⇐i1﹣⇒i⇐v255$⇐t⇐i3≪﹢⊛⇐v8>⇒v}
  ⇐h⇐w⇐k⇐t‹_14j_blk›⇐b128﹣[⇐h⇐w⇐k⇐t512﹢‹_14j_blk›]
  33A⇒o32⇐o⊛⇐o8﹢⇒q⇐h⇒x⇐h64﹢⇒y
- {⇐x⇐y﹣1﹤⋄⇐x⊙"24>⇐q⊛"16>255$⇐q8﹢⊛"8>255$⇐q16﹢⊛255$⇐q24﹢⊛⇐q32﹢⇒q⇐x8﹢⇒x}
+ {⇐x⇐y﹣1‹_lt›⋄⇐x⊙"24>⇐q⊛"16>255$⇐q8﹢⊛"8>255$⇐q16﹢⊛255$⇐q24﹢⊛⇐q32﹢⇒q⇐x8﹢⇒x}
  ⇐w⌫⇐k⌫⇐t⌫⇐h⌫⇐o32767 48≪|;
 ⊡‹sha256hex›‹sha256›"⇒d16≪16>8﹢⇒s65A⇒o64⇐o⊛⇐o8﹢⇒q0⇒i
- {⇐i32﹣1﹤⋄⇐s⇐i3≪﹢⊙"4>"10<[39﹢]48﹢⇐q⊛15$"10<[39﹢]48﹢⇐q8﹢⊛⇐q16﹢⇒q⇐i1﹢⇒i}
+ {⇐i32﹣1‹_lt›⋄⇐s⇐i3≪﹢⊙"4>"10<[39﹢]48﹢⇐q⊛15$"10<[39﹢]48﹢⇐q8﹢⊛⇐q16﹢⇒q⇐i1﹢⇒i}
  ⇐d⌫⇐o32767 48≪|;
 # ===== W14-G =====
 # Text formatting, byte strings, little-endian packing and UTF-8, for scripts
@@ -3517,10 +3517,10 @@
 #   ‹_14g_cv›   v a m j c f w e -> v j'   conversion c with flags f, width w,
 #               precision e (-1 = none), args a (count m), next arg j
 ⊡‹_14g_new›⇒n⇐n1﹢A⇐n&⊛;
-⊡‹_14g_at›⇒i⇒n⇒h⇐n⊙⇒m0⇒j{⇐j⇐m﹣1﹤⋄⇐h⇐i⇐j﹢3≪﹢8﹢⊙⇐n⇐j3≪﹢8﹢⊙﹣[⋄1^]⇐j1﹢⇒j}0;
-⊡‹_14g_ff›⇒i⇒n⇒h⇐h⊙⇐n⊙﹣⇒e{⇐i⇐e&&»==63≫⋄⇐h⇐n⇐i‹_14g_at›[⇐i^]⇐i1﹢⇒i}0 1﹣;
-⊡‹_14g_app›⇒b⇒a⇒p{⇐a⇐b&&﹤==63≫1﹢⋄⇐p⇐a3≪﹢8﹢⊙⍆⇐a1﹢⇒a};
-⊡‹_14g_rep›⇒k⇒c{⇐k0&&»==63≫1﹢⋄⇐c⍆⇐k1﹣⇒k};
+⊡‹_14g_at›⇒i⇒n⇒h⇐n⊙⇒m0⇒j{⇐j⇐m﹣1‹_lt›⋄⇐h⇐i⇐j﹢3≪﹢8﹢⊙⇐n⇐j3≪﹢8﹢⊙﹣[⋄1^]⇐j1﹢⇒j}0;
+⊡‹_14g_ff›⇒i⇒n⇒h⇐h⊙⇐n⊙﹣⇒e{⇐i⇐e&&‹_gt›==63≫⋄⇐h⇐n⇐i‹_14g_at›[⇐i^]⇐i1﹢⇒i}0 1﹣;
+⊡‹_14g_app›⇒b⇒a⇒p{⇐a⇐b&&‹_lt›==63≫1﹢⋄⇐p⇐a3≪﹢8﹢⊙⍆⇐a1﹢⇒a};
+⊡‹_14g_rep›⇒k⇒c{⇐k0&&‹_gt›==63≫1﹢⋄⇐c⍆⇐k1﹣⇒k};
 ⊡‹_14g_sp›⇒k32⇐k‹_14g_rep›;
 ⊡‹_14g_lr›⇒r⇒a‹_2d_chk›⇒p⇐p⊙⇐a﹢⇐r﹢‹vecn›⇐a‹_14g_sp›⇐p0⇐p⊙‹_14g_app›⇐r‹_14g_sp›;
 ⊡‹ljust›⇒w"‹_2d_chk›⊙⇒n0⇐w⇐n﹣‹_14g_lr›;
@@ -3544,15 +3544,15 @@
  ⇐l⊙‹vecn›0⇒i{⇐i⇐l⊙﹣1﹤⋄⇐l⇐i3≪﹢8﹢⊙"256<[⍆⋄3≪⇐b﹢⊙"1﹢[_⋄⍆]]⇐i1﹢⇒i}⇐b⌫;
 #
 # --- little-endian ints ---
-⊡‹_14g_wd›⇒m⇒w⇐w1﹣8<⇐w♯1﹣1﹤$[⇐m U“: width must be 1, 2, 4 or 8“U⧺‹throw›];
-⊡‹_14g_rng›⇒m⇒w⇒o⇒p⇐w⇐m‹_14g_wd›⇐o⇐w﹢⇐p⊙»⇐o63≫|[⋄⇐m U“: offset out of range“U⧺‹throw›];
+⊡‹_14g_wd›⇒m⇒w⇐w1﹣8<⇐w♯1﹣1‹_lt›$[⇐m U“: width must be 1, 2, 4 or 8“U⧺‹throw›];
+⊡‹_14g_rng›⇒m⇒w⇒o⇒p⇐w⇐m‹_14g_wd›⇐o⇐w﹢⇐p⊙‹_gt›⇐o63≫|[⋄⇐m U“: offset out of range“U⧺‹throw›];
 ⊡‹le›⇒w⇒o‹_2d_chk›⇒p⇐p⇐o⇐w“le“‹_14g_rng›0⇒n⇐w⇒i{⇐i1﹤⋄⇐i1﹣⇒i⇐n8≪⇐p⇐o⇐i﹢3≪﹢8﹢⊙255$|⇒n}⇐n;
 ⊡‹les›⇒w⇐w‹le›64⇐w3≪﹣"⇒s≪⇐s≫;
 ⊡‹setle›⇒w⇒n⇒o"‹_2d_chk›⇒p⇐p⇐o⇐w“setle“‹_14g_rng›0⇒i{⇐i⇐w﹣1﹤⋄⇐n255$⇐p⇐o⇐i﹢3≪﹢8﹢⊛⇐n8>⇒n⇐i1﹢⇒i};
 ⊡‹tole›⇒w⇒n⇐w“tole“‹_14g_wd›⇐w⍳0⇐n⇐w‹setle›;
 #
 # --- hex ---
-:‹_14g_hd›"9»39$﹢48﹢;
+:‹_14g_hd›"9‹_gt›39$﹢48﹢;
 ⊡‹_14g_hv›⇒c⇐c48﹣"10<~99$|⇐c32|87﹣"10﹣6<~99$|⊓;
 :‹_14g_hx›‹_14g_hv›"16<[“unhexbytes: bad hex digit“U‹throw›];
 ⊡‹hexbytes›‹_2d_chk›⇒p⇐p⊙"⇒n1≪‹_14g_new›⇒q0⇒i
@@ -3577,7 +3577,7 @@
  ⇐k[⇐b245<[⋄3⇒k⇐b7$⇒c⇐b240﹣[144⇒l⋄]⇐b244﹣[143⇒h⋄]]]
  ⇐k[56320⇐b﹢1^]
  ⇐i⇐k﹢⇐n<[56320⇐b﹢1^]
- 1⇒j{⇐j⇐k»⋄⇐p⇐i⇐j﹢3≪﹢8﹢⊙255$⇒x⇐x⇐l﹣⇐h⇐l﹣»[⋄56320⇐b﹢1^]⇐c6≪⇐x63$|⇒c128⇒l191⇒h⇐j1﹢⇒j}
+ 1⇒j{⇐j⇐k‹_gt›⋄⇐p⇐i⇐j﹢3≪﹢8﹢⊙255$⇒x⇐x⇐l﹣⇐h⇐l﹣‹_gt›[⋄56320⇐b﹢1^]⇐c6≪⇐x63$|⇒c128⇒l191⇒h⇐j1﹢⇒j}
  ⇐c⇐k1﹢;
 ⊡‹utf8›‹_2d_chk›⇒p⇐p⊙⇒n⇐n‹vecn›0⇒i{⇐i⇐n﹣1﹤⋄⇐p⇐n⇐i‹_14g_dec›⇐i﹢⇒i⍆};
 ⊡‹_14g_enc›⇒c
@@ -3596,18 +3596,18 @@
 # through the digits into q; `-` when the signs differ and the result is not 0.
 ⊡‹fixed›⇒k⇒d⇒n⇐k63≫[⋄0⇒k]
  ⇐n⇐d=63≫⇒s⇐n‹_14g_abs›⇒a⇐d‹_14g_abs›⇒b⇐a⇐b‹_d›⇒q⇐a⇐b‹_m›⇒r⇐k1⊔A⇒g
- 0⇒i{⇐i⇐k﹣1﹤⋄⇐r10﹡⇒r⇐r⇐b‹_d›⇐g⇐i3≪﹢⊛⇐r⇐b‹_m›⇒r⇐i1﹢⇒i}
- ⇐r1≪⇐b<[⇐k⇒i1⇒c{⇐c1﹤⋄⇐i[⇐q1﹢⇒q0⇒c⋄⇐i1﹣⇒i⇐g⇐i3≪﹢⇒z⇐z⊙1﹢"10﹣[_0⇐z⊛⋄⇐z⊛0⇒c]]}]
- ⇐q⇒y0⇒i{⇐i⇐k﹣1﹤⋄⇐g⇐i3≪﹢⊙⇐y|⇒y⇐i1﹢⇒i}
- ⇐k24﹢‹vecn›⇐s⇐y1﹤~$[⋄45⍆]
+ 0⇒i{⇐i⇐k﹣1‹_lt›⋄⇐r10﹡⇒r⇐r⇐b‹_d›⇐g⇐i3≪﹢⊛⇐r⇐b‹_m›⇒r⇐i1﹢⇒i}
+ ⇐r1≪⇐b<[⇐k⇒i1⇒c{⇐c1‹_lt›⋄⇐i[⇐q1﹢⇒q0⇒c⋄⇐i1﹣⇒i⇐g⇐i3≪﹢⇒z⇐z⊙1﹢"10﹣[_0⇐z⊛⋄⇐z⊛0⇒c]]}]
+ ⇐q⇒y0⇒i{⇐i⇐k﹣1‹_lt›⋄⇐g⇐i3≪﹢⊙⇐y|⇒y⇐i1﹢⇒i}
+ ⇐k24﹢‹vecn›⇐s⇐y1‹_lt›~$[⋄45⍆]
  ⇐q10 0‹_1d_utoa›‹_2d_chk›"⇒t0⇐t⊙‹_14g_app›⇐t⌫
- ⇐k[⋄46⍆0⇒i{⇐i⇐k﹣1﹤⋄⇐g⇐i3≪﹢⊙48﹢⍆⇐i1﹢⇒i}]⇐g⌫;
+ ⇐k[⋄46⍆0⇒i{⇐i⇐k﹣1‹_lt›⋄⇐g⇐i3≪﹢⊙48﹢⍆⇐i1﹢⇒i}]⇐g⌫;
 #
 # --- printf ---
 ⊡‹_14g_ch›⇒i⇒n⇒p⇐i⇐n<[⋄⇐p⇐i3≪﹢8﹢⊙^]0 1﹣;
 :‹_14g_dg›48﹣"10<[_0 1﹣];
 ⊡‹_14g_emit›⇒f⇒w‹_2d_chk›⇒t⇒z⇒s
- ⇐w⇐t⊙﹣⇐z﹣⇐s1﹤1﹢﹣"63≫[⋄_0]⇒q
+ ⇐w⇐t⊙﹣⇐z﹣⇐s1‹_lt›1﹢﹣"63≫[⋄_0]⇒q
  ⇐f1$[⇐f2$[⇐q‹_14g_sp›⋄⇐z⇐q﹢⇒z]0⇒q]
  ⇐s[⋄⇐s⍆]48⇐z‹_14g_rep›⇐t0⇐t⊙‹_14g_app›⇐q‹_14g_sp›;
 ⊡‹_14g_cv›⇒e⇒w⇒f⇒c⇒j⇒m⇒a
@@ -3624,13 +3624,13 @@
  ⇐x T[“format: %“U0⍳⇐c⍆⧺“ needs a number“U⧺‹throw›]
  0⇒s⇐c100﹣[⇐x63≫[⇐f4$[⋄43⇒s]⇐f8$[⋄⇐s[32⇒s]]⋄45⇒s0⇐x﹣⇒x]⋄]
  ⇐x⇐b0‹_1d_utoa›‹_2d_chk›⇒t
- ⇐c88﹣[0⇒k{⇐k⇐t⊙﹣1﹤⋄⇐t⇐k3≪﹢8﹢⇒q⇐q⊙"96»32$﹣⇐q⊛⇐k1﹢⇒k}⋄]
+ ⇐c88﹣[0⇒k{⇐k⇐t⊙﹣1‹_lt›⋄⇐t⇐k3≪﹢8﹢⇒q⇐q⊙"96‹_gt›32$﹣⇐q⊛⇐k1﹢⇒k}⋄]
  0⇒z⇐e63≫[⇐e⇐t⊙﹣"63≫[⋄_0]⇒z]
  ⇐s⇐z⇐t⇐w⇐f‹_14g_emit›⇐t⌫⇐j;
 ⊡‹format›"T[⋄“format: args must be a list“U‹throw›]‹_2d_chk›⇒a"T[⋄“format: template must be a list“U‹throw›]‹_2d_chk›⇒p
  ⇐p⊙⇒n⇐a⊙⇒m0⇒j0⇒i⇐n8﹢‹vecn›
- {⇐i⇐n﹣1﹤⋄⇐p⇐i3≪﹢8﹢⊙⇐i1﹢⇒i"37﹣[_
-   0⇒f{⇐p⇐n⇐i‹_14g_ch›"⇒c45﹣1﹤1$⇐c48﹣1﹤2$|⇐c43﹣1﹤4$|⇐c32﹣1﹤8$|"⇒b1﹤⋄⇐f⇐b|⇒f⇐i1﹢⇒i}
+ {⇐i⇐n﹣1‹_lt›⋄⇐p⇐i3≪﹢8﹢⊙⇐i1﹢⇒i"37﹣[_
+   0⇒f{⇐p⇐n⇐i‹_14g_ch›"⇒c45﹣1‹_lt›1$⇐c48﹣1‹_lt›2$|⇐c43﹣1‹_lt›4$|⇐c32﹣1‹_lt›8$|"⇒b1‹_lt›⋄⇐f⇐b|⇒f⇐i1﹢⇒i}
    0⇒w{⇐p⇐n⇐i‹_14g_ch›‹_14g_dg›"⇒d63≫⋄⇐w10﹡⇐d﹢⇒w⇐i1﹢⇒i}
    0 1﹣⇒e⇐p⇐n⇐i‹_14g_ch›46﹣[⇐i1﹢⇒i0⇒e{⇐p⇐n⇐i‹_14g_ch›‹_14g_dg›"⇒d63≫⋄⇐e10﹡⇐d﹢⇒e⇐i1﹢⇒i}⋄]
    ⇐a⇐m⇐j⇐p⇐n⇐i‹_14g_ch›⇐f⇐w⇐e‹_14g_cv›⇒j⇐i1﹢⇒i⋄⍆]}
@@ -4009,25 +4009,25 @@
 # candidate at depth k, u[v] 1 while v is free, r the results (capacity z,
 # count m), x ok's result.
 ⊡‹_16_prune›⇒f⇒n
- ⇐n1&&﹤==63≫[⋄1‹_13e_new›⇒r0‹_13e_new›‹_13e_tag›⇐r8﹢⊛⇐r‹_13e_tag›^]
+ ⇐n1&&‹_lt›==63≫[⋄1‹_13e_new›⇒r0‹_13e_new›‹_13e_tag›⇐r8﹢⊛⇐r‹_13e_tag›^]
  ⇐n1﹢A⇒p⇐p‹_13e_tag›⇒q⇐n A⇒c⇐n‹_13e_new›1‹_13e_fill›8﹢⇒u
  16⇒z⇐z‹_13e_new›⇒r0⇒m0⇒k0⇐c⊛13A⇒e
- {⇐k0&&﹤==63≫⋄
+ {⇐k0&&‹_lt›==63≫⋄
   ⇐k3≪⇐c﹢⊙⇒v
-  {⇐v⇐n﹤[1⋄⇐v3≪⇐u﹢⊙]⋄⇐v1﹢⇒v}
-  ⇐v⇐n﹣1﹤[
+  {⇐v⇐n‹_lt›[1⋄⇐v3≪⇐u﹢⊙]⋄⇐v1﹢⇒v}
+  ⇐v⇐n﹣1‹_lt›[
    ⇐v⇐k3≪⇐p﹢8﹢⊛⇐k1﹢⇐p⊛⇐v1﹢⇐k3≪⇐c﹢⊛
    H@⇐e⊛⊷_⇐e8﹢⊛5180096⊙⇐e16﹢⊛5180104⊙⇐e24﹢⊛5177536⊙⇐e32﹢⊛5177544⊙⇐e40﹢⊛
    5177552⊙⇐e48﹢⊛5177560⊙⇐e56﹢⊛5177568⊙⇐e64﹢⊛5177576⊙⇐e72﹢⊛5177584⊙⇐e80﹢⊛5177592⊙⇐e88﹢⊛4399616⊙⇐e96﹢⊛
    ⇐q⇐f⍎⇒x
-   H@⇐e⊙﹣1﹤[⊷_⇐e8﹢⊙﹣1﹤5177536⊙⇐e32﹢⊙﹣1﹤$5177544⊙⇐e40﹢⊙﹣1﹤$5177552⊙⇐e48﹢⊙﹣1﹤$
-    5177560⊙⇐e56﹢⊙﹣1﹤$5177568⊙⇐e64﹢⊙﹣1﹤$5177576⊙⇐e72﹢⊙﹣1﹤$5177584⊙⇐e80﹢⊙﹣1﹤$
-    5177592⊙⇐e88﹢⊙﹣1﹤$4399616⊙⇐e96﹢⊙﹣1﹤$[⋄⇐e⊙H!⇐e16﹢⊙5180096⊛⇐e24﹢⊙5180104⊛]]
-   ⇐x[⇐k1﹢⇐n﹣1﹤[0⇐v3≪⇐u﹢⊛⇐k1﹢⇒k0⇐k3≪⇐c﹢⊛⋄
+   H@⇐e⊙﹣1‹_lt›[⊷_⇐e8﹢⊙﹣1‹_lt›5177536⊙⇐e32﹢⊙﹣1‹_lt›$5177544⊙⇐e40﹢⊙﹣1‹_lt›$5177552⊙⇐e48﹢⊙﹣1‹_lt›$
+    5177560⊙⇐e56﹢⊙﹣1‹_lt›$5177568⊙⇐e64﹢⊙﹣1‹_lt›$5177576⊙⇐e72﹢⊙﹣1‹_lt›$5177584⊙⇐e80﹢⊙﹣1‹_lt›$
+    5177592⊙⇐e88﹢⊙﹣1‹_lt›$4399616⊙⇐e96﹢⊙﹣1‹_lt›$[⋄⇐e⊙H!⇐e16﹢⊙5180096⊛⇐e24﹢⊙5180104⊛]]
+   ⇐x[⇐k1﹢⇐n﹣1‹_lt›[0⇐v3≪⇐u﹢⊛⇐k1﹢⇒k0⇐k3≪⇐c﹢⊛⋄
      ⇐q‹_13e_copy›‹_13e_tag›
-     ⇐m⇐z﹣1﹤[⋄⇐z1≪⇒z⇐z‹_13e_new›⇒t⇐r8﹢⇐t8﹢⇐m‹_15_cpy›⇐r⌫⇐t⇒r]
+     ⇐m⇐z﹣1‹_lt›[⋄⇐z1≪⇒z⇐z‹_13e_new›⇒t⇐r8﹢⇐t8﹢⇐m‹_15_cpy›⇐r⌫⇐t⇒r]
      ⇐m3≪⇐r﹢8﹢⊛⇐m1﹢⇒m]]
-  ⋄⇐k1﹣⇒k⇐k0&&﹤==63≫[1⇐k3≪⇐p﹢8﹢⊙3≪⇐u﹢⊛]]}
+  ⋄⇐k1﹣⇒k⇐k0&&‹_lt›==63≫[1⇐k3≪⇐p﹢8﹢⊙3≪⇐u﹢⊛]]}
  ⇐m⇐r⊛⇐p⌫⇐c⌫⇐u8﹣⌫⇐e⌫⇐r‹_13e_tag›;
 :\prune‹_16_prune›;
 # Ḍ (0x9C, \distinct)  l -> f   0 when all elements differ, else -1.
@@ -4190,23 +4190,25 @@
 # never itself) · 4399664 the block-start bitmap: one bit per heap cell, set
 # for each payload's first cell, so ‹_17_find› answers a pointer to a block's
 # start without the binary search.
-⊡‹_17_find›⇒a⇐a5177396@﹣3>⇒q4399664⊙⇐q6>3≪﹢⊙⇐q63$>1$[⋄⇐a8﹣⊙63≫[⇐a⋄0]^]0⇒l4399520⊙⇒h
+# ‹_17_bp›: a payload address -> its word in the block-start bitmap and its bit.
+⊡‹_17_bp›5177396@﹣3>⇒q4399664⊙⇐q6>3≪﹢1⇐q63$≪;
+⊡‹_17_map›⇒n0⇐n3 16418 0 1﹣0 9⌁;
+:‹_17_unmap›0 11⎈_;
+⊡‹_17_find›⇒a⇐a‹_17_bp›⇒q⊙⇐q$[⋄⇐a8﹣⊙63≫[⇐a⋄0]^]0⇒l4399520⊙⇒h
  {⇐h⇐l﹣2﹤⋄⇐l⇐h﹢1>⇒m4399512⊙⇐m3≪﹢⊙8﹣⇐a»[⇐m⇒l⋄⇐m⇒h]}
  4399512⊙⇐l3≪﹢⊙⇒s⇐s8﹣⊙⇒c
  ⇐c63≫[⇐a⇐s8﹣﹣⇐c24≪24>1﹢3≪<[0⋄⇐s]⋄0];
 ⊡‹_17_mark›"⇒v16≪16>"⇒a‹_17_find›⇒s⇐s[⋄⇐s8﹣⊙⇒c
  ⇐v48>32767﹣⇐a⇐s﹣|[⇐c41>1$[⇐c1 41≪|⇐s8﹣⊛⇐s‹_17_push›⋄]⋄⇐c42>1$[⇐c3 41≪|⇐s8﹣⊛⇐s1|‹_17_push›⋄]]];
 :‹_17_push›4399536⊙⊛4399536⊙8﹢4399536⊛;
-:‹_17_s4›"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢_;
-:‹_17_scan›4399640⊛5177396@16≪4399648⊛5177344@16≪4399656⊛"32﹢4399640⊙»[
- {"⊙16≪4399648⊙﹣&8﹢⊙16≪4399648⊙﹣⊓&16﹢⊙16≪4399648⊙﹣⊓&24﹢⊙16≪4399648⊙﹣⊓4399656⊙<1﹢["‹_17_s4›]32﹢"32﹢4399640⊙»}]
- "4399640⊙<1﹢[{"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"4399640⊙<1﹢}]_;
+:‹_17_scan›4399640⊛5177396@16≪4399648⊛5177344@16≪4399656⊛"4399640⊙<1﹢[
+ {"⊙16≪4399648⊙﹣4399656⊙<1﹢["⊙‹_17_mark›]8﹢"4399640⊙<1﹢}]_;
 ⊡‹gc›4399504⊙[⋄^]1 4399504⊛⊷⇒r⇒d
  5177344@2≫16﹢12≫1﹢12≪⇒z
- 0⇐z3 16418 0 1﹣0 9⌁⇒x0⇐z3 16418 0 1﹣0 9⌁⇒y0⇐z4>12≫1﹢12≪3 16418 0 1﹣0 9⌁⇒w
+ ⇐z‹_17_map›⇒x⇐z‹_17_map›⇒y⇐z4>12≫1﹢12≪⇒b⇐b‹_17_map›⇒w
  ⇐x63≫⇐y63≫|⇐w63≫|[⋄0 4399504⊛^]⇐w4399664⊛
  5177396@⇒p⇐p5177344@﹢⇒e0⇒k
- {⇐p⇐e<1﹢⋄⇐p8﹢⇐x⇐k3≪﹢⊛⇐p8﹢5177396@﹣3>⇒q⇐w⇐q6>3≪﹢⇒t⇐t⊙1⇐q63$≪|⇐t⊛⇐k1﹢⇒k⇐p⊙"63≫[24≪24>⋄‹_n›]1﹢3≪⇐p﹢⇒p}
+ {⇐p⇐e<1﹢⋄⇐p8﹢⇐x⇐k3≪﹢⊛⇐p8﹢‹_17_bp›⇒q⇒t⇐t⊙⇐q|⇐t⊛⇐k1﹢⇒k⇐p⊙"63≫[24≪24>⋄‹_n›]1﹢3≪⇐p﹢⇒p}
  ⇐x4399512⊛⇐k4399520⊛⇐y4399528⊛⇐y4399536⊛
  ⇐d4399432⊙"[_5177408⊙⋄4399424⊙[⋄4096﹢]]‹_17_scan›
  ⇐r6291456‹_17_scan›
@@ -4218,7 +4220,7 @@
   ⇐f[⇐s⊙1﹢⇐c⊓⇒c⋄]⇐s"⇐c3≪﹢‹_17_scan›}
  0⇒j{⇐j⇐k﹣1﹤⋄⇐x⇐j3≪﹢⊙⇒s⇐s8﹣⊙⇒c
   ⇐c63≫[⇐c41>1$[⇐s⌫4399544⊙1﹢4399544⊛⋄⇐c3 41≪~$⇐s8﹣⊛]⋄]⇐j1﹢⇒j}
- ⇐x⇐z0 11⎈_⇐y⇐z0 11⎈_⇐w⇐z4>12≫1﹢12≪0 11⎈_
+ ⇐x⇐z‹_17_unmap›⇐y⇐z‹_17_unmap›⇐w⇐b‹_17_unmap›
  5180104⊙"1≪67108864‹_x›﹢4399488⊛4399496⊙1﹢4399496⊛4399616⊙1﹢4399616⊛0 4399504⊛;
 :‹_17_init›5180104⊙67108864﹢4399488⊛;
 ‹_17_init›
