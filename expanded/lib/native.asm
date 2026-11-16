@@ -61,7 +61,8 @@
 ; writing to p+dr, and stops at end (flag 1) or at the first pair holding a
 ; tag-0x7FFF cell (a nested list): flag 0 with that pair, for Golf to recurse.
         pop r11
-        pop r12
+        pop rax
+        mov r12, rax
         pop r10
         pop r9
         pop rsi
@@ -303,6 +304,7 @@
 .b0:    add rsi, 1
         cmp rsi, rdx
         jb .s0
+        nop
         jmp .save
 .tsave: jmp .save                ; trampolines: a backward jump over 128
 .ttop:  jmp .top                 ; bytes would need FF bytes
@@ -369,7 +371,8 @@
 ; to the index x (k entries) and its bit, (p+8-b)/8, is set in the bitmap w.
 ; A header is the capacity (low 40 bits; marks above), negated when free.
         pop r11
-        pop r12
+        pop rax
+        mov r12, rax
         pop r10
         pop r9
         pop rdx
@@ -646,7 +649,8 @@
 ; op 0 ± (negate), 1 ⊕, 2 ⊖, 3 ² (square); writes p+dr; stops at e or at a
 ; cell tagged 0x7FFF (the Golf loop recurses on it).
         pop r11
-        pop r12
+        pop rax
+        mov r12, rax
         pop r10
         pop rdx
         pop rsi
@@ -682,6 +686,7 @@
 .o3:    imul rax, rax
 .st:    mov [rsi+r10], rax
         add rsi, 8
+        nop
         jmp .l
 
 ;; @word ‹_npre›  a b n -> f   -1 when the n cells at a equal those at b, else 0
@@ -754,7 +759,8 @@
         sub rdx, 1
         bsr rdx, rdx
         sub rdx, 1
-.k0:    lea rsi, [rbx+rdx*8+0xC0]
+.k0:    lea rsi, [rbx+rdx*8]
+        add rsi, 0xC0
         mov rdi, [rsi]
         xor ecx, ecx
         cmp rdi, rcx
